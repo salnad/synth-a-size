@@ -230,6 +230,8 @@ pub struct WaveSource {
     pub interpolation_mode: i32,
     /// `compute_frame_`: render scratch that also seeds new keyframes.
     pub compute_frame: WaveSourceKeyframe,
+    /// `ShepardToneSource::loop_frame_` (unused by plain wave sources).
+    pub loop_frame: WaveSourceKeyframe,
 }
 
 impl WaveSource {
@@ -355,6 +357,10 @@ pub struct FileSource {
     pub window_size: f64,
     pub random_seed: i32,
     pub random_generator: RandomGenerator,
+    /// `interpolate_from_frame_`/`interpolate_to_frame_`: scratch for the
+    /// frequency-interpolating fade style.
+    pub interpolate_from_frame: WaveSourceKeyframe,
+    pub interpolate_to_frame: WaveSourceKeyframe,
 }
 
 impl Default for FileSource {
@@ -386,6 +392,8 @@ impl FileSource {
             window_size: WAVEFORM_SIZE as f64,
             random_seed,
             random_generator,
+            interpolate_from_frame: WaveSourceKeyframe::default(),
+            interpolate_to_frame: WaveSourceKeyframe::default(),
         }
     }
 

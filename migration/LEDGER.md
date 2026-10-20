@@ -1025,3 +1025,59 @@ is pinned by an `upstream_differs_*` test:
   follow A1 per target (sas-common already has `AARCH64_SEMANTICS`). The
   single copy would then match upstream's arm64 lane-0 result out of range
   too. Until then, this test keeps the two copies in step.
+## 2026-10-20: M4a wavetable rendering and `Wavetable` lookup data
+
+**Added** (`sas-wavetable`)
+
+- `wavetable`: `Wavetable`/`WavetableData` with upstream's per-frame
+  layout. That covers `wave_data` and the `poly_float`-layout
+  `frequency_amplitudes`, `normalized_frequencies` and `phases` (2056
+  floats per frame, harmonic `h` at `[2h]`/`[2h+1]`), as well as
+  `setNumFrames` (copying the last frame, version bumps), `loadWaveFrame`,
+  `postProcess` and `getFrequencyBin`/`getFrequencyFloatBin`. This is the
+  structure the Oscillators thread builds on. The GUI/audio double buffer
+  is left to the engine.
+- `creator::render`: `render` for every source and modifier, the group and
+  creator render loops (persistent compute frames, so the last source's
+  frequency ratio and sample rate carry over as upstream), `postRender`,
+  `renderToBuffer`, `PitchDetector`, `detectWaveEditTable` and the
+  `initFromAudioFile` styles (splice, vocoded, TTWT, pitched).
+  - Mixed float/double arithmetic follows the upstream types.
+  - `FileSourceKeyframe::renderFreqInterpolate`'s aliased in-place
+    interpolation is reproduced.
+  - The wave warp's unqualified `exp(float)` resolves to the double `exp`
+    in the reference binary (checked in the disassembly), so the port uses
+    the double version too.
+  - No new fast-math mirroring.
+
+**Measured** (scratch probe; 45 authored creator JSONs plus 27
+well-conditioned variants, 257 frames each). Details and the capture
+proposal are in the Project store: `internal/wavetable-render-parity-measurements.md`.
+
+- Against `REF_FAST_MATH=OFF`: 41/45 cases bit-identical in every array.
+  The rest come from complex division (no-fast-math uses `__divsc3`) and
+  the two recorded mirrors.
+- Against the official reference, on well-conditioned content:
+  time-domain frames ≤ 2.1e-5 (typically ≤ 1e-6) and ≤ −114 dB. Harmonic
+  coefficients (`amp/1024` × unit phasor) ≤ 9e-7 and ≤ −114 dB. Both are
+  inside the module limits. Raw amplitudes (up to about 1000) exceed
+  1e-4 by 1 ulp, and raw phasors flip on noise-level bins, so the
+  captures should not compare raw arrays.
+- **Ill-conditioned content fails against the official reference even
+  though the port equals the no-fast-math build bit for bit:**
+  - frequency-mode keyframe interpolation between disjoint spectra
+    (saw→sine): −35 dB;
+  - multi-group containing it: −27 dB;
+  - frequency-interpolated audio fades: −62 dB;
+  - folding at ±1: 2.6e-3.
+
+  Upstream takes interpolated phases from `arg(conj(from)·to)` of
+  FFT-noise bins, so the result depends on the FFT's rounding. These
+  cases need an owner decision; tolerances are untouched.
+
+**Open / next**
+
+- Committed parity captures and tests once `sas-parity` (#3) merges,
+  using the representation above.
+- Owner decisions: the ill-conditioned content, and JSON byte-exactness
+  vs ULP bounds.

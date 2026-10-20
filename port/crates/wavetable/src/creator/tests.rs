@@ -244,3 +244,96 @@ fn boolean_values_follow_nlohmann_conversions() {
     .unwrap();
     assert!(WavetableCreator::from_json(&double_bool).is_err());
 }
+
+#[test]
+fn render_init_and_predefined() {
+    let mut wavetable = crate::Wavetable::new(NUM_OSCILLATOR_WAVE_FRAMES as usize);
+    let mut creator = WavetableCreator::new();
+    creator.init();
+    creator.render(&mut wavetable).unwrap();
+    assert_eq!(wavetable.num_frames(), 1);
+    assert_eq!(wavetable.name, "Init");
+    let frame = wavetable.buffer(0);
+    let (min, max) = frame
+        .iter()
+        .fold((f32::MAX, f32::MIN), |(lo, hi), &v| (lo.min(v), hi.max(v)));
+    assert!((max - min - 2.0).abs() < 1e-5, "normalised to a span of 2");
+
+    creator.init_predefined_waves();
+    creator.render(&mut wavetable).unwrap();
+    assert_eq!(wavetable.num_frames(), 215);
+    assert!(!wavetable.is_shepard_table());
+    let sin_frame = wavetable.frequency_amplitudes(0);
+    assert!(
+        sin_frame[2] > 100.0 && sin_frame[4] < 1e-3,
+        "only the fundamental"
+    );
+}
+
+#[test]
+fn render_rejects_out_of_range_positions() {
+    let data = json::parse(
+        r#"{"version": "1.0.6", "groups": [{"components": [{"type": "Wave Folder", "keyframes": [{"position": 300, "fold_boost": 1}]}]}]}"#,
+    )
+    .unwrap();
+    let mut creator = WavetableCreator::from_json(&data).unwrap();
+    let mut wavetable = crate::Wavetable::new(NUM_OSCILLATOR_WAVE_FRAMES as usize);
+    assert!(creator.render(&mut wavetable).is_err());
+}
+
+#[test]
+fn render_to_buffer_normalises_down_only() {
+    let mut creator = WavetableCreator::new();
+    creator.init();
+    let buffer = creator.render_to_buffer(4);
+    assert_eq!(buffer.len(), 4 * WAVEFORM_SIZE);
+    let peak = buffer.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+    assert!(peak <= 1.0 && peak > 0.99);
+}
+
+#[test]
+fn shepard_tables_are_flagged() {
+    let saw = saw_data();
+    let data = json::parse(&format!(
+        r#"{{"version": "1.0.6", "groups": [{{"components": [{{"type": "Shepard Tone Source", "interpolation": 1, "keyframes": [{{"position": 0, "wave_data": "{saw}"}}]}}]}}]}}"#
+    ))
+    .unwrap();
+    let mut creator = WavetableCreator::from_json(&data).unwrap();
+    let mut wavetable = crate::Wavetable::new(NUM_OSCILLATOR_WAVE_FRAMES as usize);
+    creator.render(&mut wavetable).unwrap();
+    assert!(wavetable.is_shepard_table());
+    assert_eq!(wavetable.num_frames(), NUM_OSCILLATOR_WAVE_FRAMES as usize);
+}
+
+#[test]
+fn spliced_audio_import() {
+    let audio: Vec<f32> = (0..20_000)
+        .map(|i| ((i % 400) as f32 / 200.0 - 1.0) * 0.5)
+        .collect();
+    let mut creator = WavetableCreator::new();
+    creator
+        .init_from_audio_file(
+            &audio,
+            44100,
+            AudioFileLoadStyle::WavetableSplice,
+            component::FADE_WAVE_BLEND,
+        )
+        .unwrap();
+    let mut wavetable = crate::Wavetable::new(NUM_OSCILLATOR_WAVE_FRAMES as usize);
+    creator.render(&mut wavetable).unwrap();
+    assert_eq!(wavetable.num_frames(), NUM_OSCILLATOR_WAVE_FRAMES as usize);
+    let saved = creator.to_json();
+    let file = saved
+        .get("groups")
+        .unwrap()
+        .at(0)
+        .unwrap()
+        .get("components")
+        .unwrap()
+        .at(0)
+        .unwrap();
+    assert_eq!(
+        file.get("type").unwrap().to_str().unwrap(),
+        "Audio File Source"
+    );
+}

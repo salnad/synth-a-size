@@ -14,10 +14,12 @@ pub mod complex;
 pub mod creator;
 pub mod fourier_transform;
 pub mod wave_frame;
+pub mod wavetable;
 
 pub use complex::Complex;
 pub use fourier_transform::FourierTransform;
 pub use wave_frame::{PredefinedShape, PredefinedWaveFrames, WaveFrame};
+pub use wavetable::{Wavetable, WavetableData};
 
 /// `vital::kNumOscillatorWaveFrames` (`synth_constants.h`).
 pub const NUM_OSCILLATOR_WAVE_FRAMES: i32 = 257;
@@ -31,6 +33,8 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/third_party/JUCE/modules/juce_dsp/frequency/juce_FFT.cpp",
     "vital/src/synthesis/lookups/wave_frame.cpp",
     "vital/src/synthesis/lookups/wave_frame.h",
+    "vital/src/synthesis/lookups/wavetable.cpp",
+    "vital/src/synthesis/lookups/wavetable.h",
     "vital/src/common/wavetable/",
 ];
 
