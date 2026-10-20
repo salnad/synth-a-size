@@ -835,8 +835,11 @@ dependency was dropped), so `sas-preset` can use it for exact wavetable JSON.
   bins above Nyquist as conjugates, which also negates the Nyquist bin's
   imaginary part, scales by 1/N and leaves the imaginary residue in the
   second half.
-- `complex`: `std::complex<float>` as the fast-math build evaluates it
-  (`abs` = `sqrt(re² + im²)` instead of `cabsf`; limited-range division).
+- `complex`: `std::complex<float>` with upstream source semantics
+  (`abs` = `cabsf`/`hypotf`, `arg` = `atan2f`, textbook products). The
+  fast-math reference expands `abs` to `sqrt(re² + im²)`; that differs by
+  ≤ 1 ulp (812/5,000 probe values), which the tolerances absorb, so the
+  source semantics are kept.
 - `wave_frame`: `WaveFrame` and `PredefinedWaveFrames`.
 - `creator`: the `WavetableCreator`/group/component/keyframe state for all
   10 component types, with `stateToJson`/`jsonToState`. That covers
@@ -857,14 +860,19 @@ the committed parity captures wait for `sas-parity`, PR #3)
   0.7.6 upgrade chains and the line-shape path. `updateJson` output, the
   `init()` creator and `initPredefinedWaves()` (all six frames' base64
   `wave_data`) are also identical.
-- Two expressions are written in the order GCC emits under `-ffast-math`,
-  which the official reference requires:
-  - `createSaturatedSin`'s `tanh` loop, read from the reference
-    disassembly. The source order differs in 372/2048 samples (≤ 1.8e-7).
-  - The default saw's `i / 2047.f`, which the reference compiles as a
-    multiply by the reciprocal (4 samples differ by 1 ulp otherwise).
-  `sas_common::scalar::tanh` keeps the source order, because fast-math
-  codegen differs per call site: the same reassociated form still
+- Fast-math codegen mirrored (kept to the minimum: only where the output
+  is saved JSON, which is compared byte for byte with no tolerance):
+
+  | Port location | Upstream expression | What GCC emits in the x86 reference | Why mirrored |
+  |---|---|---|---|
+  | `wave_frame.rs` `tanh_as_reference_loop` | `futils::tanh` in `PredefinedWaveFrames::createSaturatedSin` (`vital/src/synthesis/lookups/wave_frame.cpp:120`) | `x·((C·|x| + B)·x² + (|x| + 1)·A) / (|x·E·|x| + x|·(x² + D) + D)`, read from the disassembly | The frame is saved as base64 by `initPredefinedWaves()` (and Preset's 0.5.0 "Sub" upgrade). The source order differs in 372/2048 samples (≤ 1.8e-7) |
+  | `group.rs` `load_default_group` | `float t = i / (kWaveformSize - 1.0f)` (`vital/src/common/wavetable/wavetable_group.cpp:95`) | `i * (1.0f / 2047.0f)` (`-freciprocal-math`) | The default saw is saved in every init wavetable's JSON. Division differs in 4 samples by 1 ulp |
+
+  Both must be re-checked against the arm64 (Apple clang) reference once
+  ARM Reference lands it, because clang's fast-math codegen differs. If
+  the two references disagree, the JSON comparison needs a per-reference
+  decision. `sas_common::scalar::tanh` keeps the source order, since
+  fast-math codegen differs per call site: the mirrored form still
   differs in 71/18,580 inputs at a scalar call site.
 - FFT against the no-fast-math reference: bit-identical (6 forward and 6
   inverse transforms, 2048 points). Against the fast-math reference it

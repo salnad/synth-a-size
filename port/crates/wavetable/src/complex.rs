@@ -1,9 +1,10 @@
-//! `std::complex<float>` with the arithmetic upstream's release builds use.
+//! `std::complex<float>` with upstream source semantics: products use the
+//! textbook formula (what libstdc++ computes for finite values), `abs` is
+//! `cabsf` (`hypotf`) and `arg` is `atan2f`.
 //!
-//! Under `-ffast-math` (which implies `-fcx-limited-range`) GCC evaluates
-//! complex products with the textbook formula and expands `std::abs` to
-//! `sqrtf(re * re + im * im)` instead of calling `cabsf`. The reference is
-//! built that way, so this type does the same.
+//! The `-ffast-math` reference expands `std::abs` to `sqrtf(re² + im²)`
+//! instead; the two differ by at most 1 ulp, which the parity tolerances
+//! absorb, so the source semantics are kept.
 
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
@@ -29,10 +30,10 @@ impl Complex {
         Self { re: value, im: 0.0 }
     }
 
-    /// `std::abs(z)` as the fast-math build computes it.
+    /// `std::abs(z)`: `cabsf`, i.e. `hypotf(re, im)`.
     #[inline]
     pub fn abs(self) -> f32 {
-        (self.re * self.re + self.im * self.im).sqrt()
+        self.re.hypot(self.im)
     }
 
     /// `std::arg(z)`: `atan2f(im, re)`.
@@ -68,8 +69,9 @@ impl Complex {
         }
     }
 
-    /// `value / z` for a real `value`, in the limited-range form
-    /// `value * conj(z) / |z|^2`.
+    /// `value / z` for a real `value`: `value * conj(z) / |z|^2`, the
+    /// straightforward formula (libgcc's `__divsc3` adds scaling that only
+    /// matters near overflow).
     #[inline]
     pub fn real_div(value: f32, z: Complex) -> Self {
         let denominator = z.re * z.re + z.im * z.im;
