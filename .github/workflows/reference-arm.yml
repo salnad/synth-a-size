@@ -42,6 +42,8 @@ jobs:
         run: migration/scripts/machine_info.sh build/platform/diag
       - name: Render corpus
         run: python3 migration/scripts/run_corpus.py render --out build/platform/pinned
+      - name: Render attribution variants
+        run: python3 migration/scripts/arm_attribution.py render --ref-render migration/reference/build/ref-render --out build/platform/attribution
       - uses: actions/upload-artifact@v7
         with:
           name: ref-x86_64-linux
@@ -83,6 +85,8 @@ jobs:
         run: cargo build --release --locked --manifest-path migration/tools/audio-diff/Cargo.toml
       - name: Repeat render is bit-identical
         run: python3 migration/scripts/run_corpus.py compare build/platform/pinned build/platform/pinned-again --exact
+      - name: Render attribution variants
+        run: python3 migration/scripts/arm_attribution.py render --ref-render migration/reference/build/ref-render --out build/platform/attribution
       - name: Variant - JUCE FFT via Accelerate/vDSP (upstream Mac default)
         run: |
           REF_BUILD_DIR=build/variant-vdsp CXX=clang++ migration/scripts/build_reference.sh -DREF_USE_VDSP=ON
@@ -226,7 +230,10 @@ jobs:
             --pair "macOS no-fast-math proxy=$m/pinned:$m/proxy" \
             --pair "aarch64 Linux vs macOS 15=$m/pinned:$a/ref-aarch64-linux/pinned" \
             --pair "aarch64 Linux vs x86_64 Linux=$a/ref-x86_64-linux/pinned:$a/ref-aarch64-linux/pinned"
+          python3 migration/scripts/arm_attribution.py compare $a/ref-x86_64-linux/attribution $m/attribution \
+            --audio-diff migration/tools/audio-diff/target/release/audio-diff --markdown build/cross/attribution.md
           cat build/cross/report.md >> "$GITHUB_STEP_SUMMARY"
+          { echo; echo "### Attribution: macOS 15 arm64 vs x86_64 Linux"; cat build/cross/attribution.md; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         if: always()
         with:

@@ -169,6 +169,13 @@ elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
   if(NOT REF_FP_CONTRACT)
     list(APPEND REF_OPT_FLAGS -ffp-contract=off)
   endif()
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 17)
+    # Apple clang 15 passes -menable-unsafe-fp-math for -ffast-math, and its
+    # backend then fuses FMAs even with -ffp-contract=off (measured by
+    # scripts/fp_contract_flags_probe.sh). check_fp_determinism.sh fails such
+    # a build; the macOS reference identity uses Apple clang 17 (macOS 15).
+    message(WARNING "Apple clang < 17 ignores -ffp-contract=off under -ffast-math; this build will not match the macOS reference")
+  endif()
 endif()
 if(APPLE)
   if(REF_USE_VDSP)
