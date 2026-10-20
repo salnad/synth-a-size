@@ -208,3 +208,39 @@ fn old_versions_upgrade() {
     let creator = WavetableCreator::from_json(&data).unwrap();
     assert_eq!(creator.groups[0].components.len(), 2);
 }
+
+#[test]
+fn boolean_values_follow_nlohmann_conversions() {
+    let floats = json::parse(
+        r#"{"version": "1.0.6", "groups": [{"components": [{"type": "Phase Shift", "style": 1,
+            "keyframes": [{"position": true, "phase": true, "mix": false}]}]}]}"#,
+    )
+    .unwrap();
+    let saved = WavetableCreator::from_json(&floats).unwrap().to_json();
+    let keyframe = saved
+        .get("groups")
+        .unwrap()
+        .at(0)
+        .unwrap()
+        .get("components")
+        .unwrap()
+        .at(0)
+        .unwrap();
+    let keyframe = keyframe.get("keyframes").unwrap().at(0).unwrap();
+    assert_eq!(keyframe.get("position").unwrap(), &Value::Int(1));
+    assert_eq!(keyframe.get("phase").unwrap(), &Value::Float(1.0));
+    assert_eq!(keyframe.get("mix").unwrap(), &Value::Float(0.0));
+
+    let enum_bool = json::parse(
+        r#"{"version": "1.0.6", "groups": [{"components": [{"type": "Phase Shift", "style": true, "keyframes": []}]}]}"#,
+    )
+    .unwrap();
+    assert!(WavetableCreator::from_json(&enum_bool).is_err());
+
+    let double_bool = json::parse(
+        r#"{"version": "1.0.6", "groups": [{"components": [{"type": "Audio File Source", "normalize_gain": false,
+            "window_size": true, "random_seed": 1, "audio_file": "", "keyframes": []}]}]}"#,
+    )
+    .unwrap();
+    assert!(WavetableCreator::from_json(&double_bool).is_err());
+}

@@ -217,7 +217,7 @@ fn read_keyframes<K: KeyframeData>(keyframes: &mut Keyframes<K>, data: &Value) -
 
 fn read_interpolation_style<K>(keyframes: &mut Keyframes<K>, data: &Value) -> Result<()> {
     if data.count("interpolation_style") != 0 {
-        keyframes.interpolation_style = data.get("interpolation_style")?.to_i32()?;
+        keyframes.interpolation_style = data.get("interpolation_style")?.to_enum()?;
     }
     Ok(())
 }
@@ -272,7 +272,7 @@ impl WaveSource {
         }
         read_interpolation_style(&mut self.keyframes, data)?;
 
-        self.interpolation_mode = data.get("interpolation")?.to_i32()?;
+        self.interpolation_mode = data.get("interpolation")?.to_enum()?;
         self.compute_frame.interpolation_mode = self.interpolation_mode;
         Ok(())
     }
@@ -453,11 +453,11 @@ impl FileSource {
         self.window_size = data.get("window_size")?.to_f64()?;
         self.fade_style = FADE_WAVE_BLEND;
         if data.count("fade_style") != 0 {
-            self.fade_style = data.get("fade_style")?.to_i32()?;
+            self.fade_style = data.get("fade_style")?.to_enum()?;
         }
         self.phase_style = PHASE_NONE;
         if data.count("phase_style") != 0 {
-            self.phase_style = data.get("phase_style")?.to_i32()?;
+            self.phase_style = data.get("phase_style")?.to_enum()?;
         }
         if data.count("random_seed") != 0 {
             self.random_seed = data.get("random_seed")?.to_i32()?;
@@ -737,17 +737,17 @@ impl WavetableComponent {
             WavetableComponent::FileSource(c) => c.read_json(data),
             WavetableComponent::PhaseModifier(c) => {
                 read_keyframes(&mut c.keyframes, data)?;
-                c.settings.phase_style = data.get("style")?.to_i32()?;
+                c.settings.phase_style = data.get("style")?.to_enum()?;
                 Ok(())
             }
             WavetableComponent::WaveWindow(c) => {
                 read_keyframes(&mut c.keyframes, data)?;
-                c.settings.window_shape = data.get("window_shape")?.to_i32()?;
+                c.settings.window_shape = data.get("window_shape")?.to_enum()?;
                 Ok(())
             }
             WavetableComponent::FrequencyFilter(c) => {
                 read_keyframes(&mut c.keyframes, data)?;
-                c.settings.style = data.get("style")?.to_i32()?;
+                c.settings.style = data.get("style")?.to_enum()?;
                 c.settings.normalize = data.get("normalize")?.to_bool()?;
                 Ok(())
             }
