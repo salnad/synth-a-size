@@ -323,3 +323,80 @@ Registry):
 - Reviewer note 3: AGENTS.md now says numeric data goes through
   `sink.array` (tolerances apply), and text artifacts must be upstream's
   own serialization, never reduced-precision prints.
+## 2026-10-20: M1 PR 1, `sas-simd` (poly_float, poly_utils, futils)
+
+**Changed**
+
+- `port/crates/simd`: `PolyFloat`/`PolyInt`/`PolyMask` over a `Backend`
+  trait with three implementations: SSE2 (x86_64), NEON (aarch64, the
+  shipping arm64 macOS target) and a scalar model of each upstream path
+  (`Scalar` = SSE2 semantics, `ScalarNeon` = NEON semantics). Ported
+  `poly_values.h`, `poly_utils.h`, `futils.h`, `matrix.h`, `common.h` and
+  the scalar part of `utils.h`/`utils.cpp` (the RNG engine and PCM
+  conversion live in `sas-common`, owned by Wavetable Creator).
+- Each backend follows its own upstream path, because upstream's SSE2 and
+  NEON paths are different arithmetic: float `max`/`min` (MAXPS vs FMAX NaN
+  and ±0 rules), `notEqual` (unordered vs ordered), horizontal sum order
+  (`(v0+v2)+(v1+v3)` vs `(v0+v1)+(v2+v3)`), `toInt` (round-to-nearest-even
+  with `0x80000000` vs truncate-and-saturate), int `min` (signed vs
+  unsigned) and `anyMask` (byte mask vs max lane). Table in
+  `crates/simd/src/backend/mod.rs`.
+- No FMA and no estimate instructions anywhere: `mul_add`/`mul_sub` are a
+  separate multiply and add; division and `sqrt` are exact.
+- Matrix moved into PR 1 (not PR 2) because `poly_utils` depends on it.
+
+**Measured**
+
+- Native vs scalar model, bit for bit: ~22k float-quad cases and ~6k int
+  cases over every op, on x86_64 (SSE2 vs `Scalar`) and on aarch64 under
+  qemu (NEON vs `ScalarNeon`). The NaN payload of `+ - * /` with two NaN
+  operands is compared as NaN-ness, because compilers may commute these
+  ops (in the port and the reference alike).
+- C++ exactness probe (local, not yet committed; it moves to a capture file
+  once `sas-parity` lands): upstream's own headers compiled with the
+  reference flags, run on the same 1,257 input quads as the port, 100
+  functions (every op, poly_utils, futils, mono futils/utils):
+  - x86_64, `-O3 -ffp-contract=off -msse2`, no fast-math: **100/100
+    bit-identical** to the Rust SSE2 backend.
+  - aarch64 (g++ 13 cross, run under qemu), no fast-math: **100/100
+    bit-identical** to the Rust NEON backend.
+  - With the reference's `-ffast-math -U__FAST_MATH__ -mno-recip`, 38
+    functions differ by a few ULP (reassociation and reciprocal-math). This
+    is the "faithful port vs fast-math" noise the tolerance proxy already
+    covers, not a port difference.
+- futils accuracy pins (they guard against coefficient typos; they are not
+  parity tolerances): exp2 relative error < 1e-5, log2 absolute < 1e-3
+  (measured 4.8e-4), tanh absolute < 1e-3.
+
+**Mono vs poly futils (decision, coordinator-approved).** Each overload
+follows its own upstream formula. `tests/futils_mono_vs_poly.rs` requires
+bit equality where upstream's arithmetic is identical (exp2, log2, exp,
+log, exp_half, pow, magnitudeToDb, quickTanh, algebraicSat, quickSin, sin,
+quickSin1, sin1). It also checks that the port keeps the overloads that
+upstream itself makes differ (line numbers in `futils.h`):
+
+| Function | Mono | Poly | Difference |
+|---|---|---|---|
+| `dbToMagnitude` | 168–170 | 172–174 | mono uses natural `exp` (extra log2(e) scale, an upstream bug kept for parity) |
+| `quickTanhDerivative` | 199–206 | 190–197 | numerator summed in a different order |
+| `algebraicSatDerivative` | 243–250 | 252–260 | numerator summed in a different order |
+| `tanh` | 275–284 | 262–273 | different association |
+| `powerScale` | 360–369 | 371–378 | bypass threshold 0.01 vs 0.005; poly bypass goes through `maskLoad` (−0 → +0) |
+
+**Notes for other threads**
+
+- `poly_utils::trunc`/`to_int` round on x86 and truncate on arm64, as
+  upstream does. `floor`/`ceil`/`round` agree on both for in-range values.
+- `utils::equal(NaN, NaN)` is false on x86 and true on arm64 (upstream).
+- Upstream runs the engine under JUCE `ScopedNoDenormals` (FTZ/DAZ on x86,
+  FZ on arm64). The port has to set the same mode around processing (M1 PR 2
+  or M7) for parity on paths that produce denormals.
+
+**Open / next**
+
+- PR 2: processor graph, operators, lookup tables, utilities,
+  one_pole_filter.
+- Parity tests: wait for `sas-parity` (Harness Builder) and
+  `decisions/reference-arm.md` (ARM Reference); the arm64 reference
+  compiler flags (clang FMA contraction) decide how `mul_add` is checked
+  there.

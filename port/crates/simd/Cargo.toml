@@ -9,3 +9,6 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(sas_simd_force_scalar)"] }
