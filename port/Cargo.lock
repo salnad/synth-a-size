@@ -548,6 +548,9 @@ version = "0.0.1"
 [[package]]
 name = "sas-simd"
 version = "0.0.1"
+dependencies = [
+ "sas-parity",
+]
 
 [[package]]
 name = "sas-wavetable"

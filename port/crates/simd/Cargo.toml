@@ -10,5 +10,8 @@ publish.workspace = true
 
 [dependencies]
 
+[dev-dependencies]
+sas-parity.workspace = true
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(sas_simd_force_scalar)"] }

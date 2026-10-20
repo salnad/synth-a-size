@@ -1,0 +1,2467 @@
+{
+  "description": "Upstream poly_float / poly_utils / futils / scalar utils functions, one case per function (ports: port/crates/simd, tests/parity.rs). Inputs are stereo noise (L != R) over each function's working range, chosen so outputs stay audio-scale (|out| <~ 16) where the absolute max_abs_error gate is meaningful.",
+  "module": "poly_function",
+  "num_samples": 4096,
+  "cases": {
+    "add": {
+      "params": {
+        "function": "add"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "sub": {
+      "params": {
+        "function": "sub"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mul": {
+      "params": {
+        "function": "mul"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "max": {
+      "params": {
+        "function": "max"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "min": {
+      "params": {
+        "function": "min"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mul_add": {
+      "params": {
+        "function": "mul_add"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mul_sub": {
+      "params": {
+        "function": "mul_sub"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "sum": {
+      "params": {
+        "function": "sum"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "equal": {
+      "params": {
+        "function": "equal"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "not_equal": {
+      "params": {
+        "function": "not_equal"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "greater_than": {
+      "params": {
+        "function": "greater_than"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "less_than_or_equal": {
+      "params": {
+        "function": "less_than_or_equal"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "div": {
+      "params": {
+        "function": "div"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.9,
+          "seed": 2,
+          "offset": 2.0
+        }
+      }
+    },
+    "mul_scalar": {
+      "params": {
+        "function": "mul_scalar"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "neg": {
+      "params": {
+        "function": "neg"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "abs": {
+      "params": {
+        "function": "abs"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "sign_mask": {
+      "params": {
+        "function": "sign_mask"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "to_int": {
+      "params": {
+        "function": "to_int"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 12.0,
+          "seed": 3
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "trunc": {
+      "params": {
+        "function": "trunc"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 12.0,
+          "seed": 3
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "floor": {
+      "params": {
+        "function": "floor"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 12.0,
+          "seed": 3
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "ceil": {
+      "params": {
+        "function": "ceil"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 12.0,
+          "seed": 3
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "round": {
+      "params": {
+        "function": "round"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 12.0,
+          "seed": 3
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "round_to_int": {
+      "params": {
+        "function": "round_to_int"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 12.0,
+          "seed": 3
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "floor_to_int": {
+      "params": {
+        "function": "floor_to_int"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 12.0,
+          "seed": 3
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mod": {
+      "params": {
+        "function": "mod"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 12.0,
+          "seed": 3
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "triangle_wave": {
+      "params": {
+        "function": "triangle_wave"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 12.0,
+          "seed": 3
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mod_once": {
+      "params": {
+        "function": "mod_once"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 3,
+          "offset": 1.0
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "sqrt": {
+      "params": {
+        "function": "sqrt"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.9,
+          "seed": 3,
+          "offset": 2.0
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "pow2_to_float": {
+      "params": {
+        "function": "pow2_to_float"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 3
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "swap_stereo": {
+      "params": {
+        "function": "swap_stereo"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 4
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 5
+        }
+      }
+    },
+    "swap_voices": {
+      "params": {
+        "function": "swap_voices"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 4
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 5
+        }
+      }
+    },
+    "swap_inner": {
+      "params": {
+        "function": "swap_inner"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 4
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 5
+        }
+      }
+    },
+    "reverse": {
+      "params": {
+        "function": "reverse"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 4
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 5
+        }
+      }
+    },
+    "consolidate_audio": {
+      "params": {
+        "function": "consolidate_audio"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 4
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 5
+        }
+      }
+    },
+    "compact_first_voices": {
+      "params": {
+        "function": "compact_first_voices"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 4
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 5
+        }
+      }
+    },
+    "sum_split_audio": {
+      "params": {
+        "function": "sum_split_audio"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 4
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 5
+        }
+      }
+    },
+    "max_float": {
+      "params": {
+        "function": "max_float"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 4
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 5
+        }
+      }
+    },
+    "min_float": {
+      "params": {
+        "function": "min_float"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 4
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 5
+        }
+      }
+    },
+    "encode_mid_side": {
+      "params": {
+        "function": "encode_mid_side"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 4
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 5
+        }
+      }
+    },
+    "decode_mid_side": {
+      "params": {
+        "function": "decode_mid_side"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 4
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 5
+        }
+      }
+    },
+    "transpose_row0": {
+      "params": {
+        "function": "transpose_row0"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 4
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 5
+        }
+      }
+    },
+    "transpose_row3": {
+      "params": {
+        "function": "transpose_row3"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 4
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 5
+        }
+      }
+    },
+    "interpolate": {
+      "params": {
+        "function": "interpolate"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 6
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 7
+        }
+      }
+    },
+    "perlin_interpolate": {
+      "params": {
+        "function": "perlin_interpolate"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 6
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 7
+        }
+      }
+    },
+    "flt_scale": {
+      "params": {
+        "function": "flt_scale"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 6,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.9,
+          "seed": 7,
+          "offset": 2.0
+        }
+      }
+    },
+    "mask_load": {
+      "params": {
+        "function": "mask_load"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 6
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 7
+        }
+      }
+    },
+    "clamp": {
+      "params": {
+        "function": "clamp"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 6
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "snap_transpose": {
+      "params": {
+        "function": "snap_transpose"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 24.0,
+          "seed": 6
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "encode_phase_and_voice": {
+      "params": {
+        "function": "encode_phase_and_voice"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 6,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 10.0,
+          "seed": 7,
+          "offset": 10.0
+        }
+      }
+    },
+    "cubic_values": {
+      "params": {
+        "function": "cubic_values"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 8,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "optimal_values": {
+      "params": {
+        "function": "optimal_values"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 8,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "catmull_row0": {
+      "params": {
+        "function": "catmull_row0"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 8,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "catmull_row1": {
+      "params": {
+        "function": "catmull_row1"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 8,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "catmull_row2": {
+      "params": {
+        "function": "catmull_row2"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 8,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "catmull_row3": {
+      "params": {
+        "function": "catmull_row3"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 8,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "polynomial_row0": {
+      "params": {
+        "function": "polynomial_row0"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 8,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "polynomial_row1": {
+      "params": {
+        "function": "polynomial_row1"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 8,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "polynomial_row2": {
+      "params": {
+        "function": "polynomial_row2"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 8,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "polynomial_row3": {
+      "params": {
+        "function": "polynomial_row3"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 8,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "polynomial_sum_rows": {
+      "params": {
+        "function": "polynomial_sum_rows"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 8,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "matrix_multiply_and_sum_rows": {
+      "params": {
+        "function": "matrix_multiply_and_sum_rows"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 8,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 9,
+          "offset": 0.5
+        }
+      }
+    },
+    "poly_cents_to_ratio": {
+      "params": {
+        "function": "poly_cents_to_ratio"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 2400.0,
+          "seed": 10
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "poly_midi_note_to_frequency": {
+      "params": {
+        "function": "poly_midi_note_to_frequency"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 24.0,
+          "seed": 10,
+          "offset": -12.0
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "poly_frequency_to_midi_note": {
+      "params": {
+        "function": "poly_frequency_to_midi_note"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 7.5,
+          "seed": 10,
+          "offset": 8.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "poly_db_to_magnitude": {
+      "params": {
+        "function": "poly_db_to_magnitude"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 24.0,
+          "seed": 10
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "poly_magnitude_to_db": {
+      "params": {
+        "function": "poly_magnitude_to_db"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.9,
+          "seed": 10,
+          "offset": 2.0
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "poly_sin": {
+      "params": {
+        "function": "poly_sin"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 10
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "poly_cos": {
+      "params": {
+        "function": "poly_cos"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 10
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "poly_tan": {
+      "params": {
+        "function": "poly_tan"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 10
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "poly_pow": {
+      "params": {
+        "function": "poly_pow"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.9,
+          "seed": 10,
+          "offset": 2.0
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 11
+        }
+      }
+    },
+    "exp2": {
+      "params": {
+        "function": "exp2"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 12
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "log2": {
+      "params": {
+        "function": "log2"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.9,
+          "seed": 12,
+          "offset": 2.0
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "cheap_exp2": {
+      "params": {
+        "function": "cheap_exp2"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 12
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "cheap_log2": {
+      "params": {
+        "function": "cheap_log2"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.9,
+          "seed": 12,
+          "offset": 2.0
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "exp": {
+      "params": {
+        "function": "exp"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 2.7,
+          "seed": 12
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "log": {
+      "params": {
+        "function": "log"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.9,
+          "seed": 12,
+          "offset": 2.0
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "exp_half": {
+      "params": {
+        "function": "exp_half"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 12
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "pow": {
+      "params": {
+        "function": "pow"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.9,
+          "seed": 12,
+          "offset": 2.0
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 13
+        }
+      }
+    },
+    "cheap_pow": {
+      "params": {
+        "function": "cheap_pow"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.9,
+          "seed": 12,
+          "offset": 2.0
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 13
+        }
+      }
+    },
+    "midi_offset_to_ratio": {
+      "params": {
+        "function": "midi_offset_to_ratio"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 24.0,
+          "seed": 12
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "midi_note_to_frequency": {
+      "params": {
+        "function": "midi_note_to_frequency"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 24.0,
+          "seed": 12,
+          "offset": -12.0
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "magnitude_to_db": {
+      "params": {
+        "function": "magnitude_to_db"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.9,
+          "seed": 12,
+          "offset": 2.0
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "db_to_magnitude": {
+      "params": {
+        "function": "db_to_magnitude"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 24.0,
+          "seed": 12
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "quick_tanh": {
+      "params": {
+        "function": "quick_tanh"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 14
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "quick_tanh_derivative": {
+      "params": {
+        "function": "quick_tanh_derivative"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 14
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "algebraic_sat": {
+      "params": {
+        "function": "algebraic_sat"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 14
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "quadratic_inv_sat": {
+      "params": {
+        "function": "quadratic_inv_sat"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 14
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "bump_sat": {
+      "params": {
+        "function": "bump_sat"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 14
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "bump_sat2": {
+      "params": {
+        "function": "bump_sat2"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 14
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "algebraic_sat_derivative": {
+      "params": {
+        "function": "algebraic_sat_derivative"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 14
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "tanh": {
+      "params": {
+        "function": "tanh"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 14
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "hard_tanh": {
+      "params": {
+        "function": "hard_tanh"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 14
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "tanh_derivative_fast": {
+      "params": {
+        "function": "tanh_derivative_fast"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 14
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "quick_sin": {
+      "params": {
+        "function": "quick_sin"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 15
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "sin": {
+      "params": {
+        "function": "sin"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 15
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "quick_sin1": {
+      "params": {
+        "function": "quick_sin1"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 15,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "sin1": {
+      "params": {
+        "function": "sin1"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 15,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "sin_interpolate": {
+      "params": {
+        "function": "sin_interpolate"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 15
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 16
+        }
+      }
+    },
+    "equal_power_fade": {
+      "params": {
+        "function": "equal_power_fade"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 15,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "equal_power_fade_inverse": {
+      "params": {
+        "function": "equal_power_fade_inverse"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 15,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "pan_amplitude": {
+      "params": {
+        "function": "pan_amplitude"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 15
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "power_scale": {
+      "params": {
+        "function": "power_scale"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 15,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 10.0,
+          "seed": 16
+        }
+      }
+    },
+    "mono_exp2": {
+      "params": {
+        "function": "mono_exp2"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 17
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_log2": {
+      "params": {
+        "function": "mono_log2"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.9,
+          "seed": 17,
+          "offset": 2.0
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_exp": {
+      "params": {
+        "function": "mono_exp"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 2.7,
+          "seed": 17
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_log": {
+      "params": {
+        "function": "mono_log"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.9,
+          "seed": 17,
+          "offset": 2.0
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_magnitude_to_db": {
+      "params": {
+        "function": "mono_magnitude_to_db"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.9,
+          "seed": 17,
+          "offset": 2.0
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_db_to_magnitude": {
+      "params": {
+        "function": "mono_db_to_magnitude"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 16.0,
+          "seed": 17
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_quick_tanh": {
+      "params": {
+        "function": "mono_quick_tanh"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 18
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_quick_tanh_derivative": {
+      "params": {
+        "function": "mono_quick_tanh_derivative"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 18
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_reciprocal_sat": {
+      "params": {
+        "function": "mono_reciprocal_sat"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 18
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_algebraic_sat": {
+      "params": {
+        "function": "mono_algebraic_sat"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 18
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_algebraic_sat_derivative": {
+      "params": {
+        "function": "mono_algebraic_sat_derivative"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 18
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_tanh": {
+      "params": {
+        "function": "mono_tanh"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 18
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_quick_sin": {
+      "params": {
+        "function": "mono_quick_sin"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 19
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_sin": {
+      "params": {
+        "function": "mono_sin"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 19
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_quick_sin1": {
+      "params": {
+        "function": "mono_quick_sin1"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 19,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_sin1": {
+      "params": {
+        "function": "mono_sin1"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 19,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_power_scale": {
+      "params": {
+        "function": "mono_power_scale"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 19,
+          "offset": 0.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 10.0,
+          "seed": 20
+        }
+      }
+    },
+    "mono_cents_to_ratio": {
+      "params": {
+        "function": "mono_cents_to_ratio"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 2400.0,
+          "seed": 21
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_note_offset_to_ratio": {
+      "params": {
+        "function": "mono_note_offset_to_ratio"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 24.0,
+          "seed": 21
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_ratio_to_midi_transpose": {
+      "params": {
+        "function": "mono_ratio_to_midi_transpose"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.9,
+          "seed": 21,
+          "offset": 2.0
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_midi_note_to_frequency": {
+      "params": {
+        "function": "mono_midi_note_to_frequency"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 24.0,
+          "seed": 21,
+          "offset": -12.0
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_frequency_to_midi_note": {
+      "params": {
+        "function": "mono_frequency_to_midi_note"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 7.5,
+          "seed": 21,
+          "offset": 8.5
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_utils_db_to_magnitude": {
+      "params": {
+        "function": "mono_utils_db_to_magnitude"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 24.0,
+          "seed": 21
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_utils_magnitude_to_db": {
+      "params": {
+        "function": "mono_utils_magnitude_to_db"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.9,
+          "seed": 21,
+          "offset": 2.0
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    },
+    "mono_inverse_flt_scale": {
+      "params": {
+        "function": "mono_inverse_flt_scale"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.45,
+          "seed": 21,
+          "offset": 0.55
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 2
+        }
+      }
+    }
+  }
+}

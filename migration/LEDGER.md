@@ -352,10 +352,9 @@ Registry):
   qemu (NEON vs `ScalarNeon`). The NaN payload of `+ - * /` with two NaN
   operands is compared as NaN-ness, because compilers may commute these
   ops (in the port and the reference alike).
-- C++ exactness probe (local, not yet committed; it moves to a capture file
-  once `sas-parity` lands): upstream's own headers compiled with the
-  reference flags, run on the same 1,257 input quads as the port, 100
-  functions (every op, poly_utils, futils, mono futils/utils):
+- Standalone C++ probe (local; superseded by the `simd/poly_function`
+  ref-module below): upstream's own headers, 1,257 input quads, 100
+  functions:
   - x86_64, `-O3 -ffp-contract=off -msse2`, no fast-math: **100/100
     bit-identical** to the Rust SSE2 backend.
   - aarch64 (g++ 13 cross, run under qemu), no fast-math: **100/100
@@ -367,6 +366,32 @@ Registry):
 - futils accuracy pins (they guard against coefficient typos; they are not
   parity tolerances): exp2 relative error < 1e-5, log2 absolute < 1e-3
   (measured 4.8e-4), tanh absolute < 1e-3.
+
+**Reference parity (the gate).** The probe is now a ref-module,
+`simd/poly_function` (`migration/reference/src/modules/simd/poly_function.cpp`,
+cases in `migration/corpus/modules/simd/poly_function.json`): 127 cases,
+one per upstream function. It covers every poly op, the poly_utils
+conversions, shuffles, interpolation and libm maps, poly futils, and the
+mono futils/utils overloads. Each case runs on 4,096 frames of stereo noise
+over that function's working range, chosen so outputs stay audio-scale
+(|out| ≲ 16). `port/crates/simd/tests/parity.rs` runs the port on the
+captured inputs through `sas-parity` under `module_defaults`
+(`max_abs_error` 1e-4, `residual_db` −80). Against the official pinned
+fast-math x86_64 reference:
+
+- 127/127 pass; 90/127 are bit-identical.
+- Worst `max_abs_error` is 7.6e-6 (`mono_frequency_to_midi_note`), 13×
+  under the limit. Worst `residual_db` is −132.0 dB (`catmull_row0`),
+  52 dB under the limit.
+- The cases that are not bit-identical are fast-math reassociation in the
+  reference: polynomial/Catmull matrices, the tanh/sat family, libm-based
+  `powf`/`logf` maps.
+- Extra, not the gate: against the `REF_FAST_MATH=OFF` reference, 127/127
+  are bit-identical. The no-fast-math proxy also passes all 127 cases
+  under the tolerances, as the calibration job requires.
+- arm64: the same test runs on aarch64 against arm64 captures once the
+  macOS arm64 job runs `cargo test` against them (ARM Reference). The g++
+  cross build under qemu (above) is only a proxy for Apple clang.
 
 **Mono vs poly futils (decision, coordinator-approved).** Each overload
 follows its own upstream formula. `tests/futils_mono_vs_poly.rs` requires
@@ -396,7 +421,6 @@ upstream itself makes differ (line numbers in `futils.h`):
 
 - PR 2: processor graph, operators, lookup tables, utilities,
   one_pole_filter.
-- Parity tests: wait for `sas-parity` (Harness Builder) and
-  `decisions/reference-arm.md` (ARM Reference); the arm64 reference
-  compiler flags (clang FMA contraction) decide how `mul_add` is checked
-  there.
+- arm64 parity in CI: the macOS arm64 job needs to run
+  `cargo test -p sas-simd --test parity` against its arm64 captures. That
+  workflow belongs to ARM Reference.
