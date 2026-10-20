@@ -41,6 +41,15 @@ PR #2. The tools are `scripts/cross_platform_report.py`,
 | A1c | `cubicLookup` index (`lookup_table.h`), oscillator phase accumulators `phase += toInt(...)` | rounding | truncation | Filter and phase cases pass at −85 to −127 dB, so this is below the tolerances on the corpus. |
 | A2 | random phase: `uint32_t p = random(-1..1) * amount * INT_MAX` (`synth_oscillator.cpp:583`). Negative float → unsigned is undefined behaviour. | wraps modulo 2^32 (64-bit `cvttss2si`) | `FCVTZU` saturates to 0: every voice with a negative draw starts at phase 0 | Probe: `float_to_uint32_negative` differs. `init_saw` (random phase on by default) +4.7 dB residual; with random phase off: −135.4 dB (pass). |
 | A3 | out-of-range float → `int32_t` | 0x80000000 | saturates | Probe: `float_to_int32_overflow` differs. No corpus case isolates it. |
+| A4 | `poly_float::sum()` (`poly_values.h`) horizontal add order | `(v0+v2)+(v1+v3)` (shuffle + add) | `(v0+v1)+(v2+v3)` (`vpadd_f32`) | Reverb feedback matrix (`reverb.cpp:265, 326`) is the main user; its `toInt` only sees floored, exact integers, so A1 does not apply there. Attribution: see below. `poly_int::sum` is integer and order-independent. |
+| A5 | `poly_float::max`/`min`: `_mm_max_ps`/`_mm_min_ps` vs `vmaxq_f32`/`vminq_f32` | returns the second operand when either is NaN, or for a ±0 tie | FMAX/FMIN propagate NaN; ±0 ordered (`max(-0, +0) = +0`) | Only observable with NaN or signed-zero ties. The corpus renders are finite; not isolable. Bounded by the passing cases (≤ −85 dB). |
+| A6 | `poly_float::notEqual`: `_mm_cmpneq_ps` vs `greaterThan \| lessThan` | unordered: NaN → true | ordered: NaN → false | Call sites (`synth_oscillator.cpp:1298` midi-track flag, `modulation_connection_processor.cpp:75` power check) compare finite parameters with 0. No effect without NaN. |
+| A7 | `poly_int::min` (`poly_values.h`) | signed (`_mm_cmpgt_epi32` directly) | unsigned (`vminq_u32`) | `poly_int::max` goes through `greaterThan`, which is unsigned on both (SSE2 XORs the sign bit), so only `min` differs. Through `utils::clamp(v, lo, hi) = max(min(v, hi), lo)`, a *negative* index stays negative on x86, an out-of-bounds read one element before the table, but clamps to `hi` on arm64. This matters only for lookup inputs below about −0.5/scale (`lookup_table.h:40`, `synth_lfo.h:83`, `line_map.cpp:33`, `modulation_connection_processor.cpp:188/229/258`). Not reached by the corpus. |
+| A8 | `anyMask()`: `_mm_movemask_epi8` vs `vpmax_u32` | 16-bit byte mask | maximum lane value | Every call site uses it as a boolean on a comparison mask (`if (reset_mask.anyMask())`, `== 0` asserts, `bool x = ...anyMask()`), where both are non-zero exactly when any lane is set. No behavioural effect in upstream; the numeric value differs. |
+
+A4–A8 were identified by Core Framework from `poly_values.h`. Like A1–A3,
+they are mirrored per target in `sas-simd` and switched by its
+`aarch64-semantics` feature.
 
 Random phase is on by default, so A2 alone makes almost every real patch
 differ between upstream on Intel and upstream on Apple Silicon. Upstream's
@@ -103,14 +112,21 @@ achievable on arm64.
 
 ## Consequences for the Rust port
 
-1. **Per-target upstream semantics at the enumerated sites only.** A
-   `to_int` (rounding on x86_64, truncation on aarch64), the random-phase
-   float→u32 conversion (wrap vs saturate) and float→i32 overflow
-   (0x80000000 vs saturate) live in one place in `sas-simd`, selected by
-   `target_arch`. A cargo feature forcing aarch64 semantics on x86_64 lets
-   x86 developers reproduce the shipping behaviour against macOS
-   reference renders. Rust's `as` casts truncate and saturate (the arm64
-   behaviour), so the x86 variants must be written explicitly. Any new
+1. **Per-target upstream semantics at the enumerated sites only (A1–A8).**
+   They live in one place in `sas-simd`:
+   - `to_int` (rounding vs truncation);
+   - float→u32 (wrap vs saturate) and float→i32 overflow;
+   - horizontal `sum` order;
+   - float `max`/`min` NaN and ±0 handling;
+   - `not_equal` ordering;
+   - signed vs unsigned `poly_int` `min`;
+   - the `any_mask` value.
+
+   The x86_64 variants are the default on x86_64. The aarch64 variants are
+   used on aarch64, and on x86_64 when the `aarch64-semantics` feature is
+   enabled, so x86 developers can reproduce the shipping behaviour against
+   macOS reference renders. Rust's `as` casts truncate and saturate (the
+   arm64 behaviour), so the x86 variants must be written explicitly. Any new
    ISA-dependent upstream site is added to the table in section A; never
    reproduce one implicitly.
 2. **No FMA contraction, no estimates.** Rust never contracts implicitly;
