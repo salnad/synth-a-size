@@ -133,6 +133,25 @@ class ToleranceRules(unittest.TestCase):
                                         "tolerances": {"residual_db": -70}}}}}, MODULE_DEFAULTS, ledger)
         self.assertIn("does not name the case", str(raised.exception))
 
+    # Reviewer nit: "a.b" or "a:x" would contain an approval for "a" across a
+    # token boundary, so names are restricted at load.
+    def test_names_restricted_to_id_characters(self):
+        for name in ["a.b", "a:x", "a b", "a/b", "", "\u00e4"]:
+            self.assertCaseError("must match [A-Za-z0-9_-]+", resolve,
+                                 {"module": "filter", "cases": {name: {"num_samples": 1}}})
+        resolve({"module": "filter", "cases": {"Case_2-b": {"num_samples": 1}}})
+        ok = {"module": "filter", "cases": {"a": {"num_samples": 1}}}
+        for area, module in [("filters", "dig.svf"), ("filters", "svf:x"), ("fil.ters", "svf"), ("", "svf")]:
+            self.assertCaseError("must match [A-Za-z0-9_-]+", rc.resolve_module_file,
+                                 area, module, "x.json", ok, MODULE_DEFAULTS, LEDGER)
+        for name in ["init.saw", "init:saw", ""]:
+            self.assertCaseError("must match [A-Za-z0-9_-]+", rc.resolve_renders,
+                                 cases_json(render={"name": name, "preset": "p", "midi": "m"}), LEDGER)
+
+    def test_existing_case_files_comply(self):
+        rc.load_modules()
+        rc.load_renders()
+
     def test_exception_covers_exactly_loosened_metrics(self):
         self.assertCaseError("does not loosen it", resolve, {"module": "filter", "cases": {"a": {
             "num_samples": 1, "tolerance_exception": approved({"residual_db": -70})}}})
@@ -360,6 +379,15 @@ class ScratchRepo(unittest.TestCase):
         code, output = self.run_main("compare", ref, test, "--audio-diff", fake_diff, "--only", "harness/textonly")
         self.assertEqual(code, 2, output)
         self.assertIn("(no reference outputs or artifacts)", output)
+
+    def test_compare_flags_array_missing_in_reference(self):
+        ((ref, _), (test, test_case)), fake_diff = self.make_text_only_trees()
+        write_npy(os.path.join(test_case, "out_extra.npy"), [0.5] * 4, 4)
+        code, output = self.run_main("compare", ref, test, "--audio-diff", fake_diff, "--only", "harness/textonly")
+        self.assertEqual(code, 2, output)
+        self.assertIn("ERROR harness/textonly/json:extra (missing in reference tree)", output)
+        self.assertIn("pass  harness/textonly/json:artifact/saved.json (exact)", output)
+        self.assertNotIn("audio-diff should not run", output)
 
     # B3: a failed render left stale data plus a new case.json.
     def test_failed_render_leaves_no_stale_capture(self):
