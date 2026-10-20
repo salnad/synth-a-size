@@ -42,7 +42,9 @@ setting these overrides:
 | `JUCE_USE_CURL` | 1 | 0 | No network code is needed, and dropping it removes the libcurl build dependency. |
 | `JUCE_DSP_USE_SHARED_FFTW` | 1 | 0 | With 1, JUCE `dlopen`s libfftw3f when it happens to be installed, so FFT results (used in wavetable rendering) would depend on the machine. The harness always uses JUCE's built-in FFT. |
 | `ProjectInfo::versionString` | `99999.9.9` | `1.0.6` | Matches the shipped plugin, so preset version upgrades (`LoadSave::jsonToState`) and saved `synth_version` fields behave like the plugin. See [`juce_config/JuceHeader.h`](juce_config/JuceHeader.h). |
-| Optimisation | `-Ofast -flto` | `-O3 -ffast-math` (no LTO) | Same floating-point semantics as upstream release builds; LTO is skipped for build time. `REF_FAST_MATH=OFF` drops `-ffast-math`; the setting is recorded in every render's metadata. |
+| Optimisation | `-Ofast -flto` | `-O3 -ffast-math -U__FAST_MATH__ -mno-recip` (no LTO) | Fast-math semantics like upstream release builds, minus the two features that made output CPU-dependent: `-mno-recip` keeps division and `sqrtf` exact instead of `RCPPS`/`RSQRTPS` plus a Newton step, and `-U__FAST_MATH__` stops GCC auto-vectorising libm calls into glibc libmvec. LTO is skipped for build time. `REF_FAST_MATH=OFF` drops fast-math. |
+| Target ISA | build-host default | `-march=x86-64 -mtune=generic -msse2 -mfpmath=sse -ffp-contract=off` | Pinned so that no build-host feature, and no FMA contraction, can leak in. |
+| libm variants | CPU-dispatched | baseline SSE2 | The tools re-exec once with `GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4`, because glibc's double-precision `sin`/`exp`/`pow`/... return different bits with and without FMA. `REF_NO_LIBM_PIN=1` opts out. |
 
 Both tools also point `HOME` at an empty temporary directory at startup,
 so a developer's upstream user config, user presets or MIDI-learn
@@ -116,19 +118,25 @@ must always be compared at the same sample rate and block size.
   reproduce the mt19937 stream, the distribution's float conversion and
   the seed order. Otherwise those cases need statistical comparison
   (PLAN.md, M3/M4).
-- Bit-exactness holds only for the same binary on the same machine. The
-  same compiler version and flags on a different x86_64 CPU (local Xeon
-  vs a GitHub runner, both Ubuntu 24.04 with GCC 13.3) gave different
-  bits. Most cases were within −120 dB, but `unison_pad_fx__chords`
-  differed by up to 3.0e-3 (−69 dB residual). The likely cause is
-  CPU-dependent libm dispatch; it has not been investigated further.
-  Always render the reference on the machine that runs the comparison,
-  as CI does on every run, and never commit golden WAVs. Compare across
-  builds or machines with `audio-diff` tolerances.
+- Output is bit-identical across x86_64 CPUs for the same build identity
+  (compiler, glibc, flags). It was verified between an Intel Xeon and an
+  AMD EPYC 9V74, and CI checks every run against the committed
+  `migration/corpus/reference_hashes.json` (`run_corpus.py hashes --check`).
+  Before the fixes in the table above, the same binary rendered up to 3e-3
+  differently on Intel and AMD. The investigation and evidence are in
+  [`../decisions/reference-determinism.md`](../decisions/reference-determinism.md).
+- `migration/scripts/check_fp_determinism.sh` fails the build if a
+  CPU-dependent instruction (`rcp*`, `rsqrt*`, FMA, x87 transcendental) or a
+  libmvec call shows up in the binaries. `ref-fp-probe` and
+  `migration/scripts/machine_info.sh` record what a machine's libm and
+  approximate instructions return, for comparing two machines.
+- A different compiler, glibc version or flag set can still change
+  low-order bits. Compare across those with `audio-diff` tolerances.
 
 ### Metadata (`<out>.wav.json`)
 
-Each render writes its build info (upstream SHA, compiler, fast-math, arch),
+Each render writes its build info (upstream SHA, compiler, glibc, fast-math,
+optimisation flags, libm pinning, arch),
 all render settings, the frame count, the MIDI event count, a non-finite
 sample count and `samples_fnv1a64`, a hash of the raw float samples for
 quick equality checks. The exit status is non-zero if any sample is NaN
@@ -207,4 +215,5 @@ case to `migration/corpus/cases.json`.
 | `juce_config/` | JUCE config and module units for the harness |
 | `src/render_main.cpp` | `ref-render` |
 | `src/module_main.cpp` | `ref-module` and its module registry |
-| `src/harness_io.{h,cpp}` | WAV / NPY I/O, HOME isolation, hashing, argument parsing |
+| `src/harness_io.{h,cpp}` | WAV / NPY I/O, HOME isolation, libm pinning, hashing, argument parsing |
+| `src/fp_probe.cpp` | `ref-fp-probe`: hashes libm, `rcpps`/`rsqrtps` and libmvec results for cross-machine comparison |

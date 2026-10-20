@@ -46,7 +46,13 @@ Format 0, 480 PPQ, 120 BPM.
 - `modules`: single-processor specs for `ref-module` in
   [`modules/`](modules/).
 
-Each case carries the parity tolerances that `audio-diff` enforces.
+Each case carries the parity tolerances that `audio-diff` enforces. The
+render defaults (`residual_db` −50, `lsd_db` 0.1, `rms_diff_db` 0.01, no
+`max_abs_error` gate) and their margins are explained in
+[`../decisions/reference-determinism.md`](../decisions/reference-determinism.md).
+[`reference_hashes.json`](reference_hashes.json) holds the expected output
+hash of every case for the current build identity. CI checks it, so the
+reference stays bit-identical across machines.
 Render and compare everything with
 [`../scripts/run_corpus.py`](../scripts/run_corpus.py):
 
@@ -63,5 +69,8 @@ uploads the reference renders as the `reference-renders` artifact.
 1. Add the preset or MIDI definition to `generate.py`, run it, and commit
    the output.
 2. Add the case to `cases.json` with tolerances at least as strict as the
-   defaults.
-3. Note the addition in `migration/LEDGER.md`.
+   defaults. CI's `tolerance-calibration` job must still pass, which means
+   the no-fast-math proxy meets them.
+3. Render the corpus and refresh the hashes with
+   `python3 migration/scripts/run_corpus.py hashes <tree> --write`.
+4. Note the addition in `migration/LEDGER.md`.

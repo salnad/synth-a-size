@@ -119,3 +119,72 @@ of headroom. Options:
   processors first.
 - Not yet verified: building the reference on macOS (not needed for
   CI); loading the plugin in FL Studio (M8).
+
+---
+
+## 2026-10-20: reference determinism fixed; tolerances recalibrated (owner-approved)
+
+**Human approval:** the project owner approved the tolerance change on
+2026-10-20, in reply to the open decision above: "drop the default per-sample
+max-abs-error gate, set the residual threshold to −50 dB, and tighten the two
+spectral metrics", recalibrated against the post-fix noise floor. This
+entry is the record AGENTS.md rule 6 requires.
+
+**Root cause of the cross-machine difference** (full evidence in
+`decisions/reference-determinism.md`):
+
+- *Not* the build: runner-built and VM-built binaries have byte-identical
+  `.text`, and the runner's binary run on the VM reproduces the VM's
+  output exactly. Also ruled out: `poly_float` width, threads/CPU count,
+  environment/locale, uninitialised heap (`MALLOC_PERTURB_`), seeds,
+  denormals, and scalar libm dispatch (probe-identical on both machines).
+- **Cause 1:** `-ffast-math` makes GCC implement `poly_float` division
+  (`_mm_div_ps`) and `sqrtf` as `RCPPS`/`RSQRTPS` plus a Newton step (294
+  instructions in 87 functions). Those instructions return vendor-specific
+  bits; the probe hashes differ between Intel and AMD and match between
+  two AMD generations. `-mrecip=none` does not disable this in GCC 13;
+  `-mno-recip` does.
+- **Cause 2:** GCC auto-vectorised the Wave Folder's `sinf`/`asinf` into
+  glibc libmvec SSE kernels, which use the same instructions internally.
+  The libmvec `asinf`/`acosf` probes differ between Intel and AMD; this
+  explained the one case the committed-hash check still caught.
+
+**Changed**
+
+- Reference flags: `-mno-recip`, `-U__FAST_MATH__` (no libmvec),
+  `-march=x86-64 -mtune=generic -msse2 -mfpmath=sse -ffp-contract=off`.
+- libm pinned to glibc's baseline variants via a self re-exec with
+  `GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4`. On one machine,
+  masking FMA changes 13 of 14 double libm functions.
+- Render metadata records `glibc`, `opt_flags` and `libm_variants`.
+- New `ref-fp-probe`, `scripts/machine_info.sh` and
+  `scripts/check_fp_determinism.sh`. CI uploads the binaries and
+  diagnostics (`reference-binaries`).
+- `corpus/reference_hashes.json` plus `run_corpus.py hashes --check` in CI:
+  the cross-machine tripwire.
+- New CI job `tolerance-calibration`: a no-fast-math reference must pass
+  the corpus tolerances against the default reference.
+- `cases.json` render defaults: `max_abs_error` gate removed,
+  `residual_db` −60 → −50, `lsd_db` 0.5 → 0.1, `rms_diff_db` 0.1 → 0.01.
+  Module limits unchanged.
+
+**Measured**
+
+- After the fix, all 15 corpus outputs are bit-identical between the Intel
+  VM and an AMD EPYC 9V74 runner. Before the libmvec fix, the EPYC 7763
+  runner matched 14 of 15.
+- The fix itself moves the reference by up to 3.1e-3 (exact division,
+  `unison_pad_fx`); dropping libmvec moves it by ≤ 2.4e-7.
+- Faithful-port proxy (no-fast-math vs default) after the fix: worst
+  residual −61.4 dB, worst LSD 0.043 dB, worst RMS difference 1.6e-5 dB.
+  Modules ≤ −118 dB; `stereo_delay_impulse` went from −63 to −149 dB,
+  because its divergence was entirely `RCPPS`. Margins of the new limits:
+  residual 11.4 dB, LSD 2.3×, RMS ≈ 600× (set at a 0.01 dB perceptual
+  floor).
+- The remaining sample-level sensitivity is phase drift on sustained,
+  bent or detuned notes (it grows linearly from note onset), not glitches.
+
+**Open / next**
+
+- M1: `simd` and `dsp-core`, ported with exact division and sqrt (no
+  approximate reciprocals).

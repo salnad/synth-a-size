@@ -105,6 +105,32 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  tolerance-calibration:
+    name: Tolerances are achievable (no-fast-math reference must pass)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: migration/tools/audio-diff
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install || rustup show
+          cargo --version
+      - name: Build reference (default) and a no-fast-math variant
+        run: |
+          migration/scripts/build_reference.sh
+          REF_BUILD_DIR=build/ref-no-fast-math migration/scripts/build_reference.sh -DREF_FAST_MATH=OFF
+      - name: Build audio-diff
+        run: cargo build --release --locked --manifest-path migration/tools/audio-diff/Cargo.toml
+      - name: Render both
+        run: |
+          python3 migration/scripts/run_corpus.py render --out build/ref
+          python3 migration/scripts/run_corpus.py render --out build/proxy \
+            --ref-render build/ref-no-fast-math/ref-render --ref-module build/ref-no-fast-math/ref-module
+      - name: Proxy for a faithful port passes the corpus tolerances
+        run: python3 migration/scripts/run_corpus.py compare build/ref build/proxy
+
   rust:
     name: Rust (port workspace + migration tools)
     runs-on: ubuntu-24.04

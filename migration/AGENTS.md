@@ -91,13 +91,23 @@ the work log in [LEDGER.md](LEDGER.md), and the upstream pin in
 ## Reference-specific facts that affect parity
 
 - The reference is built with `-O3 -ffast-math` like upstream release
-  builds, so bit-exact parity with Rust (no fast-math) is not expected.
-  Record a `REF_FAST_MATH=OFF` comparison when it helps to tell
-  float-rounding noise apart from real bugs. The ledger (2026-10-20) has
-  per-case numbers for how far such noise alone moves each corpus case.
-- Reference output is bit-exact only on the machine that produced it.
-  Generate reference renders on the same machine as the port renders
-  you compare them with (CI does this on every run).
+  builds (minus approximate reciprocals and libmvec), so bit-exact parity
+  with Rust (no fast-math) is not expected. A `REF_FAST_MATH=OFF` build is
+  the proxy for "correct port, different rounding": the determinism
+  decision record has its per-case noise, and CI checks that this proxy
+  passes the tolerances. Use it to tell float-rounding noise apart from
+  real bugs.
+- Reference output is bit-identical across x86_64 CPUs for the same build
+  identity (`migration/decisions/reference-determinism.md`). CI enforces
+  this with committed hashes. If the hash check fails while the identity
+  matches, a CPU-dependent path has crept in: investigate it, and do not
+  just re-baseline the hashes. Re-baseline (`run_corpus.py hashes <tree>
+  --write`) only for intentional reference changes, and say why in the
+  ledger.
+- Never reintroduce CPU-dependent floating point in the reference or the
+  port: approximate reciprocal/rsqrt instructions, vendor SIMD math
+  libraries (libmvec, SVML), or FMA in one build but not another.
+  `check_fp_determinism.sh` guards the reference.
 - Engine randomness is a `std::mt19937` stream through libstdc++'s
   `uniform_real_distribution<float>`, seeded from a global counter in
   construction order. Exact parity for random features needs an exact
@@ -114,8 +124,10 @@ the work log in [LEDGER.md](LEDGER.md), and the upstream pin in
 
 - Small PRs, one milestone item each, CI green before review. CI runs
   rustfmt, clippy with `-D warnings`, workspace build and tests, the
-  reference build, a corpus render with a bit-exact determinism check,
-  the upstream-copy check, the name check and the corpus freshness check.
+  reference build with the CPU-dependent-FP guard, a corpus render with a
+  bit-exact repeat check and a committed-hash cross-machine check, the
+  tolerance-calibration proxy, the upstream-copy check, the name check
+  and the corpus freshness check.
 - Rust toolchain is pinned in `/rust-toolchain.toml`. The C++ reference
   builds with GCC via `migration/scripts/build_reference.sh`.
 - Crates live in `port/crates/<name>` and are published as `sas-<name>`.

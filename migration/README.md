@@ -9,11 +9,11 @@ to Rust (`/port`) and to prove the port sounds the same.
 | [PLAN.md](PLAN.md) | Milestones M0 to M11 and their exit criteria |
 | [LEDGER.md](LEDGER.md) | Append-only work log |
 | [UPSTREAM.md](UPSTREAM.md), [UPSTREAM_SHA](UPSTREAM_SHA) | Pinned upstream commit, exclusions, verification |
-| [decisions/](decisions/) | Decision records (plugin framework, ...) |
+| [decisions/](decisions/) | Decision records: [plugin framework](decisions/plugin-framework.md), [reference determinism and tolerance calibration](decisions/reference-determinism.md) |
 | [reference/](reference/) | C++ reference harness: `ref-render` (preset + MIDI → WAV) and `ref-module` (single processor → NPY) |
 | [tools/audio-diff/](tools/audio-diff/) | Rust comparison tool and library: max abs error, RMS dB difference, null residual, spectral distance, tolerances, exit codes |
 | [corpus/](corpus/) | Authored test presets, MIDI files, module specs and `cases.json` with per-case tolerances |
-| [scripts/](scripts/) | `build_reference.sh`, `run_corpus.py`, `verify_upstream.sh`, `check_names.sh` |
+| [scripts/](scripts/) | `build_reference.sh`, `run_corpus.py` (render / compare / hashes), `verify_upstream.sh`, `check_names.sh`, `check_fp_determinism.sh`, `machine_info.sh` |
 
 ## Quick start
 

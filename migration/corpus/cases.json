@@ -1,5 +1,5 @@
 {
-  "comment": "Golden corpus render cases. Paths are relative to migration/corpus. Tolerances are the parity targets; see migration/AGENTS.md before touching them (never loosen without recorded human approval).",
+  "comment": "Golden corpus render cases. Paths are relative to migration/corpus. Tolerances are the parity targets, calibrated in migration/decisions/reference-determinism.md; see migration/AGENTS.md before touching them (never loosen without recorded human approval).",
   "defaults": {
     "sample_rate": 44100,
     "block_size": 64,
@@ -7,10 +7,9 @@
     "bpm": 120,
     "seed": 0,
     "tolerances": {
-      "max_abs_error": 1e-3,
-      "rms_diff_db": 0.1,
-      "residual_db": -60.0,
-      "lsd_db": 0.5
+      "rms_diff_db": 0.01,
+      "residual_db": -50.0,
+      "lsd_db": 0.1
     }
   },
   "renders": [
