@@ -132,3 +132,7 @@ target_link_libraries(ref-render PRIVATE harness_common)
 
 add_executable(ref-module src/module_main.cpp)
 target_link_libraries(ref-module PRIVATE harness_common)
+
+# Diagnostic: hashes libm results so two machines can be compared directly.
+add_executable(ref-libm-probe src/libm_probe.cpp)
+target_compile_options(ref-libm-probe PRIVATE -O2 -fno-fast-math)

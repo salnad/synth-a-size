@@ -47,6 +47,8 @@ jobs:
         run: migration/scripts/build_reference.sh
       - name: Build audio-diff
         run: cargo build --release --locked --manifest-path migration/tools/audio-diff/Cargo.toml
+      - name: Machine and build diagnostics
+        run: migration/scripts/machine_info.sh build/diag
       - name: Render one preset through the CLI
         run: |
           mkdir -p build/smoke
@@ -84,6 +86,18 @@ jobs:
             build/smoke/
             build/ref/renders/
             build/ref/modules/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload reference binaries and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reference-binaries
+          path: |
+            migration/reference/build/ref-render
+            migration/reference/build/ref-module
+            migration/reference/build/ref-libm-probe
+            build/diag/
           if-no-files-found: error
           retention-days: 14
 
