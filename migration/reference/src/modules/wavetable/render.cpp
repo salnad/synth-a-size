@@ -14,8 +14,12 @@
 // The complex pairs share one channel: the residual is then relative to the
 // whole spectrum. As two channels, an all-real spectrum (cleared phases) has
 // an imaginary channel of pure rounding noise that no residual limit fits.
-//   info               [4, 1]              num_frames, frequency_ratio,
-//                                          sample_rate, shepard flag
+//   info               [4, 1]              num_frames / kNumOscillatorWaveFrames,
+//                                          frequency_ratio,
+//                                          sample_rate / kDefaultSampleRate,
+//                                          shepard flag (counts and rates are
+//                                          normalized: the absolute module
+//                                          gate does not fit their scale)
 // Raw amplitudes (up to ~1e3) and unit phasors of silent harmonics are not
 // compared directly; see LEDGER.md (M4a rendering).
 
@@ -75,7 +79,8 @@ REGISTER_REF_MODULE(refmod::ModuleDef{
     sink.array("wave", wave, 1);
     sink.array("coefficients", coefficients, 1);
     sink.array("phase_coefficients", phase_coefficients, 1);
-    sink.array("info", { static_cast<float>(data->num_frames), data->frequency_ratio, data->sample_rate,
+    sink.array("info", { data->num_frames / static_cast<float>(vital::kNumOscillatorWaveFrames),
+                         data->frequency_ratio, data->sample_rate / vital::kDefaultSampleRate,
                          wavetable.isShepardTable() ? 1.0f : 0.0f }, 1);
     return true;
   },

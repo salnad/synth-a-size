@@ -1100,6 +1100,9 @@ proposal are in the Project store: `internal/wavetable-render-parity-measurement
   that channel.
 - Raw amplitudes (up to ~1e3) and the phasors of silent harmonics are not
   compared directly.
+- `info` holds the frame count / 257 and the sample rate / 44100 rather
+  than the absolute values. Large-scale values are captured normalized,
+  and the 1e-4 absolute gate is below one float ulp at 44100.
 - `migration/corpus/modules/wavetable/render.json` has 44 well-conditioned
   cases:
   - every wave-source interpolation (frequency interpolation between saws

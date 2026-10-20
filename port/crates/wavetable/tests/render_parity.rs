@@ -7,6 +7,7 @@ mod support;
 use sas_common::json;
 use sas_parity::{assert_parity, ModuleCase};
 use sas_wavetable::creator::WavetableCreator;
+use sas_wavetable::wave_frame::DEFAULT_SAMPLE_RATE;
 use sas_wavetable::wavetable::NUM_HARMONICS;
 use sas_wavetable::{Wavetable, NUM_OSCILLATOR_WAVE_FRAMES};
 
@@ -40,9 +41,9 @@ fn render(case: &ModuleCase) -> Rendered {
         coefficients: Vec::new(),
         phase_coefficients: Vec::new(),
         info: vec![
-            data.num_frames as f32,
+            data.num_frames as f32 / NUM_OSCILLATOR_WAVE_FRAMES as f32,
             data.frequency_ratio,
-            data.sample_rate,
+            data.sample_rate / DEFAULT_SAMPLE_RATE,
             if wavetable.is_shepard_table() {
                 1.0
             } else {
