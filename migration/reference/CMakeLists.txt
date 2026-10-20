@@ -249,7 +249,3 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64
   target_compile_definitions(ref-fp-probe PRIVATE REF_PROBE_LIBMVEC=1)
   target_link_libraries(ref-fp-probe PRIVATE mvec m)
 endif()
-
-# M2 preset round-trip: parameter registry, engine tables and state dumps.
-add_executable(ref-preset src/preset_main.cpp)
-target_link_libraries(ref-preset PRIVATE harness_common)

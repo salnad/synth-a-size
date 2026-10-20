@@ -12,6 +12,9 @@ publish.workspace = true
 sas-common.workspace = true
 sas-wavetable.workspace = true
 
+[dev-dependencies]
+sas-parity.workspace = true
+
 [features]
 # Compute the upgrade chain with the formulas as written in the upstream
 # source instead of mirroring the x86 GCC -ffast-math code the reference

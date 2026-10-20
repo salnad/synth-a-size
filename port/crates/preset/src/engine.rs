@@ -10,7 +10,7 @@
 //! create their controls (`createBaseControl` vs `createMonoModControl` /
 //! `createPolyModControl`). They are recorded here as data so this crate stays
 //! independent of the DSP crates; `tests/reference.rs` checks them against the
-//! reference's `ref-preset registry` dump.
+//! reference's `preset/registry` capture.
 
 use crate::constants::*;
 use crate::registry::registry;

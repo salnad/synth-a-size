@@ -1,0 +1,117 @@
+{
+  "description": "Saved state after loading each preset on a fresh synth (and the init preset); corpus presets and init also after a second load -> save round trip. Exact-match artifacts for port/crates/preset. Every presets/*.vital and preset_tests/*.vital file must have a case (checked by the sas-preset tests).",
+  "module": "preset_state",
+  "cases": {
+    "init": {
+      "params": {
+        "init": true,
+        "roundtrip": true
+      }
+    },
+    "analog_filter_lfo": {
+      "params": {
+        "preset": "presets/analog_filter_lfo.vital",
+        "roundtrip": true
+      }
+    },
+    "init_saw": {
+      "params": {
+        "preset": "presets/init_saw.vital",
+        "roundtrip": true
+      }
+    },
+    "line_wavetable_fold": {
+      "params": {
+        "preset": "presets/line_wavetable_fold.vital",
+        "roundtrip": true
+      }
+    },
+    "mono_legato_glide": {
+      "params": {
+        "preset": "presets/mono_legato_glide.vital",
+        "roundtrip": true
+      }
+    },
+    "unison_pad_fx": {
+      "params": {
+        "preset": "presets/unison_pad_fx.vital",
+        "roundtrip": true
+      }
+    },
+    "controls_and_metadata": {
+      "params": {
+        "preset": "preset_tests/controls_and_metadata.vital"
+      }
+    },
+    "error_control_string": {
+      "params": {
+        "preset": "preset_tests/error_control_string.vital"
+      }
+    },
+    "error_missing_sample": {
+      "params": {
+        "preset": "preset_tests/error_missing_sample.vital"
+      }
+    },
+    "error_missing_version": {
+      "params": {
+        "preset": "preset_tests/error_missing_version.vital"
+      }
+    },
+    "error_newer_version": {
+      "params": {
+        "preset": "preset_tests/error_newer_version.vital"
+      }
+    },
+    "error_upgrade_missing_key": {
+      "params": {
+        "preset": "preset_tests/error_upgrade_missing_key.vital"
+      }
+    },
+    "modulation_slots": {
+      "params": {
+        "preset": "preset_tests/modulation_slots.vital"
+      }
+    },
+    "sub_octave_current": {
+      "params": {
+        "preset": "preset_tests/sub_octave_current.vital"
+      }
+    },
+    "upgrade_from_0_1_0": {
+      "params": {
+        "preset": "preset_tests/upgrade_from_0_1_0.vital"
+      }
+    },
+    "upgrade_from_0_4_3_sync": {
+      "params": {
+        "preset": "preset_tests/upgrade_from_0_4_3_sync.vital"
+      }
+    },
+    "upgrade_from_0_4_6_fm": {
+      "params": {
+        "preset": "preset_tests/upgrade_from_0_4_6_fm.vital"
+      }
+    },
+    "upgrade_from_0_4_9_sub": {
+      "params": {
+        "preset": "preset_tests/upgrade_from_0_4_9_sub.vital"
+      }
+    },
+    "upgrade_from_0_4_9_sub_direct": {
+      "params": {
+        "preset": "preset_tests/upgrade_from_0_4_9_sub_direct.vital"
+      }
+    },
+    "upgrade_from_0_6_5": {
+      "params": {
+        "preset": "preset_tests/upgrade_from_0_6_5.vital"
+      }
+    },
+    "version_1_0_9": {
+      "params": {
+        "preset": "preset_tests/version_1_0_9.vital"
+      }
+    }
+  }
+}
