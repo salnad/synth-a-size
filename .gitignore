@@ -1,0 +1,30 @@
+# Rust
+/port/target/
+/migration/tools/*/target/
+
+# Reference harness build tree and local render outputs
+/migration/reference/build/
+/build/
+/out/
+
+# Never commit renders, captures or bundles outside the committed corpus
+*.wav
+*.npy
+*.vst3
+*.clap
+*.component
+
+# Secrets / local env
+.env
+.env.*
+*.pem
+*.key
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Python
+__pycache__/

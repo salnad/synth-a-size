@@ -1,0 +1,161 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  repo-checks:
+    name: Repo checks (upstream copy, names, corpus)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: vital/ is an unmodified upstream copy
+        run: migration/scripts/verify_upstream.sh
+      - name: No upstream names in product metadata
+        run: migration/scripts/check_names.sh
+      - name: Corpus files match generate.py
+        run: python3 migration/corpus/generate.py --check
+
+  reference-harness:
+    name: Reference harness (build + render corpus)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: migration/tools/audio-diff
+      - name: Toolchain info
+        run: |
+          g++ --version | head -1
+          cmake --version | head -1
+          rustup toolchain install || rustup show
+          cargo --version
+      - name: Build reference harness
+        run: migration/scripts/build_reference.sh
+      - name: Build audio-diff
+        run: cargo build --release --locked --manifest-path migration/tools/audio-diff/Cargo.toml
+      - name: Machine and build diagnostics
+        run: migration/scripts/machine_info.sh build/diag
+      - name: No CPU-dependent floating-point instructions in the reference
+        run: migration/scripts/check_fp_determinism.sh
+      - name: Render one preset through the CLI
+        run: |
+          mkdir -p build/smoke
+          migration/reference/build/ref-render \
+            migration/corpus/presets/analog_filter_lfo.vital \
+            migration/corpus/midi/chord_progression.mid \
+            -o build/smoke/analog_filter_lfo__chord_progression.wav \
+            --sample-rate 48000 --block-size 128 --seed 1
+          cat build/smoke/analog_filter_lfo__chord_progression.wav.json
+      - name: Render corpus
+        run: python3 migration/scripts/run_corpus.py render --out build/ref
+      - name: Determinism (second render must be bit-identical)
+        run: |
+          python3 migration/scripts/run_corpus.py render --out build/ref-again
+          python3 migration/scripts/run_corpus.py compare build/ref build/ref-again --exact
+      - name: Cross-machine determinism (hashes must match the committed ones)
+        run: python3 migration/scripts/run_corpus.py hashes build/ref --check
+      - name: Comparison tool rejects a different render
+        run: |
+          set +e
+          migration/tools/audio-diff/target/release/audio-diff \
+            build/ref/renders/init_saw__single_note.wav \
+            build/ref/renders/init_saw__single_note.wav --max-abs-error 0
+          same=$?
+          migration/tools/audio-diff/target/release/audio-diff \
+            build/ref/renders/init_saw__chords.wav \
+            build/ref/renders/analog_filter_lfo__chords.wav --residual-db -60
+          different=$?
+          echo "identical exit=$same, different exit=$different"
+          test "$same" -eq 0 && test "$different" -eq 1
+      - name: Upload renders
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reference-renders
+          path: |
+            build/smoke/
+            build/ref/renders/
+            build/ref/modules/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload reference binaries and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reference-binaries
+          path: |
+            migration/reference/build/ref-render
+            migration/reference/build/ref-module
+            migration/reference/build/ref-fp-probe
+            build/diag/
+          if-no-files-found: error
+          retention-days: 14
+
+  tolerance-calibration:
+    name: Tolerances are achievable (no-fast-math reference must pass)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: migration/tools/audio-diff
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install || rustup show
+          cargo --version
+      - name: Build reference (default) and a no-fast-math variant
+        run: |
+          migration/scripts/build_reference.sh
+          REF_BUILD_DIR=build/ref-no-fast-math migration/scripts/build_reference.sh -DREF_FAST_MATH=OFF
+      - name: Build audio-diff
+        run: cargo build --release --locked --manifest-path migration/tools/audio-diff/Cargo.toml
+      - name: Render both
+        run: |
+          python3 migration/scripts/run_corpus.py render --out build/ref
+          python3 migration/scripts/run_corpus.py render --out build/proxy \
+            --ref-render build/ref-no-fast-math/ref-render --ref-module build/ref-no-fast-math/ref-module
+      - name: Proxy for a faithful port passes the corpus tolerances
+        run: python3 migration/scripts/run_corpus.py compare build/ref build/proxy
+
+  rust:
+    name: Rust (port workspace + migration tools)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            port
+            migration/tools/audio-diff
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install || rustup show
+          cargo --version
+      - name: rustfmt
+        run: |
+          cargo fmt --all --check --manifest-path port/Cargo.toml
+          cargo fmt --all --check --manifest-path migration/tools/audio-diff/Cargo.toml
+      - name: clippy
+        run: |
+          cargo clippy --workspace --all-targets --locked --manifest-path port/Cargo.toml -- -D warnings
+          cargo clippy --all-targets --locked --manifest-path migration/tools/audio-diff/Cargo.toml -- -D warnings
+      - name: cargo build --workspace
+        run: cargo build --workspace --locked --manifest-path port/Cargo.toml
+      - name: cargo test --workspace
+        run: cargo test --workspace --locked --manifest-path port/Cargo.toml
+      - name: audio-diff tests
+        run: cargo test --locked --manifest-path migration/tools/audio-diff/Cargo.toml

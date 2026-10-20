@@ -1,0 +1,12 @@
+[package]
+name = "sas-filters"
+description = "Filter models (analog, dirty, ladder, digital, diode, formant, comb, phaser) and building blocks."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+sas-dsp-core.workspace = true

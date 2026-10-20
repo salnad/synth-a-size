@@ -1,0 +1,11 @@
+[package]
+name = "sas-gui"
+description = "Plugin editor (egui or vizia, decided in M10). The upstream OpenGL GUI is not ported line by line."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]

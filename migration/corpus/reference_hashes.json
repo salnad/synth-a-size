@@ -1,0 +1,28 @@
+{
+  "hashes": {
+    "module/distortion_sin_fold/audio": "d1856cbfb2033ae3",
+    "module/distortion_sin_fold/drive": "e34f621e3ff60d43",
+    "module/envelope_adsr/phase": "939849fcf2b3c95b",
+    "module/envelope_adsr/value": "2e08cf843f867bdb",
+    "module/filter_digital_lowpass_saw/audio": "8976f9b98653e1eb",
+    "module/filter_ladder_noise/audio": "2433605fcfb77eb3",
+    "module/stereo_delay_impulse/audio": "1140d517f83e6ab5",
+    "render/analog_filter_lfo__chords": "2e459e2c1972166b",
+    "render/analog_filter_lfo__velocity_96k_b512": "174c3e7af8f725f3",
+    "render/init_saw__chords": "75683e528015996b",
+    "render/init_saw__single_note": "5777e97cdd03d62f",
+    "render/init_saw__single_note_48k_b128": "834b73744e0ae16f",
+    "render/line_wavetable_fold__velocity": "41e464688075ae5f",
+    "render/mono_legato_glide__legato": "8baac38ee9ed5b6f",
+    "render/unison_pad_fx__chords": "5a9e368be289f87e"
+  },
+  "identity": {
+    "arch": "x86_64",
+    "compiler": "13.3.0",
+    "fast_math": true,
+    "glibc": "2.39",
+    "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+    "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+    "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+  }
+}

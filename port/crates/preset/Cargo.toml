@@ -1,0 +1,11 @@
+[package]
+name = "sas-preset"
+description = "Parameter registry (names, ranges, scales, defaults) and preset JSON load/save (upstream preset format) with version upgrades."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
