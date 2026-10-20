@@ -20,7 +20,7 @@ allowlist=(
 pattern='(rcpps|rcpss|rsqrtps|rsqrtss|vrcp14|vrsqrt14|vrcp28|vrsqrt28|vfmadd|vfmsub|vfnmadd|vfnmsub|fsin|fcos|fsincos|fptan|fpatan|f2xm1|fyl2x|fyl2xp1)'
 status=0
 
-for bin in ref-render ref-module ref-preset; do
+for bin in ref-render ref-module; do
   path="$build/$bin"
   [[ -x "$path" ]] || { echo "missing $path" >&2; exit 2; }
   hits="$(objdump -d -C --no-show-raw-insn "$path" | awk -v pat="^$pattern" '

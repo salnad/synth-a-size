@@ -1044,16 +1044,18 @@ PRs merge.
   `add_modulation`, `remove_modulation`, `to_json_string`). It depends
   only on `sas-common` and the DSP-free wavetable state model in
   `sas-wavetable`.
-- `migration/reference/src/preset_main.cpp` (new tool `ref-preset`, added
-  to `CMakeLists.txt` and `check_fp_determinism.sh`): dumps the registry,
-  engine tables and the state after a load.
-- `migration/scripts/preset_goldens.py` writes
-  `migration/corpus/preset_state/` (26 files, 1.7 MB of compact JSON) from
-  `ref-preset`. CI's reference job runs it with `--check`.
-- Wavetables are real `sas_wavetable::creator::WavetableCreator` state:
-  `init()` for the defaults, `read_json` on load (applied to the existing
-  creator, like upstream) and `to_json` on save. The 0.5.0 step builds the
-  "Sub" wavetable with `init_predefined_waves()`.
+- Reference captures as exact-match artifacts (the `sas-parity` mechanism
+  from PR #3): `migration/reference/src/modules/preset/preset.cpp`
+  registers the artifact-only `ref-module` modules `preset_registry`
+  (registry, string tables, engine tables, init sample seed) and
+  `preset_state` (the state after `loadFromFile`/`loadInitPreset` on a
+  fresh synth, `load_error.txt` when the load fails, and `roundtrip.json`
+  after a second load→save). The cases are in
+  `migration/corpus/modules/preset/{registry,state}.json`, one per
+  corpus preset, preset test and the init preset, with their hashes in
+  `*.hashes.json`. CI renders them in the reference job; the tests compare
+  with `assert_artifact` (byte for byte, hash-verified). Nothing else is
+  committed.
 - `generate.py` writes 15 authored presets to
   `migration/corpus/preset_tests/`: six old-version presets that together
   run every upgrade step, edge cases for controls, metadata, LFO shapes
@@ -1061,6 +1063,9 @@ PRs merge.
 
 **Measured** (all byte-exact against the fast-math reference)
 
+- The artifacts are byte-identical to the goldens of the earlier
+  `ref-preset` tool, which they replace (28 files, 1.7 MB no longer
+  committed).
 - Registry: 794 parameters. Every name, index, range, default, scale,
   display field and string table matches. The engine has 772 controls (22
   legacy parameters are never instantiated or saved), 32 modulation

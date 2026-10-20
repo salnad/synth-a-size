@@ -1,7 +1,10 @@
-// ref-preset: dumps the upstream parameter registry, the engine tables the
-// preset loader consults (controls, modulation sources and destinations) and
-// the preset state after a load, for the M2 preset round-trip tests. See
-// migration/reference/README.md ("ref-preset").
+// Modules "preset_registry" and "preset_state": artifact-only captures for the
+// M2 preset port (port/crates/preset). preset_registry dumps the parameter
+// registry and the engine tables the preset loader consults; preset_state
+// dumps the state SynthBase saves after loading a corpus preset (or the init
+// preset), optionally after a second load -> save round trip.
+
+#include "module_registry.h"
 
 #include "JuceHeader.h"
 #include "harness_io.h"
@@ -13,27 +16,9 @@
 #include "synth_strings.h"
 #include "utils.h"
 
-#include <iostream>
-
-using harness::json;
+using nlohmann::json;
 
 namespace {
-
-const char* kUsage = R"(usage: ref-preset registry [-o out.json] [--seed N]
-       ref-preset state (<preset.vital> | --init) [-o out.json] [--seed N]
-
-registry  Every ValueDetails entry in Parameters::getDetails(index) order, the
-          string tables they reference, the engine's control names, modulation
-          sources, mono/poly modulation destinations, the destinations each
-          modulation slot may not target, and the RandomGenerator seed the init
-          preset's sample uses for the given --seed.
-state     SynthBase::loadFromFile (or loadInitPreset for --init) on a freshly
-          constructed synth, then SynthBase::saveToJson(), compact. A failed
-          load writes {"load_error": "<message>"} and exits 3.
-
---seed N  set RandomGenerator::next_seed_ before the synth is constructed
-          (default 0).
-)";
 
 class PresetSynth : public HeadlessSynth {
   public:
@@ -77,20 +62,6 @@ const StringTable kStringTables[] = {
 #undef TABLE
 
 const char* kScaleNames[] = { "indexed", "linear", "quadratic", "cubic", "quartic", "square_root", "exponential" };
-
-int fail(const std::string& message) {
-  std::cerr << "ref-preset: " << message << std::endl;
-  return 2;
-}
-
-bool emit(const harness::Args& args, const json& data) {
-  std::string text = data.dump() + "\n";
-  if (!args.has("out")) {
-    std::cout << text;
-    return true;
-  }
-  return harness::writeTextFile(args.get("out"), text);
-}
 
 // The tables in synth_strings.h have internal linkage, so the registry's
 // pointers address another translation unit's copies. Match by contents,
@@ -210,60 +181,94 @@ json registry(int seed) {
   return data;
 }
 
-} // namespace
-
-int main(int argc, const char* argv[]) {
-  harness::pinLibmVariants(argc, argv);
-  harness::Args args(argc, argv, { "init", "keep-home", "help" });
-  std::vector<std::string> positional = args.positional();
-  if (args.has("help") || positional.empty()) {
-    std::cout << kUsage;
-    return args.has("help") ? 0 : 2;
-  }
-  if (!args.unknown().empty())
-    return fail("missing value for " + args.unknown()[0]);
-  if (!args.has("keep-home"))
-    harness::isolateUserEnvironment();
-
-  ScopedJuceInitialiser_GUI juce_init;
-  const int seed = static_cast<int>(args.getInt("seed", 0));
-  const std::string command = positional[0];
-
-  if (command == "registry") {
-    if (!emit(args, registry(seed)))
-      return fail("cannot write output");
-    return 0;
-  }
-
-  if (command != "state")
-    return fail("unknown command " + command);
-
-  bool use_init = args.has("init");
-  std::string preset_path = positional.size() > 1 ? positional[1] : "";
-  if (preset_path.empty() == !use_init)
-    return fail("state needs exactly one of <preset.vital> or --init");
-
+// Loads `path` (or the init preset) on a newly constructed synth, seeded like
+// a fresh process, and returns its saved state, or false with upstream's
+// error message.
+bool loadState(int seed, const std::string& path, json& state, std::string& message) {
   vital::utils::RandomGenerator::next_seed_ = seed;
   std::unique_ptr<PresetSynth> synth = std::make_unique<PresetSynth>();
-
-  if (use_init) {
+  if (path.empty()) {
     synth->loadInitPreset();
   }
-  else {
-    File preset = File::getCurrentWorkingDirectory().getChildFile(preset_path);
-    if (!preset.existsAsFile())
-      return fail("preset not found: " + preset_path);
-    std::string error;
-    if (!synth->loadFromFile(preset, error)) {
-      json failure;
-      failure["load_error"] = error;
-      if (!emit(args, failure))
-        return fail("cannot write output");
-      return 3;
+  else if (!synth->loadFromFile(File(path), message)) {
+    return false;
+  }
+  state = synth->state();
+  return true;
+}
+
+bool presetState(const refmod::ArtifactContext& context, refmod::ArtifactSink& sink, std::string& error) {
+  const json params = context.spec.value("params", json::object());
+  const int seed = params.value("seed", 0);
+  const bool use_init = params.value("init", false);
+  std::string path;
+  std::string stem = "init";
+  if (!use_init) {
+    if (!params.count("preset")) {
+      error = "params.preset (corpus-relative path) or params.init is required";
+      return false;
     }
+    path = context.corpusPath(params["preset"].get<std::string>());
+    if (!File(path).existsAsFile()) {
+      error = "preset not found: " + path;
+      return false;
+    }
+    stem = File(path).getFileNameWithoutExtension().toStdString();
   }
 
-  if (!emit(args, synth->state()))
-    return fail("cannot write output");
-  return 0;
+  json state;
+  std::string message;
+  if (!loadState(seed, path, state, message)) {
+    sink.text("load_error.txt", message + "\n");
+    return true;
+  }
+  const std::string saved = state.dump();
+  sink.text("state.json", saved + "\n");
+
+  if (params.value("roundtrip", false)) {
+    // Reload from a file named like the original: loadFromFile names the
+    // preset after its file.
+    TemporaryFile directory;
+    File folder = directory.getFile();
+    folder.createDirectory();
+    File copy = folder.getChildFile(stem + ".vital");
+    copy.replaceWithText(saved);
+    json reloaded;
+    bool ok = loadState(seed, copy.getFullPathName().toStdString(), reloaded, message);
+    folder.deleteRecursively();
+    if (!ok) {
+      error = "reloading the saved state failed: " + message;
+      return false;
+    }
+    sink.text("roundtrip.json", reloaded.dump() + "\n");
+  }
+  return true;
 }
+
+} // namespace
+
+REGISTER_REF_MODULE(refmod::ModuleDef{
+  "preset_registry",
+  "Parameter registry (Parameters::getDetails order), string tables and engine tables (controls, "
+  "modulation sources and destinations) as artifact registry.json. params.seed: RandomGenerator seed "
+  "before the synth is constructed (default 0)",
+  nullptr,
+  {},
+  {},
+  [](const refmod::ArtifactContext& context, refmod::ArtifactSink& sink, std::string& error) {
+    const json params = context.spec.value("params", json::object());
+    sink.text("registry.json", registry(params.value("seed", 0)).dump() + "\n");
+    return true;
+  },
+});
+
+REGISTER_REF_MODULE(refmod::ModuleDef{
+  "preset_state",
+  "SynthBase::loadFromFile(params.preset) or loadInitPreset (params.init) on a fresh synth, then "
+  "saveToJson().dump() as artifact state.json (load_error.txt if the load fails); params.roundtrip "
+  "adds roundtrip.json, the state after saving and loading again; params.seed (default 0)",
+  nullptr,
+  {},
+  {},
+  presetState,
+});

@@ -222,7 +222,7 @@ PRESETS = {
 # --------------------------------------------------------------------------
 # Preset state tests (M2): load -> save cases for the preset loader, written to
 # migration/corpus/preset_tests. They are not rendered; the reference's saved
-# state for each is in migration/corpus/preset_state (preset_goldens.py).
+# state for each is captured by the module cases in modules/preset/state.json.
 # --------------------------------------------------------------------------
 
 def float_sample(length=256, sample_rate=44100):

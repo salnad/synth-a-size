@@ -62,8 +62,6 @@ jobs:
             -o build/smoke/analog_filter_lfo__chord_progression.wav \
             --sample-rate 48000 --block-size 128 --seed 1
           cat build/smoke/analog_filter_lfo__chord_progression.wav.json
-      - name: Preset state goldens match the reference (M2)
-        run: python3 migration/scripts/preset_goldens.py --check
       - name: Render corpus
         run: python3 migration/scripts/run_corpus.py render --out build/ref
       - name: Determinism (second render must be bit-identical)

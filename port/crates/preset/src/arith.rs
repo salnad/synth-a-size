@@ -7,7 +7,7 @@
 //!
 //! The reference is built like upstream's release builds, with
 //! `-ffast-math`, and GCC rewrites these expressions (read from the
-//! disassembly of `ref-preset`). Saved preset state is compared with the
+//! disassembly of the reference binary). Saved preset state is compared with the
 //! reference byte for byte, so by default each function computes what the
 //! reference build computes. With the `source-formulas` feature each one
 //! computes the expression as written in the C++ source instead. Every
