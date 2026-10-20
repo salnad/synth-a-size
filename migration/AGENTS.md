@@ -68,25 +68,160 @@ the work log in [LEDGER.md](LEDGER.md), and the upstream pin in
 
 ## How to port a piece of the engine
 
-1. Pick the next item from the current milestone in PLAN.md. Find the
-   upstream files listed in the target crate's `UPSTREAM_SOURCES`.
-2. Get reference data before writing Rust:
-   - For a single processor, add or extend a `ref-module` registry entry
-     and spec (`migration/reference/README.md`), add the case to
-     `cases.json`, and capture with
-     `run_corpus.py render --only <name>`.
-   - For whole-patch behaviour, add a preset/MIDI case via `generate.py`
-     and `cases.json`.
-3. Port faithfully. Keep upstream's structure where practical, including
-   processing order, control-rate vs audio-rate behaviour, sub-block
-   splitting at 128 samples, smoothing, denormal handling and the 4-lane
-   `poly_float` layout (voice 0 L/R, voice 1 L/R).
-4. Compare with `audio-diff` using the case's tolerances, as a Rust test
-   that calls the library and/or with `run_corpus.py compare`. Always use
-   the same sample rate, block size, seed and length as the reference;
-   the block size changes the output.
-5. Record what you did, the measured metrics, and any open discrepancy in
-   `LEDGER.md`.
+Every module thread follows the same loop. Each step adds files you own;
+none of them edits a shared list.
+
+1. **Pick the work.** Take the next item of your milestone (PLAN.md and
+   the port plan). The upstream files are listed in your crate's
+   `UPSTREAM_SOURCES`.
+
+2. **Add a reference capture** before writing Rust.
+   - *Processor* (only if `ref-module --list` does not already have it):
+     create `migration/reference/src/modules/<area>/<module>.cpp` and
+     register it with `REGISTER_REF_MODULE(refmod::ModuleDef{...})`. Give it
+     a unique name, a factory, inputs mapped to the processor's input enum
+     (name, index, default value, audio/control/trigger rate) and outputs.
+     CMake picks the file up by glob; copy `src/modules/filters/dc_filter.cpp`
+     as a template. `<area>` is your crate's name (`dsp-core`, `filters`,
+     `effects`, `modulation`, `oscillators`, `wavetable`, `engine`).
+   - *Cases*: create `migration/corpus/modules/<area>/<module>.json`:
+
+     ```json
+     {
+       "description": "Digital SVF (SynthFilter model \"digital\").",
+       "module": "filter",
+       "params": { "model": "digital" },
+       "cases": {
+         "lowpass_saw_sweep": {
+           "num_samples": 22050,
+           "inputs": {
+             "audio": { "signal": "saw", "freq_hz": 110.0, "amp": 0.5 },
+             "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
+             "midi_cutoff": { "signal": "ramp", "from": 30.0, "to": 110.0 },
+             "resonance": 0.7
+           }
+         }
+       }
+     }
+     ```
+
+     Settings layer as `cases.json` `module_defaults`, then the file's
+     top-level keys, then the case's keys. Signal and trigger syntax is in
+     `migration/reference/README.md`. The case id is
+     `<area>/<module>/<case>`, e.g. `filters/digital_svf/lowpass_saw_sweep`.
+   - *Tolerances* default to `module_defaults` (`max_abs_error` 1e-4,
+     `residual_db` −80 dB). That is the approved floor, which is also pinned
+     in code in `run_corpus.py` and `sas-parity`. A case may make its
+     tolerances stricter. Anything looser is rejected unless the *case*
+     (never the file) carries a structured exception:
+
+     ```json
+     "tolerances": { "residual_db": -70 },
+     "tolerance_exception": {
+       "approved_in": "2026-10-21: approve looser filters/digital_svf/lowpass_saw_sweep",
+       "tolerances": { "residual_db": -70 }
+     }
+     ```
+
+     `approved_in` must be the exact text of a `LEDGER.md` heading, and that
+     section must name the case id. Every loosened metric must equal its
+     approved value, so loosening further needs a new approval. Only a human
+     can approve (rule 6).
+   - *Exact-match artifacts* (JSON or text, e.g. a WavetableCreator load →
+     save): give the module an artifact hook (the sixth `ModuleDef` field;
+     `create` may be `nullptr` for artifact-only modules). Call
+     `sink.text("saved.json", json)` for each artifact and, optionally,
+     `sink.array(name, data, channels)` for float arrays.
+     `context.corpusPath(...)` resolves input files referenced by `params`.
+     See `src/modules/harness/echo.cpp`. Artifacts are written to
+     `artifact_<name>`, hashed like buffers, and compared byte for byte.
+   - *Render and record hashes*:
+
+     ```bash
+     migration/scripts/build_reference.sh
+     python3 migration/scripts/run_corpus.py render --out build/parity --only filters/digital_svf
+     ```
+
+     Expected hashes must come from a tree rendered with the CI build
+     identity. The canonical source is your PR's CI run: download its
+     `reference-renders` artifact (which also carries every module capture)
+     and write from it:
+
+     ```bash
+     gh run download <run-id> -n reference-renders -D build/ci
+     python3 migration/scripts/run_corpus.py hashes build/ci/ref --write
+     ```
+
+     A local tree works only if its build identity is identical (Ubuntu
+     24.04, GCC 13.3, glibc 2.39, same flags). `hashes --write` refuses
+     identities that have no committed hashes; `--new-identity` is reserved
+     for recorded decisions such as an ARM reference or a runner image bump.
+     The command writes `migration/corpus/modules/<area>/<module>.hashes.json`.
+     Commit it with the case file: CI fails if a module's hash file lacks
+     the CI identity, and `sas-parity` checks every loaded capture against
+     these hashes.
+
+3. **Port faithfully.** Keep upstream's structure where practical,
+   including processing order, control-rate vs audio-rate behaviour,
+   sub-block splitting at 128 samples, smoothing, denormal handling and the
+   4-lane `poly_float` layout (voice 0 L/R, voice 1 L/R). Use exact
+   division and sqrt.
+
+4. **Add a parity test** in your crate. Add a dev-dependency on
+   `sas-parity` (`sas-parity.workspace = true` under `[dev-dependencies]`),
+   then:
+
+   ```rust
+   use sas_parity::{assert_parity, ModuleCase};
+
+   #[test]
+   fn digital_svf_lowpass_saw_sweep() {
+       let case = ModuleCase::load("filters/digital_svf/lowpass_saw_sweep");
+       // Drive your port with exactly what the reference saw.
+       let audio = case.input("audio");             // Vec<[f32; 4]>, one per frame
+       let cutoff = case.input("midi_cutoff");
+       let reset = case.triggers("reset");          // Vec<Trigger { sample, value, lanes }>
+       let output: Vec<[f32; 4]> = run_port(&case, &audio, &cutoff, &reset);
+       assert_parity!("filters/digital_svf/lowpass_saw_sweep", output);
+   }
+   ```
+
+   - Process in blocks of `case.block_size()` at
+     `case.internal_sample_rate()` for `case.num_samples()` frames, with
+     `case.params()` for constructor parameters.
+   - For a module with several outputs, name the output:
+     `assert_parity!("modulation/envelope/adsr:value", value)`.
+   - Full-patch renders use `RenderCase::load("render/<name>")` (preset,
+     MIDI and settings) and `assert_parity!("render/<name>", stereo)`.
+   - Exact-match artifacts:
+     `assert_artifact!("wavetable/creator/init", "saved.json", json)` or
+     `case.assert_artifact(name, &bytes)`. These compare byte for byte, with
+     no tolerance and no normalisation; `case.artifact(name)` returns the
+     reference text.
+   - Tolerances come only from the case files. Tests cannot pass, scale or
+     override them. The hidden `report()` / `parity_report()` helpers are
+     for interactive debugging only. A parity test must call
+     `assert_parity!` / `assert_artifact!`. Never `#[ignore]` it, and never
+     compare against anything but the reference capture.
+   - On failure the panic lists every metric. The port output and the
+     report are written to `build/parity-failures/<case>/`; in CI they are
+     uploaded as the `parity-failures` artifact.
+
+5. **Run locally.** `cargo test -p <your-crate>` (from `port/`) finds the
+   captures in `build/parity`, or wherever `SAS_PARITY_CAPTURES` points.
+   It renders missing or stale ones on demand, building the reference
+   first if needed (Linux x86_64, GCC, CMake). `SAS_PARITY_NO_BUILD=1`
+   turns that into a hard error, as in CI. `SAS_PARITY_REFRESH=1`
+   re-renders after you change C++ module code. To compare whole trees:
+   `python3 migration/scripts/run_corpus.py compare build/ref build/port`.
+
+6. **CI.** The `reference-harness` job builds the reference once, renders
+   every case and uploads `parity-captures`. The `parity` job downloads
+   it and runs `cargo test --workspace`, so a new parity test runs as soon
+   as it exists. No CI edits are needed.
+
+7. **Record** what you did, the measured metrics (see the report) and any
+   open discrepancy in an appended `LEDGER.md` entry.
 
 ## Reference-specific facts that affect parity
 
@@ -126,7 +261,8 @@ the work log in [LEDGER.md](LEDGER.md), and the upstream pin in
   rustfmt, clippy with `-D warnings`, workspace build and tests, the
   reference build with the CPU-dependent-FP guard, a corpus render with a
   bit-exact repeat check and a committed-hash cross-machine check, the
-  tolerance-calibration proxy, the upstream-copy check, the name check
+  tolerance-calibration proxy, `cargo test --workspace` against the
+  reference captures (parity), the upstream-copy check, the name check
   and the corpus freshness check.
 - Rust toolchain is pinned in `/rust-toolchain.toml`. The C++ reference
   builds with GCC via `migration/scripts/build_reference.sh`.

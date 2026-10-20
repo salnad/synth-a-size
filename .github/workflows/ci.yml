@@ -28,6 +28,8 @@ jobs:
         run: migration/scripts/check_names.sh
       - name: Corpus files match generate.py
         run: python3 migration/corpus/generate.py --check
+      - name: run_corpus.py regression tests
+        run: python3 -m unittest discover -s migration/scripts -p 'test_*.py' -v
 
   reference-harness:
     name: Reference harness (build + render corpus)
@@ -67,7 +69,7 @@ jobs:
           python3 migration/scripts/run_corpus.py render --out build/ref-again
           python3 migration/scripts/run_corpus.py compare build/ref build/ref-again --exact
       - name: Cross-machine determinism (hashes must match the committed ones)
-        run: python3 migration/scripts/run_corpus.py hashes build/ref --check
+        run: python3 migration/scripts/run_corpus.py hashes build/ref --check --require-known-identity
       - name: Comparison tool rejects a different render
         run: |
           set +e
@@ -90,6 +92,13 @@ jobs:
             build/smoke/
             build/ref/renders/
             build/ref/modules/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload parity captures (consumed by the parity job)
+        uses: actions/upload-artifact@v7
+        with:
+          name: parity-captures
+          path: build/ref/
           if-no-files-found: error
           retention-days: 14
       - name: Upload reference binaries and diagnostics
@@ -155,7 +164,38 @@ jobs:
           cargo clippy --all-targets --locked --manifest-path migration/tools/audio-diff/Cargo.toml -- -D warnings
       - name: cargo build --workspace
         run: cargo build --workspace --locked --manifest-path port/Cargo.toml
-      - name: cargo test --workspace
-        run: cargo test --workspace --locked --manifest-path port/Cargo.toml
       - name: audio-diff tests
         run: cargo test --locked --manifest-path migration/tools/audio-diff/Cargo.toml
+
+  parity:
+    name: Port tests incl. parity (cargo test --workspace against reference captures)
+    needs: reference-harness
+    runs-on: ubuntu-24.04
+    env:
+      SAS_PARITY_CAPTURES: build/parity
+      # Captures come from the reference job; never rebuild them here.
+      SAS_PARITY_NO_BUILD: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: port
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install || rustup show
+          cargo --version
+      - name: Download reference captures
+        uses: actions/download-artifact@v7
+        with:
+          name: parity-captures
+          path: build/parity
+      - name: cargo test --workspace
+        run: cargo test --workspace --locked --manifest-path port/Cargo.toml
+      - name: Upload parity failures
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: parity-failures
+          path: build/parity-failures/
+          if-no-files-found: ignore
+          retention-days: 14

@@ -147,7 +147,13 @@ target_link_libraries(harness_common PUBLIC upstream_engine)
 add_executable(ref-render src/render_main.cpp)
 target_link_libraries(ref-render PRIVATE harness_common)
 
-add_executable(ref-module src/module_main.cpp)
+# One file per module under src/modules/<area>/<module>.cpp; each registers
+# itself (REGISTER_REF_MODULE), so new modules never edit a shared list.
+# Compiled straight into the executable (not a static library) so the linker
+# keeps every registration.
+file(GLOB_RECURSE REF_MODULE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/modules/*.cpp")
+add_executable(ref-module src/module_main.cpp src/module_registry.cpp ${REF_MODULE_SOURCES})
+target_include_directories(ref-module PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(ref-module PRIVATE harness_common)
 
 # Diagnostic: hashes libm and rcpps/rsqrtps results so two machines can be

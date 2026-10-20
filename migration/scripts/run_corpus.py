@@ -1,55 +1,328 @@
 #!/usr/bin/env python3
-"""Render the golden corpus and compare render trees.
+"""Render the golden corpus, compare render trees, and check output hashes.
 
-  render   Render every case in migration/corpus/cases.json with the reference
-           harness (or any CLI with the same interface) into OUT/:
-             OUT/renders/<name>.wav (+ .wav.json metadata)
-             OUT/modules/<name>/out_*.npy, in_*.npy, capture.json
-  compare  Compare two such trees with audio-diff using each case's
-           tolerances. --exact requires bit-identical output (determinism).
-  hashes   Collect the output hashes of a render tree. --write stores them
-           in migration/corpus/reference_hashes.json; --check fails if they
-           differ from the stored ones (cross-machine determinism tripwire;
-           skipped when the build identity differs).
+Cases:
+  renders  migration/corpus/cases.json "renders": preset + MIDI full-patch cases
+           (id "render/<name>").
+  modules  migration/corpus/modules/<area>/<module>.json: single-processor
+           cases for ref-module (id "<area>/<module>/<case>"). One file per
+           module, so parallel work never edits a shared list.
 
-Examples:
-  python3 migration/scripts/run_corpus.py render --out build/ref
-  python3 migration/scripts/run_corpus.py render --out build/ref2
-  python3 migration/scripts/run_corpus.py compare build/ref build/ref2 --exact
-  python3 migration/scripts/run_corpus.py compare build/ref build/port
+Commands:
+  render   Render cases with the reference harness into OUT/:
+             OUT/renders/<name>.wav (+ .wav.json metadata, .case.json)
+             OUT/modules/<area>/<module>/<case>/{in_*,out_*}.npy,
+               capture.json, spec.json, case.json
+  compare  Compare two trees with audio-diff using each case's tolerances.
+           --exact requires bit-identical output.
+  hashes   --write stores output hashes (renders: corpus/reference_hashes.json,
+           modules: corpus/modules/<area>/<module>.hashes.json), one entry per
+           build identity. --check fails on any mismatch or missing hash for
+           the current identity (cross-machine determinism tripwire).
+  list     Print the resolved cases (ids, specs, tolerances) as JSON.
 
-Exit status: 0 all pass, 1 any comparison failed, 2 usage / tool error.
-Python 3.8+ standard library only.
+Tolerance rules (shared with port/crates/parity, which must resolve them the
+same way; keep the two in sync):
+- The approved floor is pinned below (RENDER_FLOOR, MODULE_FLOOR, from
+  migration/decisions/reference-determinism.md). The defaults in cases.json
+  must contain every floor metric at the floor or stricter. Changing the
+  floor is a code change in both resolvers and needs recorded human approval.
+- Case values layer over file-level values over the defaults. A metric looser
+  than the default is an error unless the *case* (never the file) carries
+  "tolerance_exception": {"approved_in": "<exact LEDGER.md heading>",
+  "tolerances": {<metric>: <approved value>}} where every loosened metric
+  equals its approved value, every listed metric is actually loosened, and the
+  cited LEDGER.md section names the case id.
+- JSON NaN/Infinity and unknown keys are rejected.
+
+Exit status: 0 all pass, 1 any comparison or hash check failed, 2 usage,
+case-file or tool error. Python 3.8+ standard library only.
 """
 
 import argparse
+import glob
 import json
 import os
 import subprocess
 import sys
 
-REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-CORPUS = os.path.join(REPO, "migration", "corpus")
+REPO = CORPUS = MODULE_CASES = RENDER_HASHES = LEDGER = None
+
+
+def set_repo(root):
+    """Points every path at a repository root (tests use a scratch copy)."""
+    global REPO, CORPUS, MODULE_CASES, RENDER_HASHES, LEDGER
+    REPO = os.path.abspath(root)
+    CORPUS = os.path.join(REPO, "migration", "corpus")
+    MODULE_CASES = os.path.join(CORPUS, "modules")
+    RENDER_HASHES = os.path.join(CORPUS, "reference_hashes.json")
+    LEDGER = os.path.join(REPO, "migration", "LEDGER.md")
+
+
+set_repo(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 DEFAULT_RENDER = os.path.join(REPO, "migration", "reference", "build", "ref-render")
 DEFAULT_MODULE = os.path.join(REPO, "migration", "reference", "build", "ref-module")
 DEFAULT_DIFF = os.path.join(REPO, "migration", "tools", "audio-diff", "target", "release", "audio-diff")
 
+METRICS = ("max_abs_error", "rms_diff_db", "residual_db", "lsd_db")
+# Approved floors (migration/decisions/reference-determinism.md, owner approval
+# in LEDGER.md 2026-10-20). Mirrored in port/crates/parity/src/cases.rs.
+RENDER_FLOOR = {"residual_db": -50.0, "lsd_db": 0.1, "rms_diff_db": 0.01}
+MODULE_FLOOR = {"max_abs_error": 1e-4, "residual_db": -80.0}
 
-def load_cases():
-    with open(os.path.join(CORPUS, "cases.json")) as handle:
-        cases = json.load(handle)
-    defaults = cases["defaults"]
+SPEC_KEYS = ("module", "params", "sample_rate", "block_size", "oversample", "num_samples", "seed", "inputs")
+CASE_KEYS = SPEC_KEYS + ("description", "tolerances", "tolerance_exception")
+FILE_KEYS = SPEC_KEYS + ("description", "tolerances", "cases")
+MODULE_DEFAULT_KEYS = ("comment", "sample_rate", "block_size", "oversample", "tolerances")
+RENDER_SETTING_KEYS = ("sample_rate", "block_size", "tail", "length", "bpm", "seed")
+RENDER_DEFAULT_KEYS = RENDER_SETTING_KEYS + ("tolerances",)
+RENDER_CASE_KEYS = RENDER_SETTING_KEYS + ("name", "preset", "midi", "description", "tolerances",
+                                          "tolerance_exception")
+EXCEPTION_KEYS = ("approved_in", "tolerances")
+IDENTITY_KEYS = ("upstream_sha", "compiler", "glibc", "fast_math", "opt_flags", "arch", "libm_variants")
+
+
+class CaseError(Exception):
+    pass
+
+
+def _reject_constant(name):
+    raise ValueError("%s is not allowed in corpus JSON" % name)
+
+
+def loads_strict(text, where):
+    try:
+        return json.loads(text, parse_constant=_reject_constant)
+    except ValueError as error:
+        raise CaseError("%s: invalid JSON: %s" % (where, error))
+
+
+def read_json_strict(path):
+    with open(path) as handle:
+        return loads_strict(handle.read(), os.path.relpath(path, REPO))
+
+
+def read_ledger():
+    with open(LEDGER) as handle:
+        return handle.read()
+
+
+def ledger_sections(text):
+    """[(heading, body)] for every markdown heading outside code fences; the
+    body runs to the next heading of the same or a higher level."""
+    headings = []
+    lines = text.splitlines()
+    in_fence = False
+    for index, line in enumerate(lines):
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence or not line.startswith("#"):
+            continue
+        level = len(line) - len(line.lstrip("#"))
+        title = line[level:].strip()
+        if title and line[level:level + 1] in (" ", "\t"):
+            headings.append((index, level, title))
+    sections = []
+    for position, (index, level, title) in enumerate(headings):
+        end = len(lines)
+        for later_index, later_level, _ in headings[position + 1:]:
+            if later_level <= level:
+                end = later_index
+                break
+        sections.append((title, "\n".join(lines[index + 1:end])))
+    return sections
+
+
+def is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def check_tolerance_map(where, tolerances):
+    if not isinstance(tolerances, dict):
+        raise CaseError("%s: tolerances must be an object" % where)
+    for key, value in tolerances.items():
+        if key not in METRICS:
+            raise CaseError("%s: unknown tolerance metric %r" % (where, key))
+        if not is_number(value):
+            raise CaseError("%s: tolerance %s must be a number" % (where, key))
+    return {k: float(v) for k, v in tolerances.items()}
+
+
+def check_defaults(where, tolerances, floor):
+    """Defaults must hold every floor metric, at the floor or stricter."""
+    tolerances = check_tolerance_map(where, tolerances)
+    for metric, limit in floor.items():
+        if metric not in tolerances:
+            raise CaseError("%s: missing %s; the approved floor requires it (%s)" % (where, metric, limit))
+        if tolerances[metric] > limit:
+            raise CaseError("%s: %s = %s is looser than the approved floor %s" % (where, metric,
+                                                                                  tolerances[metric], limit))
+    return tolerances
+
+
+def resolve_tolerances(case_id, defaults, file_level, case, ledger_text):
+    if "tolerance_exception" in file_level:
+        raise CaseError("%s: tolerance_exception is only allowed on individual cases" % case_id)
+    tolerances = dict(defaults)
+    for where, layer in (("file", file_level), ("case", case)):
+        if "tolerances" in layer:
+            tolerances.update(check_tolerance_map("%s (%s level)" % (case_id, where), layer["tolerances"]))
+    looser = sorted(k for k, limit in defaults.items() if tolerances[k] > limit)
+
+    exception = case.get("tolerance_exception")
+    if exception is None:
+        if looser:
+            raise CaseError("%s: tolerances %s are looser than the defaults %s; that needs a case-level "
+                            "tolerance_exception approved in LEDGER.md (migration/AGENTS.md rule 6)"
+                            % (case_id, {k: tolerances[k] for k in looser}, {k: defaults[k] for k in looser}))
+        return tolerances, None
+
+    if not isinstance(exception, dict) or set(exception) != set(EXCEPTION_KEYS):
+        raise CaseError("%s: tolerance_exception must be {\"approved_in\": \"<LEDGER.md heading>\", "
+                        "\"tolerances\": {...}}" % case_id)
+    approved_in = exception["approved_in"]
+    if not isinstance(approved_in, str) or not approved_in.strip():
+        raise CaseError("%s: tolerance_exception.approved_in must name a LEDGER.md heading" % case_id)
+    approved = check_tolerance_map(case_id + " tolerance_exception", exception["tolerances"])
+    if not approved:
+        raise CaseError("%s: tolerance_exception.tolerances is empty" % case_id)
+    for metric, value in sorted(approved.items()):
+        if metric not in looser:
+            raise CaseError("%s: tolerance_exception approves %s, but the case does not loosen it" % (case_id, metric))
+        if tolerances[metric] != value:
+            raise CaseError("%s: %s = %s differs from the approved value %s; changing it needs a new approval"
+                            % (case_id, metric, tolerances[metric], value))
+    unapproved = [k for k in looser if k not in approved]
+    if unapproved:
+        raise CaseError("%s: %s loosened without approval in tolerance_exception" % (case_id, unapproved))
+    bodies = [body for title, body in ledger_sections(ledger_text) if title == approved_in.strip()]
+    if not bodies:
+        raise CaseError("%s: tolerance_exception cites LEDGER.md heading %r, which does not exist"
+                        % (case_id, approved_in))
+    if not any(case_id in body for body in bodies):
+        raise CaseError("%s: LEDGER.md section %r does not name the case" % (case_id, approved_in))
+    return tolerances, exception
+
+
+def resolve_renders(cases_json, ledger_text):
+    if not isinstance(cases_json, dict):
+        raise CaseError("cases.json must be an object")
+    defaults = cases_json.get("defaults")
+    if not isinstance(defaults, dict):
+        raise CaseError("cases.json: missing defaults")
+    unknown = set(defaults) - set(RENDER_DEFAULT_KEYS)
+    if unknown:
+        raise CaseError("cases.json defaults: unknown keys %s" % sorted(unknown))
+    default_tolerances = check_defaults("cases.json defaults.tolerances", defaults.get("tolerances", {}),
+                                        RENDER_FLOOR)
     renders = []
-    for case in cases["renders"]:
-        merged = dict(defaults)
-        merged.update(case)
-        merged["tolerances"] = dict(defaults["tolerances"], **case.get("tolerances", {}))
+    for case in cases_json.get("renders", []):
+        if not isinstance(case, dict) or not isinstance(case.get("name"), str):
+            raise CaseError("cases.json: every render case needs a name")
+        case_id = "render/" + case["name"]
+        unknown = set(case) - set(RENDER_CASE_KEYS)
+        if unknown:
+            raise CaseError("%s: unknown keys %s" % (case_id, sorted(unknown)))
+        for key in ("preset", "midi"):
+            if not isinstance(case.get(key), str):
+                raise CaseError("%s: needs %r" % (case_id, key))
+        merged = {k: v for k, v in defaults.items() if k != "tolerances"}
+        merged.update({k: v for k, v in case.items() if k not in ("tolerances", "tolerance_exception")})
+        merged["tolerances"], exception = resolve_tolerances(case_id, default_tolerances, {}, case, ledger_text)
+        if exception:
+            merged["tolerance_exception"] = exception
+        merged["id"] = case_id
         renders.append(merged)
-    return renders, cases.get("modules", [])
+    return renders
 
 
-def selected(name, only):
-    return not only or any(token in name for token in only)
+def resolve_module_file(area, module, rel, data, module_defaults, ledger_text):
+    if not isinstance(data, dict):
+        raise CaseError("%s: must be an object" % rel)
+    unknown = set(data) - set(FILE_KEYS)
+    if unknown:
+        hint = " (tolerance_exception is case-level only)" if "tolerance_exception" in unknown else ""
+        raise CaseError("%s: unknown keys %s%s" % (rel, sorted(unknown), hint))
+    if not isinstance(data.get("cases"), dict) or not data["cases"]:
+        raise CaseError("%s: needs a non-empty \"cases\" object" % rel)
+    default_spec = {k: module_defaults[k] for k in SPEC_KEYS if k in module_defaults}
+    default_tolerances = check_defaults("cases.json module_defaults.tolerances",
+                                        module_defaults.get("tolerances", {}), MODULE_FLOOR)
+    file_level = {k: v for k, v in data.items() if k != "cases"}
+    resolved = []
+    for name, case in data["cases"].items():
+        case_id = "%s/%s/%s" % (area, module, name)
+        if not isinstance(case, dict):
+            raise CaseError("%s: must be an object" % case_id)
+        unknown = set(case) - set(CASE_KEYS)
+        if unknown:
+            raise CaseError("%s: unknown keys %s" % (case_id, sorted(unknown)))
+        spec = dict(default_spec)
+        for layer in (file_level, case):
+            spec.update({k: v for k, v in layer.items() if k in SPEC_KEYS})
+        if "module" not in spec:
+            raise CaseError("%s: no \"module\" (ref-module registry name)" % case_id)
+        tolerances, exception = resolve_tolerances(case_id, default_tolerances, file_level, case, ledger_text)
+        entry = {"id": case_id, "file": rel, "spec": spec, "tolerances": tolerances}
+        if exception:
+            entry["tolerance_exception"] = exception
+        resolved.append(entry)
+    return resolved
+
+
+CASES_JSON_KEYS = ("comment", "defaults", "renders", "module_defaults")
+
+
+def load_cases_json():
+    data = read_json_strict(os.path.join(CORPUS, "cases.json"))
+    unknown = set(data) - set(CASES_JSON_KEYS) if isinstance(data, dict) else set()
+    if unknown:
+        raise CaseError("cases.json: unknown keys %s" % sorted(unknown))
+    return data
+
+
+def load_renders():
+    return resolve_renders(load_cases_json(), read_ledger())
+
+
+def module_case_files():
+    files = []
+    for path in sorted(glob.glob(os.path.join(MODULE_CASES, "*", "*.json"))):
+        if path.endswith(".hashes.json"):
+            continue
+        files.append(path)
+    return files
+
+
+def load_modules():
+    cases_json = load_cases_json()
+    module_defaults = cases_json.get("module_defaults")
+    if not isinstance(module_defaults, dict):
+        raise CaseError("cases.json: missing module_defaults")
+    unknown = set(module_defaults) - set(MODULE_DEFAULT_KEYS)
+    if unknown:
+        raise CaseError("cases.json module_defaults: unknown keys %s" % sorted(unknown))
+    ledger_text = read_ledger()
+    resolved = []
+    for path in module_case_files():
+        area = os.path.basename(os.path.dirname(path))
+        module = os.path.basename(path)[:-len(".json")]
+        rel = os.path.relpath(path, REPO)
+        resolved.extend(resolve_module_file(area, module, rel, read_json_strict(path), module_defaults, ledger_text))
+    return resolved
+
+
+def selected(case_id, only):
+    """--only tokens match a case id exactly or as a path prefix
+    ("filters/digital_svf" matches "filters/digital_svf/<case>")."""
+    if not only:
+        return True
+    for token in only:
+        token = token.rstrip("/")
+        if case_id == token or case_id.startswith(token + "/"):
+            return True
+    return False
 
 
 def run(command):
@@ -57,16 +330,26 @@ def run(command):
     return result.returncode, result.stdout
 
 
+def write_json(path, data):
+    with open(path, "w") as handle:
+        json.dump(data, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+
+
 def cmd_render(args):
-    renders, modules = load_cases()
-    os.makedirs(os.path.join(args.out, "renders"), exist_ok=True)
-    os.makedirs(os.path.join(args.out, "modules"), exist_ok=True)
+    renders, modules = load_renders(), load_modules()
     failures = 0
 
     for case in renders:
-        if not selected(case["name"], args.only):
+        if not selected(case["id"], args.only):
             continue
+        os.makedirs(os.path.join(args.out, "renders"), exist_ok=True)
         out = os.path.join(args.out, "renders", case["name"] + ".wav")
+        case_json = os.path.join(args.out, "renders", case["name"] + ".case.json")
+        # A failed render must never leave older output that looks fresh.
+        for stale in (case_json, out, out + ".json"):
+            if os.path.exists(stale):
+                os.remove(stale)
         command = [
             args.ref_render,
             os.path.join(CORPUS, case["preset"]),
@@ -79,17 +362,30 @@ def cmd_render(args):
         ]
         command += ["--length", str(case["length"])] if "length" in case else ["--tail", str(case["tail"])]
         code, output = run(command)
-        print(("ok   " if code == 0 else "FAIL ") + "render " + case["name"])
+        if code == 0:
+            write_json(case_json, case)
+        print(("ok   " if code == 0 else "FAIL ") + case["id"])
         if code != 0:
             print(output)
             failures += 1
 
     for case in modules:
-        if not selected(case["name"], args.only):
+        if not selected(case["id"], args.only):
             continue
-        out = os.path.join(args.out, "modules", case["name"])
-        code, output = run([args.ref_module, os.path.join(CORPUS, case["spec"]), "--out-dir", out])
-        print(("ok   " if code == 0 else "FAIL ") + "module " + case["name"])
+        out = os.path.join(args.out, "modules", case["id"])
+        os.makedirs(out, exist_ok=True)
+        # Remove everything from earlier renders (case.json first) so a
+        # failure can never leave stale data that looks fresh.
+        for stale in [os.path.join(out, "case.json")] + sorted(os.listdir(out)):
+            path = os.path.join(out, stale)
+            if os.path.isfile(path):
+                os.remove(path)
+        spec_path = os.path.join(out, "spec.json")
+        write_json(spec_path, case["spec"])
+        code, output = run([args.ref_module, spec_path, "--out-dir", out, "--corpus-dir", CORPUS])
+        if code == 0:
+            write_json(os.path.join(out, "case.json"), case)
+        print(("ok   " if code == 0 else "FAIL ") + case["id"])
         if code != 0:
             print(output)
             failures += 1
@@ -112,33 +408,54 @@ def diff(args, reference, test, tolerances, report_path):
     return code
 
 
+def module_outputs(directory):
+    if not os.path.isdir(directory):
+        return []
+    return sorted(f for f in os.listdir(directory) if f.startswith("out_") and f.endswith(".npy"))
+
+
 def cmd_compare(args):
-    renders, modules = load_cases()
+    renders, modules = load_renders(), load_modules()
     reports = os.path.join(args.test, "reports")
     os.makedirs(reports, exist_ok=True)
     results = []
 
     for case in renders:
-        if not selected(case["name"], args.only):
+        if not selected(case["id"], args.only):
             continue
         name = case["name"] + ".wav"
         code = diff(args, os.path.join(args.reference, "renders", name), os.path.join(args.test, "renders", name),
                     case["tolerances"], os.path.join(reports, case["name"] + ".json"))
-        results.append(("render " + case["name"], code))
+        results.append((case["id"], code))
 
     for case in modules:
-        if not selected(case["name"], args.only):
+        if not selected(case["id"], args.only):
             continue
-        ref_dir = os.path.join(args.reference, "modules", case["name"])
-        outputs = sorted(f for f in os.listdir(ref_dir) if f.startswith("out_") and f.endswith(".npy")) \
-            if os.path.isdir(ref_dir) else []
+        ref_dir = os.path.join(args.reference, "modules", case["id"])
+        outputs = module_outputs(ref_dir)
         if not outputs:
-            results.append(("module " + case["name"] + " (no reference outputs)", 2))
+            results.append((case["id"] + " (no reference outputs)", 2))
         for output in outputs:
-            label = case["name"] + "/" + output
-            code = diff(args, os.path.join(ref_dir, output), os.path.join(args.test, "modules", case["name"], output),
-                        case.get("tolerances", {}), os.path.join(reports, case["name"] + "__" + output + ".json"))
-            results.append(("module " + label, code))
+            label = "%s:%s" % (case["id"], output[len("out_"):-len(".npy")])
+            report = os.path.join(reports, label.replace("/", "__").replace(":", "__") + ".json")
+            code = diff(args, os.path.join(ref_dir, output), os.path.join(args.test, "modules", case["id"], output),
+                        case["tolerances"], report)
+            results.append((label, code))
+
+    for case in modules:
+        if not selected(case["id"], args.only):
+            continue
+        ref_dir = os.path.join(args.reference, "modules", case["id"])
+        artifacts = sorted(f for f in os.listdir(ref_dir) if f.startswith("artifact_")) \
+            if os.path.isdir(ref_dir) else []
+        for artifact in artifacts:
+            label = "%s:artifact/%s" % (case["id"], artifact[len("artifact_"):])
+            test_path = os.path.join(args.test, "modules", case["id"], artifact)
+            if not os.path.exists(test_path):
+                results.append((label + " (missing in test tree)", 2))
+                continue
+            with open(os.path.join(ref_dir, artifact), "rb") as a, open(test_path, "rb") as b:
+                results.append((label + " (exact)", 0 if a.read() == b.read() else 1))
 
     for label, code in results:
         print({0: "pass ", 1: "FAIL ", 2: "ERROR"}.get(code, "ERROR") + " " + label)
@@ -150,82 +467,249 @@ def cmd_compare(args):
     return 1 if failed else 0
 
 
-HASHES = os.path.join(CORPUS, "reference_hashes.json")
-IDENTITY_KEYS = ("upstream_sha", "compiler", "glibc", "fast_math", "opt_flags", "arch", "libm_variants")
-
-
-def collect_hashes(tree):
-    renders, modules = load_cases()
-    identity = None
-    hashes = {}
+def tree_identity(tree, renders, modules):
     for case in renders:
-        with open(os.path.join(tree, "renders", case["name"] + ".wav.json")) as handle:
-            meta = json.load(handle)
-        identity = identity or {key: meta["build"].get(key) for key in IDENTITY_KEYS}
-        hashes["render/" + case["name"]] = meta["samples_fnv1a64"]
+        path = os.path.join(tree, "renders", case["name"] + ".wav.json")
+        if os.path.exists(path):
+            build = read_json_strict(path)["build"]
+            return {k: build.get(k) for k in IDENTITY_KEYS}
     for case in modules:
-        with open(os.path.join(tree, "modules", case["name"], "capture.json")) as handle:
-            capture = json.load(handle)
-        for name, output in sorted(capture["outputs"].items()):
-            hashes["module/%s/%s" % (case["name"], name)] = output["fnv1a64"]
-    return {"identity": identity, "hashes": hashes}
+        path = os.path.join(tree, "modules", case["id"], "capture.json")
+        if os.path.exists(path):
+            build = read_json_strict(path)["build"]
+            return {k: build.get(k) for k in IDENTITY_KEYS}
+    raise CaseError("no renders or captures found in %s" % tree)
+
+
+FNV_OFFSET = 1469598103934665603
+FNV_PRIME = 1099511628211
+MASK64 = (1 << 64) - 1
+
+
+def fnv1a64(data):
+    """The harness hash, identical to harness_io.cpp and sas-parity: FNV-1a 64
+    with offset basis 1469598103934665603 (not the standard basis
+    14695981039346656037; kept so committed hashes stay valid)."""
+    value = FNV_OFFSET
+    for byte in data:
+        value = ((value ^ byte) * FNV_PRIME) & MASK64
+    return "%016x" % value
+
+
+def npy_payload(path):
+    with open(path, "rb") as handle:
+        raw = handle.read()
+    if raw[:6] != b"\x93NUMPY":
+        raise CaseError("%s is not a .npy file" % path)
+    if raw[6] == 1:
+        start = 10 + int.from_bytes(raw[8:10], "little")
+    else:
+        start = 12 + int.from_bytes(raw[8:12], "little")
+    return raw[start:]
+
+
+def wav_payload(path):
+    with open(path, "rb") as handle:
+        raw = handle.read()
+    position = 12
+    while position + 8 <= len(raw):
+        chunk, size = raw[position:position + 4], int.from_bytes(raw[position + 4:position + 8], "little")
+        if chunk == b"data":
+            return raw[position + 8:position + 8 + size]
+        position += 8 + size + (size & 1)
+    raise CaseError("%s has no data chunk" % path)
+
+
+def module_hash_file(case):
+    return os.path.join(REPO, case["file"])[:-len(".json")] + ".hashes.json"
+
+
+def tree_hashes(tree, renders, modules):
+    """{hash_file: {key: hash}} for every case present in the tree, hashed
+    from the files themselves, plus a list of problems where the files do
+    not match their own metadata (edited or truncated captures)."""
+    by_file = {}
+    problems = []
+    for case in renders:
+        wav = os.path.join(tree, "renders", case["name"] + ".wav")
+        meta = wav + ".json"
+        if not (os.path.exists(wav) and os.path.exists(meta)):
+            continue
+        digest = fnv1a64(wav_payload(wav))
+        if digest != read_json_strict(meta)["samples_fnv1a64"]:
+            problems.append("%s: WAV data does not match its metadata hash" % case["id"])
+        by_file.setdefault(RENDER_HASHES, {})[case["name"]] = digest
+    for case in modules:
+        directory = os.path.join(tree, "modules", case["id"])
+        capture_path = os.path.join(directory, "capture.json")
+        if not os.path.exists(capture_path):
+            continue
+        capture = read_json_strict(capture_path)
+        case_name = case["id"].rsplit("/", 1)[1]
+        hashes = by_file.setdefault(module_hash_file(case), {})
+        for output, info in sorted(capture.get("outputs", {}).items()):
+            path = os.path.join(directory, info["file"])
+            digest = fnv1a64(npy_payload(path)) if os.path.exists(path) else "missing"
+            if digest != info["fnv1a64"]:
+                problems.append("%s:%s: %s does not match capture.json" % (case["id"], output, info["file"]))
+            hashes["%s:%s" % (case_name, output)] = digest
+        for name, info in sorted(capture.get("artifacts", {}).items()):
+            path = os.path.join(directory, info["file"])
+            digest = fnv1a64(open(path, "rb").read()) if os.path.exists(path) else "missing"
+            if digest != info["fnv1a64"]:
+                problems.append("%s: artifact %s does not match capture.json" % (case["id"], name))
+            hashes["%s:artifact/%s" % (case_name, name)] = digest
+    return by_file, problems
+
+
+def expected_keys(renders, modules):
+    by_file = {RENDER_HASHES: None}
+    for case in modules:
+        by_file.setdefault(module_hash_file(case), set()).add(case["id"].rsplit("/", 1)[1])
+    return by_file
+
+
+def read_hash_file(path):
+    if not os.path.exists(path):
+        return {"entries": []}
+    return read_json_strict(path)
+
+
+def known_identities():
+    """Identities with committed render hashes, i.e. the CI build identities."""
+    return [entry["identity"] for entry in read_hash_file(RENDER_HASHES)["entries"]]
 
 
 def cmd_hashes(args):
-    current = collect_hashes(args.tree)
+    renders, modules = load_renders(), load_modules()
+    identity = tree_identity(args.tree, renders, modules)
+    current, problems = tree_hashes(args.tree, renders, modules)
+    known = identity in known_identities()
+
     if args.write:
-        with open(HASHES, "w") as handle:
-            json.dump(current, handle, indent=2, sort_keys=True)
-            handle.write("\n")
-        print("wrote %s (%d hashes)" % (os.path.relpath(HASHES, REPO), len(current["hashes"])))
+        if problems:
+            for problem in problems:
+                print(problem)
+            print("refusing to write hashes from a tree whose files do not match their metadata")
+            return 1
+        if not known and not args.new_identity:
+            print("refusing to write hashes: this tree's build identity is not a known CI identity:")
+            print("  " + json.dumps(identity, sort_keys=True))
+            print("Write hashes from a CI-identity tree (the parity-captures or reference-renders artifact),")
+            print("or pass --new-identity to add a new build identity (needs a recorded decision).")
+            return 2
+        for path, hashes in sorted(current.items()):
+            data = read_hash_file(path)
+            entry = next((e for e in data["entries"] if e["identity"] == identity), None)
+            if entry is None:
+                entry = {"identity": identity, "hashes": {}}
+                data["entries"].append(entry)
+            entry["hashes"].update(hashes)
+            if path != RENDER_HASHES:
+                live = {c["id"].rsplit("/", 1)[1] for c in modules if module_hash_file(c) == path}
+                entry["hashes"] = {k: v for k, v in entry["hashes"].items() if k.split(":")[0] in live}
+            else:
+                live = {c["name"] for c in renders}
+                entry["hashes"] = {k: v for k, v in entry["hashes"].items() if k in live}
+            write_json(path, data)
+            print("wrote %s (%d hashes)" % (os.path.relpath(path, REPO), len(entry["hashes"])))
         return 0
-    with open(HASHES) as handle:
-        expected = json.load(handle)
-    if expected["identity"] != current["identity"]:
-        print("build identity differs from %s; hash check skipped" % os.path.relpath(HASHES, REPO))
-        print("  expected:", json.dumps(expected["identity"], sort_keys=True))
-        print("  current: ", json.dumps(current["identity"], sort_keys=True))
+
+    if not known:
+        print("build identity of %s has no committed hashes:" % args.tree)
+        print("  " + json.dumps(identity, sort_keys=True))
+        if args.require_known_identity:
+            print("FAIL: --require-known-identity (CI must run a known build identity; a runner image or")
+            print("toolchain change needs a recorded decision and new hashes)")
+            return 1
+        print("skipped (not a CI build identity)")
         return 0
-    mismatches = [key for key in sorted(set(expected["hashes"]) | set(current["hashes"]))
-                  if expected["hashes"].get(key) != current["hashes"].get(key)]
-    for key in mismatches:
-        print("MISMATCH %s expected %s got %s" % (key, expected["hashes"].get(key), current["hashes"].get(key)))
-    print("%d hashes checked, %d mismatches" % (len(current["hashes"]), len(mismatches)))
-    return 1 if mismatches else 0
+
+    checked = 0
+    for path, case_names in sorted(expected_keys(renders, modules).items()):
+        rel = os.path.relpath(path, REPO)
+        data = read_hash_file(path)
+        entry = next((e for e in data["entries"] if e["identity"] == identity), None)
+        if entry is None:
+            problems.append("%s has no hashes for the CI build identity: write them from a CI-identity tree "
+                            "(`run_corpus.py hashes <parity-captures> --write`)" % rel)
+            continue
+        got = current.get(path, {})
+        expected = entry["hashes"]
+        for key in sorted(set(expected) | set(got)):
+            name = key.split(":")[0]
+            if case_names is not None and name not in case_names:
+                problems.append("%s: stale hash for removed case %s" % (rel, key))
+            elif key not in got:
+                problems.append("%s: %s has a stored hash but was not rendered" % (rel, key))
+            elif key not in expected:
+                problems.append("%s: no stored hash for %s (run hashes --write)" % (rel, key))
+            elif expected[key] != got[key]:
+                problems.append("MISMATCH %s %s expected %s got %s" % (rel, key, expected[key], got[key]))
+            checked += 1
+        if case_names is not None:
+            for name in sorted(case_names - {k.split(":")[0] for k in got}):
+                problems.append("%s: case %s was not rendered" % (rel, name))
+
+    for problem in problems:
+        print(problem)
+    print("%d hashes checked, %d problems" % (checked, len(problems)))
+    return 1 if problems else 0
+
+
+def cmd_list(args):
+    data = {"renders": load_renders(), "modules": load_modules()}
+    if args.only:
+        data = {k: [c for c in v if selected(c["id"], args.only)] for k, v in data.items()}
+    print(json.dumps(data, indent=2, sort_keys=True))
+    return 0
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
 
-    render = sub.add_parser("render", help="render all corpus cases")
+    render = sub.add_parser("render", help="render corpus cases")
     render.add_argument("--out", required=True)
     render.add_argument("--ref-render", default=DEFAULT_RENDER)
     render.add_argument("--ref-module", default=DEFAULT_MODULE)
-    render.add_argument("--only", nargs="*", help="substrings of case names to run")
+    render.add_argument("--only", nargs="*", help="substrings of case ids to run")
 
     compare = sub.add_parser("compare", help="compare two render trees")
     compare.add_argument("reference")
     compare.add_argument("test")
     compare.add_argument("--audio-diff", default=DEFAULT_DIFF)
     compare.add_argument("--exact", action="store_true", help="require bit-identical outputs")
-    compare.add_argument("--only", nargs="*", help="substrings of case names to run")
+    compare.add_argument("--only", nargs="*", help="substrings of case ids to run")
 
-    hashes = sub.add_parser("hashes", help="collect / check output hashes of a render tree")
+    hashes = sub.add_parser("hashes", help="write / check output hashes of a render tree")
     hashes.add_argument("tree")
     mode = hashes.add_mutually_exclusive_group(required=True)
     mode.add_argument("--write", action="store_true")
     mode.add_argument("--check", action="store_true")
+    hashes.add_argument("--require-known-identity", action="store_true",
+                        help="--check fails (instead of skipping) when the tree's build identity has no hashes")
+    hashes.add_argument("--new-identity", action="store_true",
+                        help="--write may add hashes for a build identity that has none yet")
+
+    listing = sub.add_parser("list", help="print resolved cases as JSON")
+    listing.add_argument("--only", nargs="*", help="substrings of case ids to include")
 
     args = parser.parse_args()
-    if args.command == "hashes":
-        return cmd_hashes(args)
-    tools = [args.ref_render, args.ref_module] if args.command == "render" else [args.audio_diff]
-    for tool in tools:
-        if not os.access(tool, os.X_OK):
-            print("missing tool: %s (build it first, see migration/README.md)" % tool, file=sys.stderr)
-            return 2
-    return cmd_render(args) if args.command == "render" else cmd_compare(args)
+    try:
+        if args.command == "hashes":
+            return cmd_hashes(args)
+        if args.command == "list":
+            return cmd_list(args)
+        tools = [args.ref_render, args.ref_module] if args.command == "render" else [args.audio_diff]
+        for tool in tools:
+            if not os.access(tool, os.X_OK):
+                print("missing tool: %s (build it first, see migration/README.md)" % tool, file=sys.stderr)
+                return 2
+        return cmd_render(args) if args.command == "render" else cmd_compare(args)
+    except CaseError as error:
+        print("case error: %s" % error, file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

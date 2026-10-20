@@ -1,0 +1,14 @@
+{
+  "description": "Harness self-test: artifact-only module (exact-match text artifacts and an array).",
+  "module": "harness_echo",
+  "cases": {
+    "params_and_file": {
+      "params": {
+        "name": "echo",
+        "values": [1, 2.5, "text"],
+        "file": "presets/init_saw.vital",
+        "frames": 16
+      }
+    }
+  }
+}

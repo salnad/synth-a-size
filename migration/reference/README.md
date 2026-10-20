@@ -155,11 +155,17 @@ Outputs:
   arrays of shape `[frames, 4]`. The 4 columns are the 4 `poly_float`
   lanes: voice 0 left, voice 0 right, voice 1 left, voice 1 right.
   Control-rate inputs and outputs are sample-and-hold per block.
-- `DIR/capture.json`: the resolved spec, build info, an FNV-1a hash per
-  buffer, and the rate of each output.
+- `DIR/artifact_<name>`: exact-match text artifacts from modules with an
+  artifact hook.
+- `DIR/capture.json`: the resolved spec, build info, a hash per buffer and
+  per artifact, and the rate of each output. The hash is the harness's
+  FNV-1a 64 variant with offset basis 1469598103934665603. That is not the
+  standard basis; it is kept so committed hashes stay valid. It is
+  reimplemented identically in `run_corpus.py` and `sas-parity`.
 
-Spec format (see [`../corpus/modules/`](../corpus/modules/) for real
-examples):
+Spec format. Corpus case files in [`../corpus/modules/`](../corpus/modules/)
+use the same keys, with defaults layered in; `run_corpus.py` writes each
+resolved spec to `<capture dir>/spec.json`:
 
 ```json
 {
@@ -198,15 +204,64 @@ examples):
   parameter scaling the full engine would apply. For example, filter
   `midi_cutoff` is in semitones and `drive_gain` is in dB.
 
-Registered modules: `filter` (every model via `SynthFilter::createFilter`),
-`distortion`, `envelope`, `dc_filter`, `stereo_delay`.
+Registered modules (`ref-module --list` prints them with their inputs and
+source file): `filter` (every model via `SynthFilter::createFilter`),
+`dc_filter`, `distortion`, `stereo_delay`, `envelope`.
 
-To add one, append an entry to `registry()` in
-[`src/module_main.cpp`](src/module_main.cpp) with a factory, the input
-names mapped to the processor's input enum and default values and rates,
-and the outputs. Then add a spec to `migration/corpus/modules/` and a
-case to `migration/corpus/cases.json`.
+### Adding a module
 
+Each module is one file, `src/modules/<area>/<module>.cpp`, that registers
+itself:
+
+```cpp
+#include "module_registry.h"
+#include "dc_filter.h"
+
+REGISTER_REF_MODULE(refmod::ModuleDef{
+  "dc_filter",                                   // unique name used in specs
+  "DcFilter",                                    // description for --list
+  [](const nlohmann::json& params) -> vital::Processor* { return new vital::DcFilter(); },
+  {                                              // inputs: name, input index, default, rate
+    { "audio", vital::DcFilter::kAudio, 0.0f, refmod::Rate::kAudio },
+    { "reset", vital::DcFilter::kReset, 0.0f, refmod::Rate::kTrigger },
+  },
+  { { "audio", 0 } },                            // outputs: name, output index
+});
+```
+
+#### Exact-match artifacts
+
+For state that should match exactly rather than within a tolerance (JSON
+from a WavetableCreator load → save, preset init state, and so on), give
+the module an artifact hook as the sixth field. `create` may be `nullptr`
+for artifact-only modules, which then take no inputs or outputs:
+
+```cpp
+REGISTER_REF_MODULE(refmod::ModuleDef{
+  "wavetable_creator_roundtrip", "WavetableCreator load -> save", nullptr, {}, {},
+  [](const refmod::ArtifactContext& context, refmod::ArtifactSink& sink, std::string& error) {
+    std::string path = context.corpusPath(context.spec["params"]["wavetable"].get<std::string>());
+    // ... load, process, save ...
+    sink.text("saved.json", saved.dump());          // -> artifact_saved.json, compared byte for byte
+    sink.array("frame_0", samples, 1);               // -> out_frame_0.npy [frames, 1], tolerances apply
+    return true;                                     // or set error and return false
+  },
+});
+```
+
+Artifact names may contain only letters, digits, `_`, `-` and `.`.
+`capture.json` records each artifact's size and hash under `artifacts`, and
+`run_corpus.py hashes` pins them as `<case>:artifact/<name>`.
+`ref-module --corpus-dir DIR` (passed by `run_corpus.py`) is how
+`context.corpusPath()` finds corpus input files. Example:
+`src/modules/harness/echo.cpp`.
+
+CMake globs `src/modules/**/*.cpp` (`CONFIGURE_DEPENDS`) straight into
+`ref-module`, so no shared list is edited and the linker keeps every
+registration. Duplicate names are reported at startup with both source
+files. The cases that drive a module live in
+`migration/corpus/modules/<area>/<module>.json`; see "How to port a piece
+of the engine" in `migration/AGENTS.md`.
 ## Files
 
 | File | Purpose |
@@ -214,6 +269,8 @@ case to `migration/corpus/cases.json`.
 | `CMakeLists.txt` | Builds `upstream_engine` (JUCE + unity files) and the two tools |
 | `juce_config/` | JUCE config and module units for the harness |
 | `src/render_main.cpp` | `ref-render` |
-| `src/module_main.cpp` | `ref-module` and its module registry |
+| `src/module_main.cpp` | `ref-module` driver (signals, triggers, capture) |
+| `src/module_registry.{h,cpp}` | `REGISTER_REF_MODULE` static registration |
+| `src/modules/<area>/*.cpp` | One file per registered module |
 | `src/harness_io.{h,cpp}` | WAV / NPY I/O, HOME isolation, libm pinning, hashing, argument parsing |
 | `src/fp_probe.cpp` | `ref-fp-probe`: hashes libm, `rcpps`/`rsqrtps` and libmvec results for cross-machine comparison |

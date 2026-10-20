@@ -4,15 +4,15 @@
 
 #include "JuceHeader.h"
 #include "harness_io.h"
+#include "module_registry.h"
 
-#include "dc_filter.h"
-#include "delay.h"
-#include "distortion.h"
-#include "envelope.h"
 #include "processor.h"
 #include "synth_constants.h"
-#include "synth_filter.h"
 #include "utils.h"
+
+#include <algorithm>
+#include <cctype>
+#include <array>
 
 #include <cmath>
 #include <functional>
@@ -30,145 +30,17 @@ Instantiates one upstream Processor, feeds it the input signals described in
 spec.json block by block, and writes:
   DIR/in_<input>.npy    float32 [frames, 4]   (poly lanes: v0L v0R v1L v1R)
   DIR/out_<output>.npy  float32 [frames, 4]
-  DIR/capture.json      resolved spec, build info, per-buffer hashes
+  DIR/artifact_<name>   exact-match text artifacts (modules with an artifact hook)
+  DIR/capture.json      resolved spec, build info, per-buffer and per-artifact hashes
+
+Options:
+  --corpus-dir DIR      migration/corpus, for artifact hooks that read corpus files
 )";
 
-enum class Rate { kAudio, kControl, kTrigger };
-
-struct InputDef {
-  std::string name;
-  int index;
-  float default_value;
-  Rate rate;
-};
-
-struct OutputDef {
-  std::string name;
-  int index;
-};
-
-struct ModuleDef {
-  std::string name;
-  std::string description;
-  std::function<vital::Processor*(const json& params)> create;
-  std::vector<InputDef> inputs;
-  std::vector<OutputDef> outputs;
-};
-
-int filterModelFromName(const std::string& name) {
-  static const std::map<std::string, int> kModels = {
-    { "analog", vital::constants::kAnalog }, { "dirty", vital::constants::kDirty },
-    { "ladder", vital::constants::kLadder }, { "digital", vital::constants::kDigital },
-    { "diode", vital::constants::kDiode }, { "formant", vital::constants::kFormant },
-    { "comb", vital::constants::kComb }, { "phase", vital::constants::kPhase },
-  };
-  auto found = kModels.find(name);
-  return found == kModels.end() ? -1 : found->second;
-}
-
-std::vector<InputDef> synthFilterInputs() {
-  using F = vital::SynthFilter;
-  return {
-    { "audio", F::kAudio, 0.0f, Rate::kAudio },
-    { "reset", F::kReset, 0.0f, Rate::kTrigger },
-    { "midi_cutoff", F::kMidiCutoff, 60.0f, Rate::kAudio },
-    { "resonance", F::kResonance, 0.5f, Rate::kControl },
-    { "drive_gain", F::kDriveGain, 0.0f, Rate::kControl },
-    { "gain", F::kGain, 0.0f, Rate::kControl },
-    { "style", F::kStyle, 0.0f, Rate::kControl },
-    { "pass_blend", F::kPassBlend, 0.0f, Rate::kControl },
-    { "interpolate_x", F::kInterpolateX, 0.5f, Rate::kControl },
-    { "interpolate_y", F::kInterpolateY, 0.5f, Rate::kControl },
-    { "transpose", F::kTranspose, 0.0f, Rate::kControl },
-    { "spread", F::kSpread, 0.0f, Rate::kControl },
-  };
-}
-
-std::vector<ModuleDef> registry() {
-  std::vector<ModuleDef> modules;
-
-  modules.push_back({
-    "filter",
-    "SynthFilter::createFilter(model). params.model: analog|dirty|ladder|digital|diode|formant|comb|phase",
-    [](const json& params) -> vital::Processor* {
-      int model = filterModelFromName(params.value("model", std::string("digital")));
-      if (model < 0)
-        return nullptr;
-      vital::SynthFilter* filter = vital::SynthFilter::createFilter(static_cast<vital::constants::FilterModel>(model));
-      return dynamic_cast<vital::Processor*>(filter);
-    },
-    synthFilterInputs(),
-    { { "audio", 0 } },
-  });
-
-  modules.push_back({
-    "distortion",
-    "Distortion. Input 'type': 0 soft clip, 1 hard clip, 2 linear fold, 3 sin fold, 4 bit crush, 5 down sample",
-    [](const json&) -> vital::Processor* { return new vital::Distortion(); },
-    {
-      { "audio", vital::Distortion::kAudio, 0.0f, Rate::kAudio },
-      { "type", vital::Distortion::kType, 0.0f, Rate::kControl },
-      { "drive", vital::Distortion::kDrive, 0.0f, Rate::kAudio },
-    },
-    { { "audio", vital::Distortion::kAudioOut }, { "drive", vital::Distortion::kDriveOut } },
-  });
-
-  modules.push_back({
-    "envelope",
-    "Envelope (DAHDSR). Drive 'trigger' with voice_on / voice_off events. params.control_rate: bool",
-    [](const json& params) -> vital::Processor* {
-      vital::Envelope* envelope = new vital::Envelope();
-      envelope->setControlRate(params.value("control_rate", false));
-      return envelope;
-    },
-    {
-      { "delay", vital::Envelope::kDelay, 0.0f, Rate::kControl },
-      { "attack", vital::Envelope::kAttack, 0.1f, Rate::kControl },
-      { "attack_power", vital::Envelope::kAttackPower, 0.0f, Rate::kControl },
-      { "hold", vital::Envelope::kHold, 0.0f, Rate::kControl },
-      { "decay", vital::Envelope::kDecay, 0.5f, Rate::kControl },
-      { "decay_power", vital::Envelope::kDecayPower, -2.0f, Rate::kControl },
-      { "sustain", vital::Envelope::kSustain, 0.7f, Rate::kControl },
-      { "release", vital::Envelope::kRelease, 0.3f, Rate::kControl },
-      { "release_power", vital::Envelope::kReleasePower, -2.0f, Rate::kControl },
-      { "trigger", vital::Envelope::kTrigger, 0.0f, Rate::kTrigger },
-    },
-    { { "value", vital::Envelope::kValue }, { "phase", vital::Envelope::kPhase } },
-  });
-
-  modules.push_back({
-    "dc_filter",
-    "DcFilter",
-    [](const json&) -> vital::Processor* { return new vital::DcFilter(); },
-    {
-      { "audio", vital::DcFilter::kAudio, 0.0f, Rate::kAudio },
-      { "reset", vital::DcFilter::kReset, 0.0f, Rate::kTrigger },
-    },
-    { { "audio", 0 } },
-  });
-
-  modules.push_back({
-    "stereo_delay",
-    "Delay<StereoMemory>(params.size, default 88200 samples). 'style': 0 mono, 1 stereo, 2 ping pong, 3 mid ping pong",
-    [](const json& params) -> vital::Processor* {
-      return new vital::StereoDelay(params.value("size", 88200));
-    },
-    {
-      { "audio", vital::StereoDelay::kAudio, 0.0f, Rate::kAudio },
-      { "wet", vital::StereoDelay::kWet, 0.5f, Rate::kControl },
-      { "frequency", vital::StereoDelay::kFrequency, 2.0f, Rate::kControl },
-      { "frequency_aux", vital::StereoDelay::kFrequencyAux, 2.0f, Rate::kControl },
-      { "feedback", vital::StereoDelay::kFeedback, 0.5f, Rate::kControl },
-      { "damping", vital::StereoDelay::kDamping, 0.5f, Rate::kControl },
-      { "style", vital::StereoDelay::kStyle, 0.0f, Rate::kControl },
-      { "filter_cutoff", vital::StereoDelay::kFilterCutoff, 60.0f, Rate::kControl },
-      { "filter_spread", vital::StereoDelay::kFilterSpread, 1.0f, Rate::kControl },
-    },
-    { { "audio", 0 } },
-  });
-
-  return modules;
-}
+using refmod::InputDef;
+using refmod::ModuleDef;
+using refmod::OutputDef;
+using refmod::Rate;
 
 // Generates one input signal, frame by frame, into 4 poly lanes.
 class Signal {
@@ -376,6 +248,12 @@ class Signal {
     std::mt19937 noise_engine_;
 };
 
+// __FILE__ is absolute; show it relative to the repository.
+std::string relativeSource(const std::string& path) {
+  size_t found = path.find("migration/reference/");
+  return found == std::string::npos ? path : path.substr(found);
+}
+
 int fail(const std::string& message) {
   std::cerr << "ref-module: " << message << std::endl;
   return 2;
@@ -391,13 +269,23 @@ int main(int argc, const char* argv[]) {
     return args.has("help") ? 0 : 2;
   }
 
-  std::vector<ModuleDef> modules = registry();
+  std::vector<ModuleDef> modules = refmod::registry();
+  std::sort(modules.begin(), modules.end(),
+            [](const ModuleDef& a, const ModuleDef& b) { return a.name < b.name; });
+  for (size_t i = 1; i < modules.size(); ++i) {
+    if (modules[i].name == modules[i - 1].name)
+      return fail("module '" + modules[i].name + "' is registered twice: " + relativeSource(modules[i - 1].source_file) +
+                  " and " + relativeSource(modules[i].source_file));
+  }
   if (args.has("list")) {
     json listing = json::array();
     for (const ModuleDef& module : modules) {
       json entry;
       entry["module"] = module.name;
       entry["description"] = module.description;
+      entry["source"] = relativeSource(module.source_file);
+      entry["processor"] = static_cast<bool>(module.create);
+      entry["artifacts"] = static_cast<bool>(module.artifacts);
       for (const InputDef& input : module.inputs) {
         const char* rate = input.rate == Rate::kAudio ? "audio" : (input.rate == Rate::kControl ? "control" : "trigger");
         entry["inputs"].push_back({ { "name", input.name }, { "default", input.default_value }, { "rate", rate } });
@@ -437,10 +325,16 @@ int main(int argc, const char* argv[]) {
   if (module == nullptr)
     return fail("unknown module '" + module_name + "' (see --list)");
 
+  const bool has_processor = static_cast<bool>(module->create);
+  if (!has_processor && !module->artifacts)
+    return fail("module '" + module_name + "' has neither a processor nor an artifact hook");
+  if (!has_processor && (!module->inputs.empty() || !module->outputs.empty()))
+    return fail("artifact-only module '" + module_name + "' cannot declare processor inputs or outputs");
+
   const int sample_rate = spec.value("sample_rate", 44100);
   const int oversample = spec.value("oversample", 1);
   const int block_size = spec.value("block_size", 64);
-  const long long num_samples = spec.value("num_samples", 44100LL);
+  const long long num_samples = spec.value("num_samples", has_processor ? 44100LL : 0LL);
   const json params = spec.value("params", json::object());
   const json inputs_spec = spec.value("inputs", json::object());
 
@@ -448,7 +342,7 @@ int main(int argc, const char* argv[]) {
     return fail("oversample must be in [1, 16]");
   if (block_size < 1 || block_size > vital::kMaxBufferSize * oversample)
     return fail("block_size must be in [1, " + std::to_string(vital::kMaxBufferSize * oversample) + "]");
-  if (num_samples <= 0)
+  if (has_processor && num_samples <= 0)
     return fail("num_samples must be positive");
 
   for (auto it = inputs_spec.begin(); it != inputs_spec.end(); ++it) {
@@ -464,9 +358,12 @@ int main(int argc, const char* argv[]) {
   if (spec.count("seed"))
     vital::utils::RandomGenerator::next_seed_ = spec["seed"].get<int>();
 
-  std::unique_ptr<vital::Processor> processor(module->create(params));
-  if (!processor)
-    return fail("could not create module with params " + params.dump());
+  std::unique_ptr<vital::Processor> processor;
+  if (has_processor) {
+    processor.reset(module->create(params));
+    if (!processor)
+      return fail("could not create module with params " + params.dump());
+  }
 
   const int internal_rate = sample_rate * oversample;
   std::vector<std::unique_ptr<vital::Output>> sources;
@@ -500,15 +397,16 @@ int main(int argc, const char* argv[]) {
     input_capture[i].reserve(static_cast<size_t>(num_samples) * 4);
   }
 
-  processor->setSampleRate(sample_rate);
-  processor->setOversampleAmount(oversample);
-  processor->hardReset();
-
   std::vector<std::vector<float>> output_capture(module->outputs.size());
-  for (auto& capture : output_capture)
-    capture.reserve(static_cast<size_t>(num_samples) * 4);
+  if (processor) {
+    processor->setSampleRate(sample_rate);
+    processor->setOversampleAmount(oversample);
+    processor->hardReset();
+    for (auto& capture : output_capture)
+      capture.reserve(static_cast<size_t>(num_samples) * 4);
+  }
 
-  for (long long block_start = 0; block_start < num_samples; block_start += block_size) {
+  for (long long block_start = 0; processor && block_start < num_samples; block_start += block_size) {
     int n = static_cast<int>(std::min<long long>(block_size, num_samples - block_start));
 
     for (size_t i = 0; i < module->inputs.size(); ++i) {
@@ -547,6 +445,14 @@ int main(int argc, const char* argv[]) {
     }
   }
 
+  refmod::ArtifactSink sink;
+  if (module->artifacts) {
+    refmod::ArtifactContext context{ spec, args.get("corpus-dir") };
+    std::string error;
+    if (!module->artifacts(context, sink, error))
+      return fail("artifact hook of '" + module_name + "' failed: " + error);
+  }
+
   if (!harness::ensureDirectory(out_dir))
     return fail("cannot create " + out_dir);
 
@@ -560,10 +466,15 @@ int main(int argc, const char* argv[]) {
 
   size_t non_finite = 0;
   auto dump = [&](const std::string& file_name, const std::vector<float>& data, const char* kind,
-                  const std::string& name) -> bool {
+                  const std::string& name, size_t channels = 4) -> bool {
     std::string error;
     std::string path = out_dir + "/" + file_name;
-    if (!harness::writeNpyF32(path, data.data(), { data.size() / 4, 4 }, error)) {
+    if (channels == 0 || data.size() % channels != 0) {
+      std::cerr << "ref-module: " << name << ": " << data.size() << " values do not divide into "
+                << channels << " channels" << std::endl;
+      return false;
+    }
+    if (!harness::writeNpyF32(path, data.data(), { data.size() / channels, channels }, error)) {
       std::cerr << "ref-module: " << error << std::endl;
       return false;
     }
@@ -585,6 +496,36 @@ int main(int argc, const char* argv[]) {
     if (!dump("out_" + module->outputs[o].name + ".npy", output_capture[o], "outputs", module->outputs[o].name))
       return 2;
     manifest["outputs"][module->outputs[o].name]["rate"] = output->isControlRate() ? "control" : "audio";
+  }
+
+  auto valid_name = [](const std::string& name) {
+    if (name.empty() || name[0] == '.')
+      return false;
+    for (char c : name) {
+      if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == '.'))
+        return false;
+    }
+    return true;
+  };
+  for (const auto& array : sink.arrays()) {
+    if (!valid_name(array.name) || manifest["outputs"].count(array.name))
+      return fail("invalid or duplicate artifact array name '" + array.name + "'");
+    if (!dump("out_" + array.name + ".npy", array.data, "outputs", array.name, array.channels))
+      return 2;
+    manifest["outputs"][array.name]["rate"] = "artifact";
+    manifest["outputs"][array.name]["channels"] = array.channels;
+  }
+  for (const auto& text : sink.texts()) {
+    if (!valid_name(text.name) || manifest["artifacts"].count(text.name))
+      return fail("invalid or duplicate artifact name '" + text.name + "'");
+    std::string file_name = "artifact_" + text.name;
+    if (!harness::writeTextFile(out_dir + "/" + file_name, text.content))
+      return fail("cannot write " + file_name);
+    manifest["artifacts"][text.name] = {
+      { "file", file_name },
+      { "bytes", text.content.size() },
+      { "fnv1a64", harness::hex64(harness::fnv1a64(text.content.data(), text.content.size())) },
+    };
   }
   manifest["non_finite_samples"] = non_finite;
 
