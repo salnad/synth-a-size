@@ -32,11 +32,11 @@ the loader rejects presets without one.
 
 Also written by `generate.py`; not rendered. They drive the M2 preset
 loader through cases the render corpus does not reach: presets saved by
-old versions (every `updateFromOldVersion` step except the 0.5.0 sub
-oscillator step), out-of-range, boolean and non-float control values,
-unknown and legacy keys, custom LFO shapes, line mappings, invalid and
-duplicate modulations, metadata and macro-name fallbacks, a stereo sample,
-and presets the loader must reject.
+old versions (every `updateFromOldVersion` step), out-of-range, boolean
+and non-float control values, unknown and legacy keys, custom LFO
+shapes, line mappings, invalid and duplicate modulations, metadata and
+macro-name fallbacks, a stereo sample, and presets the loader must
+reject.
 
 `preset_state/` holds the reference's saved state for each of those, for
 every preset in `presets/` (plus a second load→save round trip) and for the

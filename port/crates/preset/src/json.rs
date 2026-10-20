@@ -1,12 +1,7 @@
 // Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! nlohmann::json conversions the loader needs on top of
-//! [`sas_common::json`].
-//!
-//! Upstream reads numbers with implicit conversions (`float x = j;`), which
-//! go through nlohmann 3.1.2's `from_json(const json&, ArithmeticType&)`.
-//! Unlike `get_arithmetic_value`, that overload also accepts booleans.
+//! Reads on top of [`sas_common::json`] that name the key in the error.
 
 use sas_common::json::{JsonError, Value};
 
@@ -15,22 +10,6 @@ use crate::Error;
 impl From<JsonError> for Error {
     fn from(error: JsonError) -> Error {
         Error::Corrupted(error.0)
-    }
-}
-
-/// `float x = value;`.
-pub(crate) fn implicit_f32(value: &Value) -> Result<f32, Error> {
-    match value {
-        Value::Bool(flag) => Ok(f32::from(u8::from(*flag))),
-        other => Ok(other.to_f32()?),
-    }
-}
-
-/// `int x = value;`.
-pub(crate) fn implicit_i32(value: &Value) -> Result<i32, Error> {
-    match value {
-        Value::Bool(flag) => Ok(i32::from(*flag)),
-        other => Ok(other.to_i32()?),
     }
 }
 
@@ -43,12 +22,20 @@ fn with_key(key: &str, error: Error) -> Error {
 
 /// `float x = object[key];`.
 pub(crate) fn read_f32(object: &Value, key: &str) -> Result<f32, Error> {
-    implicit_f32(object.get(key)?).map_err(|error| with_key(key, error))
+    object
+        .get(key)?
+        .to_f32()
+        .map_err(Error::from)
+        .map_err(|error| with_key(key, error))
 }
 
 /// `int x = object[key];`.
 pub(crate) fn read_i32(object: &Value, key: &str) -> Result<i32, Error> {
-    implicit_i32(object.get(key)?).map_err(|error| with_key(key, error))
+    object
+        .get(key)?
+        .to_i32()
+        .map_err(Error::from)
+        .map_err(|error| with_key(key, error))
 }
 
 /// `std::string x = object[key];`.
@@ -78,10 +65,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn implicit_conversions_accept_booleans() {
-        assert_eq!(implicit_f32(&Value::Bool(true)).unwrap(), 1.0);
-        assert_eq!(implicit_i32(&Value::Float(-2.9)).unwrap(), -2);
-        assert!(implicit_f32(&Value::Null).is_err());
-        assert!(implicit_f32(&Value::from("1")).is_err());
+    fn reads_convert_like_nlohmann_and_name_the_key() {
+        let data = sas_common::json::parse(r#"{"on": true, "level": -2.9, "name": 1}"#).unwrap();
+        assert_eq!(read_f32(&data, "on").unwrap(), 1.0);
+        assert_eq!(read_i32(&data, "level").unwrap(), -2);
+        let Err(Error::Corrupted(message)) = read_f32(&data, "missing") else {
+            panic!("missing key read")
+        };
+        assert!(message.starts_with("\"missing\""), "{message}");
+        assert!(read_string(&data, "name").is_err());
     }
 }

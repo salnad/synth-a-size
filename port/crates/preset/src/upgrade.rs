@@ -555,9 +555,18 @@ fn upgrade_0_5_0(settings: &mut Value, modulations: &mut Value) -> Result<Value,
     settings.set("osc_3_destination", sub_destination);
 
     for (inputs, name) in [
-        (["filter_1_osc1_input", "filter_2_osc1_input"], "osc_1_destination"),
-        (["filter_1_osc2_input", "filter_2_osc2_input"], "osc_2_destination"),
-        (["filter_1_sample_input", "filter_2_sample_input"], "sample_destination"),
+        (
+            ["filter_1_osc1_input", "filter_2_osc1_input"],
+            "osc_1_destination",
+        ),
+        (
+            ["filter_1_osc2_input", "filter_2_osc2_input"],
+            "osc_2_destination",
+        ),
+        (
+            ["filter_1_sample_input", "filter_2_sample_input"],
+            "sample_destination",
+        ),
     ] {
         let filter1 = read_f32(settings, inputs[0])?;
         let filter2 = read_f32(settings, inputs[1])?;

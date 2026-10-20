@@ -36,7 +36,13 @@ fn reference_registry() -> Value {
 
 /// The init content of the reference: the seed its init sample used.
 fn init_content() -> InitContent {
-    let sample_seed = reference_registry().get("init").unwrap().get("sample_seed").unwrap().to_i32().unwrap();
+    let sample_seed = reference_registry()
+        .get("init")
+        .unwrap()
+        .get("sample_seed")
+        .unwrap()
+        .to_i32()
+        .unwrap();
     InitContent { sample_seed }
 }
 
