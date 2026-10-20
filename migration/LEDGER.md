@@ -478,3 +478,73 @@ with the coordinator.
   are rejected at load in both `run_corpus.py` (`check_name`) and
   `sas-parity` (`cases::check_name`). Both test suites test this.
 - All existing case files comply: 6 module cases and 8 render cases.
+## 2026-10-20: M4a `sas-common` (shared exact helpers)
+
+New dependency-free crate `port/crates/common` (`sas-common`), owned by the
+Wavetable Creator thread until this first PR merges. Core Framework, Preset
+Registry and Modulators reuse it instead of porting these pieces again
+(coordinator decision).
+
+**Added**
+
+- `json`: JSON with nlohmann/json 3.1.2 semantics (sorted keys, typed
+  integers vs. doubles, `f32` stored as double, a line-by-line port of its
+  Grisu2 double formatting, first duplicate key wins, `operator[]`/`get<T>`
+  read rules as `get`/`at`/`to_*` returning errors where upstream throws).
+- `base64`: JUCE `Base64` (decoding stops at the first invalid character
+  and keeps the bytes decoded so far).
+- `scalar`: single-lane `futils` (`exp2`, `log2`, `exp`, `log`, `pow`,
+  `powerScale`, `tanh`), `utils` (`clamp`, `iclamp`, `ilog2`,
+  `interpolate`, PCM conversions) and the Catmull-Rom weights from
+  `poly_utils`. **These duplicate parts of `futils.h`/`utils.h`**; Core
+  Framework's `PolyFloat` versions must match them bit for bit in every
+  lane (a test comparing the two is welcome once `simd` lands). Note that
+  upstream's `truncToInt` is `_mm_cvtps_epi32` (round to nearest even), so
+  `utils::trunc` is not a truncation; `floor`/`roundToInt` are still exact.
+- `random`: `std::mt19937` plus libstdc++ 13's
+  `uniform_real_distribution<float>` (one draw, `float(u32) / 2^32`, 1.0
+  mapped to `nextafter(1, 0)`), constructed from an explicit seed.
+- `line_generator`: `LineGenerator` with upstream JSON semantics.
+- `load_save`: `compareVersionStrings`, `convertBufferToPcm`,
+  `convertPcmToFloatBuffer` and `VERSION_STRING = "1.0.6"` (the reference
+  build's `ProjectInfo::versionString`), needed by wavetable and preset
+  upgrades.
+
+**Measured** (scratch probe linked against the reference engine library;
+it is not committed. The committed parity captures wait for the
+Harness Builder's `sas-parity` helper.)
+
+- Against the `REF_FAST_MATH=OFF` reference build: **bit-identical** on all
+  checks. That covers 18,580 `exp2`/`tanh` and 9,261 `log2` inputs, 8,181
+  `powerScale` pairs, 36,000 RNG values over 18 seed/range combinations,
+  54 `LineGenerator` cases (9 authored JSONs × resolutions 2048/128/7 ×
+  loop on/off) plus the 6 init shapes, covering buffers, `valueAtPhase`,
+  `stateToJson` dumps and `linear()`, along with 43,922 JSON doubles,
+  parse→dump texts, 225 version comparisons and base64 edge cases.
+- Against the default (fast-math) reference: the RNG, PCM, JSON dumps,
+  versions and base64 are bit-identical. The float helpers differ only by
+  GCC reassociation: `tanh` ≤ 1 ulp, `log2` ≤ 2 ulp, `powerScale` ≤ 1.0e-6
+  absolute, line buffers ≤ 3.0e-7, and `valueAtPhase` ≤ 8.5e-5, the
+  largest on steep segments where the rounded phase index lands on the
+  other side of a breakpoint. For example, fast-math folds the linear
+  ramp's `1 - (1 - t)` into `t`.
+
+**Decisions**
+
+- `-0.0` dumps as `0.0`: in upstream's `-ffast-math` builds, GCC folds
+  `std::signbit` to `value < 0`. The port follows the shipped behaviour,
+  which is the only difference from the no-fast-math build.
+- Deliberate deviation for degenerate input: the fast-math reference also
+  folds `isfinite`. So it parses `1E400` as infinity and dumps NaN/inf as
+  a garbage double, and its DAZ flag makes subnormal doubles dump as
+  `0.0`. The port follows the no-fast-math semantics here, which are
+  nlohmann's documented behaviour: overflow is a parse error, NaN/inf
+  dump as `null` and subnormals print normally. Authored content never
+  hits these cases.
+
+**Open / next**
+
+- Parity captures for `LineGenerator` rendering and the RNG sequence, plus
+  Rust parity tests, once `sas-parity` and per-module captures land.
+- Wavetable state model (creator/group/component/keyframe JSON) and the
+  FFT next, then rendering.

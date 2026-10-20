@@ -1,0 +1,11 @@
+[package]
+name = "sas-common"
+description = "Dependency-free shared pieces: JSON with the upstream serializer's exact semantics, base64, scalar math helpers, the engine RNG replica and the line generator."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
