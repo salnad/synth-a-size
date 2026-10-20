@@ -1,0 +1,191 @@
+{
+  "author": "synth-a-size test corpus",
+  "settings": {
+    "chorus_tempo": 4.0,
+    "compressor_high_band": 0.0,
+    "compressor_low_band": 1.0,
+    "delay_frequency": 3.5,
+    "delay_style": 2.0,
+    "delay_sync": 1.0,
+    "delay_tempo": 8.0,
+    "effect_chain_order": 1234.0,
+    "env_1_attack": 0.3,
+    "env_1_decay": 0.75,
+    "env_1_release": 1.7,
+    "env_2_attack": 0.0,
+    "env_2_decay": 2.0,
+    "env_2_release": 0.1,
+    "filter_1_model": 6.0,
+    "filter_1_style": 2.0,
+    "filter_2_blend": 1.2,
+    "filter_2_model": 4.0,
+    "filter_2_style": 3.0,
+    "flanger_center": 20.0,
+    "flanger_tempo": 3.0,
+    "lfo_1_sync_type": 3.0,
+    "lfo_2_sync_type": 1.0,
+    "lfo_2_tempo": 6.0,
+    "modulation_1_amount": 0.3,
+    "modulation_2_amount": 0.5,
+    "modulation_3_amount": -0.4,
+    "modulation_4_amount": 0.7,
+    "modulation_5_amount": 0.2,
+    "modulation_6_amount": 0.6,
+    "modulation_7_amount": 0.8,
+    "modulation_8_amount": 0.1,
+    "modulation_8_bipolar": true,
+    "modulations": [
+      {
+        "destination": "reverb_damping",
+        "source": "lfo_1"
+      },
+      {
+        "destination": "osc_1_wave_frame",
+        "source": "perlin"
+      },
+      {
+        "destination": "osc_1_distortion_amount",
+        "source": "env_2"
+      },
+      {
+        "destination": "chorus_damping",
+        "source": "macro_control_1"
+      },
+      {
+        "destination": "flanger_center",
+        "source": "lfo_2"
+      },
+      {
+        "destination": "phaser_center",
+        "source": "env_3"
+      },
+      {
+        "destination": "filter_2_blend",
+        "source": "velocity"
+      },
+      {
+        "destination": "osc_2_distortion_amount",
+        "source": "random_1"
+      }
+    ],
+    "osc_1_distortion_amount": 0.6,
+    "osc_1_distortion_type": 2.0,
+    "osc_1_filter_routing": 0.0,
+    "osc_1_level": 0.8,
+    "osc_1_midi_track": 0.0,
+    "osc_1_transpose": 7.0,
+    "osc_2_distortion_amount": 0.49,
+    "osc_2_distortion_type": 8.0,
+    "osc_2_filter_routing": 1.0,
+    "osc_2_level": 0.6,
+    "osc_2_midi_track": 1.0,
+    "osc_2_transpose": -5.0,
+    "phaser_tempo": 2.0,
+    "portamento_type": 0.0,
+    "random_1_tempo": 5.0,
+    "reverb_damping": 0.25,
+    "reverb_feedback": 0.85,
+    "sample": {
+      "length": 256,
+      "name": "corpus float tone",
+      "sample_rate": 44100,
+      "samples": "AAAAAFwSFj0CFJU9/7rdPbFNEj7VqjQ+DcdVPpt2dT4LyIk+U/aXPhk0pT7HcLE+U528PlGsxj4Bks8+XkTXPim73T7v7+I+EN7mPsSC6T4V3eo+4u3qPti36T5rP+c+zYrjPt2h3j4djtg+olrRPvsTyT4hyL8+YIa1Pjtfqj5VZJ4+VaiRPsg+hD4NeGw+IWpPPuZ+MT5M4hI+tYHnPdyOqD3ei1I9+gGoPORFJ7yxPCa9tkqQvXUazL11HgO+QTIfvpsjOr5yz1O+1BRsvo5qgb4L+ou+EayVvid1nr4/S6a+tiWtvmn9sr6xzLe+cI+7vg1Dvr525r++IHrAvgAAwL6Ee76+jPG7vl9ouL6g57O+O3iuvlskqL5S96C+i/2YvnREkL5l2oa+Gp15vq9hZL6rI06+RQU3vpQpH75ftAa+xZPbvT0dqb17nGy9IN8GvSNKBrzOdoU8zn8lPccZgz0EKrI947HfPcm6BT4+nho+w2guPq8BQT5YUlI+MEZiPtzKcD5H0H0+W6SEPmiUiT7Ys40+b/+QPi51kz5RFJU+St2VPr/RlT6D9JQ+j0mTPvjVkD7jn40+fK6JPuUJhT5Pdn8+TZhzPhWPZj5kcVg+N1dJPqtZOT7Okig+dx0XPiAVBT5mK+U903a/PTNFmT08nmU9hpkYPVfWlzzKydMks3uVvIHnE73rGVu9MPuPvYARsb2apdC9D5DuvTxWBb7VbBK+6Hwevkx5Kb6jVjO+ZQs8vuePQ75j3km+8/JOvpbLUr4paFW+YMpWvrz1Vr6A71W+ob5TvrNrUL7bAEy+solGvjITQL6dqzi+XmIwvvBHJ76+bR2+BeYSvrbDB76nNPi9ovvfveUEx71Yea29AoKTvYqPcr1F5j299VcJvUplqrzECAe8GYGFOyu8gzySCeM8H2UfPQlESz3b6nQ9whOOPWpmoD1TWbE9BtvAPbfczj1QUts9eTLmPZd27z3OGvc99B39PcXAAD7WJAI+fL4CPkGSAj7UpQE+AAAAPjRR+z3XUPU9QhLuPWqq5T2xL9w9u7nRPT1hxj3LP7o9rG+tPaILoD2/LpI9LPSDPQTuaj0fpE09ZT8wPVDzEj2A4+s8W9WyPGQvdjwVAgo8LhMHO9fkg7tRmiC8Mrd5vMNtprw71My8IufvvCPDB72hzBW9vAcivQlwLL3zBDW9rck7vRLFQL2LAUS95YxFvSV4Rb1X10O9VsFAvY9PPL3CnTa9uskvvQzzJ73EOh+9IMMVvTuvC73GIgG9XoPsvLNf1ryXIcC8wg6qvANrlLxa7368HOZWvMsvMbzaOQ68gtHcu2AupLs0VWa7MaAUuw5FqLqDQBa6BakWuQ=="
+    },
+    "sample_filter_routing": 1.0,
+    "sample_keytrack": true,
+    "sample_level": 0.9,
+    "sample_transpose": -12.0,
+    "stereo_routing": -0.4,
+    "sub_filter_routing": 0.0,
+    "sub_level": 0.5,
+    "sub_octave": -1.0,
+    "sub_waveform": 4.0,
+    "wave_tables": [
+      {
+        "author": "synth-a-size test corpus",
+        "full_normalize": true,
+        "groups": [
+          {
+            "components": [
+              {
+                "interpolation_style": 1,
+                "keyframes": [
+                  {
+                    "line": {
+                      "name": "",
+                      "num_points": 4,
+                      "points": [
+                        0.0,
+                        0.0,
+                        0.5,
+                        0.0,
+                        0.5,
+                        1.0,
+                        1.0,
+                        1.0
+                      ],
+                      "powers": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                      ],
+                      "smooth": false
+                    },
+                    "position": 0,
+                    "pull_power": 0.0
+                  },
+                  {
+                    "line": {
+                      "name": "",
+                      "num_points": 4,
+                      "points": [
+                        0.0,
+                        0.5,
+                        0.25,
+                        0.0,
+                        0.75,
+                        1.0,
+                        1.0,
+                        0.5
+                      ],
+                      "powers": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                      ],
+                      "smooth": false
+                    },
+                    "position": 256,
+                    "pull_power": 0.0
+                  }
+                ],
+                "num_points": 4,
+                "type": "Line Source"
+              },
+              {
+                "interpolation_style": 1,
+                "keyframes": [
+                  {
+                    "fold_boost": 1.0,
+                    "position": 0
+                  },
+                  {
+                    "fold_boost": 2.5,
+                    "position": 256
+                  }
+                ],
+                "type": "Wave Folder"
+              }
+            ]
+          }
+        ],
+        "name": "corpus line fold",
+        "remove_all_dc": true,
+        "version": "1.0.6"
+      }
+    ]
+  },
+  "synth_version": "0.1.0"
+}

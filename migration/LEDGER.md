@@ -2731,3 +2731,84 @@ lands.
 **After #2 lands:** run the port on the macOS job against its pinned and
 no-fast-math trees, and re-enable `audio_fade_3_phase_0` on arm64 if #2
 parked it.
+
+
+## 2026-10-20: M2 parameter registry and preset load/save (`sas-preset`)
+
+Built on `sas-common` (PR #4: nlohmann-exact JSON, JUCE base64, RNG,
+`LineGenerator`, version comparison and PCM helpers), which this branch
+includes until that PR merges.
+
+**Changed**
+
+- `port/crates/preset`: the parameter registry (`synth_parameters.cpp`:
+  every list, group expansion, default overrides, upstream index order),
+  the display string tables, engine facts (which parameters are controls,
+  which accept modulation, the modulation sources), the sample model, the
+  whole `updateFromOldVersion` chain, and `PresetState` with
+  load/save/init and by-name access (`lookup`, `set_value`,
+  `add_modulation`, `remove_modulation`, `to_json_string`). It depends
+  only on `sas-common`.
+- `migration/reference/src/preset_main.cpp` (new tool `ref-preset`, added
+  to `CMakeLists.txt` and `check_fp_determinism.sh`): dumps the registry,
+  engine tables and the state after a load.
+- `migration/scripts/preset_goldens.py` writes
+  `migration/corpus/preset_state/` (26 files, 1.7 MB of compact JSON) from
+  `ref-preset`. CI's reference job runs it with `--check`.
+- `generate.py` writes 13 authored presets to
+  `migration/corpus/preset_tests/`: four old-version presets that run
+  every upgrade step except 0.5.0, edge cases for controls, metadata, LFO
+  shapes and modulation slots, and five presets the loader must reject.
+
+**Measured** (all byte-exact against the fast-math reference)
+
+- Registry: 794 parameters. Every name, index, range, default, scale,
+  display field and string table matches. The engine has 772 controls (22
+  legacy parameters are never instantiated or saved), 32 modulation
+  sources and 428 modulation destinations.
+- `saveToJson().dump()` after loading equals the reference byte for byte
+  for the init preset, the 5 corpus presets and the 8 loading test
+  presets. All 5 rejected presets fail in both with the same error class.
+- Second load→save round trip: equal to the reference's for init and all
+  corpus presets. Everything except the sample is a fixed point after the
+  first save.
+
+**Findings / decisions**
+
+- Upstream's `Sample::stateToJson` encodes the padded buffer from its
+  start, so every save delays the sample by 4 frames and drops its last 4,
+  and requantizes it (int16 → float → truncate). The port does the same,
+  so the sample is not idempotent across round trips, upstream included.
+- The reference build's `-ffast-math` changes the upgrade arithmetic, and
+  saved state must match it exactly, so the port mirrors the generated
+  code. Each case is commented in `upgrade.rs`, and swapping in the
+  source's formulas makes the tests fail:
+  - `pow(x, 2/3)` is computed as `cbrtf(x)²`.
+  - `pow(x, 3/4)` is computed as `sqrt(x)·sqrt(sqrt(x))`.
+  - `pow(x, 1/2)` is computed as `sqrtf`.
+  - `a·l·l` is computed as `(l·l)·a`.
+  - In the 0.4.7 remap, the divisions become reciprocal multiplies.
+- nlohmann 3.1.2 implicit numeric conversions (`float x = j`) accept
+  booleans. `sas_common::json::Value::to_f32` rejects them, so the preset
+  crate converts with its own helper. `LineGenerator::from_json` (points
+  and powers) still rejects booleans where upstream accepts them; reported
+  to Wavetable Creator.
+- Upstream's 0.4.7 FM remap skips its slot counter on zero amounts
+  (`continue` before `index++`) and reads `modulation_N_bipolar` by
+  conversion (a missing key fails the load). Both are reproduced and
+  covered by `upgrade_from_0_4_6_fm`.
+- `SynthBase::isInvalidConnection` never fires in this engine (no slot owns
+  a destination). The port has no such rule, and a test checks the
+  reference still reports none.
+- A failed load leaves the port's state unchanged. Upstream keeps the
+  steps that ran before the failure. Undefined behaviour upstream (more
+  than 64 modulations, more than 3 wavetables or 8 LFOs, a modulation
+  without `source`/`destination`) becomes ignore-or-error in the port.
+
+**Open / blocked**
+
+- Wavetables are kept as opaque JSON until the wavetable state model lands
+  in `sas-wavetable`. Until then, the tests take the default wavetables
+  from the reference's init state. The 0.5.0 upgrade step (sub oscillator
+  to oscillator 3) returns `Error::Pending` until then.
+- Rebase onto main when PR #4 merges.

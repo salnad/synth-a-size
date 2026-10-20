@@ -39,7 +39,7 @@ undefined_symbols() {
 
 status=0
 
-for bin in ref-render ref-module; do
+for bin in ref-render ref-module ref-preset; do
   path="$build/$bin"
   [[ -x "$path" ]] || { echo "missing $path" >&2; exit 2; }
   hits="$(objdump -d -C --no-show-raw-insn "$path" | awk -v pat="^$pattern" '
