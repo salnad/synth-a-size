@@ -817,3 +817,77 @@ Harness Builder's `sas-parity` helper.)
   tests only; upstream throws there, and the port returns the error.
 - `LineGenerator::from_json` rejects `num_points == 0` with an error.
   Upstream's behaviour is undefined there; the port used to panic.
+- Pending a harness fix: `run_corpus.py compare` reports text-only module
+  cases (here `common/json/*`) as "no reference outputs", which fails CI's
+  determinism and calibration steps. I reported it to the coordinator for
+  Harness Builder.
+## 2026-10-20: M4a wavetable state model, FFT and WaveFrame
+
+`sas-wavetable` now depends only on `sas-common` (the unused `sas-dsp-core`
+dependency was dropped), so `sas-preset` can use it for exact wavetable JSON.
+
+**Added**
+
+- `fourier_transform`: `FourierTransform` on the backend the reference
+  pins, JUCE's `FFTFallback`. It is the recursive mixed-radix FFT (radices
+  4,4,4,4,4,2 for 2048 points) with twiddles computed in double. Forward
+  output is the full unnormalised complex spectrum. The inverse rebuilds
+  bins above Nyquist as conjugates, which also negates the Nyquist bin's
+  imaginary part, scales by 1/N and leaves the imaginary residue in the
+  second half.
+- `complex`: `std::complex<float>` as the fast-math build evaluates it
+  (`abs` = `sqrt(re² + im²)` instead of `cabsf`; limited-range division).
+- `wave_frame`: `WaveFrame` and `PredefinedWaveFrames`.
+- `creator`: the `WavetableCreator`/group/component/keyframe state for all
+  10 component types, with `stateToJson`/`jsonToState`. That covers
+  keyframe creation by interpolation (a Line Source keyframe without a
+  `line` inherits the interpolated one), every keyframe `copy`/
+  `interpolate`/`smoothInterpolate`, `updateJson` (0.3.3, 0.3.7, 0.3.8,
+  0.3.9, 0.4.7 and 0.7.7 steps), the line-shape-as-wavetable path, `init`,
+  and `initPredefinedWaves`. Enum-valued settings are stored as the raw
+  integers so they round-trip exactly.
+
+**Measured** (scratch probe linked against the reference engine library;
+the committed parity captures wait for `sas-parity`, PR #3)
+
+- Creator JSON load→save against the **official fast-math reference**:
+  byte-identical for all 12 authored inputs. The inputs cover every
+  component type, unsorted and duplicate keyframe positions, inherited
+  line keyframes, defaults, required-field errors, the 0.3.2/0.3.6/0.3.8/
+  0.7.6 upgrade chains and the line-shape path. `updateJson` output, the
+  `init()` creator and `initPredefinedWaves()` (all six frames' base64
+  `wave_data`) are also identical.
+- Two expressions are written in the order GCC emits under `-ffast-math`,
+  which the official reference requires:
+  - `createSaturatedSin`'s `tanh` loop, read from the reference
+    disassembly. The source order differs in 372/2048 samples (≤ 1.8e-7).
+  - The default saw's `i / 2047.f`, which the reference compiles as a
+    multiply by the reciprocal (4 samples differ by 1 ulp otherwise).
+  `sas_common::scalar::tanh` keeps the source order, because fast-math
+  codegen differs per call site: the same reassociated form still
+  differs in 71/18,580 inputs at a scalar call site.
+- FFT against the no-fast-math reference: bit-identical (6 forward and 6
+  inverse transforms, 2048 points). Against the fast-math reference it
+  differs by ≤ 1.2e-7 relative (max 7.8e-3 abs on bins of magnitude
+  6.3e4), from GCC reassociating the butterflies. None of five
+  reassociated butterfly forms tried matched better than the source
+  order.
+- A missing `random_seed` in an Audio File Source is drawn from the
+  global `RandomGenerator` counter, as upstream does. With the counter at
+  the reference's value, the saved seed matches. Authored JSON should
+  always set it.
+
+**Open / next**
+
+- Wavetable rendering (`render`, every source and modifier, normalisation,
+  DC removal, `Wavetable` data and `postProcess`), then reference captures.
+- Capture plan for `sas-parity`: a `ref-module` wrapper processor whose
+  outputs stream the rendered frames and the poly-layout
+  `frequency_amplitudes`/`normalized_frequencies`. Exact-JSON captures
+  need a text output, which the buffer-only registry lacks; I'll raise
+  this with Harness Builder.
+- Spectra have magnitudes up to about 1e3. The module default
+  `max_abs_error` of 1e-4 is about 1e-7 relative there, close to the
+  fast-math FFT noise (1.2e-7 relative). I'll measure the proxy and
+  official-reference metrics on captures before choosing a representation,
+  and ask a human rather than change limits.

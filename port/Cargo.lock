@@ -566,7 +566,7 @@ dependencies = [
 name = "sas-wavetable"
 version = "0.0.1"
 dependencies = [
- "sas-dsp-core",
+ "sas-common",
 ]
 
 [[package]]
