@@ -1,0 +1,12 @@
+[package]
+name = "sas-modulation"
+description = "Modulators (envelopes, LFOs, random LFOs, macros) and the modulation matrix."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+sas-dsp-core.workspace = true

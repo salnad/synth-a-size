@@ -1,0 +1,47 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/simd",
+    "crates/dsp-core",
+    "crates/wavetable",
+    "crates/oscillators",
+    "crates/filters",
+    "crates/effects",
+    "crates/modulation",
+    "crates/engine",
+    "crates/preset",
+    "crates/gui",
+    "crates/llm-control",
+    "crates/plugin",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/salnad/synth-a-size"
+rust-version = "1.88"
+publish = false
+
+[workspace.dependencies]
+sas-simd = { path = "crates/simd" }
+sas-dsp-core = { path = "crates/dsp-core" }
+sas-wavetable = { path = "crates/wavetable" }
+sas-oscillators = { path = "crates/oscillators" }
+sas-filters = { path = "crates/filters" }
+sas-effects = { path = "crates/effects" }
+sas-modulation = { path = "crates/modulation" }
+sas-engine = { path = "crates/engine" }
+sas-preset = { path = "crates/preset" }
+sas-gui = { path = "crates/gui" }
+sas-llm-control = { path = "crates/llm-control" }
+# Plugin framework: nice-plug, the maintained community fork of nih-plug
+# (see migration/decisions/plugin-framework.md).
+nice-plug = { version = "=0.4.2", default-features = false, features = ["vst3"] }
+
+[profile.release]
+debug = 1
+
+[profile.dev]
+# Audio code is unusably slow at opt-level 0.
+opt-level = 1

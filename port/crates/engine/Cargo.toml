@@ -1,0 +1,16 @@
+[package]
+name = "sas-engine"
+description = "Sound engine: voice handling, MIDI/MPE, tuning, full patch graph, offline render."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+sas-dsp-core.workspace = true
+sas-oscillators.workspace = true
+sas-filters.workspace = true
+sas-effects.workspace = true
+sas-modulation.workspace = true

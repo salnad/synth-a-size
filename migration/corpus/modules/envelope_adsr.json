@@ -1,0 +1,16 @@
+{
+  "module": "envelope",
+  "sample_rate": 44100,
+  "block_size": 64,
+  "num_samples": 66150,
+  "inputs": {
+    "attack": 0.3,
+    "decay": 0.6,
+    "sustain": 0.5,
+    "release": 0.6,
+    "trigger": { "trigger": [
+      { "sample": 441, "value": "voice_on" },
+      { "sample": 44100, "value": "voice_off" }
+    ] }
+  }
+}

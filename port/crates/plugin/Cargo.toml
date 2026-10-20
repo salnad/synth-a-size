@@ -1,0 +1,17 @@
+[package]
+name = "sas-plugin"
+description = "VST3 / CLAP instrument wrapper around the synth-a-size engine, built on nice-plug."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+nice-plug.workspace = true
+sas-engine.workspace = true
+sas-preset.workspace = true

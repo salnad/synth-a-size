@@ -1,0 +1,33 @@
+{
+  "comment": "Golden corpus render cases. Paths are relative to migration/corpus. Tolerances are the parity targets; see migration/AGENTS.md before touching them (never loosen without recorded human approval).",
+  "defaults": {
+    "sample_rate": 44100,
+    "block_size": 64,
+    "tail": 2.0,
+    "bpm": 120,
+    "seed": 0,
+    "tolerances": {
+      "max_abs_error": 1e-3,
+      "rms_diff_db": 0.1,
+      "residual_db": -60.0,
+      "lsd_db": 0.5
+    }
+  },
+  "renders": [
+    { "name": "init_saw__single_note", "preset": "presets/init_saw.vital", "midi": "midi/single_note_c3.mid" },
+    { "name": "init_saw__chords", "preset": "presets/init_saw.vital", "midi": "midi/chord_progression.mid" },
+    { "name": "init_saw__single_note_48k_b128", "preset": "presets/init_saw.vital", "midi": "midi/single_note_c3.mid", "sample_rate": 48000, "block_size": 128 },
+    { "name": "analog_filter_lfo__chords", "preset": "presets/analog_filter_lfo.vital", "midi": "midi/chord_progression.mid" },
+    { "name": "analog_filter_lfo__velocity_96k_b512", "preset": "presets/analog_filter_lfo.vital", "midi": "midi/velocity_ramp.mid", "sample_rate": 96000, "block_size": 512 },
+    { "name": "unison_pad_fx__chords", "preset": "presets/unison_pad_fx.vital", "midi": "midi/chord_progression.mid" },
+    { "name": "line_wavetable_fold__velocity", "preset": "presets/line_wavetable_fold.vital", "midi": "midi/velocity_ramp.mid" },
+    { "name": "mono_legato_glide__legato", "preset": "presets/mono_legato_glide.vital", "midi": "midi/legato_bend_modwheel.mid" }
+  ],
+  "modules": [
+    { "name": "filter_digital_lowpass_saw", "spec": "modules/filter_digital_lowpass_saw.json", "tolerances": { "max_abs_error": 1e-4, "residual_db": -80.0 } },
+    { "name": "filter_ladder_noise", "spec": "modules/filter_ladder_noise.json", "tolerances": { "max_abs_error": 1e-4, "residual_db": -80.0 } },
+    { "name": "distortion_sin_fold", "spec": "modules/distortion_sin_fold.json", "tolerances": { "max_abs_error": 1e-4, "residual_db": -80.0 } },
+    { "name": "envelope_adsr", "spec": "modules/envelope_adsr.json", "tolerances": { "max_abs_error": 1e-5, "residual_db": -100.0 } },
+    { "name": "stereo_delay_impulse", "spec": "modules/stereo_delay_impulse.json", "tolerances": { "max_abs_error": 1e-4, "residual_db": -80.0 } }
+  ]
+}
