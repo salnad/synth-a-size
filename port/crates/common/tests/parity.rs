@@ -8,7 +8,10 @@ use sas_common::{json, scalar, LineGenerator};
 use sas_parity::{assert_artifact, assert_parity, ModuleCase};
 
 fn case_ids(prefix: &str) -> Vec<String> {
-    let ids: Vec<String> = sas_parity::all_case_ids().into_iter().filter(|id| id.starts_with(prefix)).collect();
+    let ids: Vec<String> = sas_parity::all_case_ids()
+        .into_iter()
+        .filter(|id| id.starts_with(prefix))
+        .collect();
     assert!(!ids.is_empty(), "no cases under {prefix}");
     ids
 }
@@ -18,7 +21,9 @@ fn line_generator() {
     for id in case_ids("common/line_generator/") {
         let case = ModuleCase::load(&id);
         let params = case.params();
-        let resolution = params["resolution"].as_u64().unwrap_or(LineGenerator::DEFAULT_RESOLUTION as u64) as usize;
+        let resolution = params["resolution"]
+            .as_u64()
+            .unwrap_or(LineGenerator::DEFAULT_RESOLUTION as u64) as usize;
         let mut generator = LineGenerator::new(resolution);
         let line = json::parse(params["line"].as_str().expect("line text")).expect("line JSON");
         generator.from_json(&line).expect("line loads");
@@ -26,8 +31,13 @@ fn line_generator() {
             generator.set_loop(true);
         }
 
-        assert_parity!(&format!("{id}:buffer"), generator.cubic_interpolation_buffer().to_vec());
-        let values: Vec<f32> = (0..=40).map(|i| generator.value_at_phase(i as f32 / 40.0)).collect();
+        assert_parity!(
+            &format!("{id}:buffer"),
+            generator.cubic_interpolation_buffer().to_vec()
+        );
+        let values: Vec<f32> = (0..=40)
+            .map(|i| generator.value_at_phase(i as f32 / 40.0))
+            .collect();
         assert_parity!(&format!("{id}:value_at_phase"), values);
         assert_artifact!(&id, "saved.json", generator.to_json().dump());
     }
@@ -41,7 +51,10 @@ fn random_generator() {
         let (min, max) = if params["range"].as_str() == Some("pi") {
             (-scalar::PI, scalar::PI)
         } else {
-            (params["min"].as_f64().unwrap_or(-1.0) as f32, params["max"].as_f64().unwrap_or(1.0) as f32)
+            (
+                params["min"].as_f64().unwrap_or(-1.0) as f32,
+                params["max"].as_f64().unwrap_or(1.0) as f32,
+            )
         };
         let mut generator = RandomGenerator::new(min, max, 0);
         generator.seed(params["seed"].as_i64().expect("seed") as i32);
@@ -70,7 +83,11 @@ fn futils_scalar() {
     let id = "common/futils/grid";
     let xs = futils_grid();
     let exp2: Vec<f32> = xs.iter().map(|&x| scalar::exp2(x * 0.1)).collect();
-    let log2: Vec<f32> = xs.iter().filter(|&&x| x != 0.0).map(|&x| scalar::log2(x.abs())).collect();
+    let log2: Vec<f32> = xs
+        .iter()
+        .filter(|&&x| x != 0.0)
+        .map(|&x| scalar::log2(x.abs()))
+        .collect();
     let tanh: Vec<f32> = xs.iter().map(|&x| scalar::tanh(x)).collect();
     assert_parity!(&format!("{id}:exp2"), exp2);
     assert_parity!(&format!("{id}:log2"), log2);
@@ -85,7 +102,9 @@ fn futils_scalar() {
     assert_parity!(&format!("{id}:power_scale"), power_scale);
 
     let buffer = [0.3f32, -0.7, 0.9, 0.1];
-    let catmull: Vec<f32> = (0..=64).map(|i| scalar::catmull_interpolate(&buffer, 0, i as f32 / 64.0)).collect();
+    let catmull: Vec<f32> = (0..=64)
+        .map(|i| scalar::catmull_interpolate(&buffer, 0, i as f32 / 64.0))
+        .collect();
     assert_parity!(&format!("{id}:catmull"), catmull);
 }
 
@@ -94,7 +113,9 @@ fn generated_floats(count: usize) -> json::Value {
     let mut state = 0x2545_F491_4F6C_DD1Du64;
     let mut values = Vec::new();
     for i in 0..count {
-        state = state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         if i % 2 == 0 {
             let exponent = (state >> 52) & 0x7ff;
             if exponent == 0 || exponent == 0x7ff {
