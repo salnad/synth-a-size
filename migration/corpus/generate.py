@@ -322,6 +322,22 @@ LATE_SETTINGS = {
 }
 
 
+SUB_SETTINGS = {
+    "sub_on": 1.0, "sub_level": 0.6, "sub_pan": -0.25, "sub_transpose": -12.0, "sub_tune": 0.1,
+    "filter_1_sub_input": 1.0, "filter_2_sub_input": 1.0, "sub_direct_out": 0.0,
+    "filter_1_osc1_input": 1.0, "filter_2_osc1_input": 0.0,
+    "filter_1_osc2_input": 0.0, "filter_2_osc2_input": 1.0,
+    "filter_1_sample_input": 0.0, "filter_2_sample_input": 0.0,
+}
+
+
+def old_wavetable(name, version):
+    wavetable = line_fold_wavetable()
+    wavetable["name"] = name
+    wavetable["version"] = version
+    return wavetable
+
+
 def bypass_line(name, points, powers, smooth=False):
     flat = []
     for x, y in points:
@@ -430,6 +446,23 @@ PRESET_TESTS = {
             "lfo_8_smooth_mode": 1.0, "modulation_1_amount": 0.5, "modulation_2_amount": 0.25,
         },
         modulations=[mod("lfo_1", "chorus_damping"), mod("lfo_2", "osc_2_spectral_morph_amount")],
+    ),
+    "upgrade_from_0_4_9_sub": state_preset(
+        "0.4.9",
+        dict(LATE_SETTINGS, **SUB_SETTINGS, **{
+            "sub_waveform": 1.0,
+            "wavetables": [old_wavetable("first", "1.0.6"), old_wavetable("second", "1.0.6")],
+            "modulation_1_amount": 0.5, "modulation_2_amount": -0.5,
+        }),
+        modulations=[mod("lfo_1", "sub_level"), mod("env_2", "sub_tune")],
+    ),
+    "upgrade_from_0_4_9_sub_direct": state_preset(
+        "0.4.9",
+        dict(dict(LATE_SETTINGS, **SUB_SETTINGS), **{
+            "sub_waveform": 5.0, "sub_direct_out": 1.0, "sub_transpose_quantize": 1365.0,
+            "modulation_1_amount": 0.3,
+        }),
+        modulations=[mod("macro_control_2", "sub_pan")],
     ),
     "error_newer_version": state_preset("1.1.0", {}),
     "error_missing_sample": state_preset("1.0.6", {}, sample=None),

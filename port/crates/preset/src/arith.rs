@@ -77,22 +77,29 @@ pub(crate) fn fm_remap_points(
             if cfg!(feature = "source-formulas") {
                 let t = i as f32 / last;
                 let old_value = sas_common::scalar::interpolate(min, max, t);
-                (t, 1.0 - (old_value.powf(1.0 / 2.0) - min_target) / new_amount)
+                (
+                    t,
+                    1.0 - (old_value.powf(1.0 / 2.0) - min_target) / new_amount,
+                )
             } else {
                 let t = i as f32 * (1.0 / last);
                 let old_value = t * (max - min) + min;
-                (t, (min_target - old_value.sqrt()) * (1.0 / new_amount) + 1.0)
+                (
+                    t,
+                    (min_target - old_value.sqrt()) * (1.0 / new_amount) + 1.0,
+                )
             }
         })
         .collect()
 }
 
 /// `sub_waveform * 257.0f / 6.0f` (load_save.cpp:713, the 0.5.0 step).
-/// GCC folds the constants into `sub_waveform * (257.0f / 6.0f)`.
+/// GCC turns the division into a multiply by `1.0f / 6.0f` and folds the
+/// constants: `sub_waveform * (257.0f * (1.0f / 6.0f))`.
 pub(crate) fn sub_wave_frame(sub_waveform: f32) -> f32 {
     if cfg!(feature = "source-formulas") {
         sub_waveform * 257.0 / 6.0
     } else {
-        sub_waveform * (257.0f32 / 6.0)
+        sub_waveform * (257.0f32 * (1.0 / 6.0))
     }
 }

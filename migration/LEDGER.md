@@ -2736,8 +2736,9 @@ parked it.
 ## 2026-10-20: M2 parameter registry and preset load/save (`sas-preset`)
 
 Built on `sas-common` (PR #4: nlohmann-exact JSON, JUCE base64, RNG,
-`LineGenerator`, version comparison and PCM helpers), which this branch
-includes until that PR merges.
+`LineGenerator`, version comparison and PCM helpers) and the
+`sas-wavetable` state model (PR #6), which this branch includes until those
+PRs merge.
 
 **Changed**
 
@@ -2748,17 +2749,22 @@ includes until that PR merges.
   whole `updateFromOldVersion` chain, and `PresetState` with
   load/save/init and by-name access (`lookup`, `set_value`,
   `add_modulation`, `remove_modulation`, `to_json_string`). It depends
-  only on `sas-common`.
+  only on `sas-common` and the DSP-free wavetable state model in
+  `sas-wavetable`.
 - `migration/reference/src/preset_main.cpp` (new tool `ref-preset`, added
   to `CMakeLists.txt` and `check_fp_determinism.sh`): dumps the registry,
   engine tables and the state after a load.
 - `migration/scripts/preset_goldens.py` writes
   `migration/corpus/preset_state/` (26 files, 1.7 MB of compact JSON) from
   `ref-preset`. CI's reference job runs it with `--check`.
-- `generate.py` writes 13 authored presets to
-  `migration/corpus/preset_tests/`: four old-version presets that run
-  every upgrade step except 0.5.0, edge cases for controls, metadata, LFO
-  shapes and modulation slots, and five presets the loader must reject.
+- Wavetables are real `sas_wavetable::creator::WavetableCreator` state:
+  `init()` for the defaults, `read_json` on load (applied to the existing
+  creator, like upstream) and `to_json` on save. The 0.5.0 step builds the
+  "Sub" wavetable with `init_predefined_waves()`.
+- `generate.py` writes 15 authored presets to
+  `migration/corpus/preset_tests/`: six old-version presets that together
+  run every upgrade step, edge cases for controls, metadata, LFO shapes
+  and modulation slots, and five presets the loader must reject.
 
 **Measured** (all byte-exact against the fast-math reference)
 
@@ -2767,7 +2773,7 @@ includes until that PR merges.
   legacy parameters are never instantiated or saved), 32 modulation
   sources and 428 modulation destinations.
 - `saveToJson().dump()` after loading equals the reference byte for byte
-  for the init preset, the 5 corpus presets and the 8 loading test
+  for the init preset, the 5 corpus presets and the 10 loading test
   presets. All 5 rejected presets fail in both with the same error class.
 - Second load→save round trip: equal to the reference's for init and all
   corpus presets. Everything except the sample is a fixed point after the
@@ -2780,19 +2786,35 @@ includes until that PR merges.
   and requantizes it (int16 → float → truncate). The port does the same,
   so the sample is not idempotent across round trips, upstream included.
 - The reference build's `-ffast-math` changes the upgrade arithmetic, and
-  saved state must match it exactly, so the port mirrors the generated
-  code. Each case is commented in `upgrade.rs`, and swapping in the
-  source's formulas makes the tests fail:
-  - `pow(x, 2/3)` is computed as `cbrtf(x)²`.
-  - `pow(x, 3/4)` is computed as `sqrt(x)·sqrt(sqrt(x))`.
-  - `pow(x, 1/2)` is computed as `sqrtf`.
-  - `a·l·l` is computed as `(l·l)·a`.
-  - In the 0.4.7 remap, the divisions become reciprocal multiplies.
+  saved state is compared byte for byte, so the port mirrors the code GCC
+  emits (read from the `ref-preset` disassembly). Every mirrored
+  expression is a function in `port/crates/preset/src/arith.rs`. The
+  `source-formulas` Cargo feature switches all of them back to the
+  formulas as written in the source:
+
+  | Port function | Upstream expression (`vital/src/common/load_save.cpp`) | What GCC emits in the x86 reference |
+  |---|---|---|
+  | `pow_two_thirds` | `std::pow(settings[x], 1.0f / 1.5f)`, 0.2.1 envelope times (327-329) | `cbrtf(x)` squared |
+  | `pow_three_quarters` | `std::pow(settings[x], 3.0f / 4.0f)`, 0.2.5 envelope times (358-360) | `s = sqrtf(x); s * sqrtf(s)` |
+  | `adjusted_level` | `sqrtf(adjustment * level * level)`, 0.2.7 levels (382-390) | `sqrtf((level * level) * adjustment)` (reassociated) |
+  | `pow_half` | `std::pow(x, 1.0f / 2.0f)`, 0.4.7 FM amounts and targets (606, 627-628, 652, 673-674) | `sqrtss` |
+  | `fm_remap_points` | `t = i / (kRemapResolution - 1.0f)`, `interpolate(min, max, t)`, `y = 1.0f - (pow(old, 1/2) - min_target) / new_amount`, 0.4.7 remap (636-641, 682-687) | `t = i * (1/31)`, `1/new_amount` hoisted out of the loop, `y = (min_target - sqrtf(old)) * (1/new_amount) + 1` |
+  | `sub_wave_frame` | `sub_waveform * 257.0f / 6.0f`, 0.5.0 step (713) | `sub_waveform * (257.0f * (1.0f / 6.0f))` (folded reciprocal) |
+
+  With `source-formulas` on, 4 of the 15 test presets differ from the
+  reference: `upgrade_from_0_1_0` in 15 values, `upgrade_from_0_4_6_fm` in
+  18 and the two 0.5.0 presets in 1 each. The largest difference is
+  7.8e-7 absolute (up to 96 ulp, on remap-curve points near zero, after the
+  division amplifies it). The init preset, the corpus presets and
+  current-version presets do not depend on any of these expressions. All
+  of them must be re-checked against the arm64 (Apple clang) reference
+  once it exists; the owner is deciding whether state parity stays
+  byte-exact or allows an ulp bound with the source formulas.
 - nlohmann 3.1.2 implicit numeric conversions (`float x = j`) accept
-  booleans. `sas_common::json::Value::to_f32` rejects them, so the preset
-  crate converts with its own helper. `LineGenerator::from_json` (points
-  and powers) still rejects booleans where upstream accepts them; reported
-  to Wavetable Creator.
+  booleans. `sas-common` now does too (PR #4), and the preset crate uses
+  its conversions directly. No preset field is enum-typed (every read in
+  `load_save.cpp` and `Sample::jsonToState` goes into an `int`, `float`,
+  `std::string`, `bool` or `json`), so `Value::to_enum` has no use here.
 - Upstream's 0.4.7 FM remap skips its slot counter on zero amounts
   (`continue` before `index++`) and reads `modulation_N_bipolar` by
   conversion (a missing key fails the load). Both are reproduced and
@@ -2807,8 +2829,6 @@ includes until that PR merges.
 
 **Open / blocked**
 
-- Wavetables are kept as opaque JSON until the wavetable state model lands
-  in `sas-wavetable`. Until then, the tests take the default wavetables
-  from the reference's init state. The 0.5.0 upgrade step (sub oscillator
-  to oscillator 3) returns `Error::Pending` until then.
-- Rebase onto main when PR #4 merges.
+- Rebase onto main when PRs #4 and #6 merge.
+- Owner decision on byte-exact state parity versus an ulp bound (see the
+  table above).
