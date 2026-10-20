@@ -7,6 +7,9 @@
 //!
 //! The transform is JUCE's recursive mixed-radix decimation (radix 4 and 2
 //! for powers of two) with a twiddle table computed in double precision.
+//! The twiddles use `libm`'s `cos`/`sin`: glibc's double versions return
+//! different bits with and without FMA, and after rounding to `float` the
+//! table matches the reference's for every size checked.
 //! Real-only transforms work in place on `2 * size` floats:
 //!
 //! - forward: the input is the first `size` floats; the output is the full
@@ -42,12 +45,12 @@ impl FftConfig {
         if fft_size <= 4 {
             for (i, twiddle) in twiddles.iter_mut().enumerate() {
                 let phase = i as f64 * inverse_factor;
-                *twiddle = Complex::new(phase.cos() as f32, phase.sin() as f32);
+                *twiddle = Complex::new(libm::cos(phase) as f32, libm::sin(phase) as f32);
             }
         } else {
             for (i, twiddle) in twiddles.iter_mut().enumerate().take(fft_size / 4) {
                 let phase = i as f64 * inverse_factor;
-                *twiddle = Complex::new(phase.cos() as f32, phase.sin() as f32);
+                *twiddle = Complex::new(libm::cos(phase) as f32, libm::sin(phase) as f32);
             }
             for i in fft_size / 4..fft_size / 2 {
                 let other = twiddles[i - fft_size / 4];

@@ -880,6 +880,16 @@ the committed parity captures wait for `sas-parity`, PR #3)
   6.3e4), from GCC reassociating the butterflies. None of five
   reassociated butterfly forms tried matched better than the source
   order.
+- Double-precision transcendentals use the pure-Rust `libm` crate (MIT,
+  `=0.2.16`, default features off) instead of glibc. glibc's double
+  `exp`/`sin`/`cos` return different bits with and without FMA (see
+  `decisions/reference-determinism.md`), which would make the port
+  CPU-dependent. Measured against glibc on 6M inputs, `libm` differs in
+  5% of results by 1 ulp as `f64`, but in none after the cast to `f32`
+  that upstream applies. FFT twiddles are identical, and the FFT stays
+  bit-identical to the no-fast-math reference. Float functions (`sinf`,
+  `atan2f`, ...) stay on the system libm, because glibc's float functions
+  do not depend on FMA.
 - A missing `random_seed` in an Audio File Source is drawn from the
   global `RandomGenerator` counter, as upstream does. With the counter at
   the reference's value, the saved seed matches. Authored JSON should

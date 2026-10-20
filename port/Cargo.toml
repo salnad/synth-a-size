@@ -41,6 +41,9 @@ sas-parity = { path = "crates/parity" }
 # Comparison metrics shared with the migration tooling (not a workspace member).
 audio-diff = { path = "../migration/tools/audio-diff" }
 sas-common = { path = "crates/common" }
+# Pure-Rust libm (MIT): deterministic double-precision exp/sin/cos, where
+# glibc's results depend on the CPU's FMA support.
+libm = { version = "=0.2.16", default-features = false }
 # Plugin framework: nice-plug, the maintained community fork of nih-plug
 # (see migration/decisions/plugin-framework.md).
 nice-plug = { version = "=0.4.2", default-features = false, features = ["vst3"] }
