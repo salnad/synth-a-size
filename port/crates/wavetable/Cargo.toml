@@ -11,3 +11,6 @@ publish.workspace = true
 [dependencies]
 sas-common.workspace = true
 libm.workspace = true
+
+[dev-dependencies]
+sas-parity.workspace = true

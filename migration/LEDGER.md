@@ -821,6 +821,7 @@ Harness Builder's `sas-parity` helper.)
   cases (here `common/json/*`) as "no reference outputs", which fails CI's
   determinism and calibration steps. I reported it to the coordinator for
   Harness Builder.
+
 ## 2026-10-20: M4a wavetable state model, FFT and WaveFrame
 
 `sas-wavetable` now depends only on `sas-common` (the unused `sas-dsp-core`
@@ -909,3 +910,56 @@ the committed parity captures wait for `sas-parity`, PR #3)
   fast-math FFT noise (1.2e-7 relative). I'll measure the proxy and
   official-reference metrics on captures before choosing a representation,
   and ask a human rather than change limits.
+
+## 2026-10-20: M4a wavetable creator JSON parity captures
+
+**Added**
+
+- `ref-module` module `wavetable_creator_json`
+  (`migration/reference/src/modules/wavetable/creator_json.cpp`):
+  - `params.creator` (a JSON string) produces texts `saved.json`
+    (`jsonToState` → `stateToJson().dump()`) and `upgraded.json`
+    (`updateJson(input).dump()`), both upstream's own serialization.
+  - `params.preset` init/predefined produces array `keyframe_waves` (the
+    keyframes' time-domain samples, compared with tolerances).
+- `wave_recipes.h` and `port/crates/wavetable/tests/support/mod.rs`
+  expand `{"$wave": recipe}` objects (saw, square, triangle, mix; f32 or
+  PCM) into base64 buffers. The two sides produce identical bits (integer
+  phase arithmetic, single float operations, power-of-two slopes), so case
+  files stay small.
+- `migration/corpus/modules/wavetable/creator_json.json` has 14 cases:
+  - every component type;
+  - Audio File Source defaults;
+  - an empty table;
+  - a table with no version (all upgrades);
+  - the 0.3.2, 0.3.6 (float audio → PCM), 0.3.8 (PCM wave data → float)
+    and 0.7.6 (old line points) upgrade chains;
+  - a line shape as a wavetable;
+  - float positions and settings;
+  - boolean numbers;
+  - an Audio File Source with explicit styles;
+  - `init` and predefined keyframes.
+
+  Parity test: `port/crates/wavetable/tests/creator_json_parity.rs`.
+
+**Measured against the official reference:** all 24 JSON artifacts are
+byte-identical. `keyframe_waves` is exact for both presets; against the
+no-fast-math build, predefined differs by ≤ 1.8e-7, within the default
+limits.
+
+**Pending owner decision: byte-exact vs bounded JSON.** The authored
+inputs are in the repo but not loaded; re-enable each by moving its case
+into the live file and writing hashes:
+
+| Case | Where | Why it is pending |
+|---|---|---|
+| `wavetable/creator_json/preset_init_saved_json` | `modules/wavetable/pending/creator_json.json` | The saw keyframe is computed with a reciprocal under fast-math (mirrored in the port); the no-fast-math build saves different `wave_data` bits, so calibration cannot pass |
+| `wavetable/creator_json/preset_predefined_saved_json` | same | The saturated-sine `tanh` order (mirrored); same calibration conflict |
+| `common/json/negative_zero` | `modules/common/pending/json.json` | `-0.0` prints as `0.0` in the shipped build and as `-0.0` in the no-fast-math build |
+| Ill-conditioned render morphs (frequency interpolation between disjoint spectra, folding at ±1, frequency-interpolated audio fades) | not authored yet; measurements in the M4a rendering entry | Depend on FFT rounding noise; −27 to −62 dB against the official build |
+
+- A missing `random_seed` is drawn from the global seed counter, so the
+  0.3.6 case sets one explicitly. The counter behaviour stays covered by
+  unit tests.
+- The JSON-only cases also wait on the harness fix for text-only modules
+  in `run_corpus.py compare`.

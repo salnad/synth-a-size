@@ -574,6 +574,7 @@ version = "0.0.1"
 dependencies = [
  "libm",
  "sas-common",
+ "sas-parity",
 ]
 
 [[package]]
