@@ -587,3 +587,15 @@ Harness Builder's `sas-parity` helper.)
   The cause is fast-math reassociation of the phase-to-index arithmetic,
   so one interpolation lands on the other side of a breakpoint. It is 0
   against the no-fast-math build.
+- `-0.0` is not part of any captured JSON text. Upstream's fast-math
+  build prints it as `0.0` (folded `signbit`) and the no-fast-math build
+  as `-0.0`, so a text artifact containing it cannot pass the calibration
+  job. The port prints `0.0` like the shipped build; a unit test covers it.
+- Expected hashes come from CI run 39514821022's `reference-renders`
+  artifact. Local hashes are identical for `futils`, `line_generator` and
+  `random`. `json` was re-written locally after the `-0.0` change, and the
+  next CI run confirms it.
+- Pending a harness fix: `run_corpus.py compare` reports text-only module
+  cases (here `common/json/*`) as "no reference outputs", which fails CI's
+  determinism and calibration steps. I reported it to the coordinator for
+  Harness Builder.
