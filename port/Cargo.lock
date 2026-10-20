@@ -469,7 +469,9 @@ dependencies = [
 name = "sas-dsp-core"
 version = "0.0.1"
 dependencies = [
+ "sas-parity",
  "sas-simd",
+ "serde_json",
 ]
 
 [[package]]

@@ -1,0 +1,160 @@
+{
+  "description": "Value, cr::Value, SmoothValue, cr::SmoothValue, PortamentoSlope and PeakMeter. Ports: port/crates/dsp-core.",
+  "num_samples": 4096,
+  "cases": {
+    "value_set_trigger": {
+      "module": "value",
+      "inputs": {
+        "set": {
+          "trigger": [
+            {
+              "sample": 700,
+              "value": 2.5,
+              "voices": "0"
+            },
+            {
+              "sample": 2000,
+              "value": -1.0,
+              "voices": "1"
+            }
+          ]
+        }
+      },
+      "params": {
+        "value": 0.25
+      }
+    },
+    "cr_value_set_trigger": {
+      "module": "cr_value",
+      "inputs": {
+        "set": {
+          "trigger": [
+            {
+              "sample": 700,
+              "value": 2.5,
+              "voices": "0"
+            },
+            {
+              "sample": 2000,
+              "value": -1.0,
+              "voices": "1"
+            }
+          ]
+        }
+      },
+      "params": {
+        "value": 0.25
+      }
+    },
+    "smooth_value_rise": {
+      "module": "smooth_value",
+      "inputs": {},
+      "params": {
+        "initial": 0.0,
+        "target": 1.0
+      }
+    },
+    "smooth_value_fall_48k": {
+      "module": "smooth_value",
+      "inputs": {},
+      "params": {
+        "initial": 2.0,
+        "target": -0.5
+      },
+      "sample_rate": 48000,
+      "block_size": 128
+    },
+    "cr_smooth_value_rise": {
+      "module": "cr_smooth_value",
+      "inputs": {},
+      "params": {
+        "initial": 0.0,
+        "target": 1.0
+      }
+    },
+    "portamento_slope_basic": {
+      "module": "portamento_slope",
+      "inputs": {
+        "target": 72.0,
+        "source": 60.0,
+        "force": 0.0,
+        "scale": 0.0,
+        "run_seconds": 0.05,
+        "slope_power": 0.0,
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on",
+              "voices": "all"
+            }
+          ]
+        },
+        "num_notes_pressed": 2.0
+      }
+    },
+    "portamento_slope_scaled_power": {
+      "module": "portamento_slope",
+      "inputs": {
+        "target": {
+          "signal": "ramp",
+          "from": 72.0,
+          "to": 48.0
+        },
+        "source": 60.0,
+        "force": 1.0,
+        "scale": 1.0,
+        "run_seconds": 0.08,
+        "slope_power": -3.0,
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on",
+              "voices": "all"
+            },
+            {
+              "sample": 2048,
+              "value": "voice_on",
+              "voices": "1"
+            }
+          ]
+        },
+        "num_notes_pressed": 1.0
+      }
+    },
+    "portamento_slope_bypass": {
+      "module": "portamento_slope",
+      "inputs": {
+        "target": {
+          "signal": "ramp",
+          "from": 50.0,
+          "to": 70.0
+        },
+        "source": 60.0,
+        "run_seconds": 0.0
+      }
+    },
+    "peak_meter_noise": {
+      "module": "peak_meter",
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.8,
+          "seed": 1
+        }
+      }
+    },
+    "peak_meter_burst": {
+      "module": "peak_meter",
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 300,
+          "amp": 0.9
+        }
+      }
+    }
+  }
+}

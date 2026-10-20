@@ -1,0 +1,108 @@
+{
+  "description": "ProcessorRouter graphs: ModulationSum, a control-rate feedback cycle, and an audio chain added in reverse order. Ports: port/crates/dsp-core.",
+  "num_samples": 4096,
+  "cases": {
+    "modulation_sum": {
+      "module": "graph_modulation_sum",
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 1000,
+              "value": "voice_on",
+              "voices": "0"
+            },
+            {
+              "sample": 2500,
+              "value": "voice_on",
+              "voices": "all"
+            }
+          ]
+        },
+        "control": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 1.0
+        },
+        "audio": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 1
+        }
+      }
+    },
+    "modulation_sum_b128": {
+      "module": "graph_modulation_sum",
+      "inputs": {
+        "control": {
+          "signal": "sine",
+          "freq_hz": 3,
+          "amp": 0.8,
+          "rate": "control"
+        },
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 220,
+          "amp": 0.5
+        }
+      },
+      "block_size": 128
+    },
+    "feedback_cycle": {
+      "module": "graph_feedback_cycle",
+      "inputs": {
+        "in": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      },
+      "params": {
+        "gain": 0.5
+      }
+    },
+    "feedback_cycle_unstable_gain": {
+      "module": "graph_feedback_cycle",
+      "inputs": {
+        "in": {
+          "signal": "sine",
+          "freq_hz": 2,
+          "amp": 0.3,
+          "rate": "control"
+        }
+      },
+      "params": {
+        "gain": -0.9
+      }
+    },
+    "audio_chain": {
+      "module": "graph_audio_chain",
+      "inputs": {
+        "in": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 1
+        }
+      },
+      "params": {
+        "scale": 0.5
+      }
+    },
+    "audio_chain_b32": {
+      "module": "graph_audio_chain",
+      "inputs": {
+        "in": {
+          "signal": "sine",
+          "freq_hz": 330,
+          "amp": 0.7
+        }
+      },
+      "params": {
+        "scale": -1.5
+      },
+      "block_size": 32
+    }
+  }
+}

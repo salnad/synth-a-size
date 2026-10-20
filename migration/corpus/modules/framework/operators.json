@@ -1,0 +1,775 @@
+{
+  "description": "Framework operators (operators.h), one ref-module per operator. Ports: port/crates/dsp-core.",
+  "num_samples": 4096,
+  "cases": {
+    "clamp": {
+      "module": "op_clamp",
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 220,
+          "amp": 2.0
+        }
+      },
+      "params": {
+        "min": -0.5,
+        "max": 0.8
+      }
+    },
+    "negate": {
+      "module": "op_negate",
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 1
+        }
+      }
+    },
+    "inverse": {
+      "module": "op_inverse",
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.5,
+          "seed": 1,
+          "offset": 2.0
+        }
+      }
+    },
+    "linear_scale": {
+      "module": "op_linear_scale",
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 1
+        }
+      },
+      "params": {
+        "scale": 0.37
+      }
+    },
+    "square": {
+      "module": "op_square",
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 2.0,
+          "seed": 1
+        }
+      }
+    },
+    "add": {
+      "module": "op_add",
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 2
+        }
+      }
+    },
+    "subtract": {
+      "module": "op_subtract",
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 2
+        }
+      }
+    },
+    "multiply": {
+      "module": "op_multiply",
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 2.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 2.0,
+          "seed": 2
+        }
+      }
+    },
+    "variable_add": {
+      "module": "op_variable_add",
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 1
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 2
+        },
+        "c": {
+          "signal": "sine",
+          "freq_hz": 110,
+          "amp": 1.0
+        }
+      }
+    },
+    "smooth_multiply": {
+      "module": "op_smooth_multiply",
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 1
+        },
+        "multiply": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 1000,
+              "value": "voice_on",
+              "voices": "0"
+            },
+            {
+              "sample": 2500,
+              "value": "voice_on",
+              "voices": "all"
+            }
+          ]
+        }
+      }
+    },
+    "smooth_volume": {
+      "module": "op_smooth_volume",
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 1
+        },
+        "db": {
+          "signal": "ramp",
+          "from": -90.0,
+          "to": 12.0
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 1000,
+              "value": "voice_on",
+              "voices": "0"
+            },
+            {
+              "sample": 2500,
+              "value": "voice_on",
+              "voices": "all"
+            }
+          ]
+        }
+      }
+    },
+    "smooth_volume_max_6": {
+      "module": "op_smooth_volume",
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 0.5,
+          "seed": 1
+        },
+        "db": {
+          "signal": "ramp",
+          "from": -20.0,
+          "to": 20.0
+        }
+      },
+      "params": {
+        "max_db": 6.0
+      }
+    },
+    "interpolate_audio": {
+      "module": "op_interpolate",
+      "inputs": {
+        "from": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 1
+        },
+        "to": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 2
+        },
+        "fractional": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    },
+    "interpolate_control": {
+      "module": "op_interpolate",
+      "inputs": {
+        "from": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 1
+        },
+        "to": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 2
+        },
+        "fractional": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0,
+          "rate": "control"
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 1000,
+              "value": "voice_on",
+              "voices": "0"
+            },
+            {
+              "sample": 2500,
+              "value": "voice_on",
+              "voices": "all"
+            }
+          ]
+        }
+      }
+    },
+    "bilinear_interpolate": {
+      "module": "op_bilinear_interpolate",
+      "inputs": {
+        "top_left": {
+          "value": [
+            0.0,
+            0.1,
+            0.2,
+            0.3
+          ]
+        },
+        "top_right": 1.0,
+        "bottom_left": -1.0,
+        "bottom_right": {
+          "value": [
+            0.5,
+            -0.5,
+            0.25,
+            -0.25
+          ]
+        },
+        "x": {
+          "signal": "sine",
+          "freq_hz": 50,
+          "amp": 1.5,
+          "offset": 0.5
+        },
+        "y": {
+          "signal": "ramp",
+          "from": -1.2,
+          "to": 2.2
+        }
+      }
+    },
+    "sample_and_hold": {
+      "module": "op_sample_and_hold",
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 30,
+          "amp": 0.9
+        }
+      }
+    },
+    "stereo_encoder_rotate": {
+      "module": "op_stereo_encoder",
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 1
+        },
+        "encoding": {
+          "signal": "ramp",
+          "from": -0.2,
+          "to": 1.2
+        },
+        "mode": 1.0
+      }
+    },
+    "stereo_encoder_center": {
+      "module": "op_stereo_encoder",
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 1
+        },
+        "encoding": {
+          "signal": "ramp",
+          "from": -0.2,
+          "to": 1.2
+        },
+        "mode": 0.0
+      }
+    },
+    "stereo_decoder_rotate": {
+      "module": "op_stereo_encoder",
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 1
+        },
+        "encoding": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "mode": 1.0
+      },
+      "params": {
+        "decoding": 1
+      }
+    },
+    "tempo_chooser_sync_0": {
+      "module": "op_tempo_chooser",
+      "inputs": {
+        "frequency": {
+          "signal": "ramp",
+          "from": 0.5,
+          "to": 8.0
+        },
+        "tempo_index": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 13.0
+        },
+        "beats_per_second": 2.25,
+        "sync": 0.0,
+        "midi": {
+          "signal": "ramp",
+          "from": 12.0,
+          "to": 60.0
+        },
+        "keytrack_transpose": -12.0,
+        "keytrack_tune": 0.3
+      }
+    },
+    "tempo_chooser_sync_1": {
+      "module": "op_tempo_chooser",
+      "inputs": {
+        "frequency": {
+          "signal": "ramp",
+          "from": 0.5,
+          "to": 8.0
+        },
+        "tempo_index": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 13.0
+        },
+        "beats_per_second": 2.25,
+        "sync": 1.0,
+        "midi": {
+          "signal": "ramp",
+          "from": 12.0,
+          "to": 60.0
+        },
+        "keytrack_transpose": -12.0,
+        "keytrack_tune": 0.3
+      }
+    },
+    "tempo_chooser_sync_2": {
+      "module": "op_tempo_chooser",
+      "inputs": {
+        "frequency": {
+          "signal": "ramp",
+          "from": 0.5,
+          "to": 8.0
+        },
+        "tempo_index": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 13.0
+        },
+        "beats_per_second": 2.25,
+        "sync": 2.0,
+        "midi": {
+          "signal": "ramp",
+          "from": 12.0,
+          "to": 60.0
+        },
+        "keytrack_transpose": -12.0,
+        "keytrack_tune": 0.3
+      }
+    },
+    "tempo_chooser_sync_3": {
+      "module": "op_tempo_chooser",
+      "inputs": {
+        "frequency": {
+          "signal": "ramp",
+          "from": 0.5,
+          "to": 8.0
+        },
+        "tempo_index": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 13.0
+        },
+        "beats_per_second": 2.25,
+        "sync": 3.0,
+        "midi": {
+          "signal": "ramp",
+          "from": 12.0,
+          "to": 60.0
+        },
+        "keytrack_transpose": -12.0,
+        "keytrack_tune": 0.3
+      }
+    },
+    "tempo_chooser_sync_4": {
+      "module": "op_tempo_chooser",
+      "inputs": {
+        "frequency": {
+          "signal": "ramp",
+          "from": 0.5,
+          "to": 8.0
+        },
+        "tempo_index": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 13.0
+        },
+        "beats_per_second": 2.25,
+        "sync": 4.0,
+        "midi": {
+          "signal": "ramp",
+          "from": 12.0,
+          "to": 60.0
+        },
+        "keytrack_transpose": -12.0,
+        "keytrack_tune": 0.3
+      }
+    },
+    "cr_clamp": {
+      "module": "op_cr_clamp",
+      "inputs": {
+        "in": {
+          "signal": "ramp",
+          "from": -2.0,
+          "to": 2.0
+        }
+      },
+      "params": {
+        "min": -0.5,
+        "max": 1.5
+      }
+    },
+    "cr_lower_bound": {
+      "module": "op_cr_lower_bound",
+      "inputs": {
+        "in": {
+          "signal": "ramp",
+          "from": -2.0,
+          "to": 2.0
+        }
+      },
+      "params": {
+        "min": 0.25
+      }
+    },
+    "cr_upper_bound": {
+      "module": "op_cr_upper_bound",
+      "inputs": {
+        "in": {
+          "signal": "ramp",
+          "from": -2.0,
+          "to": 2.0
+        }
+      },
+      "params": {
+        "max": 0.25
+      }
+    },
+    "cr_square": {
+      "module": "op_cr_square",
+      "inputs": {
+        "in": {
+          "signal": "ramp",
+          "from": -2.0,
+          "to": 2.0
+        }
+      }
+    },
+    "cr_cube": {
+      "module": "op_cr_cube",
+      "inputs": {
+        "in": {
+          "signal": "ramp",
+          "from": -2.0,
+          "to": 2.0
+        }
+      }
+    },
+    "cr_quart": {
+      "module": "op_cr_quart",
+      "inputs": {
+        "in": {
+          "signal": "ramp",
+          "from": -2.0,
+          "to": 2.0
+        }
+      }
+    },
+    "cr_quadratic": {
+      "module": "op_cr_quadratic",
+      "inputs": {
+        "in": {
+          "signal": "ramp",
+          "from": -2.0,
+          "to": 2.0
+        }
+      },
+      "params": {
+        "offset": 0.125
+      }
+    },
+    "cr_cubic": {
+      "module": "op_cr_cubic",
+      "inputs": {
+        "in": {
+          "signal": "ramp",
+          "from": -2.0,
+          "to": 2.0
+        }
+      },
+      "params": {
+        "offset": 0.125
+      }
+    },
+    "cr_quartic": {
+      "module": "op_cr_quartic",
+      "inputs": {
+        "in": {
+          "signal": "ramp",
+          "from": -2.0,
+          "to": 2.0
+        }
+      },
+      "params": {
+        "offset": 0.125
+      }
+    },
+    "cr_root": {
+      "module": "op_cr_root",
+      "inputs": {
+        "in": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 9.0
+        }
+      },
+      "params": {
+        "offset": -0.5
+      }
+    },
+    "cr_exponential_scale": {
+      "module": "op_cr_exponential_scale",
+      "inputs": {
+        "in": {
+          "signal": "ramp",
+          "from": -3.0,
+          "to": 3.0
+        }
+      },
+      "params": {
+        "min": -2.0,
+        "max": 2.5,
+        "scale": 2.0
+      }
+    },
+    "cr_frequency_to_phase": {
+      "module": "op_cr_frequency_to_phase",
+      "inputs": {
+        "in": {
+          "signal": "ramp",
+          "from": 20.0,
+          "to": 2000.0
+        }
+      }
+    },
+    "cr_frequency_to_samples": {
+      "module": "op_cr_frequency_to_samples",
+      "inputs": {
+        "in": {
+          "signal": "ramp",
+          "from": 200.0,
+          "to": 2000.0
+        }
+      }
+    },
+    "cr_time_to_samples": {
+      "module": "op_cr_time_to_samples",
+      "inputs": {
+        "in": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 0.01
+        }
+      }
+    },
+    "cr_magnitude_scale": {
+      "module": "op_cr_magnitude_scale",
+      "inputs": {
+        "in": {
+          "signal": "ramp",
+          "from": -40.0,
+          "to": 10.0
+        }
+      }
+    },
+    "cr_midi_scale": {
+      "module": "op_cr_midi_scale",
+      "inputs": {
+        "in": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 4800.0
+        }
+      }
+    },
+    "cr_add": {
+      "module": "op_cr_add",
+      "inputs": {
+        "a": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 1.0
+        },
+        "b": {
+          "signal": "sine",
+          "freq_hz": 5,
+          "amp": 0.5,
+          "rate": "control"
+        }
+      }
+    },
+    "cr_multiply": {
+      "module": "op_cr_multiply",
+      "inputs": {
+        "a": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 1.0
+        },
+        "b": {
+          "signal": "sine",
+          "freq_hz": 5,
+          "amp": 0.5,
+          "rate": "control"
+        }
+      }
+    },
+    "cr_interpolate": {
+      "module": "op_cr_interpolate",
+      "inputs": {
+        "from": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 1.0
+        },
+        "to": 0.75,
+        "fractional": {
+          "signal": "ramp",
+          "from": -0.5,
+          "to": 1.5
+        }
+      }
+    },
+    "cr_variable_add": {
+      "module": "op_cr_variable_add",
+      "inputs": {
+        "a": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 1.0
+        },
+        "b": 0.5,
+        "c": {
+          "signal": "sine",
+          "freq_hz": 5,
+          "amp": 0.5,
+          "rate": "control"
+        }
+      }
+    },
+    "cr_bilinear_interpolate": {
+      "module": "op_cr_bilinear_interpolate",
+      "inputs": {
+        "top_left": {
+          "value": [
+            0.0,
+            0.1,
+            0.2,
+            0.3
+          ]
+        },
+        "top_right": 1.0,
+        "bottom_left": -1.0,
+        "bottom_right": 0.5,
+        "x": {
+          "signal": "ramp",
+          "from": -0.5,
+          "to": 1.5
+        },
+        "y": {
+          "signal": "ramp",
+          "from": 1.5,
+          "to": -0.5
+        }
+      }
+    }
+  }
+}

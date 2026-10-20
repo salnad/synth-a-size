@@ -478,3 +478,81 @@ with the coordinator.
   are rejected at load in both `run_corpus.py` (`check_name`) and
   `sas-parity` (`cases::check_name`). Both test suites test this.
 - All existing case files comply: 6 module cases and 8 render cases.
+
+## 2026-10-20: M1 PR 2, `sas-dsp-core` (processor graph, operators, utilities)
+
+**Changed**
+
+- `port/crates/dsp-core` ports:
+  - `framework/processor`, `processor_router`, `feedback`, `value`,
+    `operators`, `synth_module` and `circular_queue`;
+  - `lookups/lookup_table.h` and `lookups/memory.h`;
+  - `utilities/*` (smooth values, value switch, portamento slope, legato
+    filter, peak meter);
+  - `filters/one_pole_filter.h`;
+  - `ScopedNoDenormals` (JUCE's flush-to-zero guard; the engine must hold it
+    around processing as upstream does);
+  - `testing::run_module`, a step-for-step port of `ref-module`'s driving
+    sequence for module threads' parity tests.
+- Design (crate docs): a `Processor` node held as `Rc` with a
+  `ProcessorImpl` kernel. Clones share state, inputs and outputs and copy
+  the kernel, as upstream's copy constructor does. Buffers are
+  `Rc<[Cell<PolyFloat>]>`, so upstream's buffer redirection and aliasing
+  are safe. Routing tables, module data and `VoiceHandler`'s router
+  overrides (`RouterHooks`) live on the node, so graph edits never re-enter
+  a running kernel.
+- Upstream behaviours kept deliberately (all verified against reference
+  captures):
+  - `reorder` bumps the router's own change counter, so the router it runs
+    on keeps its insertion order; only copies rebuild from the reordered
+    global order.
+  - Cycles always get a control-rate `cr::Feedback`.
+  - `Interpolate` is stateless (shared between voices) despite `fraction_`.
+  - `getDependencies` walks owned inputs.
+  - The scalar float→int casts at `ValueSwitch::setSource` and `PeakMeter`
+    go through `sas_simd::conversions` (A2/A3; in range in practice).
+- Not yet here: `utils::RandomGenerator`, waiting for `sas-common` (#4).
+  The `synth_constants` values the framework needs are copied in
+  `dsp-core::constants`; the parameter registry is reached through
+  `synth_module::set_parameter_lookup`.
+
+**Reference parity (the gate)**
+
+New ref-modules in `migration/reference/src/modules/framework/`
+(`operators.cpp`, `values.cpp`, `graph.cpp`, `lookups.cpp`) cover:
+- every operator and `cr::` operator;
+- `Value`/`cr::Value` triggers, `SmoothValue`, `cr::SmoothValue`,
+  `PortamentoSlope` and `PeakMeter`;
+- three `ProcessorRouter` graphs: `ModulationSum` with control and audio
+  sources, a control-rate feedback cycle, and an audio chain added in
+  reverse order;
+- probes for `Memory`, `StereoMemory`, `OneDimLookup` and `OnePoleFilter`
+  (plain and `futils::tanh`).
+
+Cases are in `migration/corpus/modules/framework/*.json`.
+`port/crates/dsp-core/tests/parity.rs` mirrors the module table and runs
+under `module_defaults`. Against the official pinned fast-math x86_64
+reference:
+
+- 73/73 outputs (71 cases) pass; 64/73 are bit-identical.
+- Worst `max_abs_error` 2.3e-5 (`operators/tempo_chooser_sync_4`, the
+  keytrack frequency path through libm `powf`), 4.4× under the limit.
+  Worst `residual_db` −130.3 dB (`lookups/lookup_sin`), 50 dB under the
+  limit.
+- The non-identical outputs are fast-math reassociation in the reference:
+  Catmull matrices in `Memory`/`OneDimLookup`, `futils::tanh` saturation,
+  `powf`/`logf` maps. `values/peak_meter_burst:memory_peak` differs only in
+  16 signed zeros (`-fno-signed-zeros`), with zero error.
+- The no-fast-math proxy passes all 73 under the tolerances (calibration
+  job).
+- Case design note: the keytrack case was first written with notes up to
+  72, giving frequencies around 530 Hz. There the fast-math reference's own
+  ULP noise (2.1e-4) exceeds the absolute 1e-4 gate, and the proxy would
+  have failed it too. The case now spans notes 0–48 (frequencies up to
+  about 130 Hz). Tolerances unchanged.
+
+**Open / next**
+
+- `RandomGenerator` once `sas-common` merges.
+- arm64 parity for these cases runs in the macOS arm64 job once it has a
+  `cargo test` step (ARM Reference).

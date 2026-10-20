@@ -10,3 +10,7 @@ publish.workspace = true
 
 [dependencies]
 sas-simd.workspace = true
+
+[dev-dependencies]
+sas-parity.workspace = true
+serde_json = "1"
