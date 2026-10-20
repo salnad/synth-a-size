@@ -85,6 +85,8 @@ jobs:
         run: cargo build --release --locked --manifest-path migration/tools/audio-diff/Cargo.toml
       - name: Repeat render is bit-identical
         run: python3 migration/scripts/run_corpus.py compare build/platform/pinned build/platform/pinned-again --exact
+      - name: Hashes match the committed macOS arm64 identity
+        run: python3 migration/scripts/run_corpus.py hashes build/platform/pinned --check --require-known-identity
       - name: Render attribution variants
         run: python3 migration/scripts/arm_attribution.py render --ref-render migration/reference/build/ref-render --out build/platform/attribution
       - name: Variant - JUCE FFT via Accelerate/vDSP (upstream Mac default)
@@ -104,8 +106,20 @@ jobs:
             --ref-render build/variant-proxy/ref-render --ref-module build/variant-proxy/ref-module
       - name: Tolerances are achievable on macOS arm64 (proxy must pass)
         run: python3 migration/scripts/run_corpus.py compare build/platform/pinned build/platform/proxy
-      - name: Port workspace builds on macOS arm64 (incl. the nice-plug plugin)
-        run: cargo build --workspace --locked --manifest-path port/Cargo.toml
+      - name: Rust parity tests on arm64 against the macOS arm64 captures (NEON path)
+        env:
+          SAS_PARITY_CAPTURES: build/platform/pinned
+          SAS_PARITY_NO_BUILD: "1"
+          SAS_PARITY_FAILURES: build/parity-failures
+        run: cargo test --workspace --locked --manifest-path port/Cargo.toml
+      - name: Upload parity failures
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: parity-failures-arm64-macos
+          path: build/parity-failures/
+          if-no-files-found: ignore
+          retention-days: 14
       - uses: actions/upload-artifact@v7
         if: always()
         with:
