@@ -116,9 +116,15 @@ must always be compared at the same sample rate and block size.
   reproduce the mt19937 stream, the distribution's float conversion and
   the seed order. Otherwise those cases need statistical comparison
   (PLAN.md, M3/M4).
-- Bit-exactness is only guaranteed for one binary. Another compiler,
-  other flags or another CPU can change low-order bits (`-ffast-math`).
-  Compare across builds with `audio-diff` tolerances.
+- Bit-exactness holds only for the same binary on the same machine. The
+  same compiler version and flags on a different x86_64 CPU (local Xeon
+  vs a GitHub runner, both Ubuntu 24.04 with GCC 13.3) gave different
+  bits. Most cases were within −120 dB, but `unison_pad_fx__chords`
+  differed by up to 3.0e-3 (−69 dB residual). The likely cause is
+  CPU-dependent libm dispatch; it has not been investigated further.
+  Always render the reference on the machine that runs the comparison,
+  as CI does on every run, and never commit golden WAVs. Compare across
+  builds or machines with `audio-diff` tolerances.
 
 ### Metadata (`<out>.wav.json`)
 

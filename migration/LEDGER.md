@@ -65,8 +65,56 @@ recorded here (see AGENTS.md, rule 6).
   per-signal range) rather than per-bin. Per-bin LSD on sparse spectra
   scored a 6 dB gain change as 1.7 dB.
 
+**Measured after the first CI run: how much the reference moves by itself**
+
+Two experiments show how much float noise alone changes each case,
+without any change to the algorithm:
+
+- *Cross-machine*: the same build recipe and compiler (GCC 13.3, Ubuntu
+  24.04) on the GitHub runner vs a local AVX-512 Xeon. Renders are
+  deterministic on each machine but not identical across them.
+- *No fast-math*: a local `REF_FAST_MATH=OFF` build vs the default build.
+  This is the closest proxy for a faithful port that rounds differently.
+
+| Case | Cross-machine max abs / residual | No fast-math max abs / residual / LSD |
+|---|---|---|
+| `init_saw__single_note` | 7e-9 / −188 dB | 1e-7 / −136 dB / 0.000 |
+| `init_saw__chords` | 1e-7 / −169 dB | **3.1e-3** / −67 dB / 0.007 |
+| `init_saw__single_note_48k_b128` | 3e-9 / −196 dB | **2.7e-3** / −61 dB / 0.010 |
+| `analog_filter_lfo__chords` | 5e-7 / −127 dB | 2.4e-4 / −80 dB / 0.001 |
+| `analog_filter_lfo__velocity_96k_b512` | 3e-7 / −126 dB | 4.1e-5 / −84 dB / 0.001 |
+| `unison_pad_fx__chords` | **3.0e-3** / −69 dB | **3.1e-3** / −61 dB / 0.045 |
+| `line_wavetable_fold__velocity` | 2e-7 / −139 dB | 1.8e-4 / −86 dB / 0.001 |
+| `mono_legato_glide__legato` | 3e-6 / −121 dB | **2.3e-3** / −66 dB / 0.002 |
+| module `stereo_delay_impulse` | 1e-10 / −172 dB | **3.8e-4 / −63 dB** (case limits 1e-4 / −80) |
+| other module cases | ≤ 8e-6 / ≤ −105 dB | ≤ 1.1e-5 / ≤ −104 dB |
+
+Bold values break the current `cases.json` limits. `rms_diff_db` was
+≤ 0.0001 dB everywhere, and LSD stayed ≤ 0.045 dB against a 0.5 limit.
+
+**Open decision for a human: calibrate the sample-level tolerances
+before M1 relies on them.** By the rules, the limits in `cases.json` are
+unchanged. But a faithful but not bit-exact port is likely to miss the
+default `max_abs_error` (1e-3) on 4 of 8 render cases, to sit right at
+the `residual_db` (−60 dB) limit on two, and to miss the
+`stereo_delay_impulse` module limits. The phase-blind metrics have a lot
+of headroom. Options:
+
+1. Keep the limits, and treat any miss as a numerics bug to remove
+   (strictest; may force porting libstdc++/glibc rounding behaviour).
+2. Recommended: set full-patch defaults from measured float noise with a
+   margin: drop the default `max_abs_error`, use `residual_db` −50, and
+   tighten `lsd_db` to 0.25 and `rms_diff_db` to 0.05. Give
+   `stereo_delay_impulse` `residual_db` −55 with no `max_abs_error`.
+   Keep the other module limits.
+3. Per-case limits from the table above, each with 6 dB of margin over
+   that case's no-fast-math residual (e.g. −61 dB measured → −55 dB
+   limit).
+
 **Open / next**
 
+- Decide the tolerance calibration above before M1 parity tests start
+  depending on `cases.json`.
 - M1: `simd` and `dsp-core`. Add `ref-module` entries for operator
   processors first.
 - Not yet verified: building the reference on macOS (not needed for

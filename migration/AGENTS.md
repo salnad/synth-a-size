@@ -92,8 +92,12 @@ the work log in [LEDGER.md](LEDGER.md), and the upstream pin in
 
 - The reference is built with `-O3 -ffast-math` like upstream release
   builds, so bit-exact parity with Rust (no fast-math) is not expected.
-  Tolerances cover this. Record a `REF_FAST_MATH=OFF` comparison when it
-  helps to tell fast-math noise apart from real bugs.
+  Record a `REF_FAST_MATH=OFF` comparison when it helps to tell
+  float-rounding noise apart from real bugs. The ledger (2026-10-20) has
+  per-case numbers for how far such noise alone moves each corpus case.
+- Reference output is bit-exact only on the machine that produced it.
+  Generate reference renders on the same machine as the port renders
+  you compare them with (CI does this on every run).
 - Engine randomness is a `std::mt19937` stream through libstdc++'s
   `uniform_real_distribution<float>`, seeded from a global counter in
   construction order. Exact parity for random features needs an exact
