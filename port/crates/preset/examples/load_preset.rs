@@ -10,10 +10,7 @@ fn main() {
     let path = std::env::args()
         .nth(1)
         .expect("usage: load_preset <preset.vital>");
-    let mut state = PresetState::new(&InitContent {
-        wavetables: Vec::new(),
-        sample_seed: 0,
-    });
+    let mut state = PresetState::new(&InitContent { sample_seed: 0 });
     match state.load_file(std::path::Path::new(&path)) {
         Ok(()) => println!("{}", state.to_json_string()),
         Err(error) => {
