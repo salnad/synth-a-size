@@ -133,6 +133,25 @@ class ToleranceRules(unittest.TestCase):
                                         "tolerances": {"residual_db": -70}}}}}, MODULE_DEFAULTS, ledger)
         self.assertIn("does not name the case", str(raised.exception))
 
+    # Reviewer nit: "a.b" or "a:x" would contain an approval for "a" across a
+    # token boundary, so names are restricted at load.
+    def test_names_restricted_to_id_characters(self):
+        for name in ["a.b", "a:x", "a b", "a/b", "", "\u00e4"]:
+            self.assertCaseError("must match [A-Za-z0-9_-]+", resolve,
+                                 {"module": "filter", "cases": {name: {"num_samples": 1}}})
+        resolve({"module": "filter", "cases": {"Case_2-b": {"num_samples": 1}}})
+        ok = {"module": "filter", "cases": {"a": {"num_samples": 1}}}
+        for area, module in [("filters", "dig.svf"), ("filters", "svf:x"), ("fil.ters", "svf"), ("", "svf")]:
+            self.assertCaseError("must match [A-Za-z0-9_-]+", rc.resolve_module_file,
+                                 area, module, "x.json", ok, MODULE_DEFAULTS, LEDGER)
+        for name in ["init.saw", "init:saw", ""]:
+            self.assertCaseError("must match [A-Za-z0-9_-]+", rc.resolve_renders,
+                                 cases_json(render={"name": name, "preset": "p", "midi": "m"}), LEDGER)
+
+    def test_existing_case_files_comply(self):
+        rc.load_modules()
+        rc.load_renders()
+
     def test_exception_covers_exactly_loosened_metrics(self):
         self.assertCaseError("does not loosen it", resolve, {"module": "filter", "cases": {"a": {
             "num_samples": 1, "tolerance_exception": approved({"residual_db": -70})}}})

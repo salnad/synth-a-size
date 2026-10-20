@@ -136,6 +136,15 @@ def ledger_sections(text):
 
 
 ID_CHARS = re.compile(r"[A-Za-z0-9_/-]")
+NAME = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def check_name(where, kind, name):
+    """Area, module, case and render names are [A-Za-z0-9_-]+, so a case id
+    can never extend another id across a token boundary (e.g. "a.b" or "a:x"
+    containing an approval for "a"). Mirrored in sas-parity (cases.rs)."""
+    if not isinstance(name, str) or not NAME.fullmatch(name):
+        raise CaseError("%s: %s name %r must match [A-Za-z0-9_-]+" % (where, kind, name))
 
 
 def names_case(text, case_id):
@@ -240,6 +249,7 @@ def resolve_renders(cases_json, ledger_text):
     for case in cases_json.get("renders", []):
         if not isinstance(case, dict) or not isinstance(case.get("name"), str):
             raise CaseError("cases.json: every render case needs a name")
+        check_name("cases.json", "render case", case["name"])
         case_id = "render/" + case["name"]
         unknown = set(case) - set(RENDER_CASE_KEYS)
         if unknown:
@@ -258,6 +268,8 @@ def resolve_renders(cases_json, ledger_text):
 
 
 def resolve_module_file(area, module, rel, data, module_defaults, ledger_text):
+    check_name(rel, "area", area)
+    check_name(rel, "module", module)
     if not isinstance(data, dict):
         raise CaseError("%s: must be an object" % rel)
     unknown = set(data) - set(FILE_KEYS)
@@ -272,6 +284,7 @@ def resolve_module_file(area, module, rel, data, module_defaults, ledger_text):
     file_level = {k: v for k, v in data.items() if k != "cases"}
     resolved = []
     for name, case in data["cases"].items():
+        check_name(rel, "case", name)
         case_id = "%s/%s/%s" % (area, module, name)
         if not isinstance(case, dict):
             raise CaseError("%s: must be an object" % case_id)

@@ -198,6 +198,23 @@ pub fn ledger_sections(text: &str) -> Vec<(String, String)> {
     sections
 }
 
+/// Area, module, case and render names are `[A-Za-z0-9_-]+`, so a case id
+/// can never extend another id across a token boundary (e.g. `a.b` or `a:x`
+/// containing an approval for `a`). Mirrored in run_corpus.py (`check_name`).
+pub fn check_name(location: &str, kind: &str, name: &str) -> Result<(), String> {
+    let valid = !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    if valid {
+        Ok(())
+    } else {
+        Err(format!(
+            "{location}: {kind} name {name:?} must match [A-Za-z0-9_-]+"
+        ))
+    }
+}
+
 fn is_id_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, '_' | '/' | '-')
 }
@@ -364,6 +381,7 @@ pub fn render_cases_from(cases_json: &Value, ledger: &str) -> Result<Vec<Resolve
             .get("name")
             .and_then(Value::as_str)
             .ok_or("cases.json: every render case needs a name")?;
+        check_name("cases.json", "render case", name)?;
         let id = format!("render/{name}");
         check_keys(case, &render_case_keys(), &id)?;
         for key in ["preset", "midi"] {
@@ -409,6 +427,8 @@ pub fn module_cases_from(
     module_defaults: &Map<String, Value>,
     ledger: &str,
 ) -> Result<Vec<ResolvedCase>, String> {
+    check_name(relative_file, "area", area)?;
+    check_name(relative_file, "module", module)?;
     check_keys(
         module_defaults,
         &MODULE_DEFAULT_KEYS,
@@ -436,6 +456,7 @@ pub fn module_cases_from(
 
     let mut resolved = Vec::new();
     for (name, case) in cases {
+        check_name(relative_file, "case", name)?;
         let id = format!("{area}/{module}/{name}");
         let case = as_object(case, &id)?;
         check_keys(case, &case_keys(), &id)?;
@@ -734,6 +755,41 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.contains("does not name the case"), "{err}");
+    }
+
+    // Reviewer nit: "a.b" or "a:x" would contain an approval for "a" across a
+    // token boundary, so names are restricted at load.
+    #[test]
+    fn names_are_restricted_to_id_characters() {
+        let file =
+            |name: &str| json!({ "module": "filter", "cases": { name: { "num_samples": 1 } } });
+        for name in ["a.b", "a:x", "a b", "a/b", "", "ä"] {
+            let err = resolve(file(name)).unwrap_err();
+            assert!(err.contains("must match [A-Za-z0-9_-]+"), "{name:?}: {err}");
+        }
+        assert!(resolve(file("Case_2-b")).is_ok());
+
+        let ok = json!({ "module": "filter", "cases": { "a": { "num_samples": 1 } } });
+        for (area, module) in [
+            ("filters", "dig.svf"),
+            ("filters", "svf:x"),
+            ("fil.ters", "svf"),
+            ("", "svf"),
+        ] {
+            let err =
+                module_cases_from(area, module, "x.json", &ok, &defaults(), LEDGER).unwrap_err();
+            assert!(
+                err.contains("must match [A-Za-z0-9_-]+"),
+                "{area}/{module}: {err}"
+            );
+        }
+
+        for name in ["init.saw", "init:saw", ""] {
+            let render = json!({ "name": name, "preset": "p.vital", "midi": "m.mid" });
+            let err =
+                render_cases_from(&cases_json(floor_tolerances(), render), LEDGER).unwrap_err();
+            assert!(err.contains("must match [A-Za-z0-9_-]+"), "{name:?}: {err}");
+        }
     }
 
     #[test]

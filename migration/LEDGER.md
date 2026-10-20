@@ -341,3 +341,12 @@ Registry):
   identical trees pass with and without `--exact`, an edited artifact
   fails, missing or extra artifacts error, and audio-diff is never invoked.
   The main test fails on the old code with the reported message.
+
+## 2026-10-20: case names restricted to [A-Za-z0-9_-]
+
+- Reviewer nit after #9: because `.` and `:` count as token boundaries, a
+  case named `…/a.b` or `…/a:x` would satisfy a ledger approval for `…/a`.
+  Area, module, case and render names must now match `[A-Za-z0-9_-]+` and
+  are rejected at load in both `run_corpus.py` (`check_name`) and
+  `sas-parity` (`cases::check_name`). Both test suites test this.
+- All existing case files comply: 6 module cases and 8 render cases.

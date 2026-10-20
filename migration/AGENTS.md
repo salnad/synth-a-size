@@ -109,6 +109,8 @@ none of them edits a shared list.
      top-level keys, then the case's keys. Signal and trigger syntax is in
      `migration/reference/README.md`. The case id is
      `<area>/<module>/<case>`, e.g. `filters/digital_svf/lowpass_saw_sweep`.
+     Area (directory), module (file name) and case names may only use
+     `[A-Za-z0-9_-]`; anything else is rejected at load.
    - *Tolerances* default to `module_defaults` (`max_abs_error` 1e-4,
      `residual_db` −80 dB). That is the approved floor, which is also pinned
      in code in `run_corpus.py` and `sas-parity`. A case may make its
