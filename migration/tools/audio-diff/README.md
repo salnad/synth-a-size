@@ -48,7 +48,8 @@ and the overall result. Non-finite values are written as the strings
 `"inf"`, `"-inf"` and `"nan"`.
 
 Per-case tolerances for the golden corpus live in
-`migration/corpus/cases.json`. Read `migration/AGENTS.md` before changing
+`migration/corpus/cases.json` and `migration/corpus/modules/`, and the
+port's tests apply them through `sas-parity` (`port/crates/parity`). Read `migration/AGENTS.md` before changing
 them.
 
 ## Tests

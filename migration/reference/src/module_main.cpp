@@ -4,15 +4,14 @@
 
 #include "JuceHeader.h"
 #include "harness_io.h"
+#include "module_registry.h"
 
-#include "dc_filter.h"
-#include "delay.h"
-#include "distortion.h"
-#include "envelope.h"
 #include "processor.h"
 #include "synth_constants.h"
-#include "synth_filter.h"
 #include "utils.h"
+
+#include <algorithm>
+#include <array>
 
 #include <cmath>
 #include <functional>
@@ -33,142 +32,10 @@ spec.json block by block, and writes:
   DIR/capture.json      resolved spec, build info, per-buffer hashes
 )";
 
-enum class Rate { kAudio, kControl, kTrigger };
-
-struct InputDef {
-  std::string name;
-  int index;
-  float default_value;
-  Rate rate;
-};
-
-struct OutputDef {
-  std::string name;
-  int index;
-};
-
-struct ModuleDef {
-  std::string name;
-  std::string description;
-  std::function<vital::Processor*(const json& params)> create;
-  std::vector<InputDef> inputs;
-  std::vector<OutputDef> outputs;
-};
-
-int filterModelFromName(const std::string& name) {
-  static const std::map<std::string, int> kModels = {
-    { "analog", vital::constants::kAnalog }, { "dirty", vital::constants::kDirty },
-    { "ladder", vital::constants::kLadder }, { "digital", vital::constants::kDigital },
-    { "diode", vital::constants::kDiode }, { "formant", vital::constants::kFormant },
-    { "comb", vital::constants::kComb }, { "phase", vital::constants::kPhase },
-  };
-  auto found = kModels.find(name);
-  return found == kModels.end() ? -1 : found->second;
-}
-
-std::vector<InputDef> synthFilterInputs() {
-  using F = vital::SynthFilter;
-  return {
-    { "audio", F::kAudio, 0.0f, Rate::kAudio },
-    { "reset", F::kReset, 0.0f, Rate::kTrigger },
-    { "midi_cutoff", F::kMidiCutoff, 60.0f, Rate::kAudio },
-    { "resonance", F::kResonance, 0.5f, Rate::kControl },
-    { "drive_gain", F::kDriveGain, 0.0f, Rate::kControl },
-    { "gain", F::kGain, 0.0f, Rate::kControl },
-    { "style", F::kStyle, 0.0f, Rate::kControl },
-    { "pass_blend", F::kPassBlend, 0.0f, Rate::kControl },
-    { "interpolate_x", F::kInterpolateX, 0.5f, Rate::kControl },
-    { "interpolate_y", F::kInterpolateY, 0.5f, Rate::kControl },
-    { "transpose", F::kTranspose, 0.0f, Rate::kControl },
-    { "spread", F::kSpread, 0.0f, Rate::kControl },
-  };
-}
-
-std::vector<ModuleDef> registry() {
-  std::vector<ModuleDef> modules;
-
-  modules.push_back({
-    "filter",
-    "SynthFilter::createFilter(model). params.model: analog|dirty|ladder|digital|diode|formant|comb|phase",
-    [](const json& params) -> vital::Processor* {
-      int model = filterModelFromName(params.value("model", std::string("digital")));
-      if (model < 0)
-        return nullptr;
-      vital::SynthFilter* filter = vital::SynthFilter::createFilter(static_cast<vital::constants::FilterModel>(model));
-      return dynamic_cast<vital::Processor*>(filter);
-    },
-    synthFilterInputs(),
-    { { "audio", 0 } },
-  });
-
-  modules.push_back({
-    "distortion",
-    "Distortion. Input 'type': 0 soft clip, 1 hard clip, 2 linear fold, 3 sin fold, 4 bit crush, 5 down sample",
-    [](const json&) -> vital::Processor* { return new vital::Distortion(); },
-    {
-      { "audio", vital::Distortion::kAudio, 0.0f, Rate::kAudio },
-      { "type", vital::Distortion::kType, 0.0f, Rate::kControl },
-      { "drive", vital::Distortion::kDrive, 0.0f, Rate::kAudio },
-    },
-    { { "audio", vital::Distortion::kAudioOut }, { "drive", vital::Distortion::kDriveOut } },
-  });
-
-  modules.push_back({
-    "envelope",
-    "Envelope (DAHDSR). Drive 'trigger' with voice_on / voice_off events. params.control_rate: bool",
-    [](const json& params) -> vital::Processor* {
-      vital::Envelope* envelope = new vital::Envelope();
-      envelope->setControlRate(params.value("control_rate", false));
-      return envelope;
-    },
-    {
-      { "delay", vital::Envelope::kDelay, 0.0f, Rate::kControl },
-      { "attack", vital::Envelope::kAttack, 0.1f, Rate::kControl },
-      { "attack_power", vital::Envelope::kAttackPower, 0.0f, Rate::kControl },
-      { "hold", vital::Envelope::kHold, 0.0f, Rate::kControl },
-      { "decay", vital::Envelope::kDecay, 0.5f, Rate::kControl },
-      { "decay_power", vital::Envelope::kDecayPower, -2.0f, Rate::kControl },
-      { "sustain", vital::Envelope::kSustain, 0.7f, Rate::kControl },
-      { "release", vital::Envelope::kRelease, 0.3f, Rate::kControl },
-      { "release_power", vital::Envelope::kReleasePower, -2.0f, Rate::kControl },
-      { "trigger", vital::Envelope::kTrigger, 0.0f, Rate::kTrigger },
-    },
-    { { "value", vital::Envelope::kValue }, { "phase", vital::Envelope::kPhase } },
-  });
-
-  modules.push_back({
-    "dc_filter",
-    "DcFilter",
-    [](const json&) -> vital::Processor* { return new vital::DcFilter(); },
-    {
-      { "audio", vital::DcFilter::kAudio, 0.0f, Rate::kAudio },
-      { "reset", vital::DcFilter::kReset, 0.0f, Rate::kTrigger },
-    },
-    { { "audio", 0 } },
-  });
-
-  modules.push_back({
-    "stereo_delay",
-    "Delay<StereoMemory>(params.size, default 88200 samples). 'style': 0 mono, 1 stereo, 2 ping pong, 3 mid ping pong",
-    [](const json& params) -> vital::Processor* {
-      return new vital::StereoDelay(params.value("size", 88200));
-    },
-    {
-      { "audio", vital::StereoDelay::kAudio, 0.0f, Rate::kAudio },
-      { "wet", vital::StereoDelay::kWet, 0.5f, Rate::kControl },
-      { "frequency", vital::StereoDelay::kFrequency, 2.0f, Rate::kControl },
-      { "frequency_aux", vital::StereoDelay::kFrequencyAux, 2.0f, Rate::kControl },
-      { "feedback", vital::StereoDelay::kFeedback, 0.5f, Rate::kControl },
-      { "damping", vital::StereoDelay::kDamping, 0.5f, Rate::kControl },
-      { "style", vital::StereoDelay::kStyle, 0.0f, Rate::kControl },
-      { "filter_cutoff", vital::StereoDelay::kFilterCutoff, 60.0f, Rate::kControl },
-      { "filter_spread", vital::StereoDelay::kFilterSpread, 1.0f, Rate::kControl },
-    },
-    { { "audio", 0 } },
-  });
-
-  return modules;
-}
+using refmod::InputDef;
+using refmod::ModuleDef;
+using refmod::OutputDef;
+using refmod::Rate;
 
 // Generates one input signal, frame by frame, into 4 poly lanes.
 class Signal {
@@ -391,13 +258,21 @@ int main(int argc, const char* argv[]) {
     return args.has("help") ? 0 : 2;
   }
 
-  std::vector<ModuleDef> modules = registry();
+  std::vector<ModuleDef> modules = refmod::registry();
+  std::sort(modules.begin(), modules.end(),
+            [](const ModuleDef& a, const ModuleDef& b) { return a.name < b.name; });
+  for (size_t i = 1; i < modules.size(); ++i) {
+    if (modules[i].name == modules[i - 1].name)
+      return fail("module '" + modules[i].name + "' is registered twice: " + modules[i - 1].source_file +
+                  " and " + modules[i].source_file);
+  }
   if (args.has("list")) {
     json listing = json::array();
     for (const ModuleDef& module : modules) {
       json entry;
       entry["module"] = module.name;
       entry["description"] = module.description;
+      entry["source"] = module.source_file;
       for (const InputDef& input : module.inputs) {
         const char* rate = input.rate == Rate::kAudio ? "audio" : (input.rate == Rate::kControl ? "control" : "trigger");
         entry["inputs"].push_back({ { "name", input.name }, { "default", input.default_value }, { "rate", rate } });

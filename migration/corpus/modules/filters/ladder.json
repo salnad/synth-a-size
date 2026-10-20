@@ -1,0 +1,35 @@
+{
+  "description": "Ladder filter (SynthFilter model \"ladder\").",
+  "module": "filter",
+  "params": {
+    "model": "ladder"
+  },
+  "cases": {
+    "noise_resonant_2x": {
+      "sample_rate": 48000,
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 48000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 7,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi_cutoff": 64.0,
+        "resonance": 0.85,
+        "drive_gain": 6.0,
+        "style": 1
+      }
+    }
+  }
+}

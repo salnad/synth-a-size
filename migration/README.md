@@ -11,8 +11,9 @@ to Rust (`/port`) and to prove the port sounds the same.
 | [UPSTREAM.md](UPSTREAM.md), [UPSTREAM_SHA](UPSTREAM_SHA) | Pinned upstream commit, exclusions, verification |
 | [decisions/](decisions/) | Decision records: [plugin framework](decisions/plugin-framework.md), [reference determinism and tolerance calibration](decisions/reference-determinism.md) |
 | [reference/](reference/) | C++ reference harness: `ref-render` (preset + MIDI → WAV) and `ref-module` (single processor → NPY) |
+| [`port/crates/parity`](../port/crates/parity) | `sas-parity`: Rust test helper, `assert_parity!("<area>/<module>/<case>", output)` against reference captures |
 | [tools/audio-diff/](tools/audio-diff/) | Rust comparison tool and library: max abs error, RMS dB difference, null residual, spectral distance, tolerances, exit codes |
-| [corpus/](corpus/) | Authored test presets, MIDI files, module specs and `cases.json` with per-case tolerances |
+| [corpus/](corpus/) | Authored test presets, MIDI files, `cases.json` (renders, defaults) and per-module case files `modules/<area>/<module>.json` |
 | [scripts/](scripts/) | `build_reference.sh`, `run_corpus.py` (render / compare / hashes), `verify_upstream.sh`, `check_names.sh`, `check_fp_determinism.sh`, `machine_info.sh` |
 
 ## Quick start

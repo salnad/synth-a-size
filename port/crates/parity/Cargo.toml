@@ -1,0 +1,13 @@
+[package]
+name = "sas-parity"
+description = "Test helper: load C++ reference captures and assert that port output matches them within the corpus tolerances."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+audio-diff.workspace = true
+serde_json = "1"

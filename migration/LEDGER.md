@@ -188,3 +188,59 @@ entry is the record AGENTS.md rule 6 requires.
 
 - M1: `simd` and `dsp-core`, ported with exact division and sqrt (no
   approximate reciprocals).
+
+---
+
+## 2026-10-20: harness scale-out for parallel module threads
+
+**Changed**
+
+- `ref-module`: modules self-register (`REGISTER_REF_MODULE`, in
+  `reference/src/module_registry.h`), one file each under
+  `reference/src/modules/<area>/<module>.cpp`, picked up by a CMake
+  `CONFIGURE_DEPENDS` glob. The existing five modules moved there:
+  `filters/synth_filter`, `filters/dc_filter`, `effects/distortion`,
+  `effects/stereo_delay`, `modulation/envelope`. Duplicate names fail at
+  startup.
+- Module cases now live one file per module,
+  `corpus/modules/<area>/<module>.json` (ids `<area>/<module>/<case>`). The
+  five existing cases moved to `filters/digital_svf`, `filters/ladder`,
+  `effects/distortion`, `effects/stereo_delay` and `modulation/envelope`,
+  with identical specs and tolerances. `cases.json` gained
+  `module_defaults` with the unchanged module limits (1e-4 / −80 dB).
+  Cases may only be stricter unless they carry a `tolerance_exception`;
+  `run_corpus.py` and `sas-parity` both enforce this.
+- Expected hashes: `<module>.hashes.json` next to each case file. The
+  render hashes stay in `reference_hashes.json`. Both use a multi-identity
+  format (`entries: [{identity, hashes}]`), so another architecture can add
+  its own entry.
+- `run_corpus.py`: per-module case resolution, a capture layout of
+  `modules/<id>/{spec,case,capture}.json` plus NPYs, a `list` command and
+  per-file hash write/check.
+- New crate `port/crates/parity` (`sas-parity`): resolves cases from
+  `migration/corpus` with the same rules as `run_corpus.py`, locates
+  captures (`SAS_PARITY_CAPTURES`, default `build/parity`) or renders them
+  on demand, refuses stale captures (their `case.json` must equal its own
+  resolution), and exposes `ModuleCase` / `RenderCase` / `assert_parity!`.
+  On failure it dumps the port output and report to
+  `build/parity-failures/`. Tolerances cannot be set from tests.
+- CI: the `reference-harness` job uploads `parity-captures`. A new
+  `parity` job runs `cargo test --workspace` against them, with
+  `SAS_PARITY_NO_BUILD=1`. The `rust` job no longer runs tests; it keeps
+  fmt, clippy and build.
+- AGENTS.md "How to port a piece of the engine" rewritten as the module
+  thread workflow.
+
+**Measured**
+
+- Refactored `ref-module` captures are bit-identical to before: all 15
+  hash values are unchanged under the new keys.
+- The `sas-parity` self-tests pass locally: every corpus case against its
+  own reference, a perturbed output fails `max_abs_error`, a length
+  mismatch fails, inputs and triggers match the spec, and the tolerance
+  rules reject looser or unknown values.
+
+**Open / next**
+
+- Module threads add their capture files, case files, hashes and parity
+  tests as described in AGENTS.md.

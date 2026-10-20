@@ -1,0 +1,24 @@
+{
+  "description": "Distortion processor (all types via the \"type\" input).",
+  "module": "distortion",
+  "cases": {
+    "sin_fold_drive_ramp": {
+      "sample_rate": 44100,
+      "block_size": 64,
+      "num_samples": 8820,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 220.0,
+          "amp": 0.8
+        },
+        "type": 3,
+        "drive": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 24.0
+        }
+      }
+    }
+  }
+}
