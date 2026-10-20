@@ -161,3 +161,7 @@ target_link_libraries(ref-module PRIVATE harness_common)
 add_executable(ref-fp-probe src/fp_probe.cpp)
 target_compile_options(ref-fp-probe PRIVATE -O2 -fno-fast-math)
 target_link_libraries(ref-fp-probe PRIVATE mvec m)
+
+# M2 preset round-trip: parameter registry, engine tables and state dumps.
+add_executable(ref-preset src/preset_main.cpp)
+target_link_libraries(ref-preset PRIVATE harness_common)

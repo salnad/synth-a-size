@@ -1,0 +1,63 @@
+{
+  "author": "synth-a-size test corpus",
+  "comments": "Unicode héllo ✓, quotes \" and a\nnewline.",
+  "macro1": "Cutoff",
+  "macro2": "   ",
+  "macro4": "",
+  "preset_name": "ignored: the file name wins",
+  "preset_style": "Lead",
+  "settings": {
+    "env_1_attack": 0.001,
+    "filter_1_cutoff": 500,
+    "filter_1_on": 1,
+    "lfo_0_smooth_mode": 1.0,
+    "lfos": [
+      {
+        "name": "custom",
+        "num_points": 3,
+        "points": [
+          0.0,
+          0.0,
+          0.3,
+          1.0,
+          1.0,
+          0.0
+        ],
+        "powers": [
+          1.5,
+          -2.0,
+          0.0
+        ],
+        "smooth": true
+      },
+      {
+        "num_points": 2,
+        "points": [
+          0.0,
+          1.0,
+          1.0,
+          0.1
+        ],
+        "powers": [
+          0.0,
+          0.25
+        ]
+      }
+    ],
+    "modulations": [],
+    "not_a_parameter": 5.0,
+    "osc_1_level": 0.1,
+    "osc_1_on": true,
+    "sample": {
+      "length": 512,
+      "name": "corpus stereo tone",
+      "sample_rate": 48000,
+      "samples": "AAB3BccK6g/aFJMZER5OIkgm/ClmLYUwWDPdNRQ4/DmXO+U86D2iPhQ/QT8tP9s+Tz6LPZU8cTsjOrA4HTduNagzzzHpL/otBiwSKiIoOSZcJI4i0SAqH5odJBzKGo4ZcBhyF5UW2BU9FcIUaBQtFBAUEBQsFGEUrhQRFYcVDhajFkMX7RedGFEZBhq5GmgbEByvHEIdxx09HqEe8R4sH1EfXh9SHy4f7x6WHiMelR3tHCwcUhtgGlcZNxgDF70VZBT8EoURAhB1DuAMRAukCQIIYAbABCMDjAH9/3f+/PyO+y763fid92/2VPVN9FrzfPK08QHxZPDd72vvD+/I7pXudu5q7nHuiO6w7ufuLO9+79zvQ/C08Czxq/Eu8rbyQPPK81X03/Rn9ev1a/bm9lz3yvcx+JH46Pg3+X35ufnt+Rf6OPpQ+mD6Z/pm+l36Tfo3+hv6+fnT+an5e/lL+Rr55/i1+IP4Uvgj+Pb3zfeo94j3bPdW90b3PPc59zz3R/dZ93L3k/e79+r3IPhe+KL47Pg9+ZP57vlP+rT6HfuJ+/j7afzc/FD9xf06/q7+If+S/wIAbgDYAD4BoAH+AVcCqwL5AkMDhgPEA/sDLQRYBH4EnQS3BMoE2ATgBOME4QTbBM8EwASsBJUEewReBD8EHQT6A9UDsAOJA2MDPAMWA/ACzAKoAoYCZQJHAioCEAL4AeIBzwG/AbEBpQGcAZYBkgGQAZEBkwGYAZ4BpgGwAbsBxwHUAeEB7wH9AQsCGQInAjQCQQJMAlYCXwJnAm0CcgJ0AnUCdAJxAmwCZAJbAlACQwIzAiICDwL6AeQBywGyAZcBegFdAT8BIAEAAeAAwACfAH4AXgA+AB4A///h/8T/p/+M/3L/Wf9C/yz/F/8F//T+5P7W/sr+wP63/rD+q/6n/qX+pP6l/qf+qv6u/rT+uv7B/sr+0v7c/ub+8P76/gX/EP8a/yX/L/86/0P/Tf9W/17/Zv9t/3T/ev9//4T/iP+L/43/j/+Q/5D/kP+P/47/jP+K/4f/hP+B/33/ef91/3H/bf9p/2b/Yv9e/1v/WP9W/1T/Uv9R/1D/UP9Q/1H/U/9V/1f/Wv9e/2P/Z/9t/3P/ef+A/4f/jv+W/5//p/+w/7n/wv/L/9T/3f/m/+//+P8AAAkAEQAZACAAKAAvADUAOwBBAEYASwBPAFMAVgBZAFsAXQBfAGAAYABhAGEAYABfAF4AXABaAFgAVgBUAFEATgBMAEkARgBDAEAAPQA6ADcANAAyAC8ALQArACkAJwAlACQAIwAhACEAIAAgAB8AHwAfAB8AIAAgACEAIgAjACQAJQAmACcAKAApACoAKwAsAC0ALgAvAA==",
+      "samples_stereo": "AAAkA0QGXwlxDHYPbRJSFSMY3Bp7Hf4fYiKlJMUmvyiSKjwsuy0PLzUwLDH0MYwy9DIqMy8zAjOlMhcyWDFqME0vAy6MLOoqHyktJxUl2SJ7IP4dZBuwGOQVAxMPEAwN/QnkBsQDoQB9/Vv6P/cs9CPxKe5B62zoruUJ44DgFt7M26XZo9fI1RbUjtIy0QLQAs8wzo7NHc3dzM7M8cxEzcnNfs5jz3bQuNEm07/UgdZs2H3astwJ34DhFeTE5ovpaOxY71jyZfV9+Jv7vv7iAQUFIgg4C0MOQBEsFAUXyBlyHAAfcSHBI+8l+SfcKZcrJy2MLsUvzzCqMVUy0DIaMzMzGjPQMlUyqjHPMMUvjC4nLZcr3Cn5J+8lwSNxIQAfchzIGQUXLBRAEUMOOAsiCAUF4gG+/pv7ffhl9VjyWO9o7IvpxOYV5IDhCd+y3H3abNiB1r/UJtO40XbQY89+zsnNRM3xzM7M3cwdzY7NMM4CzwLQMtGO0hbUyNWj16XZzNsW3oDgCeOu5WzoQesp7iPxLPQ/91v6ff2hAMQD5Ab9CQwNDxADE+QVsBhkG/4deyDZIhUlLScfKeoqjCwDLk0vajBYMRcypTICMy8zKjP0Mowy9DEsMTUwDy+7LTwskiq/KMUmpSRiIv4fex3cGiMYUhVtEnYPcQxfCUQGJAMAANz8vPmh9o/zivCT7a7q3eck5YXiAuCe3VvbO9lB127VxNNF0vHQy8/UzgzOdM0MzdbM0cz+zFvN6c2ozpbPs9D90XTTFtXh1tPY69on3YXfAuKc5FDnHOr97PHv9PID9hz5PPxf/4MCpQXBCNQL3Q7XEb8UlBdSGvccgB/qITQkWyZdKDgq6ityLc4u/i/+MNAxcjLjMiMzMjMPM7wyNzKCMZ0wii9ILtosQSt/KZQngyVOI/cggB7rGzwZdRaYE6gQqA2bCoMHZQRCAR7++/re98j0vfHA7tTr++g45o7jAOGP3j/cEdoH2CTWadTZ0nTRO9Axz1bOq80wzebMzczmzDDNq81WzjHPO9B00dnSadQk1gfYEdo/3I/eAOGO4zjm++jU68DuvfHI9N73+/oe/kIBZQSDB5sKqA2oEJgTdRY8GesbgB73IE4jgyWUJ38pQSvaLEguii+dMIIxNzK8Mg8zMjMjM+MycjLQMf4w/i/OLnIt6is4Kl0oWyY0JOohgB/3HFIalBe/FNcR3Q7UC8EIpQWDAl//PPwc+QP29PLx7/3sHOpQ55zkAuKF3yfd69rT2OHWFtV00/3Rs9CWz6jO6c1bzf7M0czWzAzNdM0MztTOy8/x0EXSxNNu1UHXO9lb257dAuCF4iTl3eeu6pPtivCP86H2vPnc/A=="
+    },
+    "sub_level": 0.3,
+    "voice_tune": -0.0,
+    "volume": 6000.123456789
+  },
+  "synth_version": "1.0.6"
+}
