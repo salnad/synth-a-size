@@ -308,3 +308,18 @@ Registry):
 - The existing 15 hashes are unchanged; `harness/echo` adds 3.
 - Python regression tests: 19 pass. sas-parity: 18 unit tests, 8 self-checks
   and the tamper test pass.
+
+---
+
+## 2026-10-20: harness follow-ups from the PR #3 re-review
+
+- Reviewer note 2: the ledger check for `tolerance_exception` now requires
+  the cited section to name the case id as a whole token, so the characters
+  on either side must not be letters, digits, `_`, `-` or `/`. Before, it
+  was a substring match, so `filters/x/ab` satisfied an approval for
+  `filters/x/a`. The change is mirrored in `run_corpus.py`
+  (`names_case`) and `sas-parity` (`cases::names_case`), with the same
+  regression table in both test suites.
+- Reviewer note 3: AGENTS.md now says numeric data goes through
+  `sink.array` (tolerances apply), and text artifacts must be upstream's
+  own serialization, never reduced-precision prints.

@@ -198,6 +198,22 @@ pub fn ledger_sections(text: &str) -> Vec<(String, String)> {
     sections
 }
 
+fn is_id_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '_' | '/' | '-')
+}
+
+/// True if `case_id` appears in `text` as a whole token: the characters
+/// around it are not id characters (letters, digits, `_` `-` `/`). So an
+/// approval for `filters/x/a` is not satisfied by a section naming
+/// `filters/x/ab`. Mirrored in run_corpus.py (`names_case`).
+pub fn names_case(text: &str, case_id: &str) -> bool {
+    text.match_indices(case_id).any(|(start, _)| {
+        let before = text[..start].chars().next_back();
+        let after = text[start + case_id.len()..].chars().next();
+        !before.is_some_and(is_id_char) && !after.is_some_and(is_id_char)
+    })
+}
+
 /// Layers file and case tolerances over the defaults and enforces the
 /// exception rules. Returns the resolved tolerances and the exception (if any).
 pub fn resolve_tolerances(
@@ -294,7 +310,7 @@ pub fn resolve_tolerances(
             "{case_id}: tolerance_exception cites LEDGER.md heading {approved_in:?}, which does not exist"
         ));
     }
-    if !bodies.iter().any(|body| body.contains(case_id)) {
+    if !bodies.iter().any(|body| names_case(body, case_id)) {
         return Err(format!(
             "{case_id}: LEDGER.md section {approved_in:?} does not name the case"
         ));
@@ -682,6 +698,42 @@ mod tests {
             other_case.contains("does not name the case"),
             "{other_case}"
         );
+    }
+
+    // Reviewer note 2: the case id must match on token boundaries.
+    #[test]
+    fn ledger_must_name_the_case_as_a_whole_token() {
+        for (text, expected) in [
+            ("Owner approved filters/test/a.", true),
+            ("approved `filters/test/a` today", true),
+            ("filters/test/a", true),
+            ("see filters/test/a:value", true),
+            ("(filters/test/a)", true),
+            ("only filters/test/ab is approved", false),
+            ("xfilters/test/a", false),
+            ("filters/test/a_2", false),
+            ("filters/test/a-b", false),
+            ("filters/test/a/extra", false),
+            ("other/filters/test/a", false),
+            ("filters/test/ab and later filters/test/a", true),
+        ] {
+            assert_eq!(names_case(text, "filters/test/a"), expected, "{text:?}");
+        }
+
+        let ledger = "## 2026-10-23: approve\n\nOwner approved filters/test/ab only.\n";
+        let err = module_cases_from(
+            "filters",
+            "test",
+            "x.json",
+            &json!({ "module": "filter", "cases": { "a": { "num_samples": 10,
+                "tolerances": { "residual_db": -70 },
+                "tolerance_exception": { "approved_in": "2026-10-23: approve",
+                                         "tolerances": { "residual_db": -70 } } } } }),
+            &defaults(),
+            ledger,
+        )
+        .unwrap_err();
+        assert!(err.contains("does not name the case"), "{err}");
     }
 
     #[test]

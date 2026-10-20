@@ -43,6 +43,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -134,6 +135,25 @@ def ledger_sections(text):
     return sections
 
 
+ID_CHARS = re.compile(r"[A-Za-z0-9_/-]")
+
+
+def names_case(text, case_id):
+    """True if case_id appears in text as a whole token: the characters
+    around it are not id characters (letters, digits, _ - /). So an approval
+    for "filters/x/a" is not satisfied by a section naming "filters/x/ab".
+    Mirrored in sas-parity (cases.rs names_case)."""
+    start = text.find(case_id)
+    while start != -1:
+        end = start + len(case_id)
+        before = text[start - 1] if start > 0 else ""
+        after = text[end] if end < len(text) else ""
+        if not (before and ID_CHARS.match(before)) and not (after and ID_CHARS.match(after)):
+            return True
+        start = text.find(case_id, end)
+    return False
+
+
 def is_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
@@ -200,7 +220,7 @@ def resolve_tolerances(case_id, defaults, file_level, case, ledger_text):
     if not bodies:
         raise CaseError("%s: tolerance_exception cites LEDGER.md heading %r, which does not exist"
                         % (case_id, approved_in))
-    if not any(case_id in body for body in bodies):
+    if not any(names_case(body, case_id) for body in bodies):
         raise CaseError("%s: LEDGER.md section %r does not name the case" % (case_id, approved_in))
     return tolerances, exception
 
