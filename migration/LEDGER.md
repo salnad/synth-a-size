@@ -1081,3 +1081,48 @@ proposal are in the Project store: `internal/wavetable-render-parity-measurement
   using the representation above.
 - Owner decisions: the ill-conditioned content, and JSON byte-exactness
   vs ULP bounds.
+
+### Rendering parity captures
+
+- New `ref-module` module `wavetable_render`
+  (`migration/reference/src/modules/wavetable/render.cpp`) emits four
+  arrays:
+  - `wave`: time-domain frames.
+  - `coefficients`: amplitude/1024 × normalized phasor, what the
+    oscillator reads.
+  - `phase_coefficients`: amplitude/1024 × (cos, sin) of the stored phase.
+  - `info`: frame count, frequency ratio, sample rate and the shepard
+    flag.
+- Complex pairs are interleaved in one channel. `audio-diff` takes the
+  worst per-channel residual, and with cleared phases the imaginary
+  channel is pure rounding noise; for example,
+  `audio_fade_0_phase_1` measured max error 7e-8 but −0.7 dB residual on
+  that channel.
+- Raw amplitudes (up to ~1e3) and the phasors of silent harmonics are not
+  compared directly.
+- `migration/corpus/modules/wavetable/render.json` has 44 well-conditioned
+  cases:
+  - every wave-source interpolation (frequency interpolation between saws
+    that share harmonic support);
+  - every phase, window, filter (with and without normalize) and warp
+    variant;
+  - slew limiter; wave folder with headroom;
+  - audio fades 0 to 2 × all phase styles;
+  - shepard with time and frequency interpolation;
+  - line source; multi-group without normalization;
+  - init and predefined.
+
+  Parity test: `port/crates/wavetable/tests/render_parity.rs`.
+- **Measured against the official reference, all within the default
+  module limits (no new tolerances):**
+
+  | Array | Worst max error | Worst residual |
+  |---|---|---|
+  | `wave` | 2.8e-5 (`audio_fade_1_phase_0`) | −123.4 dB |
+  | `coefficients` | 2.8e-5 | −105.8 dB (`slew_limiter`) |
+  | `phase_coefficients` | 7.7e-7 | −123.2 dB |
+  | `info` | exact | exact |
+
+- The ill-conditioned cases (frequency interpolation between disjoint
+  spectra, folding at ±1, audio fade 3) stay pending; see "Pending owner
+  decision: byte-exact vs bounded JSON" in the creator JSON entry.
