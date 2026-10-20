@@ -468,6 +468,9 @@ dependencies = [
 [[package]]
 name = "sas-common"
 version = "0.0.1"
+dependencies = [
+ "sas-parity",
+]
 
 [[package]]
 name = "sas-dsp-core"

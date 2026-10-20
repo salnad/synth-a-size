@@ -1,0 +1,28 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "duplicate_keys:artifact/dump.json": "c506e3ef90d0d7f6",
+        "duplicate_keys:artifact/pretty.json": "da9fd4b8b23d945c",
+        "generated_floats:artifact/floats.json": "c0fef17980e405ea",
+        "integer_limits:artifact/dump.json": "8a80fe63b21da74c",
+        "integer_limits:artifact/pretty.json": "2774e2c2a398d96e",
+        "strings:artifact/dump.json": "3fae3ffde7b58185",
+        "strings:artifact/pretty.json": "7cecba7a23ce2a1b",
+        "typed_numbers:artifact/dump.json": "aa357cda3a37d6c3",
+        "typed_numbers:artifact/pretty.json": "df2653b3db5397c9",
+        "whitespace_exponents:artifact/dump.json": "686ca212558a49ba",
+        "whitespace_exponents:artifact/pretty.json": "be3aa57b9902fdbc"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}

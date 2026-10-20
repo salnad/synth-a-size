@@ -9,3 +9,6 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+
+[dev-dependencies]
+sas-parity.workspace = true

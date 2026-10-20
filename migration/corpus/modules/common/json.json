@@ -1,0 +1,36 @@
+{
+  "description": "nlohmann/json 3.1.2 parse -> dump()/dump(2), the serializer of presets and wavetables. Ported in port/crates/common (json.rs).",
+  "module": "json_serializer",
+  "cases": {
+    "typed_numbers": {
+      "params": {
+        "text": "{\"b\": 1, \"a\": -2, \"c\": 0.5, \"d\": [true, null, \"x\"], \"e\": 1e2, \"f\": 0.1, \"g\": 1e15, \"h\": 1e-5, \"i\": 123456789012345.0}"
+      }
+    },
+    "duplicate_keys": {
+      "params": {
+        "text": "{\"a\": 1, \"a\": 2, \"z\": {\"y\": [], \"x\": {}}}"
+      }
+    },
+    "integer_limits": {
+      "params": {
+        "text": "[18446744073709551615, 18446744073709551616, -9223372036854775808, -9223372036854775809, -0, -0.0, 0e5]"
+      }
+    },
+    "strings": {
+      "params": {
+        "text": "{\"s\": \"tab\\there \\u00e9 \\ud83d\\ude00 \\/ \\u0001 \\\"q\\\" \\\\\", \"u\": \"\u00e9\"}"
+      }
+    },
+    "whitespace_exponents": {
+      "params": {
+        "text": "  [ 1.5e-7 , 3.25E+3 , 2.5e+300 ]  "
+      }
+    },
+    "generated_floats": {
+      "params": {
+        "float_count": 40000
+      }
+    }
+  }
+}

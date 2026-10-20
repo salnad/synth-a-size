@@ -553,3 +553,37 @@ Harness Builder's `sas-parity` helper.)
   Rust parity tests, once `sas-parity` and per-module captures land.
 - Wavetable state model (creator/group/component/keyframe JSON) and the
   FFT next, then rendering.
+
+## 2026-10-20: M4a `sas-common` parity captures
+
+**Added**
+
+- Artifact-only `ref-module` modules in `migration/reference/src/modules/common/`:
+  - `line_generator`: `jsonToState` → render → `stateToJson`; arrays
+    `buffer` and `value_at_phase`, text `saved.json`;
+  - `random_generator`: `RandomGenerator` after `seed()`; array `values`;
+  - `futils_scalar`: scalar `exp2`/`log2`/`tanh`/`powerScale`/Catmull-Rom
+    over a fixed integer-defined grid;
+  - `json_serializer`: nlohmann `parse` → `dump()`/`dump(2)` of authored
+    texts, and `dump()` of 40,000 generated doubles and floats. These are
+    upstream's own serialization.
+- JSON inputs are string params, so the reference and the port parse the
+  same bytes.
+- Case files `migration/corpus/modules/common/{line_generator,random,futils,json}.json`
+  (37 cases) with their hashes.
+- Parity tests in `port/crates/common/tests/parity.rs`. They loop over
+  every case of each file. Numbers use `assert_parity!` with the default
+  module tolerances (1e-4, −80 dB); saved JSON uses `assert_artifact!`.
+
+**Measured against the official (fast-math) reference**
+
+- All pass with the default module tolerances; no tolerance changes.
+- RNG sequences, every JSON text artifact (`saved.json`, `dump.json`,
+  `pretty.json`, `floats.json`) and the Catmull-Rom outputs are exact.
+- `exp2`: exact. `tanh`, `log2`: ≤ 2 ulp. `powerScale`: ≤ 1.3e-6
+  (−138 dB). Line buffers: ≤ 3.0e-7 (≤ −144 dB).
+- `valueAtPhase` on `steps`/`steps_loop` (vertical segments): 8.5e-5 and
+  −92 dB. This is the closest to a limit (1.17× under `max_abs_error`).
+  The cause is fast-math reassociation of the phase-to-index arithmetic,
+  so one interpolation lands on the other side of a breakpoint. It is 0
+  against the no-fast-math build.
