@@ -961,5 +961,3 @@ into the live file and writing hashes:
 - A missing `random_seed` is drawn from the global seed counter, so the
   0.3.6 case sets one explicitly. The counter behaviour stays covered by
   unit tests.
-- The JSON-only cases also wait on the harness fix for text-only modules
-  in `run_corpus.py compare`.
