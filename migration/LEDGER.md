@@ -587,10 +587,14 @@ Harness Builder's `sas-parity` helper.)
   The cause is fast-math reassociation of the phase-to-index arithmetic,
   so one interpolation lands on the other side of a breakpoint. It is 0
   against the no-fast-math build.
-- `-0.0` is not part of any captured JSON text. Upstream's fast-math
-  build prints it as `0.0` (folded `signbit`) and the no-fast-math build
-  as `-0.0`, so a text artifact containing it cannot pass the calibration
-  job. The port prints `0.0` like the shipped build; a unit test covers it.
+- **Pending owner decision: byte-exact vs bounded JSON.** The `-0.0` case
+  `common/json/negative_zero` is authored in
+  `migration/corpus/modules/common/pending/json.json` (not loaded by the
+  harness). Upstream's fast-math build prints `-0.0` as `0.0` (folded
+  `signbit`) and the no-fast-math build prints `-0.0`, so it cannot pass
+  the calibration job as an exact artifact. The port prints `0.0` like the
+  shipped build; a unit test covers it. To re-enable, move the case into
+  `common/json.json` and write hashes.
 - Expected hashes come from CI run 39514821022's `reference-renders`
   artifact. Local hashes are identical for `futils`, `line_generator` and
   `random`. `json` was re-written locally after the `-0.0` change, and the
