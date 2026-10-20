@@ -21,6 +21,7 @@ make parity results meaningless.
 | CI run 39503118688 | AMD EPYC 9V45 (Zen 5), AVX-512, FMA | 2 cores |
 | CI run 39504159036 | AMD EPYC 7763 (Zen 3), AVX2, FMA | 2 cores |
 | CI run 39504834964 | AMD EPYC 9V74 (Zen 4), AVX-512, FMA | 2 cores |
+| CI run 39505540625 | AMD EPYC 7763 (Zen 3), AVX2, FMA | 2 cores |
 
 Package versions on every machine: `gcc-13 13.3.0-6ubuntu2~24.04.1`,
 `libc6 2.39-0ubuntu8.9`, `libstdc++6 14.2.0-4ubuntu2~24.04.1`. CI captures
@@ -138,8 +139,9 @@ to preserve.
 ## Result
 
 After the fix, all 15 corpus outputs (8 renders and 7 module outputs) are
-**bit-identical between the Intel VM and the AMD EPYC 9V74 runner**. The
-EPYC 7763 run matched 14 of 15 before the libmvec fix, and the miss was the
+**bit-identical on the Intel VM, an AMD EPYC 9V74 (Zen 4) runner and an
+AMD EPYC 7763 (Zen 3) runner** (CI runs 39504834964 and 39505540625). Before
+the libmvec fix, the EPYC 7763 matched 14 of 15, and the miss was the
 libmvec case. CI now enforces this on every run.
 
 Remaining assumptions, all recorded in the build identity: glibc 2.39

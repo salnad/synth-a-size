@@ -170,9 +170,9 @@ entry is the record AGENTS.md rule 6 requires.
 
 **Measured**
 
-- After the fix, all 15 corpus outputs are bit-identical between the Intel
-  VM and an AMD EPYC 9V74 runner. Before the libmvec fix, the EPYC 7763
-  runner matched 14 of 15.
+- After the fix, all 15 corpus outputs are bit-identical on the Intel VM,
+  an AMD EPYC 9V74 (Zen 4) runner and an AMD EPYC 7763 (Zen 3) runner.
+  Before the libmvec fix, the EPYC 7763 matched 14 of 15.
 - The fix itself moves the reference by up to 3.1e-3 (exact division,
   `unison_pad_fx`); dropping libmvec moves it by ≤ 2.4e-7.
 - Faithful-port proxy (no-fast-math vs default) after the fix: worst
