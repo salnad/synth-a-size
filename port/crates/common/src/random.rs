@@ -9,8 +9,11 @@
 //! is then `canonical * (max - min) + min` in `float`.
 //!
 //! Upstream seeds each generator from a global counter
-//! (`RandomGenerator::next_seed_`) in construction order. That counter is the
-//! caller's job here: construct with the seed the reference would have used.
+//! (`RandomGenerator::next_seed_`) in construction order. [`take_next_seed`]
+//! and [`RandomGenerator::from_global_counter`] mirror it; reproducing a
+//! reference stream also needs the reference's construction order (and the
+//! seeds its static initialisation consumes). [`RandomGenerator::new`] takes
+//! an explicit seed instead.
 
 /// `std::mt19937`.
 #[derive(Clone)]
@@ -99,7 +102,21 @@ pub fn generate_canonical_f32(engine: &mut Mt19937) -> f32 {
     }
 }
 
-/// `vital::utils::RandomGenerator` with an explicit seed.
+static NEXT_SEED: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+
+/// Takes the next value of the global seed counter
+/// (`RandomGenerator::next_seed_++`).
+pub fn take_next_seed() -> i32 {
+    NEXT_SEED.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Sets the global seed counter (`ref-render --seed N` does this before
+/// constructing the synth).
+pub fn set_next_seed(seed: i32) {
+    NEXT_SEED.store(seed, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// `vital::utils::RandomGenerator`.
 #[derive(Clone)]
 pub struct RandomGenerator {
     engine: Mt19937,
@@ -116,6 +133,12 @@ impl RandomGenerator {
             min,
             max,
         }
+    }
+
+    /// `RandomGenerator(min, max)`: seeded from the global counter, as
+    /// upstream constructs every generator.
+    pub fn from_global_counter(min: f32, max: f32) -> Self {
+        Self::new(min, max, take_next_seed())
     }
 
     /// `next()`: one value from `uniform_real_distribution<float>(min, max)`.

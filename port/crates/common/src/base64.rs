@@ -99,7 +99,12 @@ pub fn decode_f32s(text: &str) -> Vec<f32> {
 /// Decodes to whole `i16`s.
 pub fn decode_i16s(text: &str) -> Vec<i16> {
     let (bytes, _) = decode(text);
-    bytes.as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes(*b)).collect()
+    bytes
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|b| i16::from_le_bytes(*b))
+        .collect()
 }
 
 #[cfg(test)]
