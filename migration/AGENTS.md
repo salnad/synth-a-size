@@ -107,24 +107,59 @@ none of them edits a shared list.
 
      Settings layer as `cases.json` `module_defaults`, then the file's
      top-level keys, then the case's keys. Signal and trigger syntax is in
-     `migration/reference/README.md`. Tolerances default to
-     `module_defaults` (`max_abs_error` 1e-4, `residual_db` −80 dB). A case
-     may make them stricter; anything looser is rejected unless the case
-     carries `"tolerance_exception"` citing recorded human approval in
-     `LEDGER.md` (rule 6). The case id is `<area>/<module>/<case>`, e.g.
-     `filters/digital_svf/lowpass_saw_sweep`.
+     `migration/reference/README.md`. The case id is
+     `<area>/<module>/<case>`, e.g. `filters/digital_svf/lowpass_saw_sweep`.
+   - *Tolerances* default to `module_defaults` (`max_abs_error` 1e-4,
+     `residual_db` −80 dB). That is the approved floor, which is also pinned
+     in code in `run_corpus.py` and `sas-parity`. A case may make its
+     tolerances stricter. Anything looser is rejected unless the *case*
+     (never the file) carries a structured exception:
+
+     ```json
+     "tolerances": { "residual_db": -70 },
+     "tolerance_exception": {
+       "approved_in": "2026-10-21: approve looser filters/digital_svf/lowpass_saw_sweep",
+       "tolerances": { "residual_db": -70 }
+     }
+     ```
+
+     `approved_in` must be the exact text of a `LEDGER.md` heading, and that
+     section must name the case id. Every loosened metric must equal its
+     approved value, so loosening further needs a new approval. Only a human
+     can approve (rule 6).
+   - *Exact-match artifacts* (JSON or text, e.g. a WavetableCreator load →
+     save): give the module an artifact hook (the sixth `ModuleDef` field;
+     `create` may be `nullptr` for artifact-only modules). Call
+     `sink.text("saved.json", json)` for each artifact and, optionally,
+     `sink.array(name, data, channels)` for float arrays.
+     `context.corpusPath(...)` resolves input files referenced by `params`.
+     See `src/modules/harness/echo.cpp`. Artifacts are written to
+     `artifact_<name>`, hashed like buffers, and compared byte for byte.
    - *Render and record hashes*:
 
      ```bash
      migration/scripts/build_reference.sh
      python3 migration/scripts/run_corpus.py render --out build/parity --only filters/digital_svf
-     python3 migration/scripts/run_corpus.py hashes build/parity --write
      ```
 
-     `hashes --write` writes `migration/corpus/modules/<area>/<module>.hashes.json`.
-     Commit it with the case file; CI's cross-machine check fails without it.
-     If your machine is not Ubuntu 24.04 with GCC 13.3 (the build identity
-     CI uses), write the hashes from CI's `parity-captures` artifact instead.
+     Expected hashes must come from a tree rendered with the CI build
+     identity. The canonical source is your PR's CI run: download its
+     `reference-renders` artifact (which also carries every module capture)
+     and write from it:
+
+     ```bash
+     gh run download <run-id> -n reference-renders -D build/ci
+     python3 migration/scripts/run_corpus.py hashes build/ci/ref --write
+     ```
+
+     A local tree works only if its build identity is identical (Ubuntu
+     24.04, GCC 13.3, glibc 2.39, same flags). `hashes --write` refuses
+     identities that have no committed hashes; `--new-identity` is reserved
+     for recorded decisions such as an ARM reference or a runner image bump.
+     The command writes `migration/corpus/modules/<area>/<module>.hashes.json`.
+     Commit it with the case file: CI fails if a module's hash file lacks
+     the CI identity, and `sas-parity` checks every loaded capture against
+     these hashes.
 
 3. **Port faithfully.** Keep upstream's structure where practical,
    including processing order, control-rate vs audio-rate behaviour,
@@ -158,10 +193,16 @@ none of them edits a shared list.
      `assert_parity!("modulation/envelope/adsr:value", value)`.
    - Full-patch renders use `RenderCase::load("render/<name>")` (preset,
      MIDI and settings) and `assert_parity!("render/<name>", stereo)`.
+   - Exact-match artifacts:
+     `assert_artifact!("wavetable/creator/init", "saved.json", json)` or
+     `case.assert_artifact(name, &bytes)`. These compare byte for byte, with
+     no tolerance and no normalisation; `case.artifact(name)` returns the
+     reference text.
    - Tolerances come only from the case files. Tests cannot pass, scale or
-     override them, and `report()` / `parity_report()` exist for debugging
-     only. A parity test must call `assert_parity`. Never `#[ignore]` it,
-     and never compare against anything but the reference capture.
+     override them. The hidden `report()` / `parity_report()` helpers are
+     for interactive debugging only. A parity test must call
+     `assert_parity!` / `assert_artifact!`. Never `#[ignore]` it, and never
+     compare against anything but the reference capture.
    - On failure the panic lists every metric. The port output and the
      report are written to `build/parity-failures/<case>/`; in CI they are
      uploaded as the `parity-failures` artifact.

@@ -47,6 +47,17 @@ use cases::ResolvedCase;
 /// per frame, poly lanes voice 0 L, voice 0 R, voice 1 L, voice 1 R),
 /// `Vec<[f32; 2]>` (stereo renders), an interleaved `Vec<f32>` / `&[f32]`
 /// (channel count taken from the reference), or an [`Audio`].
+/// Asserts that `actual` (`&str`, `String`, `&[u8]`, `Vec<u8>`) is
+/// byte-for-byte equal to text artifact `name` of module case `id`, e.g.
+/// `assert_artifact!("wavetable/creator/init", "saved.json", json)`. No
+/// tolerance, no normalisation.
+#[macro_export]
+macro_rules! assert_artifact {
+    ($id:expr, $name:expr, $actual:expr $(,)?) => {
+        $crate::ModuleCase::load($id).assert_artifact($name, &$actual)
+    };
+}
+
 #[macro_export]
 macro_rules! assert_parity {
     ($id:expr, $output:expr $(,)?) => {
@@ -67,8 +78,10 @@ pub fn assert_parity<O: ParityOutput + ?Sized>(id: &str, output: &O) {
     }
 }
 
-/// Like [`assert_parity`], but returns the report instead of panicking on a
-/// failed comparison (setup errors still panic).
+/// Debugging only: like [`assert_parity`], but returns the report instead of
+/// panicking. Parity tests must assert with [`assert_parity!`]; reviewers
+/// treat thresholds applied to this report in tests as blocking.
+#[doc(hidden)]
 pub fn parity_report<O: ParityOutput + ?Sized>(id: &str, output: &O) -> Report {
     match parse_id(id) {
         ParsedId::Render => RenderCase::load(id).report(output),
@@ -185,6 +198,40 @@ fn to_audio<O: ParityOutput + ?Sized>(output: &O, reference: &Audio, label: &str
     Audio::new(channels, reference.sample_rate, samples)
 }
 
+fn describe_mismatch(label: &str, expected: &[u8], actual: &[u8], dumped: &Path) -> String {
+    let offset = expected
+        .iter()
+        .zip(actual)
+        .position(|(a, b)| a != b)
+        .unwrap_or(expected.len().min(actual.len()));
+    let line = expected[..offset].iter().filter(|&&b| b == b'\n').count() + 1;
+    let line_start = expected[..offset]
+        .iter()
+        .rposition(|&b| b == b'\n')
+        .map_or(0, |p| p + 1);
+    let snippet = |bytes: &[u8]| {
+        let end = bytes[line_start.min(bytes.len())..]
+            .iter()
+            .position(|&b| b == b'\n')
+            .map_or(bytes.len(), |p| line_start + p);
+        String::from_utf8_lossy(
+            &bytes[line_start.min(bytes.len())..end.max(line_start.min(bytes.len()))],
+        )
+        .to_string()
+    };
+    format!(
+        "artifact parity FAILED for {label} (exact match required)\n  \
+         reference {} bytes / port {} bytes, first difference at byte {offset} (line {line}, column {})\n  \
+         reference: {:?}\n  port:      {:?}\n  port output: {}",
+        expected.len(),
+        actual.len(),
+        offset - line_start + 1,
+        snippet(expected),
+        snippet(actual),
+        captures::path_display(dumped)
+    )
+}
+
 fn compare_or_panic(
     label: &str,
     reference: &Audio,
@@ -230,12 +277,10 @@ fn fail(label: &str, source: &str, test: &Audio, report: &Report) -> ! {
     panic!("{text}");
 }
 
-fn load_npy_frames(path: &Path) -> Vec<[f32; 4]> {
-    let audio = audio_diff::audio::load_npy(path).unwrap_or_else(|e| panic!("sas-parity: {e}"));
+fn to_frames(audio: Audio, what: &str) -> Vec<[f32; 4]> {
     if audio.channels != 4 {
         panic!(
-            "sas-parity: {} has {} columns, expected 4 poly lanes",
-            path.display(),
+            "sas-parity: {what} has {} columns, expected 4 poly lanes",
             audio.channels
         );
     }
@@ -389,7 +434,14 @@ impl ModuleCase {
         }
     }
 
-    fn npy(&self, prefix: &str, name: &str) -> Vec<[f32; 4]> {
+    fn capture_json(&self) -> Value {
+        cases::read_json(&self.dir.join("capture.json"))
+            .unwrap_or_else(|e| panic!("sas-parity: {e}"))
+    }
+
+    /// Loads `<prefix><name>.npy` and verifies its data: outputs against the
+    /// committed hashes, inputs against capture.json.
+    fn npy(&self, prefix: &str, name: &str) -> Audio {
         let path = self.dir.join(format!("{prefix}{name}.npy"));
         if !path.is_file() {
             let available = self.names(prefix);
@@ -399,13 +451,30 @@ impl ModuleCase {
                 if prefix == "in_" { "input" } else { "output" }
             );
         }
-        load_npy_frames(&path)
+        let audio =
+            audio_diff::audio::load_npy(&path).unwrap_or_else(|e| panic!("sas-parity: {e}"));
+        let digest = captures::fnv1a64(&captures::f32_bytes(&audio.data));
+        if prefix == "out_" {
+            captures::verify_committed_hash(&self.resolved, name, &digest);
+        } else {
+            let recorded = self.capture_json()["inputs"][name]["fnv1a64"].clone();
+            if recorded.as_str() != Some(digest.as_str()) {
+                panic!(
+                    "sas-parity: {} input {name:?} does not match its capture.json hash; re-render it",
+                    self.id()
+                );
+            }
+        }
+        audio
     }
 
     /// The exact per-frame values the reference fed to input `name`
     /// (control-rate inputs are held for each block, as captured).
     pub fn input(&self, name: &str) -> Vec<[f32; 4]> {
-        self.npy("in_", name)
+        to_frames(
+            self.npy("in_", name),
+            &format!("{} input {name}", self.id()),
+        )
     }
 
     /// Trigger events on input `name` (empty if it is not a trigger input).
@@ -444,17 +513,75 @@ impl ModuleCase {
             .collect()
     }
 
-    /// The reference output `name`.
+    /// The reference output `name` (processor outputs: 4 poly lanes).
     pub fn reference(&self, name: &str) -> Vec<[f32; 4]> {
+        to_frames(
+            self.npy("out_", name),
+            &format!("{} output {name}", self.id()),
+        )
+    }
+
+    /// The reference output `name` with whatever channel count it has (e.g.
+    /// arrays emitted by an artifact hook).
+    pub fn reference_audio(&self, name: &str) -> Audio {
         self.npy("out_", name)
     }
 
-    fn reference_audio(&self, name: &str) -> Audio {
-        let frames = self.reference(name);
-        Audio::new(4, None, frames.into_iter().flatten().collect())
+    /// Names of the exact-match text artifacts (`artifact_<name>` files).
+    pub fn artifact_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.capture_json()["artifacts"]
+            .as_object()
+            .map(|a| a.keys().cloned().collect())
+            .unwrap_or_default();
+        names.sort();
+        names
     }
 
-    /// Compares without panicking on failure.
+    /// The raw bytes of artifact `name`, verified against the committed hash.
+    pub fn artifact_bytes(&self, name: &str) -> Vec<u8> {
+        let path = self.dir.join(format!("artifact_{name}"));
+        let bytes = fs::read(&path).unwrap_or_else(|_| {
+            panic!(
+                "sas-parity: {} has no artifact {name:?} (available: {:?})",
+                self.id(),
+                self.artifact_names()
+            )
+        });
+        captures::verify_committed_hash(
+            &self.resolved,
+            &format!("artifact/{name}"),
+            &captures::fnv1a64(&bytes),
+        );
+        bytes
+    }
+
+    /// Artifact `name` as UTF-8 text.
+    pub fn artifact(&self, name: &str) -> String {
+        String::from_utf8(self.artifact_bytes(name))
+            .unwrap_or_else(|_| panic!("sas-parity: {} artifact {name:?} is not UTF-8", self.id()))
+    }
+
+    /// Asserts that `actual` is byte-for-byte equal to artifact `name`. There
+    /// is no tolerance and no normalisation (whitespace, key order and number
+    /// formatting all count).
+    #[track_caller]
+    pub fn assert_artifact<A: AsRef<[u8]> + ?Sized>(&self, name: &str, actual: &A) {
+        let expected = self.artifact_bytes(name);
+        let actual = actual.as_ref();
+        if expected == actual {
+            return;
+        }
+        let label = format!("{}:artifact/{name}", self.id());
+        let dir = captures::failures_dir().join(label.replace(':', "__"));
+        fs::create_dir_all(&dir).ok();
+        let dumped = dir.join(format!("port_{name}"));
+        fs::write(&dumped, actual).ok();
+        fs::write(dir.join(format!("reference_{name}")), &expected).ok();
+        panic!("{}", describe_mismatch(&label, &expected, actual, &dumped));
+    }
+    /// Debugging only: compares without panicking. Parity tests must use
+    /// [`ModuleCase::assert_parity`] / [`assert_parity!`].
+    #[doc(hidden)]
     pub fn report<O: ParityOutput + ?Sized>(&self, output: &str, data: &O) -> Report {
         let label = format!("{}:{output}", self.id());
         let reference = self.reference_audio(output);
@@ -548,12 +675,21 @@ impl RenderCase {
         &self.resolved.tolerances
     }
 
-    /// The reference render (stereo, interleaved).
+    /// The reference render (stereo, interleaved), verified against the
+    /// committed hash.
     pub fn reference(&self) -> Audio {
-        audio_diff::load(&self.wav).unwrap_or_else(|e| panic!("sas-parity: {e}"))
+        let audio = audio_diff::load(&self.wav).unwrap_or_else(|e| panic!("sas-parity: {e}"));
+        captures::verify_committed_hash(
+            &self.resolved,
+            "",
+            &captures::fnv1a64(&captures::f32_bytes(&audio.data)),
+        );
+        audio
     }
 
-    /// Compares without panicking on failure.
+    /// Debugging only: compares without panicking. Parity tests must use
+    /// [`RenderCase::assert_parity`] / [`assert_parity!`].
+    #[doc(hidden)]
     pub fn report<O: ParityOutput + ?Sized>(&self, data: &O) -> Report {
         let reference = self.reference();
         let test = to_audio(data, &reference, self.id());

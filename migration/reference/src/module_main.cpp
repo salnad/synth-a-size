@@ -11,6 +11,7 @@
 #include "utils.h"
 
 #include <algorithm>
+#include <cctype>
 #include <array>
 
 #include <cmath>
@@ -29,7 +30,11 @@ Instantiates one upstream Processor, feeds it the input signals described in
 spec.json block by block, and writes:
   DIR/in_<input>.npy    float32 [frames, 4]   (poly lanes: v0L v0R v1L v1R)
   DIR/out_<output>.npy  float32 [frames, 4]
-  DIR/capture.json      resolved spec, build info, per-buffer hashes
+  DIR/artifact_<name>   exact-match text artifacts (modules with an artifact hook)
+  DIR/capture.json      resolved spec, build info, per-buffer and per-artifact hashes
+
+Options:
+  --corpus-dir DIR      migration/corpus, for artifact hooks that read corpus files
 )";
 
 using refmod::InputDef;
@@ -243,6 +248,12 @@ class Signal {
     std::mt19937 noise_engine_;
 };
 
+// __FILE__ is absolute; show it relative to the repository.
+std::string relativeSource(const std::string& path) {
+  size_t found = path.find("migration/reference/");
+  return found == std::string::npos ? path : path.substr(found);
+}
+
 int fail(const std::string& message) {
   std::cerr << "ref-module: " << message << std::endl;
   return 2;
@@ -263,8 +274,8 @@ int main(int argc, const char* argv[]) {
             [](const ModuleDef& a, const ModuleDef& b) { return a.name < b.name; });
   for (size_t i = 1; i < modules.size(); ++i) {
     if (modules[i].name == modules[i - 1].name)
-      return fail("module '" + modules[i].name + "' is registered twice: " + modules[i - 1].source_file +
-                  " and " + modules[i].source_file);
+      return fail("module '" + modules[i].name + "' is registered twice: " + relativeSource(modules[i - 1].source_file) +
+                  " and " + relativeSource(modules[i].source_file));
   }
   if (args.has("list")) {
     json listing = json::array();
@@ -272,7 +283,9 @@ int main(int argc, const char* argv[]) {
       json entry;
       entry["module"] = module.name;
       entry["description"] = module.description;
-      entry["source"] = module.source_file;
+      entry["source"] = relativeSource(module.source_file);
+      entry["processor"] = static_cast<bool>(module.create);
+      entry["artifacts"] = static_cast<bool>(module.artifacts);
       for (const InputDef& input : module.inputs) {
         const char* rate = input.rate == Rate::kAudio ? "audio" : (input.rate == Rate::kControl ? "control" : "trigger");
         entry["inputs"].push_back({ { "name", input.name }, { "default", input.default_value }, { "rate", rate } });
@@ -312,10 +325,16 @@ int main(int argc, const char* argv[]) {
   if (module == nullptr)
     return fail("unknown module '" + module_name + "' (see --list)");
 
+  const bool has_processor = static_cast<bool>(module->create);
+  if (!has_processor && !module->artifacts)
+    return fail("module '" + module_name + "' has neither a processor nor an artifact hook");
+  if (!has_processor && (!module->inputs.empty() || !module->outputs.empty()))
+    return fail("artifact-only module '" + module_name + "' cannot declare processor inputs or outputs");
+
   const int sample_rate = spec.value("sample_rate", 44100);
   const int oversample = spec.value("oversample", 1);
   const int block_size = spec.value("block_size", 64);
-  const long long num_samples = spec.value("num_samples", 44100LL);
+  const long long num_samples = spec.value("num_samples", has_processor ? 44100LL : 0LL);
   const json params = spec.value("params", json::object());
   const json inputs_spec = spec.value("inputs", json::object());
 
@@ -323,7 +342,7 @@ int main(int argc, const char* argv[]) {
     return fail("oversample must be in [1, 16]");
   if (block_size < 1 || block_size > vital::kMaxBufferSize * oversample)
     return fail("block_size must be in [1, " + std::to_string(vital::kMaxBufferSize * oversample) + "]");
-  if (num_samples <= 0)
+  if (has_processor && num_samples <= 0)
     return fail("num_samples must be positive");
 
   for (auto it = inputs_spec.begin(); it != inputs_spec.end(); ++it) {
@@ -339,9 +358,12 @@ int main(int argc, const char* argv[]) {
   if (spec.count("seed"))
     vital::utils::RandomGenerator::next_seed_ = spec["seed"].get<int>();
 
-  std::unique_ptr<vital::Processor> processor(module->create(params));
-  if (!processor)
-    return fail("could not create module with params " + params.dump());
+  std::unique_ptr<vital::Processor> processor;
+  if (has_processor) {
+    processor.reset(module->create(params));
+    if (!processor)
+      return fail("could not create module with params " + params.dump());
+  }
 
   const int internal_rate = sample_rate * oversample;
   std::vector<std::unique_ptr<vital::Output>> sources;
@@ -375,15 +397,16 @@ int main(int argc, const char* argv[]) {
     input_capture[i].reserve(static_cast<size_t>(num_samples) * 4);
   }
 
-  processor->setSampleRate(sample_rate);
-  processor->setOversampleAmount(oversample);
-  processor->hardReset();
-
   std::vector<std::vector<float>> output_capture(module->outputs.size());
-  for (auto& capture : output_capture)
-    capture.reserve(static_cast<size_t>(num_samples) * 4);
+  if (processor) {
+    processor->setSampleRate(sample_rate);
+    processor->setOversampleAmount(oversample);
+    processor->hardReset();
+    for (auto& capture : output_capture)
+      capture.reserve(static_cast<size_t>(num_samples) * 4);
+  }
 
-  for (long long block_start = 0; block_start < num_samples; block_start += block_size) {
+  for (long long block_start = 0; processor && block_start < num_samples; block_start += block_size) {
     int n = static_cast<int>(std::min<long long>(block_size, num_samples - block_start));
 
     for (size_t i = 0; i < module->inputs.size(); ++i) {
@@ -422,6 +445,14 @@ int main(int argc, const char* argv[]) {
     }
   }
 
+  refmod::ArtifactSink sink;
+  if (module->artifacts) {
+    refmod::ArtifactContext context{ spec, args.get("corpus-dir") };
+    std::string error;
+    if (!module->artifacts(context, sink, error))
+      return fail("artifact hook of '" + module_name + "' failed: " + error);
+  }
+
   if (!harness::ensureDirectory(out_dir))
     return fail("cannot create " + out_dir);
 
@@ -435,10 +466,15 @@ int main(int argc, const char* argv[]) {
 
   size_t non_finite = 0;
   auto dump = [&](const std::string& file_name, const std::vector<float>& data, const char* kind,
-                  const std::string& name) -> bool {
+                  const std::string& name, size_t channels = 4) -> bool {
     std::string error;
     std::string path = out_dir + "/" + file_name;
-    if (!harness::writeNpyF32(path, data.data(), { data.size() / 4, 4 }, error)) {
+    if (channels == 0 || data.size() % channels != 0) {
+      std::cerr << "ref-module: " << name << ": " << data.size() << " values do not divide into "
+                << channels << " channels" << std::endl;
+      return false;
+    }
+    if (!harness::writeNpyF32(path, data.data(), { data.size() / channels, channels }, error)) {
       std::cerr << "ref-module: " << error << std::endl;
       return false;
     }
@@ -460,6 +496,36 @@ int main(int argc, const char* argv[]) {
     if (!dump("out_" + module->outputs[o].name + ".npy", output_capture[o], "outputs", module->outputs[o].name))
       return 2;
     manifest["outputs"][module->outputs[o].name]["rate"] = output->isControlRate() ? "control" : "audio";
+  }
+
+  auto valid_name = [](const std::string& name) {
+    if (name.empty() || name[0] == '.')
+      return false;
+    for (char c : name) {
+      if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == '.'))
+        return false;
+    }
+    return true;
+  };
+  for (const auto& array : sink.arrays()) {
+    if (!valid_name(array.name) || manifest["outputs"].count(array.name))
+      return fail("invalid or duplicate artifact array name '" + array.name + "'");
+    if (!dump("out_" + array.name + ".npy", array.data, "outputs", array.name, array.channels))
+      return 2;
+    manifest["outputs"][array.name]["rate"] = "artifact";
+    manifest["outputs"][array.name]["channels"] = array.channels;
+  }
+  for (const auto& text : sink.texts()) {
+    if (!valid_name(text.name) || manifest["artifacts"].count(text.name))
+      return fail("invalid or duplicate artifact name '" + text.name + "'");
+    std::string file_name = "artifact_" + text.name;
+    if (!harness::writeTextFile(out_dir + "/" + file_name, text.content))
+      return fail("cannot write " + file_name);
+    manifest["artifacts"][text.name] = {
+      { "file", file_name },
+      { "bytes", text.content.size() },
+      { "fnv1a64", harness::hex64(harness::fnv1a64(text.content.data(), text.content.size())) },
+    };
   }
   manifest["non_finite_samples"] = non_finite;
 

@@ -57,12 +57,18 @@ Each case carries the parity tolerances that `audio-diff` enforces. The
 render defaults (`residual_db` −50, `lsd_db` 0.1, `rms_diff_db` 0.01, no
 `max_abs_error` gate) and their margins are explained in
 [`../decisions/reference-determinism.md`](../decisions/reference-determinism.md).
-Module tolerances default to `module_defaults` and may only be made
-stricter, unless a case cites recorded human approval in
-`tolerance_exception`; `run_corpus.py` and `sas-parity` both enforce this.
+Module tolerances default to `module_defaults`, render tolerances to
+`defaults`. Both must meet the approved floor, which is pinned in code in
+`run_corpus.py` and `sas-parity`. A case may only make its tolerances
+stricter, unless it carries a structured
+`tolerance_exception: {"approved_in": "<LEDGER.md heading>", "tolerances": {...}}`.
+Each loosened metric must equal its approved value, and the cited ledger
+section must name the case. See "How to port a piece of the engine" in
+`migration/AGENTS.md`.
 [`reference_hashes.json`](reference_hashes.json) (renders) and the
-per-module `*.hashes.json` files hold the expected output hashes, one entry
-per build identity. CI checks it, so the
+per-module `*.hashes.json` files hold the expected output and artifact
+hashes, one entry per build identity. Write them only from a CI-identity
+tree; `hashes --check --require-known-identity` runs in CI. CI checks it, so the
 reference stays bit-identical across machines.
 Render and compare everything with
 [`../scripts/run_corpus.py`](../scripts/run_corpus.py):

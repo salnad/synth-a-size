@@ -244,3 +244,67 @@ entry is the record AGENTS.md rule 6 requires.
 
 - Module threads add their capture files, case files, hashes and parity
   tests as described in AGENTS.md.
+
+---
+
+## 2026-10-20: harness scale-out review fixes (Parity Reviewer, PR #3) and exact-match artifacts
+
+**Review fixes** (each one has a regression test in
+`migration/scripts/test_run_corpus.py`, run in CI, and in sas-parity):
+
+- B1: `tolerance_exception` is now structured and case-level only:
+  `{"approved_in": "<LEDGER.md heading>", "tolerances": {...}}`. Every
+  loosened metric must equal its approved value, every approved metric must
+  actually be loosened, and the cited ledger section must exist and name
+  the case id. Free text, file-level exceptions and loosening past an
+  approval are rejected, in both resolvers.
+- B2: the approved floor is pinned in code in both resolvers. Render floor:
+  `residual_db` −50, `lsd_db` 0.1, `rms_diff_db` 0.01. Module floor:
+  `max_abs_error` 1e-4, `residual_db` −80. Defaults that are missing a floor
+  metric, or looser than it, are rejected. `cases.json` keys are validated.
+- B3: `run_corpus.py render` deletes every earlier output of a case before
+  rendering and writes `case.json` only when the render exits 0.
+- B4: when the tree's build identity is known (it has render hashes), a
+  module hash file without that identity is an error. AGENTS.md now says
+  hashes are written from a CI-identity tree (the PR's `reference-renders`
+  artifact). `hashes --write` refuses unknown identities unless given
+  `--new-identity`.
+- N1: hashes are computed from the files themselves (WAV data, NPY
+  payload, artifact bytes), not read from `capture.json`. sas-parity checks
+  every loaded reference output, render and artifact against the committed
+  hash for its build identity, and every input against `capture.json`.
+- N2: `parity_report` and `report()` are `#[doc(hidden)]` and documented as
+  debugging-only.
+- N3: CI runs `hashes --check --require-known-identity`. In CI
+  (`SAS_PARITY_NO_BUILD`), sas-parity rejects captures whose build identity
+  has no committed hashes.
+- N4: Python rejects NaN and Infinity (`parse_constant`), and render cases
+  and defaults reject unknown keys, matching Rust.
+- N5: a lock left by a dead process is taken over. `ref-module --list`
+  shows repository-relative source paths. `--only` matches exact ids or
+  path prefixes.
+- Found while testing: the harness hash has always used offset basis
+  1469598103934665603 (one digit short of the standard FNV-1a basis). It is
+  kept to avoid churning every committed hash, documented, and pinned by
+  test vectors in both Python and Rust.
+
+**Exact-match artifacts** (requested for Wavetable Creator and Preset
+Registry):
+
+- `ModuleDef` gains an optional artifact hook:
+  `sink.text(name, content)` writes `artifact_<name>`, and
+  `sink.array(name, data, channels)` writes extra NPY outputs.
+  Artifact-only modules (`create = nullptr`) are allowed.
+  `ref-module --corpus-dir` gives hooks access to corpus input files.
+- Artifacts are recorded in `capture.json`, pinned in the hash files as
+  `<case>:artifact/<name>`, compared exactly by `run_corpus.py compare`, and
+  asserted with `assert_artifact!(id, name, actual)` /
+  `ModuleCase::assert_artifact` in sas-parity (byte-equal, no tolerance).
+- Self-test module `harness_echo` (`harness/echo/params_and_file`) covers
+  the path end to end.
+
+**Measured**
+
+- The existing 15 hashes are unchanged; `harness/echo` adds 3.
+- Python regression tests: 19 pass. sas-parity: 18 unit tests, 8 self-checks
+  and the tamper test pass.

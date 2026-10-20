@@ -155,8 +155,13 @@ Outputs:
   arrays of shape `[frames, 4]`. The 4 columns are the 4 `poly_float`
   lanes: voice 0 left, voice 0 right, voice 1 left, voice 1 right.
   Control-rate inputs and outputs are sample-and-hold per block.
-- `DIR/capture.json`: the resolved spec, build info, an FNV-1a hash per
-  buffer, and the rate of each output.
+- `DIR/artifact_<name>`: exact-match text artifacts from modules with an
+  artifact hook.
+- `DIR/capture.json`: the resolved spec, build info, a hash per buffer and
+  per artifact, and the rate of each output. The hash is the harness's
+  FNV-1a 64 variant with offset basis 1469598103934665603. That is not the
+  standard basis; it is kept so committed hashes stay valid. It is
+  reimplemented identically in `run_corpus.py` and `sas-parity`.
 
 Spec format. Corpus case files in [`../corpus/modules/`](../corpus/modules/)
 use the same keys, with defaults layered in; `run_corpus.py` writes each
@@ -223,6 +228,33 @@ REGISTER_REF_MODULE(refmod::ModuleDef{
   { { "audio", 0 } },                            // outputs: name, output index
 });
 ```
+
+#### Exact-match artifacts
+
+For state that should match exactly rather than within a tolerance (JSON
+from a WavetableCreator load → save, preset init state, and so on), give
+the module an artifact hook as the sixth field. `create` may be `nullptr`
+for artifact-only modules, which then take no inputs or outputs:
+
+```cpp
+REGISTER_REF_MODULE(refmod::ModuleDef{
+  "wavetable_creator_roundtrip", "WavetableCreator load -> save", nullptr, {}, {},
+  [](const refmod::ArtifactContext& context, refmod::ArtifactSink& sink, std::string& error) {
+    std::string path = context.corpusPath(context.spec["params"]["wavetable"].get<std::string>());
+    // ... load, process, save ...
+    sink.text("saved.json", saved.dump());          // -> artifact_saved.json, compared byte for byte
+    sink.array("frame_0", samples, 1);               // -> out_frame_0.npy [frames, 1], tolerances apply
+    return true;                                     // or set error and return false
+  },
+});
+```
+
+Artifact names may contain only letters, digits, `_`, `-` and `.`.
+`capture.json` records each artifact's size and hash under `artifacts`, and
+`run_corpus.py hashes` pins them as `<case>:artifact/<name>`.
+`ref-module --corpus-dir DIR` (passed by `run_corpus.py`) is how
+`context.corpusPath()` finds corpus input files. Example:
+`src/modules/harness/echo.cpp`.
 
 CMake globs `src/modules/**/*.cpp` (`CONFIGURE_DEPENDS`) straight into
 `ref-module`, so no shared list is edited and the linker keeps every

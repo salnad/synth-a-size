@@ -20,7 +20,17 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
-use crate::cases::{repo_root, ResolvedCase};
+use crate::cases::{corpus_dir, module_hash_file, read_json, repo_root, ResolvedCase};
+
+const IDENTITY_KEYS: [&str; 7] = [
+    "upstream_sha",
+    "compiler",
+    "glibc",
+    "fast_math",
+    "opt_flags",
+    "arch",
+    "libm_variants",
+];
 
 pub fn captures_dir() -> PathBuf {
     match std::env::var_os("SAS_PARITY_CAPTURES") {
@@ -53,21 +63,25 @@ fn case_json_path(case: &ResolvedCase) -> PathBuf {
     }
 }
 
-fn data_present(case: &ResolvedCase) -> bool {
+/// The metadata file the reference wrote next to the data.
+pub fn metadata_path(case: &ResolvedCase) -> PathBuf {
     match case.id.strip_prefix("render/") {
+        Some(name) => captures_dir()
+            .join("renders")
+            .join(format!("{name}.wav.json")),
+        None => case_dir(case).join("capture.json"),
+    }
+}
+
+fn data_present(case: &ResolvedCase) -> bool {
+    let data = match case.id.strip_prefix("render/") {
         Some(name) => captures_dir()
             .join("renders")
             .join(format!("{name}.wav"))
             .is_file(),
-        None => fs::read_dir(case_dir(case))
-            .map(|entries| {
-                entries.flatten().any(|e| {
-                    let name = e.file_name().to_string_lossy().to_string();
-                    name.starts_with("out_") && name.ends_with(".npy")
-                })
-            })
-            .unwrap_or(false),
-    }
+        None => true,
+    };
+    data && metadata_path(case).is_file()
 }
 
 enum State {
@@ -111,9 +125,37 @@ fn process_lock() -> &'static Mutex<HashSet<String>> {
     LOCK.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
-/// Cross-process lock (several test binaries may render at once):
-/// an atomically created directory, removed on drop.
+/// Cross-process lock (several test binaries may render at once): an
+/// atomically created directory holding the owner's pid, removed on drop. A
+/// lock left behind by a killed run (owner no longer alive) is taken over.
 struct DirLock(PathBuf);
+
+fn process_alive(pid: u32) -> bool {
+    if Path::new("/proc").is_dir() {
+        return Path::new("/proc").join(pid.to_string()).exists();
+    }
+    Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(true)
+}
+
+/// True if the lock at `path` belongs to a process that no longer exists (or
+/// has no owner recorded and is older than a minute).
+pub(crate) fn lock_is_stale(path: &Path) -> bool {
+    match fs::read_to_string(path.join("pid"))
+        .ok()
+        .and_then(|p| p.trim().parse::<u32>().ok())
+    {
+        Some(pid) => pid != std::process::id() && !process_alive(pid),
+        None => fs::metadata(path)
+            .and_then(|m| m.modified())
+            .map(|t| t.elapsed().unwrap_or_default() > Duration::from_secs(60))
+            .unwrap_or(false),
+    }
+}
 
 impl DirLock {
     fn acquire(path: PathBuf) -> DirLock {
@@ -121,7 +163,14 @@ impl DirLock {
         fs::create_dir_all(path.parent().unwrap()).ok();
         loop {
             match fs::create_dir(&path) {
-                Ok(()) => return DirLock(path),
+                Ok(()) => {
+                    fs::write(path.join("pid"), std::process::id().to_string()).ok();
+                    return DirLock(path);
+                }
+                Err(_) if lock_is_stale(&path) => {
+                    eprintln!("sas-parity: removing stale lock {}", path.display());
+                    fs::remove_dir_all(&path).ok();
+                }
                 Err(_) if start.elapsed() < Duration::from_secs(30 * 60) => {
                     thread::sleep(Duration::from_millis(250))
                 }
@@ -244,4 +293,155 @@ pub fn path_display(path: &Path) -> String {
         .unwrap_or(path)
         .display()
         .to_string()
+}
+
+/// The harness hash, identical to `harness::fnv1a64` in harness_io.cpp and
+/// `fnv1a64` in run_corpus.py: FNV-1a 64 with offset basis
+/// 1469598103934665603. That is not the standard basis (14695981039346656037,
+/// one digit longer); it is kept so every committed hash stays valid.
+pub fn fnv1a64(bytes: &[u8]) -> String {
+    let mut hash: u64 = 1469598103934665603;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(1099511628211);
+    }
+    format!("{hash:016x}")
+}
+
+pub fn f32_bytes(data: &[f32]) -> Vec<u8> {
+    data.iter().flat_map(|v| v.to_le_bytes()).collect()
+}
+
+fn build_identity(case: &ResolvedCase) -> Value {
+    let path = metadata_path(case);
+    let metadata = read_json(&path).unwrap_or_else(|e| panic!("sas-parity: {e}"));
+    let build = &metadata["build"];
+    Value::Object(
+        IDENTITY_KEYS
+            .iter()
+            .map(|k| (k.to_string(), build.get(*k).cloned().unwrap_or(Value::Null)))
+            .collect(),
+    )
+}
+
+fn hash_entries(path: &Path) -> Vec<Value> {
+    if !path.is_file() {
+        return Vec::new();
+    }
+    read_json(path)
+        .unwrap_or_else(|e| panic!("sas-parity: {e}"))
+        .get("entries")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn warned_unknown_identity() -> &'static Mutex<bool> {
+    static WARNED: OnceLock<Mutex<bool>> = OnceLock::new();
+    WARNED.get_or_init(|| Mutex::new(false))
+}
+
+/// Checks loaded capture data against the committed hash for this build
+/// identity, so a test provably compares against the pinned reference.
+/// `key` is the output name (`audio`, `artifact/saved.json`) for modules and
+/// ignored for renders. Captures from a build identity with no committed
+/// hashes are accepted locally (with a warning) but rejected in CI
+/// (`SAS_PARITY_NO_BUILD`).
+pub fn verify_committed_hash(case: &ResolvedCase, key: &str, digest: &str) {
+    let identity = build_identity(case);
+    let render_hashes = corpus_dir().join("reference_hashes.json");
+    let (hash_file, hash_key) = match case.id.strip_prefix("render/") {
+        Some(name) => (render_hashes.clone(), name.to_string()),
+        None => (
+            module_hash_file(case),
+            format!("{}:{key}", case.id.rsplit('/').next().unwrap()),
+        ),
+    };
+    let entries = hash_entries(&hash_file);
+    if let Some(entry) = entries.iter().find(|e| e["identity"] == identity) {
+        match entry["hashes"].get(&hash_key).and_then(Value::as_str) {
+            Some(expected) if expected == digest => return,
+            Some(expected) => panic!(
+                "sas-parity: capture data for {} ({key}) hashes to {digest}, but {} pins {expected}. \
+                 The capture is stale or corrupted: re-render it (SAS_PARITY_REFRESH=1).",
+                case.id,
+                path_display(&hash_file)
+            ),
+            None => panic!(
+                "sas-parity: {} has no committed hash for {hash_key:?}; write it with \
+                 `run_corpus.py hashes <CI-identity tree> --write`",
+                path_display(&hash_file)
+            ),
+        }
+    }
+    let known = hash_entries(&render_hashes)
+        .iter()
+        .any(|e| e["identity"] == identity);
+    if known {
+        panic!(
+            "sas-parity: {} has no hashes for the CI build identity; write them from a CI-identity tree \
+             (`run_corpus.py hashes <parity-captures> --write`)",
+            path_display(&hash_file)
+        );
+    }
+    if no_build() {
+        panic!(
+            "sas-parity: captures in {} come from a build identity with no committed hashes:\n{}\n\
+             CI must run a known build identity.",
+            captures_dir().display(),
+            serde_json::to_string_pretty(&identity).unwrap()
+        );
+    }
+    let mut warned = warned_unknown_identity()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if !*warned {
+        eprintln!(
+            "sas-parity: warning: local captures come from a build identity with no committed hashes; \
+             capture data cannot be checked against the pinned reference on this machine"
+        );
+        *warned = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dead_pid() -> u32 {
+        let mut child = Command::new("true").spawn().expect("spawn true");
+        let pid = child.id();
+        child.wait().unwrap();
+        pid
+    }
+
+    // N5 regression: a killed run left build/parity.lock behind and the next
+    // run waited 30 minutes.
+    #[test]
+    fn lock_left_by_a_dead_process_is_taken_over() {
+        let dir = std::env::temp_dir().join(format!("sas-parity-lock-test-{}", std::process::id()));
+        fs::remove_dir_all(&dir).ok();
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("pid"), dead_pid().to_string()).unwrap();
+        assert!(lock_is_stale(&dir));
+
+        let start = Instant::now();
+        let lock = DirLock::acquire(dir.clone());
+        assert!(start.elapsed() < Duration::from_secs(5));
+        assert_eq!(
+            fs::read_to_string(dir.join("pid")).unwrap(),
+            std::process::id().to_string()
+        );
+        assert!(!lock_is_stale(&dir), "a live owner's lock is not stale");
+        drop(lock);
+        assert!(!dir.exists());
+    }
+
+    // Pinned vectors of the harness hash (see fnv1a64); run_corpus.py's
+    // tests pin the same values.
+    #[test]
+    fn fnv_matches_the_harness_variant() {
+        assert_eq!(fnv1a64(b""), "14650fb0739d0383");
+        assert_eq!(fnv1a64(b"a"), "44bd8ad473cd9906");
+    }
 }

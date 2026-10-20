@@ -28,6 +28,8 @@ jobs:
         run: migration/scripts/check_names.sh
       - name: Corpus files match generate.py
         run: python3 migration/corpus/generate.py --check
+      - name: run_corpus.py regression tests
+        run: python3 -m unittest discover -s migration/scripts -p 'test_*.py' -v
 
   reference-harness:
     name: Reference harness (build + render corpus)
@@ -67,7 +69,7 @@ jobs:
           python3 migration/scripts/run_corpus.py render --out build/ref-again
           python3 migration/scripts/run_corpus.py compare build/ref build/ref-again --exact
       - name: Cross-machine determinism (hashes must match the committed ones)
-        run: python3 migration/scripts/run_corpus.py hashes build/ref --check
+        run: python3 migration/scripts/run_corpus.py hashes build/ref --check --require-known-identity
       - name: Comparison tool rejects a different render
         run: |
           set +e
