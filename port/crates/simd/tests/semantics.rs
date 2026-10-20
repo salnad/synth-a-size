@@ -138,3 +138,73 @@ fn constructors_and_lanes() {
     assert_eq!(SseI::stereo(7, 9).to_array(), [7, 9, 7, 9]);
     assert_eq!(Sse::load(&[1.0, 2.0, 3.0, 4.0, 5.0]).get(3), 4.0);
 }
+
+#[test]
+fn float_to_u32_per_isa() {
+    use sas_simd::conversions::{aarch64, x86_64};
+    // A2: negative float to unsigned wraps on x86_64, saturates on arm64.
+    let cases: [(f32, u32, u32); 8] = [
+        (-1.0, 0xffff_ffff, 0),
+        (-0.4 * 2_147_483_647.0, (-858_993_472i64) as u32, 0),
+        (3.5, 3, 3),
+        (4_294_967_296.0, 0, u32::MAX),
+        (
+            5_000_000_000.0,
+            (5_000_000_000u64 % (1u64 << 32)) as u32,
+            u32::MAX,
+        ),
+        (f32::NAN, 0, 0),
+        (f32::INFINITY, 0, u32::MAX),
+        (f32::NEG_INFINITY, 0, 0),
+    ];
+    for (input, x86, arm) in cases {
+        assert_eq!(x86_64::float_to_u32(input), x86, "x86_64 {input}");
+        assert_eq!(aarch64::float_to_u32(input), arm, "aarch64 {input}");
+        let selected = sas_simd::conversions::float_to_u32(input);
+        let expected = if sas_simd::AARCH64_SEMANTICS {
+            arm
+        } else {
+            x86
+        };
+        assert_eq!(selected, expected, "selected {input}");
+    }
+}
+
+#[test]
+fn float_to_i32_per_isa() {
+    use sas_simd::conversions::{aarch64, x86_64};
+    // A3: out-of-range float to int is 0x80000000 on x86_64, saturates on arm64.
+    let cases: [(f32, i32, i32); 7] = [
+        (-2.7, -2, -2),
+        (2.7, 2, 2),
+        (3.0e9, i32::MIN, i32::MAX),
+        (-3.0e9, i32::MIN, i32::MIN),
+        (2_147_483_648.0, i32::MIN, i32::MAX),
+        (-2_147_483_648.0, i32::MIN, i32::MIN),
+        (f32::NAN, i32::MIN, 0),
+    ];
+    for (input, x86, arm) in cases {
+        assert_eq!(x86_64::float_to_i32(input), x86, "x86_64 {input}");
+        assert_eq!(aarch64::float_to_i32(input), arm, "aarch64 {input}");
+        let selected = sas_simd::conversions::float_to_i32(input);
+        let expected = if sas_simd::AARCH64_SEMANTICS {
+            arm
+        } else {
+            x86
+        };
+        assert_eq!(selected, expected, "selected {input}");
+    }
+}
+
+#[test]
+fn poly_to_int_follows_build_semantics() {
+    // A1: rounding on x86_64, truncation on arm64 (or with the feature).
+    let v = sas_simd::PolyFloat::new(2.5, -2.5, 3.7, -3.7);
+    let got = sas_simd::poly_utils::to_int(v).to_array();
+    let want = if sas_simd::AARCH64_SEMANTICS {
+        [2, -2i32 as u32, 3, -3i32 as u32]
+    } else {
+        [2, -2i32 as u32, 4, -4i32 as u32]
+    };
+    assert_eq!(got, want);
+}

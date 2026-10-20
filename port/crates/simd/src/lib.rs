@@ -31,8 +31,22 @@
 //!   Rust's `f32` methods, which call the same platform libm.
 //!
 //! The native backend is SSE2 on x86_64 and NEON on aarch64; elsewhere, or
-//! with `RUSTFLAGS="--cfg sas_simd_force_scalar"`, it is [`backend::Scalar`].
-//! The test suite checks the native backend against `Scalar` bit for bit.
+//! with `RUSTFLAGS="--cfg sas_simd_force_scalar"`, it is the scalar model
+//! ([`backend::Model`]). The test suite checks the native backend against
+//! that model bit for bit.
+//!
+//! # Per-ISA upstream semantics
+//!
+//! Upstream computes a few things differently on x86 (SSE2) and arm64
+//! (NEON), and each reference build follows its own ISA. The port mirrors
+//! upstream per target at those sites only, all of them in this crate: the
+//! poly lane operations listed in [`backend`] (including `toInt`, rounding vs
+//! truncating) and the scalar casts in [`conversions`]. Everything else is
+//! ISA-independent. The `aarch64-semantics` cargo feature selects the arm64
+//! behaviour on x86_64 for comparing against macOS reference renders;
+//! [`AARCH64_SEMANTICS`] reports which one a build uses. Parity for the
+//! shipping plugin is checked on macOS arm64 against the macOS arm64
+//! reference (`migration/decisions/reference-arm.md`).
 //!
 //! # Naming
 //!
@@ -60,6 +74,7 @@
 
 pub mod backend;
 pub mod common;
+pub mod conversions;
 pub mod futils;
 pub mod matrix;
 mod poly;
@@ -85,6 +100,11 @@ pub mod scalar {
     /// `poly_mask` on the scalar backend.
     pub type PolyMask = PolyInt;
 }
+
+/// True when this build uses upstream's aarch64 (NEON) semantics at the
+/// ISA-dependent sites: on aarch64, or with the `aarch64-semantics` feature.
+pub const AARCH64_SEMANTICS: bool =
+    cfg!(any(target_arch = "aarch64", feature = "aarch64-semantics"));
 
 /// Milestone in `migration/PLAN.md` that ports this crate.
 pub const MILESTONE: &str = "M1";

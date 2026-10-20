@@ -156,7 +156,7 @@ fn masks_and_selection() {
     // NEON, so NaN lanes compare unequal on x86 and equal on arm64 upstream.
     assert_eq!(
         u::equal(PolyFloat::splat(f32::NAN), PolyFloat::splat(f32::NAN)),
-        cfg!(target_arch = "aarch64")
+        sas_simd::AARCH64_SEMANTICS
     );
     assert!(u::is_contained(PolyFloat::splat(8000.0)));
     assert!(!u::is_contained(PolyFloat::splat(8000.001)));

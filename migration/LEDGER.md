@@ -408,6 +408,24 @@ upstream itself makes differ (line numbers in `futils.h`):
 | `tanh` | 275–284 | 262–273 | different association |
 | `powerScale` | 360–369 | 371–378 | bypass threshold 0.01 vs 0.005; poly bypass goes through `maskLoad` (−0 → +0) |
 
+**Per-ISA semantics (`decisions/reference-arm.md`).** The enumerated sites
+live in `sas-simd` only. A1 is the poly `to_int` (rounding on x86_64,
+truncation on aarch64), part of the backend lane semantics. A2/A3 are the
+scalar `(uint32_t)float` / `(int32_t)float` casts, in
+`sas_simd::conversions` (`float_to_u32`, `float_to_i32`, with explicit
+`x86_64::` and `aarch64::` variants). The cargo feature
+`aarch64-semantics` makes an x86_64 build use the aarch64 column (via the
+scalar NEON model, which is bit-identical to the NEON backend under qemu),
+and `sas_simd::AARCH64_SEMANTICS` reports which one a build uses. Tests
+cover both columns on every host. A new CI job runs the `sas-simd` tests
+with the feature on x86_64. The parity test refuses captures whose build
+arch doesn't match the build's semantics. Five more poly lane operations
+differ between upstream's SSE2 and NEON code and are mirrored per target
+in the same backend table: horizontal-sum order, float max/min NaN and ±0
+handling, `notEqual` NaN ordering, int `min` signedness, and `anyMask`.
+They are not yet in the decision's section A table; that decision is open
+with the coordinator.
+
 **Notes for other threads**
 
 - `poly_utils::trunc`/`to_int` round on x86 and truncate on arm64, as

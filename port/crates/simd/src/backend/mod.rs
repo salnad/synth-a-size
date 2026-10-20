@@ -31,12 +31,21 @@
 //!
 //! [`ScalarOf`] is the plain-Rust model of both columns. [`Scalar`] (SSE2
 //! semantics) is the fallback on other targets; [`Model`] is the scalar model
-//! of the native semantics, which the tests check [`Native`] against bit for
-//! bit. With `--cfg sas_simd_force_scalar`, [`Native`] is [`Model`].
+//! of the semantics this build uses, which the tests check [`Native`] against
+//! bit for bit. With `--cfg sas_simd_force_scalar`, [`Native`] is [`Model`].
+//!
+//! The `aarch64-semantics` cargo feature selects the NEON column on x86_64
+//! (as [`ScalarNeon`]), so x86 developers can reproduce the shipping arm64
+//! behaviour against macOS reference renders. The scalar conversions that
+//! also differ per ISA are in [`conversions`](crate::conversions).
 
 pub mod scalar;
 
-#[cfg(all(target_arch = "x86_64", not(sas_simd_force_scalar)))]
+#[cfg(all(
+    target_arch = "x86_64",
+    not(sas_simd_force_scalar),
+    not(feature = "aarch64-semantics")
+))]
 pub mod sse2;
 
 #[cfg(all(target_arch = "aarch64", not(sas_simd_force_scalar)))]
@@ -44,22 +53,30 @@ pub mod neon;
 
 pub use scalar::{Scalar, ScalarNeon, ScalarOf};
 
-#[cfg(all(target_arch = "x86_64", not(sas_simd_force_scalar)))]
+#[cfg(all(
+    target_arch = "x86_64",
+    not(sas_simd_force_scalar),
+    not(feature = "aarch64-semantics")
+))]
 pub use sse2::Sse2;
 
 #[cfg(all(target_arch = "aarch64", not(sas_simd_force_scalar)))]
 pub use neon::Neon;
 
-/// Scalar model of this target's native semantics.
-#[cfg(target_arch = "aarch64")]
+/// Scalar model of the semantics this build uses.
+#[cfg(any(target_arch = "aarch64", feature = "aarch64-semantics"))]
 pub type Model = ScalarNeon;
 
-/// Scalar model of this target's native semantics.
-#[cfg(not(target_arch = "aarch64"))]
+/// Scalar model of the semantics this build uses.
+#[cfg(not(any(target_arch = "aarch64", feature = "aarch64-semantics")))]
 pub type Model = Scalar;
 
 /// The backend used by [`PolyFloat`](crate::PolyFloat) on this target.
-#[cfg(all(target_arch = "x86_64", not(sas_simd_force_scalar)))]
+#[cfg(all(
+    target_arch = "x86_64",
+    not(sas_simd_force_scalar),
+    not(feature = "aarch64-semantics")
+))]
 pub type Native = Sse2;
 
 /// The backend used by [`PolyFloat`](crate::PolyFloat) on this target.
@@ -69,6 +86,7 @@ pub type Native = Neon;
 /// The backend used by [`PolyFloat`](crate::PolyFloat) on this target.
 #[cfg(any(
     sas_simd_force_scalar,
+    all(target_arch = "x86_64", feature = "aarch64-semantics"),
     not(any(target_arch = "x86_64", target_arch = "aarch64"))
 ))]
 pub type Native = Model;

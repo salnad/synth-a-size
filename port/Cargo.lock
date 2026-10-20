@@ -550,6 +550,7 @@ name = "sas-simd"
 version = "0.0.1"
 dependencies = [
  "sas-parity",
+ "serde_json",
 ]
 
 [[package]]

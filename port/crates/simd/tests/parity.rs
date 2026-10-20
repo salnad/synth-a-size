@@ -258,6 +258,32 @@ fn functions() -> BTreeMap<&'static str, PolyFunction> {
     map
 }
 
+/// The captures must come from a reference built for the semantics this
+/// build uses (x86_64 captures for x86 semantics, arm64 captures for
+/// aarch64 semantics, including the `aarch64-semantics` feature on x86_64).
+fn assert_capture_matches_semantics(id: &str) {
+    let path = sas_parity::captures::captures_dir()
+        .join("modules")
+        .join(id)
+        .join("capture.json");
+    let capture: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let arch = capture["build"]["arch"].as_str().unwrap_or_default();
+    let capture_is_arm = matches!(arch, "arm64" | "aarch64");
+    assert_eq!(
+        capture_is_arm,
+        sas_simd::AARCH64_SEMANTICS,
+        "captures in {} were rendered on {arch:?}, but this build uses {} semantics; \
+         compare against a reference of the same ISA (migration/decisions/reference-arm.md)",
+        path.display(),
+        if sas_simd::AARCH64_SEMANTICS {
+            "aarch64"
+        } else {
+            "x86_64"
+        }
+    );
+}
+
 fn case_ids() -> Vec<String> {
     sas_parity::all_case_ids()
         .into_iter()
@@ -297,6 +323,7 @@ fn poly_functions_match_reference() {
     let ids = case_ids();
     for id in &ids {
         let case = ModuleCase::load(id);
+        assert_capture_matches_semantics(id);
         let name = case.params()["function"].as_str().unwrap();
         let function = table[name];
         let a = case.input("a");
