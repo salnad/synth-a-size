@@ -51,6 +51,26 @@ A4–A8 were identified by Core Framework from `poly_values.h`. Like A1–A3,
 they are mirrored per target in `sas-simd` and switched by its
 `aarch64-semantics` feature.
 
+Attribution in the corpus (`scripts/arm_attribution.py`, macOS 15 arm64
+vs x86, run 39515281713):
+
+| Variant | Residual | Reading |
+|---|---|---|
+| `init_saw` single note, random phase on | +4.7 dB (fail) | A2 |
+| same, random phase off | −135.4 dB | A2 removed: only rounding-level noise is left |
+| same, random phase off, reverb on | −91.5 dB (pass) | A4 (reverb `sum()` order) costs about 44 dB of null depth and stays far inside tolerance |
+| `unison_pad_fx`, random phase on | +0.2 dB (fail) | A2 + A1a |
+| random phase off | −46.2 dB (fail) | A1a (chorus/delay `Memory::get`) |
+| random phase off, chorus/delay off | −65.7 dB (pass) | |
+| … and reverb off | −65.3 dB | not A4 |
+| … and unison 1 voice | −67.2 dB | not unison. This patch's own float-rounding floor is −62.9 dB (no-fast-math proxy), from phase drift over sustained chords |
+| `line_wavetable_fold`, env 2 → wave frame | −43.1 dB (fail) | A1b |
+| wave-frame modulation off | −137.5 dB | A1b removed |
+
+A5–A8 are not reached by the corpus (no NaNs, no signed-zero ties, no
+negative lookup indices; `anyMask` is only used as a boolean). Their
+combined effect is bounded by the passing cases.
+
 Random phase is on by default, so A2 alone makes almost every real patch
 differ between upstream on Intel and upstream on Apple Silicon. Upstream's
 Apple Silicon behaviour is what the shipped plugin must match.
@@ -81,7 +101,7 @@ arm64.
 
 | Comparison | Cases passing | Worst residual | Worst LSD | Worst RMS diff |
 |---|---|---|---|---|
-| macOS 15 arm64 vs x86_64 Linux | **9/15** | +4.7 dB (`init_saw`) | 4.76 dB | 0.74 dB |
+| macOS 15 arm64 vs x86_64 Linux | **9/15** (10/16 with the harness echo case added by PR #3) | +4.7 dB (`init_saw`) | 4.76 dB | 0.74 dB |
 | aarch64 Linux vs x86_64 Linux | 9/15 (same six fail) | +4.7 dB | 4.76 dB | 0.74 dB |
 | macOS 15 vs aarch64 Linux | 15/15 | −95.3 dB | 0.0019 dB | 1.8e-6 dB |
 | macOS 14 (same binary) vs macOS 15 | 15/15, bit-identical | −inf | 0 | 0 |
@@ -142,8 +162,12 @@ achievable on arm64.
    corpus).
 5. **Where parity is checked:**
    - On macOS arm64, `sas-parity` runs against captures rendered by the
-     macOS reference in the same CI job (`reference-arm.yml`). This is the
-     gate for the shipped plugin.
+     macOS reference in the same CI job (`reference-arm.yml`), with
+     `SAS_PARITY_CAPTURES=build/platform/pinned SAS_PARITY_NO_BUILD=1 cargo test --workspace`.
+     This is the gate for the shipped plugin. The macOS arm64 build identity
+     (Apple clang 17.0.0, macOS 15.7.9, pinned flags) has its own entries in
+     `corpus/reference_hashes.json` and the per-module `.hashes.json` files.
+     The job checks them with `hashes --check --require-known-identity`.
    - On x86_64 Linux, `sas-parity` runs against x86 captures (`ci.yml`) with
      x86 semantics, for development speed and the existing tests.
 

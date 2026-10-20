@@ -2421,8 +2421,24 @@ enumerated sites only, and everything else must be ISA-independent: no
 FMA, no estimates, the JUCE fallback FFT, the platform libm. aarch64 Linux
 is optional (manual dispatch).
 
-**Open / next**
+**After PR #3 merged**
 
-- After PR #3 merges: rebase; add the macOS identity to the hash files and
-  check it in the macOS job; run `sas-parity` natively on macOS arm64
-  against the macOS captures.
+- Rebased.
+- Added the macOS arm64 build identity to `reference_hashes.json` and the
+  module `.hashes.json` files, written from the CI tree with
+  `hashes --write --new-identity`.
+- The macOS 15 job now runs `hashes --check --require-known-identity`.
+- The macOS 15 job runs `sas-parity` natively on arm64 against its own
+  captures: 40 tests passed, 0 failed.
+- Added A4–A8 (from Core Framework) to `decisions/reference-arm.md`:
+  - A4: horizontal `sum` order;
+  - A5: float `max`/`min` NaN and ±0 handling;
+  - A6: `notEqual` ordering;
+  - A7: signed vs unsigned `poly_int::min`, which turns a negative `clamp`
+    index into an out-of-bounds read on x86 but clamps to `hi` on arm64;
+  - A8: the `anyMask` value, used only as a boolean.
+- A4 attribution: reverb on in an otherwise-matching patch moves macOS vs
+  x86 from −135.4 to −91.5 dB (passes). A5–A8 are not reached by the
+  corpus.
+- macOS vs x86 on the 16-output corpus: 10/16 pass (the same six fail).
+  Every macOS-only comparison passes 16/16.
