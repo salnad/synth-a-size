@@ -78,6 +78,11 @@ def main():
     for spec in args.pair:
         label, trees = spec.split("=", 1)
         reference, test = trees.split(":", 1)
+        if not (os.path.isdir(reference) and os.path.isdir(test)):
+            print("skipping %s: tree missing (%s)" % (label, reference if not os.path.isdir(reference) else test))
+            if label in args.gate:
+                return 2
+            continue
         results.append(compare_pair(label, reference, test, args.audio_diff))
 
     lines = ["| Pair | Cases passing | Worst max abs | Worst residual dB | Worst LSD dB | Worst RMS diff dB | Worst case (residual) |",

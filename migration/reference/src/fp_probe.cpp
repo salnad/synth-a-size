@@ -121,6 +121,20 @@ int main() {
   probe<float>("fma", [](float x) { return std::fma(x, 1.0001f, 0.3333f); }, -10.0, 10.0);
   probe<float>("unfused_mul_add", [](float x) { return unfusedMulAdd(0.3333f, x, 1.0001f); }, -10.0, 10.0);
   probe<float>("nearbyint_to_int", [](float x) { return static_cast<int32_t>(std::nearbyint(x)); }, -1000.0, 1000.0);
+  // Upstream's random phase (synth_oscillator.cpp:583) converts values in
+  // [-INT_MAX, INT_MAX) to uint32_t. Negative float -> unsigned is undefined
+  // behaviour: x86 GCC goes through a 64-bit cvttss2si and wraps modulo 2^32,
+  // AArch64 FCVTZU saturates to 0. Volatile keeps it a run-time conversion.
+  probe<float>("float_to_uint32_negative", [](float x) {
+    volatile float v = x * static_cast<float>(INT32_MAX);
+    return static_cast<uint32_t>(v);
+  }, -1.0, 0.0);
+  // Out-of-range float -> int32_t (also undefined): x86 returns 0x80000000,
+  // AArch64 saturates.
+  probe<float>("float_to_int32_overflow", [](float x) {
+    volatile float v = x;
+    return static_cast<int32_t>(v);
+  }, 2147483648.0, 8589934592.0);
 
 #if defined(__SSE2__)
   probe<float>("rcpps", [](float x) { return _mm_cvtss_f32(_mm_rcp_ps(_mm_set1_ps(x))); }, 0.01, 100.0);

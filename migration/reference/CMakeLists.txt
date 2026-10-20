@@ -10,6 +10,10 @@
 # Linux x86_64 is the supported reference platform (that is what CI uses).
 
 cmake_minimum_required(VERSION 3.16)
+# macOS: one deployment target for every reference build, so a binary built on
+# a newer macOS runner also runs on macOS 14 (used to separate Apple libm /
+# OS drift from compiler drift; migration/decisions/reference-arm.md).
+set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS version")
 project(synth_a_size_reference CXX)
 
 set(CMAKE_CXX_STANDARD 14)
@@ -175,6 +179,8 @@ if(APPLE)
 endif()
 
 list(JOIN REF_OPT_FLAGS " " REF_OPT_FLAGS_STRING)
+message(STATUS "Reference: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION} on ${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}")
+message(STATUS "Reference optimisation flags: ${REF_OPT_FLAGS_STRING}")
 target_compile_definitions(upstream_engine PUBLIC "REF_OPT_FLAGS=\"${REF_OPT_FLAGS_STRING}\"")
 
 target_compile_options(upstream_engine PUBLIC
