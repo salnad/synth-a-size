@@ -10,15 +10,15 @@
 //! order. Reading a value the preset lacks fails the load, as it does
 //! upstream (nlohmann throws on converting `null` to a number).
 //!
-//! Where the reference build's `-ffast-math` code generation computes a
-//! step differently from the C++ source, the port follows the reference
-//! build, because saved state must match it exactly; each such place says
-//! what the compiler emits.
+//! Float expressions whose result depends on the reference build's
+//! `-ffast-math` code generation go through [`crate::arith`].
 
 use sas_common::json::Value;
 use sas_common::load_save::convert_buffer_to_pcm;
 use sas_common::LineGenerator;
+use sas_wavetable::creator::WavetableCreator;
 
+use crate::arith;
 use crate::constants::*;
 use crate::json::{ensure_object, read_f32, read_i32, read_string};
 use crate::version::older_than;
@@ -143,18 +143,6 @@ fn std_max(a: f32, b: f32) -> f32 {
     }
 }
 
-/// `pow(x, 1.0f / 1.5f)`: the reference build emits `cbrtf(x)` squared.
-fn pow_two_thirds(x: f32) -> f32 {
-    let root = x.cbrt();
-    root * root
-}
-
-/// `pow(x, 3.0f / 4.0f)`: the reference build emits `sqrtf(x) * sqrtf(sqrtf(x))`.
-fn pow_three_quarters(x: f32) -> f32 {
-    let root = x.sqrt();
-    root * root.sqrt()
-}
-
 /// `LoadSave::updateFromOldVersion`.
 pub fn update_from_old_version(mut state: Value) -> Result<Value, Error> {
     let mut settings = state.get("settings")?.clone();
@@ -201,7 +189,7 @@ pub fn update_from_old_version(mut state: Value) -> Result<Value, Error> {
     }
 
     if older("0.2.1") {
-        adjust_envelope_times(&mut settings, pow_two_thirds)?;
+        adjust_envelope_times(&mut settings, arith::pow_two_thirds)?;
         if settings.count("wave_tables") != 0 {
             let wave_tables = settings.get("wave_tables")?.clone();
             settings.set("wavetables", wave_tables);
@@ -217,7 +205,7 @@ pub fn update_from_old_version(mut state: Value) -> Result<Value, Error> {
     }
 
     if older("0.2.5") {
-        adjust_envelope_times(&mut settings, pow_three_quarters)?;
+        adjust_envelope_times(&mut settings, arith::pow_three_quarters)?;
     }
 
     if older("0.2.6") {
@@ -228,17 +216,13 @@ pub fn update_from_old_version(mut state: Value) -> Result<Value, Error> {
     }
 
     if older("0.2.7") {
-        #[allow(clippy::excessive_precision, clippy::approx_constant)]
-        const ADJUSTMENT: f32 = 0.70710678119;
         let names = ["osc_1_level", "osc_2_level", "sub_level", "sample_level"];
         let mut levels = [0.0f32; 4];
         for (level, name) in levels.iter_mut().zip(names) {
             *level = read_f32(&settings, name)?;
         }
         for (level, name) in levels.iter().zip(names) {
-            // Source: `adjustment * level * level`; the reference build
-            // reassociates it to `(level * level) * adjustment`.
-            settings.set(name, (level * level * ADJUSTMENT).sqrt());
+            settings.set(name, arith::adjusted_level(*level));
         }
     }
 
@@ -367,9 +351,7 @@ pub fn update_from_old_version(mut state: Value) -> Result<Value, Error> {
     }
 
     if older("0.5.0") && settings.count("sub_on") != 0 {
-        return Err(Error::Pending(
-            "the 0.5.0 upgrade step (sub oscillator to oscillator 3) needs the wavetable state model".to_string(),
-        ));
+        modulations = upgrade_0_5_0(&mut settings, &mut modulations)?;
     }
 
     if older("0.5.5") {
@@ -537,6 +519,91 @@ pub fn update_from_old_version(mut state: Value) -> Result<Value, Error> {
     Ok(state)
 }
 
+/// The `0.5.0` step: the sub oscillator becomes oscillator 3 (with a
+/// wavetable of the predefined shapes), and filter routing switches become
+/// per-source destinations.
+fn upgrade_0_5_0(settings: &mut Value, modulations: &mut Value) -> Result<Value, Error> {
+    for (to, from) in [
+        ("osc_3_on", "sub_on"),
+        ("osc_3_level", "sub_level"),
+        ("osc_3_pan", "sub_pan"),
+        ("osc_3_transpose", "sub_transpose"),
+    ] {
+        let value = settings.get(from)?.clone();
+        settings.set(to, value);
+    }
+    if settings.count("sub_transpose_quantize") != 0 {
+        let value = settings.get("sub_transpose_quantize")?.clone();
+        settings.set("osc_3_transpose_quantize", value);
+    }
+    let sub_tune = settings.get("sub_tune")?.clone();
+    settings.set("osc_3_tune", sub_tune);
+    settings.set("osc_3_phase", 0.25f32);
+    settings.set("osc_3_random_phase", 0.0f32);
+
+    let sub_waveform = read_f32(settings, "sub_waveform")?;
+    settings.set("osc_3_wave_frame", arith::sub_wave_frame(sub_waveform));
+
+    let sub_filter1 = read_f32(settings, "filter_1_sub_input")?;
+    let sub_filter2 = read_f32(settings, "filter_2_sub_input")?;
+    let sub_direct_out = read_f32(settings, "sub_direct_out")?;
+    let sub_destination = if sub_direct_out != 0.0 {
+        4.0f32
+    } else {
+        destination(sub_filter1, sub_filter2)
+    };
+    settings.set("osc_3_destination", sub_destination);
+
+    for (inputs, name) in [
+        (["filter_1_osc1_input", "filter_2_osc1_input"], "osc_1_destination"),
+        (["filter_1_osc2_input", "filter_2_osc2_input"], "osc_2_destination"),
+        (["filter_1_sample_input", "filter_2_sample_input"], "sample_destination"),
+    ] {
+        let filter1 = read_f32(settings, inputs[0])?;
+        let filter2 = read_f32(settings, inputs[1])?;
+        settings.set(name, destination(filter1, filter2));
+    }
+
+    // Older presets list the wavetables in reverse; the sub's predefined
+    // shapes become the last one.
+    let wavetables = settings.get("wavetables")?.clone();
+    let mut new_wavetables = Value::Null;
+    for i in (0..wavetables.size()).rev() {
+        new_wavetables.push(wavetables.at(i)?.clone());
+    }
+    let mut sub = WavetableCreator::new();
+    sub.init_predefined_waves();
+    sub.name = "Sub".to_string();
+    new_wavetables.push(sub.to_json());
+    settings.set("wavetables", new_wavetables);
+
+    for modulation in elements_mut(modulations) {
+        for (from, to) in [
+            ("sub_transpose", "osc_3_transpose"),
+            ("sub_tune", "osc_3_tune"),
+            ("sub_level", "osc_3_level"),
+            ("sub_pan", "osc_3_pan"),
+        ] {
+            if destination_is(modulation, from)? {
+                modulation.set("destination", to);
+                break;
+            }
+        }
+    }
+    Ok(rebuilt(modulations))
+}
+
+/// The 0.5.0 mapping from the two filter routing switches to a
+/// `SourceDestination` (filter 1, filter 2, both, effects).
+fn destination(filter1: f32, filter2: f32) -> f32 {
+    match (filter1 != 0.0, filter2 != 0.0) {
+        (true, true) => 2.0,
+        (false, true) => 1.0,
+        (true, false) => 0.0,
+        (false, false) => 3.0,
+    }
+}
+
 /// The `0.2.1` / `0.2.5` envelope time curve changes:
 /// `settings[x] = std::pow(settings[x], power)` for the attack, decay and
 /// release of each envelope, stopping at the first envelope without an
@@ -594,8 +661,7 @@ fn upgrade_0_4_7(settings: &mut Value, modulations: &mut Value) -> Result<(), Er
         }
         let amount_name = format!("osc_{osc}_distortion_amount");
         let original_fm_amount = read_f32(settings, &amount_name)?;
-        // `std::pow(x, 1.0f / 2.0f)` compiles to `sqrtss` in the reference build.
-        let new_fm_amount = original_fm_amount.sqrt();
+        let new_fm_amount = arith::pow_half(original_fm_amount);
         settings.set(&amount_name, new_fm_amount);
 
         let mut index = 1;
@@ -625,30 +691,20 @@ fn upgrade_0_4_7(settings: &mut Value, modulations: &mut Value) -> Result<(), Er
                 max = std_max(up, down);
             }
 
-            let min_target = min.sqrt();
-            let max_target = max.sqrt();
+            let min_target = arith::pow_half(min);
+            let max_target = arith::pow_half(max);
             let mut new_amount = max_target - min_target;
             if bipolar {
                 new_amount = 2.0 * std_max(new_fm_amount - min_target, max_target - new_fm_amount);
             }
             settings.set(&amount_string, new_amount);
 
-            // Source: `t = i / 31.0f` and `y = 1 - (adjusted - min_target) /
-            // new_amount`. The reference build multiplies by the reciprocals
-            // instead (`-freciprocal-math`), hoisting `1 / new_amount` out of
-            // the loop, and computes `y` as `(min_target - adjusted) *
-            // (1 / new_amount) + 1`.
-            let inverse_amount = 1.0 / new_amount;
-            let inverse_last = 1.0 / (REMAP_RESOLUTION as f32 - 1.0);
             let mut scale = LineGenerator::new(LineGenerator::DEFAULT_RESOLUTION);
             scale.init_linear();
             scale.set_num_points(REMAP_RESOLUTION);
-            for i in 0..REMAP_RESOLUTION {
-                let t = i as f32 * inverse_last;
-                let old_value = t * (max - min) + min;
-                let adjusted_old_value = old_value.sqrt();
-                let y = (min_target - adjusted_old_value) * inverse_amount + 1.0;
-                scale.set_point(i, (t, y));
+            let points = arith::fm_remap_points(REMAP_RESOLUTION, min, max, min_target, new_amount);
+            for (i, point) in points.into_iter().enumerate() {
+                scale.set_point(i, point);
             }
             modulation.set("line_mapping", scale.to_json());
             index += 1;

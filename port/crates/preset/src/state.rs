@@ -16,6 +16,7 @@ use std::path::Path;
 
 use sas_common::json::{self as json, Value};
 use sas_common::LineGenerator;
+use sas_wavetable::creator::WavetableCreator;
 
 use crate::constants::*;
 use crate::engine;
@@ -26,20 +27,19 @@ use crate::upgrade::update_from_old_version;
 use crate::version::{compare_feature_version_strings, SYNTH_VERSION};
 use crate::Error;
 
-/// One oscillator's wavetable as saved JSON (`WavetableCreator` state).
-///
-/// The wavetable state model is ported in `sas-wavetable`; until this crate
-/// uses it, wavetables are kept exactly as loaded.
-#[derive(Clone, Debug, PartialEq)]
-pub struct WavetableState(pub Value);
-
-/// What `SynthBase::loadInitPreset` restores besides parameter defaults: the
-/// default wavetables, and the seed of the white-noise sample it generates
-/// (upstream takes it from the engine's global seed counter).
-#[derive(Clone, Debug, PartialEq)]
+/// What `SynthBase::loadInitPreset` needs besides the parameter defaults:
+/// the seed of the white-noise sample it generates (upstream takes the next
+/// value of the engine's global seed counter).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct InitContent {
-    pub wavetables: Vec<WavetableState>,
     pub sample_seed: i32,
+}
+
+/// `WavetableCreator::init`: the default wavetable.
+fn default_wavetable() -> WavetableCreator {
+    let mut creator = WavetableCreator::new();
+    creator.init();
+    creator
 }
 
 fn linear_line() -> LineGenerator {
@@ -126,14 +126,14 @@ pub struct PresetState {
     controls: BTreeMap<String, f32>,
     modulations: Vec<ModulationSlot>,
     pub sample: SampleState,
-    pub wavetables: Vec<WavetableState>,
+    pub wavetables: Vec<WavetableCreator>,
     pub lfos: Vec<LineGenerator>,
     pub info: SaveInfo,
 }
 
 impl PresetState {
     /// The init state (`SynthBase::loadInitPreset` on a new synth): default
-    /// controls, no modulations, triangle LFOs, `init`'s wavetables and a
+    /// controls, no modulations, triangle LFOs, default wavetables and a
     /// white-noise sample from `init.sample_seed`. A preset loaded on top
     /// keeps the wavetables and LFO shapes it does not set.
     pub fn new(init: &InitContent) -> PresetState {
@@ -153,7 +153,7 @@ impl PresetState {
     /// `LoadSave::initSaveInfo`).
     pub fn load_init(&mut self, init: &InitContent) {
         self.clear_modulations();
-        self.wavetables = init.wavetables.clone();
+        self.wavetables = (0..NUM_OSCILLATORS).map(|_| default_wavetable()).collect();
         self.sample = SampleState::white_noise(init.sample_seed);
         self.lfos.resize_with(NUM_LFOS, LineGenerator::default);
         for lfo in &mut self.lfos {
@@ -283,7 +283,7 @@ impl PresetState {
 
         let mut wavetables = Value::Null;
         for wavetable in &self.wavetables {
-            wavetables.push(wavetable.0.clone());
+            wavetables.push(wavetable.to_json());
         }
         settings.set("wavetables", wavetables);
 
@@ -346,11 +346,7 @@ impl PresetState {
             .take(NUM_OSCILLATORS)
             .enumerate()
         {
-            let wavetable = WavetableState(wavetable.clone());
-            match next.wavetables.get_mut(i) {
-                Some(slot) => *slot = wavetable,
-                None => next.wavetables.push(wavetable),
-            }
+            next.wavetables[i].read_json(wavetable)?;
         }
         for (i, lfo) in settings
             .get("lfos")?

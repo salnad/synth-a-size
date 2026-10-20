@@ -14,12 +14,13 @@
 //!   `vital/src/common/load_save.cpp`, with by-name access for the plugin
 //!   and the LLM control layer.
 //!
-//! This crate is pure data: it does not depend on the DSP crates.
+//! This crate is pure data: it depends only on `sas-common` and the
+//! wavetable state model of `sas-wavetable`, not on the DSP crates.
 //!
 //! ```
 //! use sas_preset::{lookup, InitContent, PresetState};
 //!
-//! let init = InitContent { wavetables: Vec::new(), sample_seed: 0 };
+//! let init = InitContent { sample_seed: 0 };
 //! let mut preset = PresetState::new(&init);
 //! assert_eq!(lookup("filter_1_cutoff").unwrap().max, 136.0);
 //! preset.set_value("filter_1_cutoff", 72.0).unwrap();
@@ -29,6 +30,7 @@
 //! assert!(saved.contains("\"source\":\"lfo_1\""));
 //! ```
 
+mod arith;
 pub mod constants;
 pub mod engine;
 mod json;
@@ -41,7 +43,7 @@ pub mod version;
 
 pub use registry::{lookup, registry, ParamInfo, Registry, ValueScale};
 pub use sample::SampleState;
-pub use state::{InitContent, ModulationSlot, PresetState, SaveInfo, WavetableState};
+pub use state::{InitContent, ModulationSlot, PresetState, SaveInfo};
 pub use strings::StringTable;
 
 /// Why a preset could not be loaded or a change could not be made.
@@ -53,8 +55,6 @@ pub enum Error {
     /// The JSON does not have the shape the loader needs ("Preset file is
     /// corrupted." upstream).
     Corrupted(String),
-    /// The preset needs an upgrade step that is not ported yet.
-    Pending(String),
     /// The file could not be read.
     Io(String),
     UnknownParameter(String),
@@ -74,7 +74,6 @@ impl std::fmt::Display for Error {
                 write!(f, "preset was created with a newer version ({version})")
             }
             Error::Corrupted(detail) => write!(f, "preset file is corrupted: {detail}"),
-            Error::Pending(detail) => write!(f, "not supported yet: {detail}"),
             Error::Io(detail) => write!(f, "cannot read preset: {detail}"),
             Error::UnknownParameter(name) => write!(f, "unknown parameter {name}"),
             Error::NotAControl(name) => {

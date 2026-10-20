@@ -5,10 +5,7 @@
 use sas_preset::{engine, lookup, registry, Error, InitContent, PresetState, ValueScale};
 
 fn fresh() -> PresetState {
-    PresetState::new(&InitContent {
-        wavetables: Vec::new(),
-        sample_seed: 0,
-    })
+    PresetState::new(&InitContent { sample_seed: 0 })
 }
 
 #[test]
@@ -124,10 +121,10 @@ fn rejects_bad_presets_without_changing_state() {
 }
 
 #[test]
-fn reports_upgrade_steps_that_are_not_ported_yet() {
+fn rejects_upgrades_with_missing_keys() {
     let preset = r#"{"synth_version": "0.4.9", "settings": {"sub_on": 1.0}}"#;
     assert!(matches!(
         fresh().load_json_str(preset),
-        Err(Error::Pending(_))
+        Err(Error::Corrupted(_))
     ));
 }
