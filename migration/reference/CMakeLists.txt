@@ -107,13 +107,25 @@ target_compile_definitions(upstream_engine PUBLIC
   "REF_FAST_MATH=$<BOOL:${REF_FAST_MATH}>"
 )
 
-set(REF_OPT_FLAGS -O3 -msse2 -ftree-vectorize -ftree-slp-vectorize -funroll-loops)
+set(REF_OPT_FLAGS -O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops)
 if(REF_FAST_MATH)
   list(APPEND REF_OPT_FLAGS -ffast-math)
 endif()
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
-  list(REMOVE_ITEM REF_OPT_FLAGS -msse2)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
+  # Cross-machine determinism (migration/decisions/reference-determinism.md):
+  # - Pin the target ISA to baseline x86-64 (SSE2) so no build host
+  #   features leak in.
+  # - -mrecip=none: under -ffast-math GCC otherwise turns vectorised float
+  #   division and sqrtf into RCPPS/RSQRTPS plus a Newton step. Those
+  #   instructions return implementation-defined bits (Intel and AMD differ),
+  #   which made the same binary render differently on different CPUs.
+  # - -ffp-contract=off keeps FMA contraction out even if someone overrides
+  #   -march with an FMA-capable target.
+  list(APPEND REF_OPT_FLAGS -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off)
 endif()
+
+list(JOIN REF_OPT_FLAGS " " REF_OPT_FLAGS_STRING)
+target_compile_definitions(upstream_engine PUBLIC "REF_OPT_FLAGS=\"${REF_OPT_FLAGS_STRING}\"")
 
 target_compile_options(upstream_engine PUBLIC
   ${REF_OPT_FLAGS}
@@ -133,6 +145,7 @@ target_link_libraries(ref-render PRIVATE harness_common)
 add_executable(ref-module src/module_main.cpp)
 target_link_libraries(ref-module PRIVATE harness_common)
 
-# Diagnostic: hashes libm results so two machines can be compared directly.
-add_executable(ref-libm-probe src/libm_probe.cpp)
-target_compile_options(ref-libm-probe PRIVATE -O2 -fno-fast-math)
+# Diagnostic: hashes libm and rcpps/rsqrtps results so two machines can be
+# compared directly (see migration/decisions/reference-determinism.md).
+add_executable(ref-fp-probe src/fp_probe.cpp)
+target_compile_options(ref-fp-probe PRIVATE -O2 -fno-fast-math)

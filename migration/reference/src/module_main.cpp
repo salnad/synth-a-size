@@ -384,6 +384,7 @@ int fail(const std::string& message) {
 } // namespace
 
 int main(int argc, const char* argv[]) {
+  harness::pinLibmVariants(argc, argv);
   harness::Args args(argc, argv, { "list", "help" });
   if (args.has("help") || argc == 1) {
     std::cout << kUsage;

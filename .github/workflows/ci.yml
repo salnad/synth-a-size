@@ -49,6 +49,8 @@ jobs:
         run: cargo build --release --locked --manifest-path migration/tools/audio-diff/Cargo.toml
       - name: Machine and build diagnostics
         run: migration/scripts/machine_info.sh build/diag
+      - name: No CPU-dependent floating-point instructions in the reference
+        run: migration/scripts/check_fp_determinism.sh
       - name: Render one preset through the CLI
         run: |
           mkdir -p build/smoke
@@ -64,6 +66,8 @@ jobs:
         run: |
           python3 migration/scripts/run_corpus.py render --out build/ref-again
           python3 migration/scripts/run_corpus.py compare build/ref build/ref-again --exact
+      - name: Cross-machine determinism (hashes must match the committed ones)
+        run: python3 migration/scripts/run_corpus.py hashes build/ref --check
       - name: Comparison tool rejects a different render
         run: |
           set +e
@@ -96,7 +100,7 @@ jobs:
           path: |
             migration/reference/build/ref-render
             migration/reference/build/ref-module
-            migration/reference/build/ref-libm-probe
+            migration/reference/build/ref-fp-probe
             build/diag/
           if-no-files-found: error
           retention-days: 14

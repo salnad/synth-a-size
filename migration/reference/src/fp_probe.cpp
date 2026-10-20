@@ -1,9 +1,13 @@
-// ref-libm-probe: hashes the results of every libm function the reference
-// binary imports over a fixed, deterministic set of inputs. Running it on two
-// machines shows whether the C math library itself returns different bits
-// there (e.g. different CPU-dispatched variants of sin/exp/pow).
+// ref-fp-probe: hashes the results of (a) every libm function the reference
+// binary imports and (b) the SSE approximate instructions rcpps / rsqrtps,
+// over fixed deterministic inputs. Running it on two machines shows whether
+// either source returns different bits there. libm can differ through
+// CPU-dispatched variants; rcpps / rsqrtps are only specified to ~12 bits, so
+// their exact results are implementation-defined and differ between vendors.
 //
 // Built WITHOUT -ffast-math so the calls are not replaced or reassociated.
+
+#include <xmmintrin.h>
 
 #include <cinttypes>
 #include <cmath>
@@ -71,6 +75,17 @@ int main() {
   probe<double>("acos", [](double x) { return std::acos(x); }, -1.0, 1.0, first);
   probe<double>("sinh", [](double x) { return std::sinh(x); }, -5.0, 5.0, first);
   probe<double>("cosh", [](double x) { return std::cosh(x); }, -5.0, 5.0, first);
+  probe<float>("rcpps", [](float x) { return _mm_cvtss_f32(_mm_rcp_ps(_mm_set1_ps(x))); }, 0.01f, 100.0f, first);
+  probe<float>("rsqrtps", [](float x) { return _mm_cvtss_f32(_mm_rsqrt_ps(_mm_set1_ps(x))); }, 0.01f, 100.0f, first);
+  // The sequence GCC emits for vectorised a / b under -ffast-math:
+  // r = rcpps(b); a * (r + r - b * r * r), i.e. one Newton-Raphson step.
+  probe<float>("rcpps_newton_div", [](float x) {
+    __m128 b = _mm_set1_ps(x);
+    __m128 r = _mm_rcp_ps(b);
+    __m128 refined = _mm_sub_ps(_mm_add_ps(r, r), _mm_mul_ps(b, _mm_mul_ps(r, r)));
+    return _mm_cvtss_f32(_mm_mul_ps(_mm_set1_ps(1.2345f), refined));
+  }, 0.01f, 100.0f, first);
+  probe<float>("exact_div", [](float x) { return 1.2345f / x; }, 0.01f, 100.0f, first);
   std::printf("\n}\n");
   return 0;
 }

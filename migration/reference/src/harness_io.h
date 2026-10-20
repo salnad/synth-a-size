@@ -17,7 +17,12 @@ using json = nlohmann::json;
 // Must run before any JUCE or engine object is created.
 void isolateUserEnvironment();
 
-// Information about how this reference binary was built.
+// Re-execs the process once with GLIBC_TUNABLES set so glibc picks the
+// baseline (non-FMA/AVX) libm variants on every x86_64 CPU. Call first in
+// main(). Set REF_NO_LIBM_PIN=1 to disable.
+void pinLibmVariants(int argc, const char* argv[]);
+
+// Information about how this reference binary was built and run.
 json buildInfo();
 
 enum class WavFormat { kFloat32, kPcm16, kPcm24 };

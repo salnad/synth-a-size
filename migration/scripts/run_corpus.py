@@ -7,6 +7,10 @@
              OUT/modules/<name>/out_*.npy, in_*.npy, capture.json
   compare  Compare two such trees with audio-diff using each case's
            tolerances. --exact requires bit-identical output (determinism).
+  hashes   Collect the output hashes of a render tree. --write stores them
+           in migration/corpus/reference_hashes.json; --check fails if they
+           differ from the stored ones (cross-machine determinism tripwire;
+           skipped when the build identity differs).
 
 Examples:
   python3 migration/scripts/run_corpus.py render --out build/ref
@@ -146,6 +150,50 @@ def cmd_compare(args):
     return 1 if failed else 0
 
 
+HASHES = os.path.join(CORPUS, "reference_hashes.json")
+IDENTITY_KEYS = ("upstream_sha", "compiler", "glibc", "fast_math", "opt_flags", "arch", "libm_variants")
+
+
+def collect_hashes(tree):
+    renders, modules = load_cases()
+    identity = None
+    hashes = {}
+    for case in renders:
+        with open(os.path.join(tree, "renders", case["name"] + ".wav.json")) as handle:
+            meta = json.load(handle)
+        identity = identity or {key: meta["build"].get(key) for key in IDENTITY_KEYS}
+        hashes["render/" + case["name"]] = meta["samples_fnv1a64"]
+    for case in modules:
+        with open(os.path.join(tree, "modules", case["name"], "capture.json")) as handle:
+            capture = json.load(handle)
+        for name, output in sorted(capture["outputs"].items()):
+            hashes["module/%s/%s" % (case["name"], name)] = output["fnv1a64"]
+    return {"identity": identity, "hashes": hashes}
+
+
+def cmd_hashes(args):
+    current = collect_hashes(args.tree)
+    if args.write:
+        with open(HASHES, "w") as handle:
+            json.dump(current, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+        print("wrote %s (%d hashes)" % (os.path.relpath(HASHES, REPO), len(current["hashes"])))
+        return 0
+    with open(HASHES) as handle:
+        expected = json.load(handle)
+    if expected["identity"] != current["identity"]:
+        print("build identity differs from %s; hash check skipped" % os.path.relpath(HASHES, REPO))
+        print("  expected:", json.dumps(expected["identity"], sort_keys=True))
+        print("  current: ", json.dumps(current["identity"], sort_keys=True))
+        return 0
+    mismatches = [key for key in sorted(set(expected["hashes"]) | set(current["hashes"]))
+                  if expected["hashes"].get(key) != current["hashes"].get(key)]
+    for key in mismatches:
+        print("MISMATCH %s expected %s got %s" % (key, expected["hashes"].get(key), current["hashes"].get(key)))
+    print("%d hashes checked, %d mismatches" % (len(current["hashes"]), len(mismatches)))
+    return 1 if mismatches else 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -163,7 +211,15 @@ def main():
     compare.add_argument("--exact", action="store_true", help="require bit-identical outputs")
     compare.add_argument("--only", nargs="*", help="substrings of case names to run")
 
+    hashes = sub.add_parser("hashes", help="collect / check output hashes of a render tree")
+    hashes.add_argument("tree")
+    mode = hashes.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--write", action="store_true")
+    mode.add_argument("--check", action="store_true")
+
     args = parser.parse_args()
+    if args.command == "hashes":
+        return cmd_hashes(args)
     tools = [args.ref_render, args.ref_module] if args.command == "render" else [args.audio_diff]
     for tool in tools:
         if not os.access(tool, os.X_OK):

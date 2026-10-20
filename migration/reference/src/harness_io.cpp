@@ -1,5 +1,6 @@
 #include "harness_io.h"
 
+#include <cerrno>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -8,6 +9,10 @@
 #include <sstream>
 #include <sys/stat.h>
 #include <unistd.h>
+
+#if defined(__GLIBC__)
+  #include <gnu/libc-version.h>
+#endif
 
 namespace harness {
 
@@ -44,10 +49,50 @@ void isolateUserEnvironment() {
   unsetenv("XDG_CACHE_HOME");
 }
 
+namespace {
+  // Masks the CPU features glibc uses to pick libm variants (FMA/AVX/FMA4
+  // versions of sin, exp, pow, ...), so every x86_64 CPU runs the baseline
+  // SSE2 variants. Measured: the double-precision variants return different
+  // bits with and without FMA (migration/decisions/reference-determinism.md).
+  const char* kLibmTunables = "glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4";
+  const char* kPinnedMarker = "REF_HARNESS_LIBM_PINNED";
+  const char* kNoPinVariable = "REF_NO_LIBM_PIN";
+}
+
+void pinLibmVariants(int argc, const char* argv[]) {
+#if defined(__GLIBC__) && defined(__x86_64__)
+  (void)argc;
+  if (getenv(kPinnedMarker) || getenv(kNoPinVariable))
+    return;
+
+  // ifunc variants are chosen when libm is loaded, so the tunable only
+  // takes effect in a fresh process image: set it and re-exec ourselves.
+  std::string tunables = kLibmTunables;
+  const char* existing = getenv("GLIBC_TUNABLES");
+  if (existing && *existing)
+    tunables = std::string(existing) + ":" + tunables;
+  setenv("GLIBC_TUNABLES", tunables.c_str(), 1);
+  setenv(kPinnedMarker, "1", 1);
+  execv("/proc/self/exe", const_cast<char* const*>(argv));
+  std::fprintf(stderr, "warning: could not re-exec to pin libm variants: %s\n", std::strerror(errno));
+  unsetenv(kPinnedMarker);
+#else
+  (void)argc;
+  (void)argv;
+#endif
+}
+
 json buildInfo() {
   json info;
   info["upstream_sha"] = REF_UPSTREAM_SHA;
   info["fast_math"] = REF_FAST_MATH ? true : false;
+  info["opt_flags"] = REF_OPT_FLAGS;
+#if defined(__GLIBC__)
+  info["glibc"] = gnu_get_libc_version();
+#endif
+  const char* pinned = getenv(kPinnedMarker);
+  info["libm_variants"] = pinned ? std::string("baseline (GLIBC_TUNABLES ") + kLibmTunables + ")"
+                                 : std::string("cpu-dispatched (not pinned)");
 #if defined(__VERSION__)
   info["compiler"] = __VERSION__;
 #endif
