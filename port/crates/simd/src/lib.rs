@@ -16,14 +16,15 @@
 //!
 //! # Numerics
 //!
-//! The C++ reference is built from upstream's SSE2 path with exact division
-//! and square root, no FMA contraction and no approximate reciprocals
-//! (`migration/decisions/reference-determinism.md`). This crate matches that:
+//! Each C++ reference is built from upstream's path for its ISA (SSE2 on
+//! x86_64, NEON on arm64) with exact division and square root, no FMA
+//! contraction and no approximate reciprocals
+//! (`migration/decisions/reference-determinism.md`,
+//! `migration/decisions/reference-arm.md`). This crate matches that:
 //!
-//! - every backend implements the SSE2 lane semantics listed in [`backend`]
-//!   (NaN behaviour of `max`/`min`, ordered/unordered compares,
-//!   round-to-nearest-even float → int with `0x8000_0000` for out-of-range,
-//!   signed int `min` vs unsigned int `max`, ...);
+//! - each backend implements its upstream path's lane semantics, listed per
+//!   target in [`backend`] (NaN behaviour of `max`/`min`, ordered/unordered
+//!   `!=`, float → int rounding vs truncation, int `min` signedness, ...);
 //! - `mul_add`/`mul_sub` round twice (`a + b * c`), never fused;
 //! - the [`futils`] approximations are ported as written, operation for
 //!   operation, and never replaced by libm;

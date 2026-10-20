@@ -167,7 +167,8 @@ impl<B: Backend> PolyIntOf<B> {
         Self::from_raw(B::i_max(one.value, two.value))
     }
 
-    /// Per-lane minimum. Compares **signed**, like upstream's SSE2 path.
+    /// Per-lane minimum (site A7): compares **signed** on SSE2 (upstream's
+    /// `_mm_cmpgt_epi32` without the sign flip), unsigned on NEON.
     #[inline(always)]
     pub fn min(one: Self, two: Self) -> Self {
         Self::from_raw(B::i_min(one.value, two.value))
@@ -196,8 +197,9 @@ impl<B: Backend> PolyIntOf<B> {
         B::i_sum(self.value)
     }
 
-    /// `PMOVMSKB`: a 16-bit mask of each byte's top bit. Non-zero when any
-    /// lane of a comparison mask is set.
+    /// Non-zero when any lane of a comparison mask is set (site A8). The
+    /// value is per target: SSE2 returns a 16-bit mask of each byte's top bit
+    /// (`PMOVMSKB`), NEON the largest lane value.
     #[inline(always)]
     pub fn any_mask(self) -> u32 {
         B::i_any_mask(self.value)
@@ -280,7 +282,7 @@ impl<B: Backend> PolyFloatOf<B> {
         *self = Self::from_array(lanes);
     }
 
-    /// `one + two * three`, two roundings (no FMA), like upstream's SSE2 path.
+    /// `one + two * three`, two roundings (no FMA) on every target.
     #[inline(always)]
     pub fn mul_add(one: Self, two: Self, three: Self) -> Self {
         Self::from_raw(B::f_add(one.value, B::f_mul(two.value, three.value)))
@@ -292,13 +294,17 @@ impl<B: Backend> PolyFloatOf<B> {
         Self::from_raw(B::f_sub(one.value, B::f_mul(two.value, three.value)))
     }
 
-    /// `MAXPS`: `one > two ? one : two` per lane.
+    /// Per-lane maximum (site A5). SSE2 (`MAXPS`): `one > two ? one : two`,
+    /// so a NaN or a `±0` tie returns `two`. NEON (`FMAX`): NaN propagates and
+    /// `max(+0, -0) = +0`.
     #[inline(always)]
     pub fn max(one: Self, two: Self) -> Self {
         Self::from_raw(B::f_max(one.value, two.value))
     }
 
-    /// `MINPS`: `one < two ? one : two` per lane.
+    /// Per-lane minimum (site A5). SSE2 (`MINPS`): `one < two ? one : two`,
+    /// so a NaN or a `±0` tie returns `two`. NEON (`FMIN`): NaN propagates and
+    /// `min(+0, -0) = -0`.
     #[inline(always)]
     pub fn min(one: Self, two: Self) -> Self {
         Self::from_raw(B::f_min(one.value, two.value))
@@ -324,7 +330,8 @@ impl<B: Backend> PolyFloatOf<B> {
         PolyIntOf::from_raw(B::f_eq(one.value, two.value))
     }
 
-    /// Unordered `!=` (true on NaN).
+    /// `!=` (site A6): unordered on SSE2 (true on NaN), ordered on NEON
+    /// (false on NaN).
     #[inline(always)]
     pub fn not_equal(one: Self, two: Self) -> PolyIntOf<B> {
         PolyIntOf::from_raw(B::f_neq(one.value, two.value))
@@ -354,7 +361,8 @@ impl<B: Backend> PolyFloatOf<B> {
         Self::greater_than_or_equal(two, one)
     }
 
-    /// Horizontal sum, `(v0 + v2) + (v1 + v3)`.
+    /// Horizontal sum (site A4): `(v0 + v2) + (v1 + v3)` on SSE2,
+    /// `(v0 + v1) + (v2 + v3)` on NEON.
     #[inline(always)]
     pub fn sum(self) -> f32 {
         B::f_sum(self.value)
