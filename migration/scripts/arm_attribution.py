@@ -12,6 +12,10 @@ platforms' renders with the corpus default tolerances:
                  truncates)                           -> chorus/delay/flanger off
   wave frame     synth_oscillator.cpp wave_index = toInt(frame)
                                                       -> no wave-frame modulation
+  sum order      poly_float::sum() adds (v0+v2)+(v1+v3) on SSE2 and
+                 (v0+v1)+(v2+v3) on NEON; the reverb's feedback matrix uses it
+                 (its toInt only sees floored, exact integers)
+                                                      -> reverb off / reverb only
 
   arm_attribution.py render --ref-render BIN --out DIR
   arm_attribution.py compare REFERENCE_DIR TEST_DIR [--audio-diff BIN] [--markdown FILE]
@@ -41,6 +45,15 @@ def no_modulated_delays(settings):
         settings[effect + "_on"] = 0.0
 
 
+def no_reverb(settings):
+    settings["reverb_on"] = 0.0
+
+
+def reverb_only(settings):
+    settings["reverb_on"] = 1.0
+    settings["reverb_dry_wet"] = 0.5
+
+
 def no_wave_frame_modulation(settings):
     settings["modulations"] = [m for m in settings.get("modulations", []) if not m["destination"].endswith("wave_frame")]
     for key in [k for k in settings if k.startswith("modulation_") and k.endswith("_amount")]:
@@ -51,9 +64,11 @@ def no_wave_frame_modulation(settings):
 VARIANTS = {
     "init_saw__single_note": ("init_saw", "single_note_c3", [], "baseline (random phase on)"),
     "init_saw__single_note__no_random_phase": ("init_saw", "single_note_c3", [no_random_phase], "random phase off"),
+    "init_saw__single_note__no_random_phase_reverb": ("init_saw", "single_note_c3", [no_random_phase, reverb_only], "random phase off, reverb on (sum order only)"),
     "unison_pad_fx__chords": ("unison_pad_fx", "chord_progression", [], "baseline (random phase on, chorus + delay on)"),
     "unison_pad_fx__chords__no_random_phase": ("unison_pad_fx", "chord_progression", [no_random_phase], "random phase off"),
     "unison_pad_fx__chords__no_random_phase_no_delays": ("unison_pad_fx", "chord_progression", [no_random_phase, no_modulated_delays], "random phase off, chorus/delay off"),
+    "unison_pad_fx__chords__no_random_phase_no_delays_no_reverb": ("unison_pad_fx", "chord_progression", [no_random_phase, no_modulated_delays, no_reverb], "random phase off, chorus/delay/reverb off"),
     "line_wavetable_fold__velocity": ("line_wavetable_fold", "velocity_ramp", [], "baseline (env 2 sweeps the wave frame)"),
     "line_wavetable_fold__velocity__no_frame_mod": ("line_wavetable_fold", "velocity_ramp", [no_wave_frame_modulation], "wave-frame modulation off"),
 }
