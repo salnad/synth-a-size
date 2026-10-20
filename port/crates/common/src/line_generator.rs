@@ -517,6 +517,27 @@ mod tests {
     }
 
     #[test]
+    fn boolean_points_and_powers_load_like_upstream() {
+        let data = json::parse(
+            r#"{"num_points": 2, "points": [false, true, true, false], "powers": [false, true], "smooth": false}"#,
+        )
+        .unwrap();
+        let mut generator = LineGenerator::default();
+        generator.from_json(&data).unwrap();
+        assert_eq!(generator.point(0), (0.0, 1.0));
+        assert_eq!(generator.point(1), (1.0, 0.0));
+        assert_eq!(generator.power(1), 1.0);
+        assert_eq!(
+            generator.to_json().dump(),
+            r#"{"name":"","num_points":2,"points":[0.0,1.0,1.0,0.0],"powers":[0.0,1.0],"smooth":false}"#
+        );
+        let boolean_count =
+            json::parse(r#"{"num_points": true, "points": [0, 1], "powers": [0]}"#).unwrap();
+        generator.from_json(&boolean_count).unwrap();
+        assert_eq!(generator.num_points(), 1);
+    }
+
+    #[test]
     fn empty_line_saves_nulls() {
         let mut generator = LineGenerator::default();
         generator.set_num_points(0);

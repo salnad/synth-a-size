@@ -491,6 +491,11 @@ Registry and Modulators reuse it instead of porting these pieces again
   integers vs. doubles, `f32` stored as double, a line-by-line port of its
   Grisu2 double formatting, first duplicate key wins, `operator[]`/`get<T>`
   read rules as `get`/`at`/`to_*` returning errors where upstream throws).
+  Arithmetic conversions follow nlohmann's three paths, checked against
+  the reference: `float`/`int` (`to_f32`/`to_i32`) accept booleans as 0/1;
+  `double`/`int64_t` (`to_f64`/`to_i64`) and `int`-backed enums
+  (`to_enum`) reject them. So `LineGenerator` accepts boolean points,
+  powers and `num_points`, as upstream does (found by Preset Registry).
 - `base64`: JUCE `Base64` (decoding stops at the first invalid character
   and keeps the bytes decoded so far).
 - `scalar`: single-lane `futils` (`exp2`, `log2`, `exp`, `log`, `pow`,

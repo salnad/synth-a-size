@@ -160,7 +160,8 @@ impl Value {
         ))
     }
 
-    /// `get<double>()`.
+    /// `get<double>()`. `double` is the stored float type, so nlohmann
+    /// converts through `get_arithmetic_value`, which rejects booleans.
     pub fn to_f64(&self) -> Result<f64> {
         match *self {
             Value::Int(v) => Ok(v as f64),
@@ -170,33 +171,51 @@ impl Value {
         }
     }
 
-    /// `get<float>()`: `static_cast<float>` of the stored number.
-    pub fn to_f32(&self) -> Result<f32> {
-        match *self {
-            Value::Int(v) => Ok(v as f32),
-            Value::UInt(v) => Ok(v as f32),
-            Value::Float(v) => Ok(v as f32),
-            _ => Err(self.number_error()),
-        }
-    }
-
-    /// `get<int>()`: `static_cast<int>` of the stored number (floats
-    /// truncate toward zero).
-    pub fn to_i32(&self) -> Result<i32> {
-        match *self {
-            Value::Int(v) => Ok(v as i32),
-            Value::UInt(v) => Ok(v as i32),
-            Value::Float(v) => Ok(v as i32),
-            _ => Err(self.number_error()),
-        }
-    }
-
-    /// `get<int64_t>()`.
+    /// `get<int64_t>()`. Like `double`, a stored type: booleans are rejected.
     pub fn to_i64(&self) -> Result<i64> {
         match *self {
             Value::Int(v) => Ok(v),
             Value::UInt(v) => Ok(v as i64),
             Value::Float(v) => Ok(v as i64),
+            _ => Err(self.number_error()),
+        }
+    }
+
+    /// `get<float>()` (also the implicit `float x = j`): `static_cast<float>`
+    /// of the stored number. `float` is not a stored type, so nlohmann's
+    /// generic arithmetic `from_json` applies, which also accepts booleans
+    /// (`true` is 1).
+    pub fn to_f32(&self) -> Result<f32> {
+        match *self {
+            Value::Int(v) => Ok(v as f32),
+            Value::UInt(v) => Ok(v as f32),
+            Value::Float(v) => Ok(v as f32),
+            Value::Bool(v) => Ok(f32::from(u8::from(v))),
+            _ => Err(self.number_error()),
+        }
+    }
+
+    /// `get<int>()` (also the implicit `int x = j`): `static_cast<int>` of
+    /// the stored number (floats truncate toward zero); booleans are
+    /// accepted, as for `float`.
+    pub fn to_i32(&self) -> Result<i32> {
+        match *self {
+            Value::Int(v) => Ok(v as i32),
+            Value::UInt(v) => Ok(v as i32),
+            Value::Float(v) => Ok(v as i32),
+            Value::Bool(v) => Ok(i32::from(v)),
+            _ => Err(self.number_error()),
+        }
+    }
+
+    /// Reading an `int`-backed enum (`MyEnum e = j`): nlohmann converts the
+    /// underlying `int` through `get_arithmetic_value`, which rejects
+    /// booleans, unlike [`Value::to_i32`].
+    pub fn to_enum(&self) -> Result<i32> {
+        match *self {
+            Value::Int(v) => Ok(v as i32),
+            Value::UInt(v) => Ok(v as i32),
+            Value::Float(v) => Ok(v as i32),
             _ => Err(self.number_error()),
         }
     }
@@ -748,7 +767,29 @@ mod tests {
         assert_eq!(Value::Float(-2.9).to_i32().unwrap(), -2);
         assert_eq!(Value::UInt(3).to_f32().unwrap(), 3.0);
         assert!(Value::Int(1).to_bool().is_err());
-        assert!(Value::Bool(true).to_f32().is_err());
+    }
+
+    #[test]
+    fn booleans_convert_only_to_non_stored_arithmetic_types() {
+        // float and int take nlohmann's generic arithmetic from_json, which
+        // has a boolean case.
+        assert_eq!(Value::Bool(true).to_f32().unwrap(), 1.0);
+        assert_eq!(Value::Bool(false).to_f32().unwrap(), 0.0);
+        assert_eq!(Value::Bool(true).to_i32().unwrap(), 1);
+        assert_eq!(Value::Bool(false).to_i32().unwrap(), 0);
+        // double, int64_t and enums go through get_arithmetic_value, which
+        // does not.
+        assert!(Value::Bool(true).to_f64().is_err());
+        assert!(Value::Bool(true).to_i64().is_err());
+        assert!(Value::Bool(true).to_enum().is_err());
+        assert_eq!(Value::Float(2.9).to_enum().unwrap(), 2);
+        // Strings and null are never numbers.
+        for value in [Value::Null, Value::from("1")] {
+            assert!(value.to_f32().is_err());
+            assert!(value.to_i32().is_err());
+            assert!(value.to_f64().is_err());
+            assert!(value.to_enum().is_err());
+        }
     }
 
     #[test]
