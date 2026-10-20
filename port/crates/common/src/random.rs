@@ -22,6 +22,14 @@ pub struct Mt19937 {
     index: usize,
 }
 
+impl std::fmt::Debug for Mt19937 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Mt19937")
+            .field("index", &self.index)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Mt19937 {
     const N: usize = 624;
     const M: usize = 397;
@@ -117,7 +125,7 @@ pub fn set_next_seed(seed: i32) {
 }
 
 /// `vital::utils::RandomGenerator`.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RandomGenerator {
     engine: Mt19937,
     min: f32,
