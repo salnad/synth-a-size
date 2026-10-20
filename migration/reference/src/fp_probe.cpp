@@ -1,5 +1,6 @@
 // ref-fp-probe: hashes the results of (a) every libm function the reference
-// binary imports and (b) the SSE approximate instructions rcpps / rsqrtps,
+// binary imports, (b) the SSE approximate instructions rcpps / rsqrtps and
+// (c) the glibc libmvec SSE kernels GCC can call from auto-vectorised loops,
 // over fixed deterministic inputs. Running it on two machines shows whether
 // either source returns different bits there. libm can differ through
 // CPU-dispatched variants; rcpps / rsqrtps are only specified to ~12 bits, so
@@ -7,6 +8,7 @@
 //
 // Built WITHOUT -ffast-math so the calls are not replaced or reassociated.
 
+#include <emmintrin.h>
 #include <xmmintrin.h>
 
 #include <cinttypes>
@@ -17,6 +19,20 @@
 #include <random>
 #include <string>
 #include <vector>
+
+// glibc libmvec SSE entry points, as GCC calls them when it auto-vectorises
+// scalar math under -ffast-math.
+extern "C" {
+  __m128 _ZGVbN4v_sinf(__m128);
+  __m128 _ZGVbN4v_cosf(__m128);
+  __m128 _ZGVbN4v_tanf(__m128);
+  __m128 _ZGVbN4v_asinf(__m128);
+  __m128 _ZGVbN4v_acosf(__m128);
+  __m128 _ZGVbN4vv_atan2f(__m128, __m128);
+  __m128d _ZGVbN2v_sin(__m128d);
+  __m128d _ZGVbN2v_cos(__m128d);
+  __m128d _ZGVbN2v_exp(__m128d);
+}
 
 namespace {
 
@@ -86,6 +102,15 @@ int main() {
     return _mm_cvtss_f32(_mm_mul_ps(_mm_set1_ps(1.2345f), refined));
   }, 0.01f, 100.0f, first);
   probe<float>("exact_div", [](float x) { return 1.2345f / x; }, 0.01f, 100.0f, first);
+  probe<float>("libmvec_sinf", [](float x) { return _mm_cvtss_f32(_ZGVbN4v_sinf(_mm_set1_ps(x))); }, -10.0f, 10.0f, first);
+  probe<float>("libmvec_cosf", [](float x) { return _mm_cvtss_f32(_ZGVbN4v_cosf(_mm_set1_ps(x))); }, -10.0f, 10.0f, first);
+  probe<float>("libmvec_tanf", [](float x) { return _mm_cvtss_f32(_ZGVbN4v_tanf(_mm_set1_ps(x))); }, -1.5f, 1.5f, first);
+  probe<float>("libmvec_asinf", [](float x) { return _mm_cvtss_f32(_ZGVbN4v_asinf(_mm_set1_ps(x))); }, -1.0f, 1.0f, first);
+  probe<float>("libmvec_acosf", [](float x) { return _mm_cvtss_f32(_ZGVbN4v_acosf(_mm_set1_ps(x))); }, -1.0f, 1.0f, first);
+  probe<float>("libmvec_atan2f", [](float x) { return _mm_cvtss_f32(_ZGVbN4vv_atan2f(_mm_set1_ps(x), _mm_set1_ps(0.37f))); }, -10.0f, 10.0f, first);
+  probe<double>("libmvec_sin", [](double x) { return _mm_cvtsd_f64(_ZGVbN2v_sin(_mm_set1_pd(x))); }, -10.0, 10.0, first);
+  probe<double>("libmvec_cos", [](double x) { return _mm_cvtsd_f64(_ZGVbN2v_cos(_mm_set1_pd(x))); }, -10.0, 10.0, first);
+  probe<double>("libmvec_exp", [](double x) { return _mm_cvtsd_f64(_ZGVbN2v_exp(_mm_set1_pd(x))); }, -20.0, 20.0, first);
   std::printf("\n}\n");
   return 0;
 }

@@ -2,7 +2,8 @@
 # Fails if the reference binaries contain instructions whose results depend
 # on the CPU model: SSE approximate reciprocals (RCPPS/RCPSS/RSQRTPS/RSQRTSS),
 # AVX-512 approximations, FMA (only possible if the ISA pin was overridden),
-# or x87 transcendentals. See migration/decisions/reference-determinism.md.
+# or x87 transcendentals; or if they call glibc libmvec (whose SSE kernels use
+# RCPPS/RSQRTPS internally). See migration/decisions/reference-determinism.md.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,6 +38,11 @@ for bin in ref-render ref-module; do
     done
     [[ $allowed -eq 0 ]] && unexpected+="$line"$'\n'
   done <<< "$hits"
+
+  libmvec="$(nm -D --undefined-only "$path" | grep -E ' _ZGV' || true)"
+  if [[ -n "$libmvec" ]]; then
+    unexpected+="libmvec imports:"$'\n'"$libmvec"$'\n'
+  fi
 
   if [[ -n "$unexpected" ]]; then
     echo "$bin: CPU-dependent floating-point instructions found:" >&2

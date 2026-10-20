@@ -109,7 +109,12 @@ target_compile_definitions(upstream_engine PUBLIC
 
 set(REF_OPT_FLAGS -O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops)
 if(REF_FAST_MATH)
-  list(APPEND REF_OPT_FLAGS -ffast-math)
+  # -U__FAST_MATH__: glibc's <bits/math-vector.h> only declares the libmvec
+  # SIMD variants of sinf/asinf/... when __FAST_MATH__ is defined. Without
+  # it GCC keeps scalar libm calls instead of auto-vectorising them into
+  # libmvec's SSE kernels, which use RCPPS/RSQRTPS internally and so return
+  # CPU-dependent bits. Nothing else in the build reads the macro.
+  list(APPEND REF_OPT_FLAGS -ffast-math -U__FAST_MATH__)
 endif()
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
   # Cross-machine determinism (migration/decisions/reference-determinism.md):
@@ -149,3 +154,4 @@ target_link_libraries(ref-module PRIVATE harness_common)
 # compared directly (see migration/decisions/reference-determinism.md).
 add_executable(ref-fp-probe src/fp_probe.cpp)
 target_compile_options(ref-fp-probe PRIVATE -O2 -fno-fast-math)
+target_link_libraries(ref-fp-probe PRIVATE mvec m)
