@@ -1,0 +1,215 @@
+name: Reference ARM
+
+# ARM / Apple Silicon reference coverage (migration/decisions/reference-arm.md).
+# Builds the C++ reference on aarch64 Linux and Apple Silicon macOS with the
+# pinned flags, checks the binaries and per-machine determinism, renders build
+# variants that isolate each ARM-specific source of difference, and compares
+# everything against an x86 reference built in the same run.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: reference-arm-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  x86:
+    name: x86_64 Linux reference (baseline for cross-ISA comparison)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build reference
+        run: migration/scripts/build_reference.sh
+      - name: Diagnostics
+        run: migration/scripts/machine_info.sh build/platform/diag
+      - name: Render corpus
+        run: python3 migration/scripts/run_corpus.py render --out build/platform/pinned
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ref-x86_64-linux
+          path: build/platform/
+          if-no-files-found: error
+          retention-days: 14
+
+  arm-linux:
+    name: aarch64 Linux reference (GCC)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust if missing
+        run: |
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          fi
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            port
+            migration/tools/audio-diff
+      - name: Toolchain info
+        run: |
+          g++ --version | head -1
+          cmake --version | head -1
+          rustup toolchain install || rustup show
+          cargo --version
+      - name: Build pinned reference
+        run: migration/scripts/build_reference.sh
+      - name: No CPU-dependent floating-point instructions (estimates, FMA, vector math)
+        run: migration/scripts/check_fp_determinism.sh
+      - name: Diagnostics
+        run: migration/scripts/machine_info.sh build/platform/diag
+      - name: Render corpus and check repeatability
+        run: |
+          python3 migration/scripts/run_corpus.py render --out build/platform/pinned
+          python3 migration/scripts/run_corpus.py render --out build/platform/pinned-again
+      - name: Build audio-diff
+        run: cargo build --release --locked --manifest-path migration/tools/audio-diff/Cargo.toml
+      - name: Repeat render is bit-identical
+        run: python3 migration/scripts/run_corpus.py compare build/platform/pinned build/platform/pinned-again --exact
+      - name: Variant - FP contraction allowed (GCC default on aarch64)
+        run: |
+          REF_BUILD_DIR=build/variant-contract migration/scripts/build_reference.sh -DREF_FP_CONTRACT=ON
+          python3 migration/scripts/run_corpus.py render --out build/platform/contract \
+            --ref-render build/variant-contract/ref-render --ref-module build/variant-contract/ref-module
+      - name: Variant - no fast-math (faithful-port proxy)
+        run: |
+          REF_BUILD_DIR=build/variant-proxy migration/scripts/build_reference.sh -DREF_FAST_MATH=OFF
+          python3 migration/scripts/run_corpus.py render --out build/platform/proxy \
+            --ref-render build/variant-proxy/ref-render --ref-module build/variant-proxy/ref-module
+      - name: Tolerances are achievable on aarch64 (proxy must pass)
+        run: python3 migration/scripts/run_corpus.py compare build/platform/pinned build/platform/proxy
+      - name: Port workspace builds on aarch64 Linux
+        run: cargo build --workspace --locked --manifest-path port/Cargo.toml
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ref-aarch64-linux
+          path: |
+            build/platform/
+            migration/reference/build/ref-render
+            migration/reference/build/ref-module
+            migration/reference/build/ref-fp-probe
+          if-no-files-found: error
+          retention-days: 14
+
+  macos:
+    name: Apple Silicon macOS reference (${{ matrix.os }}, Apple clang)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            port
+            migration/tools/audio-diff
+      - name: Toolchain info
+        run: |
+          uname -m
+          sw_vers
+          c++ --version | head -1
+          cmake --version | head -1
+          rustup toolchain install || rustup show
+          cargo --version
+      - name: Build pinned reference
+        run: CXX=clang++ migration/scripts/build_reference.sh
+      - name: No CPU-dependent floating-point instructions (estimates, FMA, vector math)
+        run: migration/scripts/check_fp_determinism.sh
+      - name: Diagnostics
+        run: CXX=clang++ migration/scripts/machine_info.sh build/platform/diag
+      - name: Render corpus and check repeatability
+        run: |
+          python3 migration/scripts/run_corpus.py render --out build/platform/pinned
+          python3 migration/scripts/run_corpus.py render --out build/platform/pinned-again
+      - name: Build audio-diff
+        run: cargo build --release --locked --manifest-path migration/tools/audio-diff/Cargo.toml
+      - name: Repeat render is bit-identical
+        run: python3 migration/scripts/run_corpus.py compare build/platform/pinned build/platform/pinned-again --exact
+      - name: Variant - JUCE FFT via Accelerate/vDSP (upstream Mac default)
+        if: matrix.os == 'macos-15'
+        run: |
+          REF_BUILD_DIR=build/variant-vdsp CXX=clang++ migration/scripts/build_reference.sh -DREF_USE_VDSP=ON
+          python3 migration/scripts/run_corpus.py render --out build/platform/vdsp \
+            --ref-render build/variant-vdsp/ref-render --ref-module build/variant-vdsp/ref-module
+      - name: Variant - FP contraction allowed (Apple clang default)
+        if: matrix.os == 'macos-15'
+        run: |
+          REF_BUILD_DIR=build/variant-contract CXX=clang++ migration/scripts/build_reference.sh -DREF_FP_CONTRACT=ON
+          python3 migration/scripts/run_corpus.py render --out build/platform/contract \
+            --ref-render build/variant-contract/ref-render --ref-module build/variant-contract/ref-module
+      - name: Variant - no fast-math (faithful-port proxy)
+        if: matrix.os == 'macos-15'
+        run: |
+          REF_BUILD_DIR=build/variant-proxy CXX=clang++ migration/scripts/build_reference.sh -DREF_FAST_MATH=OFF
+          python3 migration/scripts/run_corpus.py render --out build/platform/proxy \
+            --ref-render build/variant-proxy/ref-render --ref-module build/variant-proxy/ref-module
+      - name: Tolerances are achievable on macOS (proxy must pass)
+        if: matrix.os == 'macos-15'
+        run: python3 migration/scripts/run_corpus.py compare build/platform/pinned build/platform/proxy
+      - name: Port workspace builds on macOS arm64 (incl. the nice-plug plugin)
+        if: matrix.os == 'macos-15'
+        run: cargo build --workspace --locked --manifest-path port/Cargo.toml
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ref-arm64-${{ matrix.os }}
+          path: |
+            build/platform/
+            migration/reference/build/ref-render
+            migration/reference/build/ref-module
+            migration/reference/build/ref-fp-probe
+          if-no-files-found: error
+          retention-days: 14
+
+  cross-isa:
+    name: Cross-platform reference comparison
+    needs: [x86, arm-linux, macos]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: migration/tools/audio-diff
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install || rustup show
+          cargo --version
+      - name: Build audio-diff
+        run: cargo build --release --locked --manifest-path migration/tools/audio-diff/Cargo.toml
+      - uses: actions/download-artifact@v8
+        with:
+          path: build/artifacts
+      - name: Compare
+        run: |
+          a=build/artifacts
+          python3 migration/scripts/cross_platform_report.py --out build/cross \
+            --pair "aarch64 Linux vs x86_64 Linux=$a/ref-x86_64-linux/pinned:$a/ref-aarch64-linux/build/platform/pinned" \
+            --pair "macOS 15 vs x86_64 Linux=$a/ref-x86_64-linux/pinned:$a/ref-arm64-macos-15/build/platform/pinned" \
+            --pair "macOS 15 vs aarch64 Linux=$a/ref-aarch64-linux/build/platform/pinned:$a/ref-arm64-macos-15/build/platform/pinned" \
+            --pair "macOS 14 vs macOS 15=$a/ref-arm64-macos-15/build/platform/pinned:$a/ref-arm64-macos-14/build/platform/pinned" \
+            --pair "aarch64 Linux contraction on vs off=$a/ref-aarch64-linux/build/platform/pinned:$a/ref-aarch64-linux/build/platform/contract" \
+            --pair "macOS contraction on vs off=$a/ref-arm64-macos-15/build/platform/pinned:$a/ref-arm64-macos-15/build/platform/contract" \
+            --pair "macOS vDSP FFT vs fallback FFT=$a/ref-arm64-macos-15/build/platform/pinned:$a/ref-arm64-macos-15/build/platform/vdsp" \
+            --pair "aarch64 Linux proxy=$a/ref-aarch64-linux/build/platform/pinned:$a/ref-aarch64-linux/build/platform/proxy" \
+            --pair "macOS proxy=$a/ref-arm64-macos-15/build/platform/pinned:$a/ref-arm64-macos-15/build/platform/proxy"
+          cat build/cross/report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: cross-platform-report
+          path: build/cross/
+          retention-days: 14
