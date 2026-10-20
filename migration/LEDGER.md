@@ -2363,3 +2363,66 @@ arm64 CI) merges.
 
 **Next:** the remaining spectral morphs (PR B), then the sample source
 and sample module, then the oscillator and producers modules.
+
+## 2026-10-20: Apple Silicon reference (ARM Reference worker)
+
+**Context:** the owner set the only shipping target to an arm64 macOS VST3.
+Full write-up: `decisions/reference-arm.md`.
+
+**Changed**
+
+- Reference build supports macOS arm64 (Apple clang, JUCE `.mm` units and
+  frameworks, `LINUX`/`rt` only on Linux) and aarch64 Linux.
+- arm64 pins: `-ffp-contract=off`; GCC `-march=armv8-a -mtune=generic`;
+  Apple `JUCE_USE_VDSP_FRAMEWORK=0` (portable FFT); deployment target 14.0.
+  Experiment switches `REF_FP_CONTRACT` and `REF_USE_VDSP` (OFF).
+- Render metadata identifies the libm (Apple libm plus the macOS version).
+- `ref-fp-probe` is portable (splitmix inputs). It adds ARM estimate,
+  contraction, `toInt` and undefined-conversion probes.
+- `machine_info.sh` and `check_fp_determinism.sh` support aarch64 and macOS.
+  The guard covers FMA/estimate instructions and vDSP/libmvec imports.
+- New `.github/workflows/reference-arm.yml`:
+  - macOS 15 primary reference, with vDSP, contraction and proxy variants;
+  - macOS 14 running the macOS 15 binary;
+  - optional aarch64 Linux;
+  - a cross-platform report.
+- New scripts: `cross_platform_report.py`, `arm_attribution.py` and
+  `fp_contract_flags_probe.sh`.
+
+**Measured** (tolerances unchanged)
+
+- macOS 15 arm64 vs x86 reference: 9 of 15 outputs pass. The failures are
+  upstream ISA-dependent semantics, not noise:
+  - negative float → `uint32_t` in random phase (undefined behaviour: x86
+    wraps, arm64 saturates to 0);
+  - `utils::toInt` rounds on SSE2 and truncates on NEON, which affects
+    delay-line interpolation and the wave-frame index.
+
+  Attribution: each failing case passes once its mechanism is removed
+  (random phase off → −135 dB; chorus/delay off → −65.7 dB; wave-frame
+  modulation off → −137.5 dB).
+- On macOS the reference is deterministic. Repeat renders are identical,
+  and the same binary is bit-identical on macOS 14 and 15. Apple's `powf`
+  differs between those versions, but no corpus case hits it.
+- Pinned effects:
+  - contraction: −91 dB;
+  - vDSP vs fallback FFT: −127 dB;
+  - macOS vs aarch64 Linux (Apple libm/clang vs glibc/GCC): −95 dB.
+- Apple clang 15 ignores `-ffp-contract=off` under `-ffast-math`
+  (`-menable-unsafe-fp-math`); Apple clang 17 honours it. The reference
+  identity requires Apple clang 17.
+- The no-fast-math proxy passes the tolerances on macOS (worst −62.9 dB).
+- The port workspace, including the nice-plug plugin, builds on macOS
+  arm64.
+
+**Decision:** shipped-plugin parity is checked on macOS arm64 against the
+macOS arm64 reference. The Rust port mirrors upstream per target at the
+enumerated sites only, and everything else must be ISA-independent: no
+FMA, no estimates, the JUCE fallback FFT, the platform libm. aarch64 Linux
+is optional (manual dispatch).
+
+**Open / next**
+
+- After PR #3 merges: rebase; add the macOS identity to the hash files and
+  check it in the macOS job; run `sas-parity` natively on macOS arm64
+  against the macOS captures.

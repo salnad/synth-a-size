@@ -297,6 +297,12 @@ none of them edits a shared list.
   port: approximate reciprocal/rsqrt instructions, vendor SIMD math
   libraries (libmvec, SVML), or FMA in one build but not another.
   `check_fp_determinism.sh` guards the reference.
+- Upstream computes different results on arm64 and x86 at a few
+  enumerated sites (`utils::toInt` rounding vs truncation, undefined
+  float→int conversions in random phase). The shipped plugin is arm64
+  macOS, so its parity is checked against the macOS arm64 reference.
+  Mirror those sites per target, exactly as listed in
+  `decisions/reference-arm.md`, and keep everything else ISA-independent.
 - Engine randomness is a `std::mt19937` stream through libstdc++'s
   `uniform_real_distribution<float>`, seeded from a global counter in
   construction order. Exact parity for random features needs an exact
