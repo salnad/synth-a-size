@@ -484,6 +484,9 @@ def cmd_compare(args):
             code = diff(args, os.path.join(ref_dir, output), os.path.join(test_dir, output),
                         case["tolerances"], report)
             results.append((label, code))
+        for output in sorted(set(module_outputs(test_dir)) - set(outputs)):
+            label = "%s:%s" % (case["id"], output[len("out_"):-len(".npy")])
+            results.append((label + " (missing in reference tree)", 2))
         for artifact in artifacts:
             label = "%s:artifact/%s" % (case["id"], artifact[len("artifact_"):])
             test_path = os.path.join(test_dir, artifact)

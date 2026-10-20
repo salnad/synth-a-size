@@ -380,6 +380,15 @@ class ScratchRepo(unittest.TestCase):
         self.assertEqual(code, 2, output)
         self.assertIn("(no reference outputs or artifacts)", output)
 
+    def test_compare_flags_array_missing_in_reference(self):
+        ((ref, _), (test, test_case)), fake_diff = self.make_text_only_trees()
+        write_npy(os.path.join(test_case, "out_extra.npy"), [0.5] * 4, 4)
+        code, output = self.run_main("compare", ref, test, "--audio-diff", fake_diff, "--only", "harness/textonly")
+        self.assertEqual(code, 2, output)
+        self.assertIn("ERROR harness/textonly/json:extra (missing in reference tree)", output)
+        self.assertIn("pass  harness/textonly/json:artifact/saved.json (exact)", output)
+        self.assertNotIn("audio-diff should not run", output)
+
     # B3: a failed render left stale data plus a new case.json.
     def test_failed_render_leaves_no_stale_capture(self):
         tree = self.make_tree()

@@ -341,6 +341,9 @@ Registry):
   identical trees pass with and without `--exact`, an edited artifact
   fails, missing or extra artifacts error, and audio-diff is never invoked.
   The main test fails on the old code with the reported message.
+- Follow-up (reviewer note on #12, landed with #10): an `out_*.npy` present
+  only in the test tree is now an error ("missing in reference tree"),
+  symmetric with artifacts. Test: `test_compare_flags_array_missing_in_reference`.
 
 ## 2026-10-20: case names restricted to [A-Za-z0-9_-]
 
