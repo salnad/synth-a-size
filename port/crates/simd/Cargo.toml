@@ -8,4 +8,17 @@ repository.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[features]
+# Use upstream's aarch64 (NEON) semantics on every target, so x86_64
+# developers can compare against macOS arm64 reference renders. No-op on
+# aarch64. See `backend` docs and migration/decisions/reference-arm.md.
+aarch64-semantics = []
+
 [dependencies]
+
+[dev-dependencies]
+sas-parity.workspace = true
+serde_json = "1"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(sas_simd_force_scalar)"] }

@@ -199,3 +199,23 @@ jobs:
           path: build/parity-failures/
           if-no-files-found: ignore
           retention-days: 14
+
+  simd-aarch64-semantics:
+    name: sas-simd with aarch64 semantics on x86_64 (feature aarch64-semantics)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: port
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install || rustup show
+          cargo --version
+      - name: clippy
+        run: cargo clippy -p sas-simd --all-targets --locked --features aarch64-semantics --manifest-path port/Cargo.toml -- -D warnings
+      # The parity test needs arm64 captures (macOS job); everything else runs here.
+      - name: Tests (arm64 semantics through the scalar NEON model)
+        run: >
+          cargo test -p sas-simd --locked --features aarch64-semantics --manifest-path port/Cargo.toml
+          --lib --test semantics --test backend_parity --test poly_utils --test futils --test futils_mono_vs_poly

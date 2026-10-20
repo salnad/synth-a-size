@@ -341,3 +341,125 @@ Registry):
   identical trees pass with and without `--exact`, an edited artifact
   fails, missing or extra artifacts error, and audio-diff is never invoked.
   The main test fails on the old code with the reported message.
+
+---
+
+## 2026-10-20: M1 PR 1, `sas-simd` (poly_float, poly_utils, futils)
+
+**Changed**
+
+- `port/crates/simd`: `PolyFloat`/`PolyInt`/`PolyMask` over a `Backend`
+  trait with three implementations: SSE2 (x86_64), NEON (aarch64, the
+  shipping arm64 macOS target) and a scalar model of each upstream path
+  (`Scalar` = SSE2 semantics, `ScalarNeon` = NEON semantics). Ported
+  `poly_values.h`, `poly_utils.h`, `futils.h`, `matrix.h`, `common.h` and
+  the scalar part of `utils.h`/`utils.cpp` (the RNG engine and PCM
+  conversion live in `sas-common`, owned by Wavetable Creator).
+- Each backend follows its own upstream path, because upstream's SSE2 and
+  NEON paths are different arithmetic: float `max`/`min` (MAXPS vs FMAX NaN
+  and ±0 rules), `notEqual` (unordered vs ordered), horizontal sum order
+  (`(v0+v2)+(v1+v3)` vs `(v0+v1)+(v2+v3)`), `toInt` (round-to-nearest-even
+  with `0x80000000` vs truncate-and-saturate), int `min` (signed vs
+  unsigned) and `anyMask` (byte mask vs max lane). Table in
+  `crates/simd/src/backend/mod.rs`.
+- No FMA and no estimate instructions anywhere: `mul_add`/`mul_sub` are a
+  separate multiply and add; division and `sqrt` are exact.
+- Matrix moved into PR 1 (not PR 2) because `poly_utils` depends on it.
+
+**Measured**
+
+- Native vs scalar model, bit for bit: ~22k float-quad cases and ~6k int
+  cases over every op, on x86_64 (SSE2 vs `Scalar`) and on aarch64 under
+  qemu (NEON vs `ScalarNeon`). The NaN payload of `+ - * /` with two NaN
+  operands is compared as NaN-ness, because compilers may commute these
+  ops (in the port and the reference alike).
+- Standalone C++ probe (local; superseded by the `simd/poly_function`
+  ref-module below): upstream's own headers, 1,257 input quads, 100
+  functions:
+  - x86_64, `-O3 -ffp-contract=off -msse2`, no fast-math: **100/100
+    bit-identical** to the Rust SSE2 backend.
+  - aarch64 (g++ 13 cross, run under qemu), no fast-math: **100/100
+    bit-identical** to the Rust NEON backend.
+  - With the reference's `-ffast-math -U__FAST_MATH__ -mno-recip`, 38
+    functions differ by a few ULP (reassociation and reciprocal-math). This
+    is the "faithful port vs fast-math" noise the tolerance proxy already
+    covers, not a port difference.
+- futils accuracy pins (they guard against coefficient typos; they are not
+  parity tolerances): exp2 relative error < 1e-5, log2 absolute < 1e-3
+  (measured 4.8e-4), tanh absolute < 1e-3.
+
+**Reference parity (the gate).** The probe is now a ref-module,
+`simd/poly_function` (`migration/reference/src/modules/simd/poly_function.cpp`,
+cases in `migration/corpus/modules/simd/poly_function.json`): 127 cases,
+one per upstream function. It covers every poly op, the poly_utils
+conversions, shuffles, interpolation and libm maps, poly futils, and the
+mono futils/utils overloads. Each case runs on 4,096 frames of stereo noise
+over that function's working range, chosen so outputs stay audio-scale
+(|out| ≲ 16). `port/crates/simd/tests/parity.rs` runs the port on the
+captured inputs through `sas-parity` under `module_defaults`
+(`max_abs_error` 1e-4, `residual_db` −80). Against the official pinned
+fast-math x86_64 reference:
+
+- 127/127 pass; 90/127 are bit-identical.
+- Worst `max_abs_error` is 7.6e-6 (`mono_frequency_to_midi_note`), 13×
+  under the limit. Worst `residual_db` is −132.0 dB (`catmull_row0`),
+  52 dB under the limit.
+- The cases that are not bit-identical are fast-math reassociation in the
+  reference: polynomial/Catmull matrices, the tanh/sat family, libm-based
+  `powf`/`logf` maps.
+- Extra, not the gate: against the `REF_FAST_MATH=OFF` reference, 127/127
+  are bit-identical. The no-fast-math proxy also passes all 127 cases
+  under the tolerances, as the calibration job requires.
+- arm64: the same test runs on aarch64 against arm64 captures once the
+  macOS arm64 job runs `cargo test` against them (ARM Reference). The g++
+  cross build under qemu (above) is only a proxy for Apple clang.
+
+**Mono vs poly futils (decision, coordinator-approved).** Each overload
+follows its own upstream formula. `tests/futils_mono_vs_poly.rs` requires
+bit equality where upstream's arithmetic is identical (exp2, log2, exp,
+log, exp_half, pow, magnitudeToDb, quickTanh, algebraicSat, quickSin, sin,
+quickSin1, sin1). It also checks that the port keeps the overloads that
+upstream itself makes differ (line numbers in `futils.h`):
+
+| Function | Mono | Poly | Difference |
+|---|---|---|---|
+| `dbToMagnitude` | 168–170 | 172–174 | mono uses natural `exp` (extra log2(e) scale, an upstream bug kept for parity) |
+| `quickTanhDerivative` | 199–206 | 190–197 | numerator summed in a different order |
+| `algebraicSatDerivative` | 243–250 | 252–260 | numerator summed in a different order |
+| `tanh` | 275–284 | 262–273 | different association |
+| `powerScale` | 360–369 | 371–378 | bypass threshold 0.01 vs 0.005; poly bypass goes through `maskLoad` (−0 → +0) |
+
+**Per-ISA semantics (`decisions/reference-arm.md`).** The enumerated sites
+live in `sas-simd` only. A1 is the poly `to_int` (rounding on x86_64,
+truncation on aarch64), part of the backend lane semantics. A2/A3 are the
+scalar `(uint32_t)float` / `(int32_t)float` casts, in
+`sas_simd::conversions` (`float_to_u32`, `float_to_i32`, with explicit
+`x86_64::` and `aarch64::` variants). The cargo feature
+`aarch64-semantics` makes an x86_64 build use the aarch64 column (via the
+scalar NEON model, which is bit-identical to the NEON backend under qemu),
+and `sas_simd::AARCH64_SEMANTICS` reports which one a build uses. Tests
+cover both columns on every host. A new CI job runs the `sas-simd` tests
+with the feature on x86_64. The parity test refuses captures whose build
+arch doesn't match the build's semantics. Five more poly lane operations
+differ between upstream's SSE2 and NEON code and are mirrored per target
+in the same backend table: horizontal-sum order, float max/min NaN and ±0
+handling, `notEqual` NaN ordering, int `min` signedness, and `anyMask`.
+They are not yet in the decision's section A table; that decision is open
+with the coordinator.
+
+**Notes for other threads**
+
+- `poly_utils::trunc`/`to_int` round on x86 and truncate on arm64, as
+  upstream does. `floor`/`ceil`/`round` agree on both for in-range values.
+- `utils::equal(NaN, NaN)` is false on x86 and true on arm64 (upstream).
+- Upstream runs the engine under JUCE `ScopedNoDenormals` (FTZ/DAZ on x86,
+  FZ on arm64). The port has to set the same mode around processing (M1 PR 2
+  or M7) for parity on paths that produce denormals.
+
+**Open / next**
+
+- PR 2: processor graph, operators, lookup tables, utilities,
+  one_pole_filter.
+- arm64 parity in CI: the macOS arm64 job needs to run
+  `cargo test -p sas-simd --test parity` against its arm64 captures. That
+  workflow belongs to ARM Reference.
