@@ -10,16 +10,18 @@
 //! Upstream's SSE2 and NEON paths are not the same arithmetic, and each
 //! reference build uses the path of its own architecture (the x86_64 Linux
 //! reference uses SSE2; the arm64 macOS reference, which matches the shipping
-//! plugin, uses NEON). Each backend therefore follows its own upstream path:
+//! plugin, uses NEON). Each backend therefore follows its own upstream path.
+//! These are the only per-ISA poly operations; the labels are the site IDs in
+//! `migration/decisions/reference-arm.md` section A:
 //!
 //! | Operation | SSE2 (`Sse2`, [`Scalar`]) | NEON (`Neon`, [`ScalarNeon`]) |
 //! |---|---|---|
-//! | float `max`/`min` | `MAXPS`/`MINPS`: `a > b ? a : b`, `a < b ? a : b`; NaN or `±0` tie returns `b` | `FMAX`/`FMIN`: NaN propagates (AArch64 `FPProcessNaNs`); `max(+0, -0) = +0`, `min(+0, -0) = -0` |
-//! | float `not_equal` | unordered (true on NaN) | `gt \| lt`: ordered (false on NaN) |
-//! | horizontal float sum | `(v0 + v2) + (v1 + v3)` | `(v0 + v1) + (v2 + v3)` |
-//! | float → int (`toInt`) | `CVTPS2DQ`: round to nearest even; NaN/out of range → `0x8000_0000` | `FCVTZS`: truncate toward zero, saturate, NaN → 0 |
-//! | int `min` | **signed** compare | unsigned |
-//! | `any_mask` | `PMOVMSKB` (16-bit byte-sign mask) | maximum lane value |
+//! | A5: float `max`/`min` | `MAXPS`/`MINPS`: `a > b ? a : b`, `a < b ? a : b`; NaN or `±0` tie returns `b` | `FMAX`/`FMIN`: NaN propagates (AArch64 `FPProcessNaNs`); `max(+0, -0) = +0`, `min(+0, -0) = -0` |
+//! | A6: float `not_equal` | unordered (true on NaN) | `gt \| lt`: ordered (false on NaN) |
+//! | A4: horizontal float sum | `(v0 + v2) + (v1 + v3)` | `(v0 + v1) + (v2 + v3)` |
+//! | A1: float → int (`toInt`) | `CVTPS2DQ`: round to nearest even; NaN/out of range → `0x8000_0000` | `FCVTZS`: truncate toward zero, saturate, NaN → 0 |
+//! | A7: int `min` | **signed** compare | unsigned |
+//! | A8: `any_mask` | `PMOVMSKB` (16-bit byte-sign mask) | maximum lane value |
 //!
 //! Shared by both: exact IEEE `+ - * /` and `sqrt` (upstream's AArch64 NEON
 //! path uses `vdivq_f32`; `NEON_ARM32` reciprocal estimates are not used),
