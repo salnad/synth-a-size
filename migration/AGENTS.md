@@ -135,6 +135,12 @@ none of them edits a shared list.
      `context.corpusPath(...)` resolves input files referenced by `params`.
      See `src/modules/harness/echo.cpp`. Artifacts are written to
      `artifact_<name>`, hashed like buffers, and compared byte for byte.
+     Numeric data (samples, wave frames, coefficients, parameter values)
+     goes through `sink.array`, so the case tolerances apply. A text
+     artifact must be upstream's own serialization of the state (for
+     example `WavetableCreator::stateToJson().dump()`), never a print you
+     formatted yourself. A reduced-precision print such as `%.3f` would
+     hide a tolerance inside an "exact" comparison.
    - *Render and record hashes*:
 
      ```bash

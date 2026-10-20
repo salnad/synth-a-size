@@ -107,6 +107,32 @@ class ToleranceRules(unittest.TestCase):
             "num_samples": 1, "tolerances": {"residual_db": -70},
             "tolerance_exception": approved({"residual_db": -70})}}})
 
+    # Reviewer note 2: the case id must match on token boundaries.
+    def test_ledger_names_case_as_whole_token(self):
+        cases = [
+            ("Owner approved filters/test/a.", True),
+            ("approved `filters/test/a` today", True),
+            ("filters/test/a", True),
+            ("see filters/test/a:value", True),
+            ("(filters/test/a)", True),
+            ("only filters/test/ab is approved", False),
+            ("xfilters/test/a", False),
+            ("filters/test/a_2", False),
+            ("filters/test/a-b", False),
+            ("filters/test/a/extra", False),
+            ("other/filters/test/a", False),
+            ("filters/test/ab and later filters/test/a", True),
+        ]
+        for text, expected in cases:
+            self.assertEqual(rc.names_case(text, "filters/test/a"), expected, text)
+        ledger = "## 2026-10-23: approve\n\nOwner approved filters/test/ab only.\n"
+        with self.assertRaises(rc.CaseError) as raised:
+            rc.resolve_module_file("filters", "test", "x.json", {"module": "filter", "cases": {"a": {
+                "num_samples": 1, "tolerances": {"residual_db": -70},
+                "tolerance_exception": {"approved_in": "2026-10-23: approve",
+                                        "tolerances": {"residual_db": -70}}}}}, MODULE_DEFAULTS, ledger)
+        self.assertIn("does not name the case", str(raised.exception))
+
     def test_exception_covers_exactly_loosened_metrics(self):
         self.assertCaseError("does not loosen it", resolve, {"module": "filter", "cases": {"a": {
             "num_samples": 1, "tolerance_exception": approved({"residual_db": -70})}}})
