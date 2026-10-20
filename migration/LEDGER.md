@@ -599,7 +599,5 @@ Harness Builder's `sas-parity` helper.)
   artifact. Local hashes are identical for `futils`, `line_generator` and
   `random`. `json` was re-written locally after the `-0.0` change, and the
   next CI run confirms it.
-- Pending a harness fix: `run_corpus.py compare` reports text-only module
-  cases (here `common/json/*`) as "no reference outputs", which fails CI's
-  determinism and calibration steps. I reported it to the coordinator for
-  Harness Builder.
+- `common/json/*` cases emit only text artifacts. CI compares them since
+  PR #12 ("run_corpus compare handles artifact-only modules", above).
