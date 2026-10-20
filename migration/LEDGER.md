@@ -323,3 +323,21 @@ Registry):
 - Reviewer note 3: AGENTS.md now says numeric data goes through
   `sink.array` (tolerances apply), and text artifacts must be upstream's
   own serialization, never reduced-precision prints.
+
+---
+
+## 2026-10-20: run_corpus compare handles artifact-only modules
+
+- Bug found by Wavetable Creator (PR #4, CI run 39514821022, cases
+  `common/json/*`): `run_corpus.py compare` reported
+  `ERROR <case> (no reference outputs)` for module cases that emit only
+  text artifacts. That broke the reference-harness determinism step and the
+  calibration compare for artifact-only modules.
+- Fix: a case has outputs if it has `out_*.npy` or `artifact_*` files.
+  Text artifacts are compared byte for byte in every compare, determinism
+  and calibration alike. An artifact present in only one of the two trees
+  is an error in either direction.
+- Regression tests (`test_run_corpus.py`) use a text-only fake case:
+  identical trees pass with and without `--exact`, an edited artifact
+  fails, missing or extra artifacts error, and audio-diff is never invoked.
+  The main test fails on the old code with the reported message.

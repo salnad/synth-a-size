@@ -434,6 +434,12 @@ def module_outputs(directory):
     return sorted(f for f in os.listdir(directory) if f.startswith("out_") and f.endswith(".npy"))
 
 
+def module_artifacts(directory):
+    if not os.path.isdir(directory):
+        return []
+    return sorted(f for f in os.listdir(directory) if f.startswith("artifact_"))
+
+
 def cmd_compare(args):
     renders, modules = load_renders(), load_modules()
     reports = os.path.join(args.test, "reports")
@@ -452,30 +458,32 @@ def cmd_compare(args):
         if not selected(case["id"], args.only):
             continue
         ref_dir = os.path.join(args.reference, "modules", case["id"])
+        test_dir = os.path.join(args.test, "modules", case["id"])
         outputs = module_outputs(ref_dir)
-        if not outputs:
-            results.append((case["id"] + " (no reference outputs)", 2))
+        artifacts = module_artifacts(ref_dir)
+        # A case may emit arrays, text artifacts, or both (artifact-only
+        # modules have no out_*.npy at all).
+        if not outputs and not artifacts:
+            results.append((case["id"] + " (no reference outputs or artifacts)", 2))
         for output in outputs:
             label = "%s:%s" % (case["id"], output[len("out_"):-len(".npy")])
             report = os.path.join(reports, label.replace("/", "__").replace(":", "__") + ".json")
-            code = diff(args, os.path.join(ref_dir, output), os.path.join(args.test, "modules", case["id"], output),
+            code = diff(args, os.path.join(ref_dir, output), os.path.join(test_dir, output),
                         case["tolerances"], report)
             results.append((label, code))
-
-    for case in modules:
-        if not selected(case["id"], args.only):
-            continue
-        ref_dir = os.path.join(args.reference, "modules", case["id"])
-        artifacts = sorted(f for f in os.listdir(ref_dir) if f.startswith("artifact_")) \
-            if os.path.isdir(ref_dir) else []
         for artifact in artifacts:
             label = "%s:artifact/%s" % (case["id"], artifact[len("artifact_"):])
-            test_path = os.path.join(args.test, "modules", case["id"], artifact)
+            test_path = os.path.join(test_dir, artifact)
             if not os.path.exists(test_path):
                 results.append((label + " (missing in test tree)", 2))
                 continue
+            # Text artifacts are exact in every comparison (determinism and
+            # calibration alike): no tolerance applies.
             with open(os.path.join(ref_dir, artifact), "rb") as a, open(test_path, "rb") as b:
                 results.append((label + " (exact)", 0 if a.read() == b.read() else 1))
+        for artifact in sorted(set(module_artifacts(test_dir)) - set(artifacts)):
+            label = "%s:artifact/%s" % (case["id"], artifact[len("artifact_"):])
+            results.append((label + " (missing in reference tree)", 2))
 
     for label, code in results:
         print({0: "pass ", 1: "FAIL ", 2: "ERROR"}.get(code, "ERROR") + " " + label)

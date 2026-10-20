@@ -306,6 +306,61 @@ class ScratchRepo(unittest.TestCase):
         self.assertIn("artifact saved.json does not match capture.json", output)
         self.assertIn("MISMATCH", output)
 
+    def make_text_only_trees(self):
+        """Reference and test trees for an artifact-only module case."""
+        os.makedirs(os.path.join(rc.MODULE_CASES, "harness"), exist_ok=True)
+        rc.write_json(os.path.join(rc.MODULE_CASES, "harness", "textonly.json"),
+                      {"module": "harness_echo", "cases": {"json": {}}})
+        trees = []
+        for name in ("ref", "test"):
+            case_dir = os.path.join(self.tmp.name, name, "modules", "harness", "textonly", "json")
+            os.makedirs(case_dir)
+            with open(os.path.join(case_dir, "artifact_saved.json"), "wb") as handle:
+                handle.write(b'{"version": "1.0.6"}\n')
+            trees.append((os.path.join(self.tmp.name, name), case_dir))
+        # audio-diff must never run for text artifacts: make it fail loudly.
+        fake_diff = os.path.join(self.tmp.name, "fake-audio-diff")
+        with open(fake_diff, "w") as handle:
+            handle.write("#!/bin/sh\necho audio-diff should not run\nexit 2\n")
+        os.chmod(fake_diff, 0o755)
+        return trees, fake_diff
+
+    # Bug from PR #4 CI: compare reported "(no reference outputs)" for
+    # artifact-only modules, breaking the determinism and calibration steps.
+    def test_compare_artifact_only_module(self):
+        ((ref, _), (test, test_case)), fake_diff = self.make_text_only_trees()
+        for extra in ([], ["--exact"]):
+            code, output = self.run_main("compare", ref, test, "--audio-diff", fake_diff,
+                                         "--only", "harness/textonly", *extra)
+            self.assertEqual(code, 0, output)
+            self.assertIn("pass  harness/textonly/json:artifact/saved.json (exact)", output)
+            self.assertNotIn("no reference outputs", output)
+
+        with open(os.path.join(test_case, "artifact_saved.json"), "wb") as handle:
+            handle.write(b'{"version": "1.0.7"}\n')
+        code, output = self.run_main("compare", ref, test, "--audio-diff", fake_diff, "--only", "harness/textonly")
+        self.assertEqual(code, 1, output)
+        self.assertIn("FAIL  harness/textonly/json:artifact/saved.json (exact)", output)
+
+        os.remove(os.path.join(test_case, "artifact_saved.json"))
+        code, output = self.run_main("compare", ref, test, "--audio-diff", fake_diff, "--only", "harness/textonly")
+        self.assertEqual(code, 2, output)
+        self.assertIn("missing in test tree", output)
+
+    def test_compare_flags_extra_and_absent_artifacts(self):
+        ((ref, ref_case), (test, test_case)), fake_diff = self.make_text_only_trees()
+        with open(os.path.join(test_case, "artifact_extra.txt"), "wb") as handle:
+            handle.write(b"extra\n")
+        code, output = self.run_main("compare", ref, test, "--audio-diff", fake_diff, "--only", "harness/textonly")
+        self.assertEqual(code, 2, output)
+        self.assertIn("artifact/extra.txt (missing in reference tree)", output)
+
+        os.remove(os.path.join(ref_case, "artifact_saved.json"))
+        os.remove(os.path.join(test_case, "artifact_extra.txt"))
+        code, output = self.run_main("compare", ref, test, "--audio-diff", fake_diff, "--only", "harness/textonly")
+        self.assertEqual(code, 2, output)
+        self.assertIn("(no reference outputs or artifacts)", output)
+
     # B3: a failed render left stale data plus a new case.json.
     def test_failed_render_leaves_no_stale_capture(self):
         tree = self.make_tree()
