@@ -1,0 +1,56 @@
+{
+  "description": "FirHalfbandDecimator at 2x through its probe (output held for 2 frames). Blocks must exceed 32 internal samples (upstream asserts more than 16 outputs).",
+  "module": "fir_halfband_decimator",
+  "oversample": 2,
+  "cases": {
+    "noise_44k": {
+      "sample_rate": 44100,
+      "block_size": 128,
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 1,
+          "stereo": true
+        }
+      }
+    },
+    "saw_48k_block_256": {
+      "sample_rate": 48000,
+      "block_size": 256,
+      "num_samples": 48000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 2000.0,
+          "amp": 0.6
+        }
+      }
+    },
+    "sine_20k_block_34": {
+      "sample_rate": 44100,
+      "block_size": 34,
+      "num_samples": 20400,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 20000.0,
+          "amp": 0.7
+        }
+      }
+    },
+    "impulse": {
+      "sample_rate": 44100,
+      "block_size": 64,
+      "num_samples": 4096,
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 7,
+          "amp": 1.0
+        }
+      }
+    }
+  }
+}

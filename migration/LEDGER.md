@@ -1809,3 +1809,37 @@ has at least one output failing `module_defaults` against the reference
 `modules/filters/`, write its hashes, and apply the decided comparison.
 `tests/building_blocks.rs` selects cases by module name, so it needs no
 edit.
+
+## 2026-10-21: M5a PR 3, upsampler and decimators
+
+Core Filters (M5a), stacked on PR 2.
+
+- Ports `upsampler.{h,cpp}`, `iir_halfband_decimator.{h,cpp}` (9-tap and
+  sharp 25-tap polyphase allpass), `fir_halfband_decimator.{h,cpp}` (no
+  engine user upstream) and `decimator.{h,cpp}`. Kept from upstream: the
+  `Decimator` is a router whose stage count follows its input owner's sample
+  rate, which resets and reconfigures its stages when that count changes.
+  Its `setOversampleAmount` is a no-op, and its `init` wires the stages
+  without calling `ProcessorRouter::init`. Both decimators' `reset` ignores
+  the mask.
+- New ref-modules in `migration/reference/src/modules/filters/oversampling.cpp`.
+  A decimator writes half as many samples as it reads, and the `Decimator`
+  needs an input owner at a higher rate, so both run inside probes:
+  - `oversampling_round_trip`: Passthrough at the internal rate →
+    `Decimator(max_stages)` → idle `Upsampler` driven with
+    `processWithInput`, wired the way SoundEngine and EffectsEngine wire them.
+  - `fir_halfband_decimator`: the FIR at 2×, output held for 2 frames.
+  The Rust tests (`tests/oversampling.rs`) build the same probes.
+- Cases under `module_defaults`, no tolerance changes.
+  `filters/oversampling_round_trip` has 14 cases: noise and saw at 1×, 2×,
+  4× and 8× (0 to 3 stages; the last stage sharp), a 19 kHz sine at 2×, a
+  30 kHz sine at 4× (above the base Nyquist), an 8× impulse, `max_stages`
+  1, block size 4 at 4×, and 96 kHz × 2. `filters/fir_halfband_decimator`
+  has 4 cases: noise, saw, a 20 kHz sine at the minimum block size 34, and
+  an impulse.
+- `Upsampler`, `IirHalfbandDecimator` and `Decimator` panic in
+  `clone_box`, mirroring upstream's asserting `clone()` (Filter Reviewer note:
+  a cloned `Decimator` kernel would point at the original's stages).
+- Parity, x86_64: 18/18 pass. All 14 round-trip cases and the FIR impulse
+  are bit-identical to the reference; the other FIR cases have max_abs_error
+  ≤ 1.2e-7, residual ≤ −140.1 dB.
