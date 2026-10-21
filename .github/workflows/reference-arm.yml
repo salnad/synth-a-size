@@ -105,6 +105,7 @@ jobs:
       - name: Tolerances are achievable on macOS arm64 (proxy must pass)
         run: python3 migration/scripts/run_corpus.py compare build/platform/pinned build/platform/proxy
       - name: Rust parity tests on arm64 against the macOS arm64 captures (NEON path)
+        if: ${{ !cancelled() }}
         env:
           SAS_PARITY_CAPTURES: build/platform/pinned
           SAS_PARITY_NO_BUILD: "1"

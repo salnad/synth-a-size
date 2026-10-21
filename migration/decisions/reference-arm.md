@@ -68,8 +68,8 @@ checker against PR #46's `complex.rs`):
     builtins, not imported from libSystem. It is the logb/scalbn algorithm,
     but it is not bit-equal to that algorithm compiled without contraction:
     961,157 of 1,048,576 unit-circle results match, and the rest are up to
-    2 ulp off. That fits contraction in the separately compiled builtin
-    (`divsc3.s` in the diagnostics counts its fused instructions).
+    2 ulp off. Its disassembly has 9 fused multiply-adds, so the separately
+    compiled builtin contracts (`divsc3.s` in the diagnostics, run 39528358883).
 - A strict (`-fno-fast-math`) copy of the operator on macOS also gave the
   textbook result, special values included, so it did not call
   `__divsc3` either. This is diagnostic only; the engine is built with

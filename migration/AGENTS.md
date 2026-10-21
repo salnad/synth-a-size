@@ -209,6 +209,21 @@ none of them edits a shared list.
      the CI identity, and `sas-parity` checks every loaded capture against
      these hashes.
 
+     Every hash file also needs the **macOS arm64 identity** (the shipping
+     target; see `decisions/reference-arm.md`). The `Reference ARM`
+     workflow's macOS 15 job renders your PR's cases on Apple Silicon, runs
+     `sas-parity` natively against them and fails on missing entries.
+     Write them from that job's artifact in the same PR:
+
+     ```bash
+     gh run download <run-id> -n ref-arm64-macos-15 -D build/arm
+     python3 migration/scripts/run_corpus.py hashes build/arm/build/platform/pinned --write
+     ```
+
+     The same job requires the macOS no-fast-math proxy to pass. A case that
+     passes on x86 but misses there is parked and re-enabled under
+     `reference: nofastmath` like any other noisy-reference case.
+
 3. **Port faithfully.** Keep upstream's structure where practical,
    including processing order, control-rate vs audio-rate behaviour,
    sub-block splitting at 128 samples, smoothing, denormal handling and the

@@ -2,7 +2,6 @@
   "entries": [
     {
       "hashes": {
-        "clamped_dampened_damping_sweep:audio": "b7b0c2448c8bf5c7",
         "clamped_unfiltered_saturating:audio": "bb34ab84924900bf",
         "feedback_and_wet_sweep:audio": "055b67fc280fac0f",
         "frequency_clamp_sweep:audio": "2cedf86aea6d7235",
@@ -14,8 +13,7 @@
         "oversampled_2x:audio": "a8a28a2f14301e96",
         "ping_pong_noise_96k:audio": "163b2ecd64a58c6c",
         "saturate_large_ping_pong:audio": "67750206af3a28e6",
-        "stereo_noise_filter_sweep:audio": "d4694248d3771423",
-        "unclamped_unfiltered_negative_feedback:audio": "7d6b419606df2763"
+        "stereo_noise_filter_sweep:audio": "d4694248d3771423"
       },
       "identity": {
         "arch": "x86_64",

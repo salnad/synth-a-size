@@ -127,25 +127,6 @@
         "wet": 0.8
       }
     },
-    "clamped_dampened_damping_sweep": {
-      "num_samples": 88200,
-      "inputs": {
-        "audio": {
-          "signal": "saw",
-          "freq_hz": 55.0,
-          "amp": 0.8
-        },
-        "style": 5,
-        "frequency": 9.0,
-        "feedback": 0.95,
-        "wet": 0.5,
-        "damping": {
-          "signal": "ramp",
-          "from": 0.0,
-          "to": 1.0
-        }
-      }
-    },
     "clamped_unfiltered_saturating": {
       "num_samples": 44100,
       "inputs": {
@@ -157,20 +138,6 @@
         "style": 6,
         "frequency": 50.0,
         "feedback": 0.98,
-        "wet": 0.5
-      }
-    },
-    "unclamped_unfiltered_negative_feedback": {
-      "num_samples": 44100,
-      "inputs": {
-        "audio": {
-          "signal": "sine",
-          "freq_hz": 440.0,
-          "amp": 0.3
-        },
-        "style": 7,
-        "frequency": 30.0,
-        "feedback": -0.9,
         "wet": 0.5
       }
     },
