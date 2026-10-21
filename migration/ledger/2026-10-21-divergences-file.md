@@ -38,8 +38,9 @@ difference between the Rust port and upstream in a dedicated file,
   - New D10: no FMA contraction, no estimates and JUCE's fallback FFT,
     where upstream's real Mac build fuses and uses vDSP (−91 / −127 dB on
     the shipping target; `decisions/reference-arm.md`).
-  - D1–D3 and D4's host-state half are marked pending (#59 is open), and
-    D1 says its approval ledger file arrives with #59.
+  - D1–D3 and D4's host-state half were marked pending while #59 was open.
+    #59 has since merged, so they now say "merged in #59", and D1 cites its
+    approval ledger file and `decisions/plugin-framework.md` on main.
   - Rule 5 says what reviewers look for.
 - **Verification exceptions.** These are harness policies, not port
   behaviour, and sit in their own section:

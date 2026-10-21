@@ -32,7 +32,7 @@ What is **not** listed:
 
 ### D1. Host text entry reads the displayed value, clamped
 
-*Pending: in #59, open.*
+*Merged in #59.*
 
 - **Differs:** what a value typed into a host parameter's text field sets.
 - **Upstream:** `ValueBridge::getValueForText` returns
@@ -52,14 +52,13 @@ What is **not** listed:
   number above 1 select the maximum. Only the host's parameter text entry
   is affected; engine values, automation and preset state are not.
 - **Approved:** owner (Salil), 2026-10-21, relayed by the coordinator.
-  Today the decision is recorded in #59's description. Its ledger entry
-  (`migration/ledger/2026-10-21-owner-approval-plugin-text-entry.md`) and
-  the `decisions/plugin-framework.md` update arrive with #59; neither is on
-  main yet.
+  Recorded in `migration/ledger/2026-10-21-owner-approval-plugin-text-entry.md`
+  and `decisions/plugin-framework.md` ("Host text entry"). Implemented in
+  #59.
 
 ### D2. Note events addressed to every channel or key are dropped
 
-*Pending: in #59, open.*
+*Merged in #59.*
 
 - **Differs:** note-on, note-off and poly-pressure events that address all
   channels or all keys.
@@ -73,7 +72,7 @@ What is **not** listed:
 
 ### D3. A host tempo of zero or less is ignored
 
-*Pending: in #59, open.*
+*Merged in #59.*
 
 - **Differs:** a block whose host transport reports a tempo ≤ 0.
 - **Upstream:** `SynthPlugin::processBlock` skips `setBpm` when the tempo
@@ -90,7 +89,7 @@ What is **not** listed:
 
 ### D4. A preset or host state that fails to load changes nothing
 
-*Preset loading: merged (#7). Host state restore: pending, in #59, open.*
+*Merged: preset loading in #7, host state restore in #59.*
 
 - **Differs:** loading a corrupted preset, or one from a newer version.
   This applies to `PresetState` loads and to host state restores.
@@ -277,7 +276,6 @@ has its own decision record.
   same way in the ref-module and the parity test. For example, a keytrack
   frequency is captured as `frequency * (1.0f / sample_rate)`, with a raw
   case over the band that passes. See migration/AGENTS.md.
-
 - **Bounded JSON state (SAS-36).** Declared JSON artifacts compare
   structurally, with floats within 4 f32 ulp or 1e-6. See
   `decisions/owner-decisions-json-and-morphs.md`.
