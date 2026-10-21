@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use nice_plug::params::InternalParamMut;
 use nice_plug::plugin::{ParamValue, PluginState};
+use sas_engine::Tuning;
 use sas_plugin::params::ControlParam;
 use sas_plugin::{state, SynthASize, SynthParams};
 use sas_preset::{InitContent, PresetState, SampleState};
@@ -285,31 +286,133 @@ fn a_state_without_a_preset_restores_parameters_only() {
     assert_eq!(after.wavetables.len(), before.wavetables.len());
 }
 
-#[test]
-fn tuning_is_kept_alongside_the_preset() {
-    let mut preset = PresetState::new(&InitContent { sample_seed: 0 });
-    preset.info.preset_name = "tuned".to_string();
+/// A 19-tone equal temperament scale, with A4 = 432 Hz.
+fn nineteen_tone_tuning() -> Tuning {
+    let mut lines = vec![
+        "! 19edo.scl".to_string(),
+        "19 tone equal".to_string(),
+        "19".to_string(),
+    ];
+    lines.extend((1..19).map(|step| format!("{:.5}", step as f64 * 1200.0 / 19.0)));
+    lines.push("2/1".to_string());
+    let mut tuning = Tuning::new();
+    tuning.load_scala_lines(&lines);
+    tuning.set_name("19 tone equal");
+    tuning.set_reference_note_frequency(69, 432.0);
+    tuning
+}
+
+/// `Tuning::stateToJson` as it appears in the plugin state.
+fn tuning_json(tuning: &Tuning) -> sas_common::json::Value {
+    sas_common::json::parse(&tuning.state_to_json().to_string()).unwrap()
+}
+
+fn saved_tuning(params: &SynthParams) -> String {
+    let saved = params.capture_state();
+    let data = sas_common::json::parse(&saved.fields[state::PRESET_FIELD]).unwrap();
+    data.get("tuning").unwrap().dump()
+}
+
+fn state_with_tuning(preset: &PresetState, tuning: &sas_common::json::Value) -> String {
     let mut data = preset.to_json();
-    let tuning =
-        sas_common::json::parse(r#"{"scale_start_midi_note":60,"mts_esp":false}"#).unwrap();
     data.set("tuning", tuning.clone());
+    data.dump()
+}
+
+#[test]
+fn the_default_tuning_is_always_saved() {
+    // SynthPlugin::getStateInformation writes getTuning()->stateToJson()
+    // whatever the tuning; this is upstream's dump of a default Tuning.
+    let plugin = SynthASize::default();
+    assert_eq!(
+        saved_tuning(plugin.synth_params()),
+        r#"{"default":true,"mapping_name":"","reference_midi_note":0.0,"scale":[0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0],"scale_start_midi_note":60,"tuning_name":""}"#
+    );
+}
+
+#[test]
+fn tuning_round_trips_through_the_host_state() {
+    let tuning = nineteen_tone_tuning();
+    let preset = PresetState::new(&InitContent { sample_seed: 0 });
+    let source = SynthASize::default();
+    source.synth_params().restore_state(
+        state::plugin_state_from_json(&state_with_tuning(&preset, &tuning_json(&tuning))).unwrap(),
+    );
+    assert_eq!(
+        saved_tuning(source.synth_params()),
+        tuning_json(&tuning).dump()
+    );
+
+    let saved = host_round_trip(&source.synth_params().capture_state());
+    let target = SynthASize::default();
+    target.synth_params().restore_state(saved);
+    let restored = target.synth_params().preset_document().tuning;
+    assert_eq!(restored.table(), tuning.table());
+    assert_eq!(restored.name(), "19 tone equal");
+    assert!(!restored.is_default());
+    assert_eq!(
+        saved_tuning(target.synth_params()),
+        tuning_json(&tuning).dump()
+    );
+}
+
+#[test]
+fn states_and_preset_files_without_a_tuning_keep_the_current_one() {
+    let tuning = nineteen_tone_tuning();
+    let preset = PresetState::new(&InitContent { sample_seed: 0 });
+    let plugin = SynthASize::default();
+    let params = plugin.synth_params();
+    params.restore_state(
+        state::plugin_state_from_json(&state_with_tuning(&preset, &tuning_json(&tuning))).unwrap(),
+    );
+
+    // Upstream only loads "tuning" when the state has one.
+    params.restore_state(state::plugin_state_from_json(&preset.to_json_string()).unwrap());
+    assert_eq!(params.preset_document().tuning.table(), tuning.table());
+
+    // SynthBase::loadFromFile never touches the tuning, even when the file
+    // has one.
+    let directory = std::env::temp_dir().join(format!("sas-plugin-tuning-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("with tuning.vital");
+    std::fs::write(
+        &path,
+        state_with_tuning(&preset, &tuning_json(&Tuning::new())),
+    )
+    .unwrap();
+    params.restore_state(state::plugin_state_from_file(&path).unwrap());
+    assert_eq!(params.preset_document().tuning.table(), tuning.table());
+    assert_eq!(params.preset_state().info.preset_name, "with tuning");
+    std::fs::remove_dir_all(&directory).unwrap();
+
+    // Preset files are saved without it.
+    assert_eq!(params.preset_state().to_json().count("tuning"), 0);
+}
+
+#[test]
+fn a_tuning_that_is_not_an_object_rejects_the_state() {
+    let preset = PresetState::new(&InitContent { sample_seed: 0 });
+    let mut data = preset.to_json();
+    data.set("tuning", 12);
+    assert!(matches!(
+        state::plugin_state_from_json(&data.dump()),
+        Err(sas_preset::Error::Corrupted(_))
+    ));
 
     let plugin = SynthASize::default();
     let params = plugin.synth_params();
-    params.restore_state(state::plugin_state_from_json(&data.dump()).unwrap());
-    let saved = params.capture_state();
-    let saved_json = sas_common::json::parse(&saved.fields[state::PRESET_FIELD]).unwrap();
-    assert_eq!(saved_json.get("tuning").unwrap().dump(), tuning.dump());
-
-    // A state without a tuning keeps the current one (upstream only loads
-    // "tuning" when present).
-    params.restore_state(state::plugin_state_from_json(&preset.to_json_string()).unwrap());
-    assert_eq!(
-        params.preset_document().tuning.map(|tuning| tuning.dump()),
-        Some(tuning.dump())
-    );
-    // Preset files never carry the tuning.
-    assert_eq!(params.preset_state().to_json().count("tuning"), 0);
+    set(params, "filter_1_cutoff", 99.0);
+    let before = params.preset_document().to_json_string();
+    let mut saved = params.capture_state();
+    let mut changed = preset.clone();
+    changed.set_value("filter_1_cutoff", 10.0).unwrap();
+    let mut text = changed.to_json();
+    text.set("tuning", "not a tuning");
+    saved
+        .fields
+        .insert(state::PRESET_FIELD.to_string(), text.dump());
+    params.restore_state(saved);
+    assert_eq!(params.preset_document().to_json_string(), before);
 }
 
 #[test]

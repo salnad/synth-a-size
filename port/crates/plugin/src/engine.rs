@@ -8,6 +8,7 @@
 //! is written against this trait so it can ship before the engine port (M7)
 //! is complete; [`SilentEngine`] stands in until then.
 
+use sas_engine::Tuning;
 use sas_preset::PresetState;
 
 /// The sound engine as the plugin drives it. Every method is called from the
@@ -26,6 +27,12 @@ pub trait Engine: Send + 'static {
     /// after, the wrapper calls [`set_control`](Self::set_control) for every
     /// host parameter that no longer matches the preset.
     fn load_preset(&mut self, preset: &PresetState);
+
+    /// The tuning the engine plays with (`SoundEngine::setTuning` with
+    /// `SynthBase::tuning_`). Called right after every
+    /// [`load_preset`](Self::load_preset), as upstream's
+    /// `setStateInformation` loads the tuning after the preset.
+    fn set_tuning(&mut self, tuning: &Tuning);
 
     /// Sets control `name` (a registry name) to `value`, as
     /// `SynthBase::valueChangedExternal` does for a host parameter change.
@@ -58,6 +65,8 @@ impl Engine for SilentEngine {
     fn reset(&mut self) {}
 
     fn load_preset(&mut self, _preset: &PresetState) {}
+
+    fn set_tuning(&mut self, _tuning: &Tuning) {}
 
     fn set_control(&mut self, _name: &'static str, _value: f32) {}
 

@@ -8,6 +8,7 @@ use std::collections::VecDeque;
 use nice_plug::midi::{Channel, Key, VoiceID};
 use nice_plug::params::InternalParamMut;
 use nice_plug::prelude::NoteEvent;
+use sas_engine::Tuning;
 use sas_plugin::params::ControlParam;
 use sas_plugin::{state, BlockProcessor, Engine, SynthParams, SynthPlugin, Transport};
 use sas_preset::PresetState;
@@ -17,6 +18,7 @@ enum Call {
     SampleRate(f32),
     Reset,
     LoadPreset(String),
+    Tuning(String),
     Control(&'static str, f32),
     Bpm(f64),
     Time(f64),
@@ -39,6 +41,9 @@ impl Engine for Recorder {
     fn load_preset(&mut self, preset: &PresetState) {
         self.calls
             .push(Call::LoadPreset(preset.info.preset_name.clone()));
+    }
+    fn set_tuning(&mut self, tuning: &Tuning) {
+        self.calls.push(Call::Tuning(tuning.name()));
     }
     fn set_control(&mut self, name: &'static str, value: f32) {
         self.calls.push(Call::Control(name, value));
@@ -166,6 +171,8 @@ fn restored_state_reloads_the_preset_and_every_control() {
 
     let (calls, ..) = harness.run(16, Transport::default(), vec![]);
     assert_eq!(calls[0], Call::LoadPreset("restored".to_string()));
+    // The tuning follows the preset, as in setStateInformation.
+    assert_eq!(calls[1], Call::Tuning(String::new()));
     assert_eq!(controls(&calls), [("osc_1_level", 0.125)]);
     assert_eq!(
         harness

@@ -8,7 +8,8 @@
 //! (`LoadSave::stateToJson`) plus the tuning, and restoring it loads that
 //! JSON on top of the current state (`LoadSave::jsonToState`, with the
 //! version upgrade chain). Preset files follow `SynthBase::loadFromFile` and
-//! `SynthBase::saveToFile` (`vital/src/common/synth_base.cpp`).
+//! `SynthBase::saveToFile` (`vital/src/common/synth_base.cpp`). The tuning is
+//! `sas_engine::Tuning` (`Tuning::stateToJson` / `jsonToState`).
 //!
 //! nice-plug saves every parameter's value next to the persisted fields. The
 //! preset JSON in [`PRESET_FIELD`] is the source of truth: [`filter_state`]
@@ -20,6 +21,7 @@ use std::path::{Path, PathBuf};
 
 use nice_plug::plugin::{ParamValue, PluginState};
 use sas_common::json::{self, Value};
+use sas_engine::Tuning;
 use sas_preset::{engine, registry, Error, InitContent, PresetState};
 
 use crate::params::host_kind;
@@ -34,10 +36,32 @@ pub const PRESET_EXTENSION: &str = "vital";
 #[derive(Clone, Debug)]
 pub struct PresetDocument {
     pub state: PresetState,
-    /// The `tuning` object of the plugin state (`Tuning::stateToJson`), kept
-    /// as JSON until the engine's tuning state is ported. Restoring a state
-    /// without one keeps the current tuning, as upstream.
-    pub tuning: Option<Value>,
+    /// `SynthBase::tuning_`. Always saved in the plugin state; restoring a
+    /// state without one keeps the current tuning, as upstream.
+    pub tuning: Tuning,
+}
+
+/// `Tuning::stateToJson` as upstream's serializer writes it.
+fn tuning_to_json(tuning: &Tuning) -> Value {
+    json::parse(&tuning.state_to_json().to_string()).expect("serde_json writes valid JSON")
+}
+
+/// The plugin state's `tuning` object loaded into a fresh copy of `current`
+/// (`Tuning::jsonToState`), or `None` if the state has none. A `tuning` that
+/// is not an object is a corrupted state.
+fn read_tuning(data: &Value, current: &Tuning) -> Result<Option<Tuning>, Error> {
+    if data.count("tuning") == 0 {
+        return Ok(None);
+    }
+    let value = data.get("tuning")?;
+    if !value.is_object() {
+        return Err(Error::Corrupted("\"tuning\" is not an object".to_string()));
+    }
+    let value: serde_json::Value = serde_json::from_str(&value.dump())
+        .map_err(|error| Error::Corrupted(format!("tuning: {error}")))?;
+    let mut tuning = current.clone();
+    tuning.json_to_state(&value);
+    Ok(Some(tuning))
 }
 
 impl PresetDocument {
@@ -45,16 +69,14 @@ impl PresetDocument {
     pub fn init(init: &InitContent) -> PresetDocument {
         PresetDocument {
             state: PresetState::new(init),
-            tuning: None,
+            tuning: Tuning::new(),
         }
     }
 
     /// `SynthPlugin::getStateInformation`'s JSON.
     pub fn to_json(&self) -> Value {
         let mut data = self.state.to_json();
-        if let Some(tuning) = &self.tuning {
-            data.set("tuning", tuning.clone());
-        }
+        data.set("tuning", tuning_to_json(&self.tuning));
         data
     }
 
@@ -65,9 +87,10 @@ impl PresetDocument {
     /// `SynthPlugin::setStateInformation`: loads `data` on top of the current
     /// state. On error nothing changes.
     pub fn load_json(&mut self, data: &Value) -> Result<(), Error> {
+        let tuning = read_tuning(data, &self.tuning)?;
         self.state.load_json(data)?;
-        if data.count("tuning") != 0 {
-            self.tuning = Some(data.get("tuning")?.clone());
+        if let Some(tuning) = tuning {
+            self.tuning = tuning;
         }
         Ok(())
     }
@@ -80,6 +103,14 @@ impl PresetDocument {
 /// The init content for a throwaway state whose sample is never used.
 const SCRATCH_INIT: InitContent = InitContent { sample_seed: 0 };
 
+/// Loads `data` as a plugin state would, onto a throwaway document: the
+/// preset's control values, and whether the whole state loads.
+fn scratch_load(data: &Value) -> Result<PresetState, Error> {
+    let mut scratch = PresetDocument::init(&SCRATCH_INIT);
+    scratch.load_json(data)?;
+    Ok(scratch.state)
+}
+
 /// `Plugin::filter_state`: makes the preset JSON authoritative for parameter
 /// values. A state without a preset is left alone; one whose preset cannot be
 /// loaded (corrupted, or from a newer version) is emptied, so restoring it
@@ -88,9 +119,11 @@ pub fn filter_state(state: &mut PluginState) {
     let Some(text) = state.fields.get(PRESET_FIELD) else {
         return;
     };
-    let mut scratch = PresetState::new(&SCRATCH_INIT);
-    match scratch.load_json_str(text) {
-        Ok(()) => state.params = parameter_values(&scratch),
+    match json::parse(text)
+        .map_err(Error::from)
+        .and_then(|data| scratch_load(&data))
+    {
+        Ok(scratch) => state.params = parameter_values(&scratch),
         Err(error) => {
             nice_plug::nice_warn!("ignoring a saved state whose preset cannot load: {error}");
             state.params.clear();
@@ -116,8 +149,7 @@ pub fn parameter_values(preset: &PresetState) -> std::collections::BTreeMap<Stri
 /// A plugin state that loads the preset JSON `text` (from a file or the LLM
 /// layer) on top of the current state, for `GuiContext::set_state`.
 pub fn plugin_state_from_json(text: &str) -> Result<PluginState, Error> {
-    let mut scratch = PresetState::new(&SCRATCH_INIT);
-    scratch.load_json_str(text)?;
+    let scratch = scratch_load(&json::parse(text)?)?;
     Ok(PluginState {
         version: env!("CARGO_PKG_VERSION").to_string(),
         params: parameter_values(&scratch),
@@ -126,12 +158,15 @@ pub fn plugin_state_from_json(text: &str) -> Result<PluginState, Error> {
 }
 
 /// `SynthBase::loadFromFile`: a plugin state that loads the preset file at
-/// `path`, named after the file whatever its `preset_name` says.
+/// `path`, named after the file whatever its `preset_name` says. Like
+/// upstream, a preset file never changes the tuning, even if it has one.
 pub fn plugin_state_from_file(path: &Path) -> Result<PluginState, Error> {
     let bytes = std::fs::read(path).map_err(|error| Error::Io(error.to_string()))?;
     let mut data = json::parse_bytes(&bytes)?;
-    let mut scratch = PresetState::new(&SCRATCH_INIT);
-    scratch.load_json(&data)?;
+    PresetState::new(&SCRATCH_INIT).load_json(&data)?;
+    if let Value::Object(fields) = &mut data {
+        fields.remove("tuning");
+    }
     let stem = path
         .file_stem()
         .map(|stem| stem.to_string_lossy().into_owned())
