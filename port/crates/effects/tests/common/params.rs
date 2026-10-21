@@ -24,6 +24,25 @@ const PARAMETERS: &[(&str, f32, f32, f32, f32, ValueScale)] = &[
     ("delay_filter_spread", 0.0, 1.0, 1.0, 0.0, Linear),
     ("delay_tempo", 4.0, 12.0, 9.0, 0.0, Indexed),
     ("delay_aux_tempo", 4.0, 12.0, 9.0, 0.0, Indexed),
+    ("distortion_type", 0.0, 5.0, 0.0, 0.0, Indexed),
+    ("distortion_drive", -30.0, 30.0, 0.0, 0.0, Linear),
+    ("distortion_mix", 0.0, 1.0, 1.0, 0.0, Linear),
+    ("distortion_filter_order", 0.0, 2.0, 0.0, 0.0, Indexed),
+    ("distortion_filter_cutoff", 8.0, 136.0, 80.0, 0.0, Linear),
+    ("distortion_filter_resonance", 0.0, 1.0, 0.5, 0.0, Linear),
+    ("distortion_filter_blend", 0.0, 2.0, 0.0, 0.0, Linear),
+    ("eq_low_mode", 0.0, 1.0, 0.0, 0.0, Indexed),
+    ("eq_low_cutoff", 8.0, 136.0, 40.0, 0.0, Linear),
+    ("eq_low_gain", -15.0, 15.0, 0.0, 0.0, Linear),
+    ("eq_low_resonance", 0.0, 1.0, 0.3163, 0.0, Quadratic),
+    ("eq_band_mode", 0.0, 1.0, 0.0, 0.0, Indexed),
+    ("eq_band_cutoff", 8.0, 136.0, 80.0, 0.0, Linear),
+    ("eq_band_gain", -15.0, 15.0, 0.0, 0.0, Linear),
+    ("eq_band_resonance", 0.0, 1.0, 0.4473, 0.0, Quadratic),
+    ("eq_high_mode", 0.0, 1.0, 0.0, 0.0, Indexed),
+    ("eq_high_cutoff", 8.0, 136.0, 100.0, 0.0, Linear),
+    ("eq_high_gain", -15.0, 15.0, 0.0, 0.0, Linear),
+    ("eq_high_resonance", 0.0, 1.0, 0.3163, 0.0, Quadratic),
     ("reverb_pre_low_cutoff", 0.0, 128.0, 0.0, 0.0, Linear),
     ("reverb_pre_high_cutoff", 0.0, 128.0, 110.0, 0.0, Linear),
     ("reverb_low_shelf_cutoff", 0.0, 128.0, 0.0, 0.0, Linear),
@@ -62,6 +81,11 @@ const PARAMETERS: &[(&str, f32, f32, f32, f32, ValueScale)] = &[
     ("chorus_delay_1", -10.0, -5.64386, -9.0, 0.0, Exponential),
     ("chorus_delay_2", -10.0, -5.64386, -7.0, 0.0, Exponential),
 ];
+
+/// The table rows (name, min, max, default, post offset, scale).
+pub fn rows() -> &'static [(&'static str, f32, f32, f32, f32, ValueScale)] {
+    PARAMETERS
+}
 
 /// Installs the lookup (once per test binary).
 pub fn install() {
