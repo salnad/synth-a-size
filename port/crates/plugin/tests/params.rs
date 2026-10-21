@@ -172,6 +172,32 @@ fn host_text_shows_options_and_display_units() {
     assert_eq!(volume.to_string(), "-6.02dB");
 }
 
+/// Owner decision 2026-10-21 (`migration/ledger/2026-10-21-owner-approval-plugin-text-entry.md`):
+/// typed text is read as the displayed value and clamped to the range; option
+/// names select their option.
+#[test]
+fn typed_values_are_read_as_displayed_and_clamped() {
+    let plugin = plugin();
+    let params = plugin.synth_params();
+    let ControlParam::Float(cutoff) = &params.control("filter_1_cutoff").unwrap().param else {
+        panic!("float parameter");
+    };
+    // Displayed as semitones relative to 60 (post_offset -60): "12" is 72.
+    assert_eq!(cutoff.string_to_normalized_value("12 semitones"), Some(0.5));
+    assert_eq!(cutoff.string_to_normalized_value("1000"), Some(1.0));
+    assert_eq!(cutoff.string_to_normalized_value("-1000"), Some(0.0));
+    let ControlParam::Stepped(transpose) = &params.control("osc_1_transpose").unwrap().param else {
+        panic!("stepped parameter");
+    };
+    assert_eq!(transpose.string_to_normalized_value("100"), Some(1.0));
+    assert_eq!(transpose.string_to_normalized_value("0.4"), Some(0.5));
+    let ControlParam::Stepped(style) = &params.control("delay_style").unwrap().param else {
+        panic!("stepped parameter");
+    };
+    assert_eq!(style.string_to_normalized_value("mono"), Some(0.0));
+    assert_eq!(style.string_to_normalized_value("not an option"), None);
+}
+
 #[test]
 fn groups_name_existing_sections() {
     let plugin = plugin();

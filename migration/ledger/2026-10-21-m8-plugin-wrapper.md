@@ -77,7 +77,7 @@ an engine interface, porting the behaviour of `vital/src/plugin/`
 **Measured.** The Steinberg validator (`validator -e`, VST3 SDK v3.8.0) on
 the Linux dev bundle: 537 tests passed, 0 failed, covering parameter scan,
 units, bus layouts, state, 32- and 64-bit processing and automation. The
-macOS arm64 run is in this PR's `Plugin` workflow. There are 31 Rust tests.
+macOS arm64 run is in this PR's `Plugin` workflow. There are 32 Rust tests.
 Every authored corpus preset (`migration/corpus/presets`, `preset_tests`)
 loads through the host state path with JSON identical to `sas-preset`'s own
 `load_file`, and every `error_*` preset fails with `sas-preset`'s error. A
@@ -108,7 +108,8 @@ out-of-range and between-step values.
 - *Every save/load cycle delays the sample by 4 frames*: `Sample::stateToJson`
   encodes the stored buffer including its `kBufferSamples` zero padding, as
   `sas-preset` mirrors. The round-trip test asserts that shift, not equality.
-- *Host text entry departs from upstream; owner decision pending.* Upstream's
+- *Host text entry departs from upstream, approved by the owner* (2026-10-21,
+  `2026-10-21-owner-approval-plugin-text-entry.md`). Upstream's
   `ValueBridge::getValueForText` returns `unskew(text / display_multiply)`, an
   engine-domain value, and JUCE's VST3 wrapper passes that straight to the
   host as the *normalized* value (`juce_VST3_Wrapper.cpp:529`,

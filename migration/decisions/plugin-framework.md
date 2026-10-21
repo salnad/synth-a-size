@@ -47,6 +47,11 @@ Reasons:
   decision: Apple Silicon is the only shipping target), signed ad hoc and
   validated with Steinberg's VST3 validator in `.github/workflows/plugin.yml`.
   The FL Studio load still needs the owner.
+- *Host text entry (owner decision, 2026-10-21, #59):* a typed value is read
+  as the displayed value, clamped to the parameter's range, and option names
+  select their option. Upstream's out-of-range typing (an engine value handed
+  to the host as a normalized value) is not replicated. Recorded in
+  `migration/ledger/2026-10-21-owner-approval-plugin-text-entry.md`.
 - Turn the `editor` feature on when the GUI crate lands (M10).
 - The RustAudio community has an AI-usage policy
   (<https://rust.audio/community/ai/>). It covers contributions *to* their
