@@ -48,8 +48,9 @@ port/crates/parity):
   each element under the same bound); other strings, including PCM base64,
   stay exact. "json_bound": {"ulp": n, "abs": x} may tighten the bound,
   never loosen it.
-- "reference": "nofastmath" (case-level, only for case ids listed in the
-  decision doc's allowlist) compares every array and artifact bit for bit
+- "reference": "nofastmath" (case-level, only for case ids listed in
+  migration/decisions/nofastmath/<area>/<module>.md, each citing an approval
+  pinned in NOFASTMATH_APPROVALS) compares every array and artifact bit for bit
   against the REF_FAST_MATH=OFF build's captures (compare
   --reference-nofastmath DIR; hashes --reference nofastmath). Such a case
   is only valid while the official reference fails the case's normal limits
@@ -76,18 +77,19 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ledger  # noqa: E402
 
-REPO = CORPUS = MODULE_CASES = RENDER_HASHES = LEDGER = DECISION_DOC = None
+REPO = CORPUS = MODULE_CASES = RENDER_HASHES = LEDGER = DECISION_DOC = NOFASTMATH_DIR = None
 
 
 def set_repo(root):
     """Points every path at a repository root (tests use a scratch copy)."""
-    global REPO, CORPUS, MODULE_CASES, RENDER_HASHES, LEDGER, DECISION_DOC
+    global REPO, CORPUS, MODULE_CASES, RENDER_HASHES, LEDGER, DECISION_DOC, NOFASTMATH_DIR
     REPO = os.path.abspath(root)
     CORPUS = os.path.join(REPO, "migration", "corpus")
     MODULE_CASES = os.path.join(CORPUS, "modules")
     RENDER_HASHES = os.path.join(CORPUS, "reference_hashes.json")
     LEDGER = os.path.join(REPO, "migration", "LEDGER.md")
     DECISION_DOC = os.path.join(REPO, "migration", "decisions", "owner-decisions-json-and-morphs.md")
+    NOFASTMATH_DIR = os.path.join(REPO, "migration", "decisions", "nofastmath")
 
 
 set_repo(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
@@ -112,7 +114,17 @@ BASE64_F32_KEYS = ("wave_data",)
 FAST_MATH_FLAGS = " -ffast-math -U__FAST_MATH__"
 ARTIFACT_MODES = ("exact", "json")
 REFERENCES = ("official", "nofastmath")
-ALLOWLIST_HEADING = "No-fast-math exact cases (allowlist)"
+# Owner approvals an allowlist line may cite, and the ledger heading that
+# records each (owner decision SAS-35, 2026-10-21). Adding a key is a code
+# change in both resolvers plus a new owner decision. Mirrored in
+# port/crates/parity/src/cases.rs.
+NOFASTMATH_APPROVALS = {
+    "SAS-35": "2026-10-21: owner approval — SAS-35 noisy-reference rule and SAS-36 JSON bound",
+}
+ALLOWLIST_ENTRY = re.compile(r"- `([A-Za-z0-9_-]+)/([A-Za-z0-9_-]+)/([A-Za-z0-9_-]+)` \(([A-Z]+-[0-9]+)\): \S")
+# Before the per-module files, the allowlist was this section of the
+# decision doc; allowlist-approval still reads it from older bases.
+LEGACY_ALLOWLIST_HEADING = "No-fast-math exact cases (allowlist)"
 ARTIFACT_NAME = re.compile(r"[A-Za-z0-9_.-]+")
 
 SPEC_KEYS = ("module", "params", "sample_rate", "block_size", "oversample", "num_samples", "seed", "inputs")
@@ -298,13 +310,11 @@ def resolve_tolerances(case_id, defaults, file_level, case, ledger_text):
     return tolerances, exception
 
 
-def allowlist_from(text):
-    """Case ids listed as "- `<id>`" under the decision doc's allowlist
-    heading. The doc is the only place the list lives, so extending it is a
-    decision-doc edit. Mirrored in sas-parity (cases.rs allowlist_from)."""
+def legacy_allowlist_from(text):
+    """Case ids listed as "- `<id>`" under the old decision-doc section."""
     ids = []
     for title, body in ledger_sections(text):
-        if title == ALLOWLIST_HEADING:
+        if title == LEGACY_ALLOWLIST_HEADING:
             for line in body.splitlines():
                 match = re.match(r"- `([^`]+)`", line)
                 if match:
@@ -312,11 +322,79 @@ def allowlist_from(text):
     return ids
 
 
-def read_allowlist():
-    if not os.path.exists(DECISION_DOC):
-        return []
-    with open(DECISION_DOC) as handle:
-        return allowlist_from(handle.read())
+def allowlist_entries(rel, area, module, text):
+    """[(case_id, approval)] from one allowlist file,
+    migration/decisions/nofastmath/<area>/<module>.md. Every line that
+    starts with a list marker (after any indentation) must be exactly
+    "- `<area>/<module>/<case>` (<approval>): <reason>", naming a case of
+    this file's module and an approval in NOFASTMATH_APPROVALS. Other lines
+    are prose. Mirrored in sas-parity (cases.rs allowlist_entries)."""
+    entries = []
+    for number, line in enumerate(text.splitlines(), 1):
+        stripped = line.lstrip()
+        if not stripped or stripped[0] not in "-*+":
+            continue
+        match = ALLOWLIST_ENTRY.match(line)
+        if not match:
+            raise CaseError("%s:%d: list lines must be \"- `<area>/<module>/<case>` (<approval>): <reason>\", "
+                            "not %r" % (rel, number, line))
+        if (match.group(1), match.group(2)) != (area, module):
+            raise CaseError("%s:%d: this file lists %s/%s cases only, not %s/%s/%s"
+                            % (rel, number, area, module, match.group(1), match.group(2), match.group(3)))
+        if match.group(4) not in NOFASTMATH_APPROVALS:
+            raise CaseError("%s:%d: %s is not an approval pinned in both resolvers (%s)"
+                            % (rel, number, match.group(4), sorted(NOFASTMATH_APPROVALS)))
+        entries.append(("%s/%s/%s" % match.group(1, 2, 3), match.group(4)))
+    return entries
+
+
+def allowlist_from_files(texts):
+    """{case_id: approval} from {path relative to NOFASTMATH_DIR: text}.
+    Only README.md and <area>/<module>.md may exist there, and an id may be
+    listed once."""
+    allowlist = {}
+    for path in sorted(texts):
+        parts = path.split("/")
+        if parts == ["README.md"]:
+            continue
+        rel = "migration/decisions/nofastmath/" + path
+        if len(parts) != 2 or not parts[1].endswith(".md"):
+            raise CaseError("%s: only <area>/<module>.md allowlist files may live here" % rel)
+        area, module = parts[0], parts[1][:-len(".md")]
+        check_name(rel, "area", area)
+        check_name(rel, "module", module)
+        for case_id, approval in allowlist_entries(rel, area, module, texts[path]):
+            if case_id in allowlist:
+                raise CaseError("%s: %s is listed twice" % (rel, case_id))
+            allowlist[case_id] = approval
+    return allowlist
+
+
+def check_allowlist_approvals(allowlist, ledger_files):
+    """Every cited approval's dated ledger heading exists and its section
+    names the approval key."""
+    sections = approval_sections(ledger_files)
+    for approval in sorted(set(allowlist.values())):
+        heading = NOFASTMATH_APPROVALS[approval]
+        bodies = [body for title, body in sections if title == heading]
+        if not any(names_case(body, approval) for body in bodies):
+            raise CaseError("no-fast-math allowlist cites %s, but the ledger has no section %r naming it"
+                            % (approval, heading))
+
+
+def read_allowlist(ledger_text):
+    """{case_id: approval} from migration/decisions/nofastmath/, with the
+    cited approvals checked against the ledger. Mirrored in sas-parity
+    (cases.rs read_allowlist)."""
+    texts = {}
+    for directory, _, names in os.walk(NOFASTMATH_DIR):
+        for name in names:
+            path = os.path.join(directory, name)
+            with open(path) as handle:
+                texts[os.path.relpath(path, NOFASTMATH_DIR).replace(os.sep, "/")] = handle.read()
+    allowlist = allowlist_from_files(texts)
+    check_allowlist_approvals(allowlist, ledger_text)
+    return allowlist
 
 
 def resolve_comparison(case_id, file_level, case, allowlist):
@@ -383,8 +461,9 @@ def resolve_comparison(case_id, file_level, case, allowlist):
         if "json_bound" in case:
             raise CaseError("%s: a reference \"nofastmath\" case cannot set json_bound" % case_id)
         if case_id not in allowlist:
-            raise CaseError("%s: reference \"nofastmath\" is only allowed for case ids listed under \"%s\" "
-                            "in %s" % (case_id, ALLOWLIST_HEADING, os.path.relpath(DECISION_DOC, REPO)))
+            area, module, _ = case_id.split("/")
+            raise CaseError("%s: reference \"nofastmath\" is only allowed for case ids listed in "
+                            "migration/decisions/nofastmath/%s/%s.md" % (case_id, area, module))
         for key in ("tolerances", "tolerance_exception"):
             if key in case:
                 raise CaseError("%s: a reference \"nofastmath\" case cannot set %s: it is compared exactly, "
@@ -513,7 +592,7 @@ def load_modules():
     if unknown:
         raise CaseError("cases.json module_defaults: unknown keys %s" % sorted(unknown))
     ledger_text = read_ledger()
-    allowlist = read_allowlist()
+    allowlist = read_allowlist(ledger_text)
     resolved = []
     for path in module_case_files():
         area = os.path.basename(os.path.dirname(path))
@@ -1090,20 +1169,39 @@ def cmd_hashes(args):
     return 1 if problems else 0
 
 
-def unapproved_allowlist_additions(base_doc, head_doc, new_entries):
-    """Ids added to the no-fast-math allowlist without a ledger entry file
-    that is new in this change (`new_entries`: their texts), has "owner
-    approval" in a heading and names the id in that section. Removals need
-    no approval (the case returns to the official reference)."""
-    before = set(allowlist_from(base_doc))
-    added = [case_id for case_id in allowlist_from(head_doc) if case_id not in before]
-    approvals = [body for title, body in approval_sections(new_entries) if "owner approval" in title.lower()]
-    return [case_id for case_id in added if not any(names_case(body, case_id) for body in approvals)]
+def allowlist_addition_problems(base_ids, head_allowlist, live_nofastmath):
+    """Problems with ids added to the no-fast-math allowlist since the base:
+    each must be a loaded module case that declares "reference":
+    "nofastmath" (not parked in pending/, not staged ahead of its case).
+    Its cited approval was already checked at load. Removals need nothing:
+    the case returns to the official reference."""
+    problems = []
+    for case_id in sorted(set(head_allowlist) - set(base_ids)):
+        if case_id not in live_nofastmath:
+            problems.append("%s was added to the no-fast-math allowlist, but no loaded module case with that id "
+                            "declares \"reference\": \"nofastmath\"" % case_id)
+    return problems
 
 
-def git_show(rev, path):
-    code, output = run(["git", "-C", REPO, "show", "%s:%s" % (rev, os.path.relpath(path, REPO))])
-    return output if code == 0 else ""
+def git_lines(*argv):
+    code, output = run(["git", "-C", REPO] + list(argv))
+    if code != 0:
+        raise CaseError("git %s failed: %s" % (" ".join(argv), output.strip()))
+    return output
+
+
+def base_allowlist_ids(rev):
+    """Allowlisted ids at `rev`: its nofastmath/ files, plus the legacy
+    decision-doc section on bases older than those files."""
+    prefix = os.path.relpath(NOFASTMATH_DIR, REPO).replace(os.sep, "/") + "/"
+    texts = {}
+    for path in git_lines("ls-tree", "-r", "--name-only", rev, "--", prefix).splitlines():
+        texts[path[len(prefix):]] = git_lines("show", "%s:%s" % (rev, path))
+    ids = set(allowlist_from_files(texts))
+    doc = os.path.relpath(DECISION_DOC, REPO).replace(os.sep, "/")
+    if git_lines("ls-tree", "--name-only", rev, "--", doc).strip():
+        ids.update(legacy_allowlist_from(git_lines("show", "%s:%s" % (rev, doc))))
+    return ids
 
 
 def cmd_allowlist_approval(args):
@@ -1114,25 +1212,16 @@ def cmd_allowlist_approval(args):
     if code != 0:
         print("base revision %s not found: %s" % (args.base, output.strip()))
         return 2
-    with open(DECISION_DOC) as handle:
-        head_doc = handle.read()
-    code, listing = run(["git", "-C", REPO, "ls-tree", "--name-only", args.base, ledger.ENTRIES + "/"])
-    if code != 0:
-        print("cannot list %s at %s: %s" % (ledger.ENTRIES, args.base, listing.strip()))
-        return 2
-    existing = {os.path.basename(line) for line in listing.splitlines()}
-    new_entries = []
-    for name in ledger.entry_files(REPO):
-        if name not in existing:
-            with open(os.path.join(REPO, ledger.ENTRIES, name)) as handle:
-                new_entries.append(handle.read())
-    missing = unapproved_allowlist_additions(git_show(args.base, DECISION_DOC), head_doc, new_entries)
-    for case_id in missing:
-        print("%s was added to the no-fast-math allowlist without a new file under migration/ledger/ "
-              "with a dated heading (\"YYYY-MM-DD: ...\") that contains \"owner approval\" and whose "
-              "section names the case" % case_id)
-    print("%d allowlist additions without a recorded owner approval" % len(missing))
-    return 1 if missing else 0
+    head_allowlist = read_allowlist(read_ledger())
+    live = {case["id"] for case in load_modules() if case.get("reference") == "nofastmath"}
+    base_ids = base_allowlist_ids(args.base)
+    for case_id in sorted(set(head_allowlist) - base_ids):
+        print("added %s (%s)" % (case_id, head_allowlist[case_id]))
+    problems = allowlist_addition_problems(base_ids, head_allowlist, live)
+    for problem in problems:
+        print(problem)
+    print("%d allowlist additions with problems" % len(problems))
+    return 1 if problems else 0
 
 
 def cmd_list(args):
@@ -1182,8 +1271,8 @@ def main():
     listing.add_argument("--only", nargs="*", help="substrings of case ids to include")
 
     approval = sub.add_parser("allowlist-approval",
-                              help="fail if no-fast-math allowlist additions since --base lack an owner approval "
-                                   "entry file in migration/ledger/")
+                              help="fail if no-fast-math allowlist additions since --base are not loaded "
+                                   "reference \"nofastmath\" cases (approvals are checked at load)")
     approval.add_argument("--base", default="", help="git revision to compare against (e.g. origin/main)")
 
     args = parser.parse_args()

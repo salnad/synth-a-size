@@ -29,9 +29,14 @@ pub const JSON_BOUND: JsonBound = JsonBound { ulp: 4, abs: 1e-6 };
 /// in run_corpus.py (`BASE64_F32_KEYS`).
 pub const BASE64_F32_KEYS: [&str; 1] = ["wave_data"];
 
-/// Heading of the decision doc section that lists the case ids allowed to
-/// use `"reference": "nofastmath"`. Mirrored in run_corpus.py.
-pub const ALLOWLIST_HEADING: &str = "No-fast-math exact cases (allowlist)";
+/// Owner approvals a no-fast-math allowlist line may cite, and the ledger
+/// heading that records each (owner decision SAS-35, 2026-10-21). Adding a
+/// key is a code change in both resolvers plus a new owner decision.
+/// Mirrored in run_corpus.py (`NOFASTMATH_APPROVALS`).
+pub const NOFASTMATH_APPROVALS: [(&str, &str); 1] = [(
+    "SAS-35",
+    "2026-10-21: owner approval — SAS-35 noisy-reference rule and SAS-36 JSON bound",
+)];
 
 /// Which reference build a case is compared against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -158,8 +163,8 @@ pub fn ledger_path() -> PathBuf {
     repo_root().join("migration/LEDGER.md")
 }
 
-pub fn decision_doc_path() -> PathBuf {
-    repo_root().join("migration/decisions/owner-decisions-json-and-morphs.md")
+pub fn nofastmath_allowlist_dir() -> PathBuf {
+    repo_root().join("migration/decisions/nofastmath")
 }
 
 pub(crate) fn read_json(path: &Path) -> Result<Value, String> {
@@ -436,35 +441,159 @@ pub fn resolve_tolerances(
     Ok((tolerances, Some(exception.clone())))
 }
 
-/// Case ids listed as ``- `<id>` `` under the decision doc's allowlist
-/// heading. The doc is the only place the list lives, so extending it is a
-/// decision-doc edit. Mirrored in run_corpus.py (`allowlist_from`).
-pub fn allowlist_from(text: &str) -> Vec<String> {
-    let mut ids = Vec::new();
-    for (title, body) in ledger_sections(text) {
-        if title != ALLOWLIST_HEADING {
-            continue;
-        }
-        for line in body.lines() {
-            if let Some(rest) = line.strip_prefix("- `") {
-                if let Some((id, _)) = rest.split_once('`') {
-                    if !id.is_empty() {
-                        ids.push(id.to_string());
-                    }
-                }
-            }
-        }
-    }
-    ids
+/// `(area, module, case, approval)` of a line that is exactly
+/// ``- `<area>/<module>/<case>` (<approval>): <reason>``, where the names are
+/// `[A-Za-z0-9_-]+`, the approval is `[A-Z]+-[0-9]+` and the reason starts
+/// with a non-space character.
+fn parse_allowlist_line(line: &str) -> Option<(&str, &str, &str, &str)> {
+    let rest = line.strip_prefix("- `")?;
+    let (id, rest) = rest.split_once('`')?;
+    let (key, reason) = rest.strip_prefix(" (")?.split_once("): ")?;
+    let mut parts = id.split('/');
+    let (area, module, case) = (parts.next()?, parts.next()?, parts.next()?);
+    let name = |n: &str| check_name("", "", n).is_ok();
+    let (letters, digits) = key.split_once('-')?;
+    let key_ok = !letters.is_empty()
+        && letters.chars().all(|c| c.is_ascii_uppercase())
+        && !digits.is_empty()
+        && digits.chars().all(|c| c.is_ascii_digit());
+    let reason_ok = reason.chars().next().is_some_and(|c| !c.is_whitespace());
+    (parts.next().is_none() && name(area) && name(module) && name(case) && key_ok && reason_ok)
+        .then_some((area, module, case, key))
 }
 
-fn read_allowlist() -> Result<Vec<String>, String> {
-    let path = decision_doc_path();
-    if !path.is_file() {
-        return Ok(Vec::new());
+/// `(case_id, approval)` from one allowlist file,
+/// `migration/decisions/nofastmath/<area>/<module>.md`. Every line that
+/// starts with a list marker (after any indentation) must be exactly
+/// ``- `<area>/<module>/<case>` (<approval>): <reason>``, naming a case of
+/// this file's module and an approval in [`NOFASTMATH_APPROVALS`]. Other
+/// lines are prose. Mirrored in run_corpus.py (`allowlist_entries`).
+pub fn allowlist_entries(
+    rel: &str,
+    area: &str,
+    module: &str,
+    text: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let mut entries = Vec::new();
+    for (index, line) in text.lines().enumerate() {
+        let number = index + 1;
+        match line.trim_start().chars().next() {
+            Some('-' | '*' | '+') => {}
+            _ => continue,
+        }
+        let (a, m, c, key) = parse_allowlist_line(line).ok_or_else(|| {
+            format!(
+                "{rel}:{number}: list lines must be \"- `<area>/<module>/<case>` (<approval>): \
+                 <reason>\", not {line:?}"
+            )
+        })?;
+        if (a, m) != (area, module) {
+            return Err(format!(
+                "{rel}:{number}: this file lists {area}/{module} cases only, not {a}/{m}/{c}"
+            ));
+        }
+        if !NOFASTMATH_APPROVALS.iter().any(|(k, _)| *k == key) {
+            let keys: Vec<&str> = NOFASTMATH_APPROVALS.iter().map(|(k, _)| *k).collect();
+            return Err(format!(
+                "{rel}:{number}: {key} is not an approval pinned in both resolvers ({keys:?})"
+            ));
+        }
+        entries.push((format!("{a}/{m}/{c}"), key.to_string()));
     }
-    let text = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(allowlist_from(&text))
+    Ok(entries)
+}
+
+/// `{case_id: approval}` from `{path relative to the allowlist dir: text}`.
+/// Only `README.md` and `<area>/<module>.md` may exist there, and an id may
+/// be listed once. Mirrored in run_corpus.py (`allowlist_from_files`).
+pub fn allowlist_from_files(
+    texts: &BTreeMap<String, String>,
+) -> Result<BTreeMap<String, String>, String> {
+    let mut allowlist = BTreeMap::new();
+    for (path, text) in texts {
+        if path == "README.md" {
+            continue;
+        }
+        let rel = format!("migration/decisions/nofastmath/{path}");
+        let parts: Vec<&str> = path.split('/').collect();
+        let (area, module) = match parts[..] {
+            [area, file] if file.ends_with(".md") => (area, &file[..file.len() - 3]),
+            _ => {
+                return Err(format!(
+                    "{rel}: only <area>/<module>.md allowlist files may live here"
+                ))
+            }
+        };
+        check_name(&rel, "area", area)?;
+        check_name(&rel, "module", module)?;
+        for (case_id, approval) in allowlist_entries(&rel, area, module, text)? {
+            if allowlist.contains_key(&case_id) {
+                return Err(format!("{rel}: {case_id} is listed twice"));
+            }
+            allowlist.insert(case_id, approval);
+        }
+    }
+    Ok(allowlist)
+}
+
+/// Every cited approval's ledger heading exists and its section names the
+/// approval key. Mirrored in run_corpus.py (`check_allowlist_approvals`).
+pub fn check_allowlist_approvals(
+    allowlist: &BTreeMap<String, String>,
+    ledger: &[&str],
+) -> Result<(), String> {
+    let sections = approval_sections(ledger);
+    let cited: std::collections::BTreeSet<&String> = allowlist.values().collect();
+    for approval in cited {
+        let heading = NOFASTMATH_APPROVALS
+            .iter()
+            .find(|(k, _)| k == approval)
+            .map(|(_, h)| *h)
+            .ok_or_else(|| format!("{approval} is not a pinned approval"))?;
+        let named = sections
+            .iter()
+            .any(|(title, body)| title == heading && names_case(body, approval));
+        if !named {
+            return Err(format!(
+                "no-fast-math allowlist cites {approval}, but the ledger has no section \
+                 {heading:?} naming it"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn collect_allowlist_texts(
+    dir: &Path,
+    root: &Path,
+    texts: &mut BTreeMap<String, String>,
+) -> Result<(), String> {
+    for entry in fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))? {
+        let path = entry.map_err(|e| e.to_string())?.path();
+        if path.is_dir() {
+            collect_allowlist_texts(&path, root, texts)?;
+        } else {
+            let rel = path.strip_prefix(root).unwrap_or(&path);
+            let rel = rel.to_string_lossy().replace('\\', "/");
+            let text = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            texts.insert(rel, text);
+        }
+    }
+    Ok(())
+}
+
+/// The allowlisted case ids, from `migration/decisions/nofastmath/`, with the
+/// cited approvals checked against the ledger. Mirrored in run_corpus.py
+/// (`read_allowlist`).
+fn read_allowlist(ledger: &[&str]) -> Result<Vec<String>, String> {
+    let dir = nofastmath_allowlist_dir();
+    let mut texts = BTreeMap::new();
+    if dir.is_dir() {
+        collect_allowlist_texts(&dir, &dir, &mut texts)?;
+    }
+    let allowlist = allowlist_from_files(&texts)?;
+    check_allowlist_approvals(&allowlist, ledger)?;
+    Ok(allowlist.into_keys().collect())
 }
 
 fn is_artifact_name(name: &str) -> bool {
@@ -600,9 +729,11 @@ pub fn resolve_comparison(
             ));
         }
         if !allowlist.iter().any(|id| id == case_id) {
+            let mut parts = case_id.split('/');
+            let (area, module) = (parts.next().unwrap_or(""), parts.next().unwrap_or(""));
             return Err(format!(
-                "{case_id}: reference \"nofastmath\" is only allowed for case ids listed under \
-                 \"{ALLOWLIST_HEADING}\" in migration/decisions/owner-decisions-json-and-morphs.md"
+                "{case_id}: reference \"nofastmath\" is only allowed for case ids listed in \
+                 migration/decisions/nofastmath/{area}/{module}.md"
             ));
         }
         for key in ["tolerances", "tolerance_exception"] {
@@ -874,7 +1005,7 @@ pub fn load_module_cases() -> Result<Vec<ResolvedCase>, String> {
         .clone();
     let ledger = read_ledger()?;
     let ledger: Vec<&str> = ledger.iter().map(String::as_str).collect();
-    let allowlist = read_allowlist()?;
+    let allowlist = read_allowlist(&ledger)?;
 
     let modules_dir = corpus_dir().join("modules");
     let mut files = Vec::new();
@@ -1482,12 +1613,94 @@ mod tests {
         assert!(official.json.get("reference").is_none());
     }
 
+    const APPROVAL_LEDGER: &str = "# Ledger\n\n## 2026-10-21: owner approval — SAS-35 \
+        noisy-reference rule and SAS-36 JSON bound\n\nSAS-35: approved.\n";
+
+    fn allowlist(files: &[(&str, &str)]) -> Result<BTreeMap<String, String>, String> {
+        let texts = files
+            .iter()
+            .map(|(p, t)| (p.to_string(), t.to_string()))
+            .collect();
+        allowlist_from_files(&texts)
+    }
+
     #[test]
-    fn allowlist_comes_from_its_decision_doc_section() {
-        let doc = "# Owner decisions\n\n## No-fast-math exact cases (allowlist)\n\n\
-                   - `filters/test/morph` (test)\n\n## Something else\n\n- `filters/test/a`\n";
-        assert_eq!(allowlist_from(doc), [MORPH]);
-        let repository = read_allowlist().unwrap();
+    fn allowlist_files_are_per_module_and_strict() {
+        let good = "# filters/test\n\nProse with `filters/test/other` is ignored.\n\n\
+                    - `filters/test/morph` (SAS-35): noise-level phases\n";
+        let parsed =
+            allowlist(&[("filters/test.md", good), ("README.md", "- anything\n")]).unwrap();
+        assert_eq!(parsed.keys().collect::<Vec<_>>(), [MORPH]);
+        assert_eq!(parsed[MORPH], "SAS-35");
+        check_allowlist_approvals(&parsed, &[APPROVAL_LEDGER]).unwrap();
+
+        for (file, text, fragment) in [
+            (
+                "filters/test.md",
+                "- `filters/test/*` (SAS-35): glob\n",
+                "list lines must be",
+            ),
+            (
+                "filters/test.md",
+                "- `filters/test/morph`: no approval\n",
+                "list lines must be",
+            ),
+            (
+                "filters/test.md",
+                "- `filters/test/morph` (SAS-35):\n",
+                "list lines must be",
+            ),
+            (
+                "filters/test.md",
+                "  - `filters/test/morph` (SAS-35): indented\n",
+                "list lines must be",
+            ),
+            (
+                "filters/test.md",
+                "* `filters/test/morph` (SAS-35): star\n",
+                "list lines must be",
+            ),
+            (
+                "filters/test.md",
+                "- `filters/test/morph/x` (SAS-35): deep\n",
+                "list lines must be",
+            ),
+            (
+                "filters/test.md",
+                "- `filters/other/morph` (SAS-35): x\n",
+                "lists filters/test cases only",
+            ),
+            (
+                "filters/test.md",
+                "- `filters/test/morph` (SAS-99): x\n",
+                "not an approval pinned",
+            ),
+            ("filters/test.txt", "", "only <area>/<module>.md"),
+            ("filters/sub/test.md", "", "only <area>/<module>.md"),
+            ("test.md", "", "only <area>/<module>.md"),
+            ("filters/te.st.md", "", "module name"),
+        ] {
+            let err = allowlist(&[(file, text)]).unwrap_err();
+            assert!(err.contains(fragment), "{file}: {text:?}: {err}");
+        }
+        let twice = "- `filters/test/morph` (SAS-35): a\n- `filters/test/morph` (SAS-35): b\n";
+        assert!(allowlist(&[("filters/test.md", twice)])
+            .unwrap_err()
+            .contains("listed twice"));
+
+        // The cited approval's heading must exist and name the key.
+        for ledger in [
+            LEDGER_TEXT,
+            "## 2026-10-21: owner approval — SAS-35 noisy-reference rule and SAS-36 JSON bound\n\n\
+             SAS-350 only.\n",
+        ] {
+            let err = check_allowlist_approvals(&parsed, &[ledger]).unwrap_err();
+            assert!(err.contains("cites SAS-35"), "{err}");
+        }
+
+        let ledger = read_ledger().unwrap();
+        let ledger: Vec<&str> = ledger.iter().map(String::as_str).collect();
+        let repository = read_allowlist(&ledger).unwrap();
         assert!(
             repository.contains(&"wavetable/render/wave_linear_freq_disjoint_spectra".to_string())
         );

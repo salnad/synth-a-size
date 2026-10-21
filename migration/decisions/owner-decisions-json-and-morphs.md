@@ -1,20 +1,25 @@
 # Owner decisions: bounded JSON state and no-fast-math exact cases
 
-The owner (Salil) approved the following on 2026-10-21 (LEDGER.md entry
-"2026-10-21: owner approval — JSON bound and no-fast-math exact cases"):
+The owner (Salil) approved the following on 2026-10-21:
 
 1. "ULP-bounded, not byte-exact: preset and wavetable JSON values must agree
-   within a few ULP of float rounding".
-2. Exact comparison against the no-fast-math build for frequency-mode
-   interpolation between keyframes with disjoint spectra, folding at the
-   clamp, and frequency-interpolated audio fades.
+   within a few ULP of float rounding" (LEDGER.md entry "2026-10-21: owner
+   approval — JSON bound and no-fast-math exact cases"). **SAS-36** then
+   approved the bound as implemented: 4 f32 ULP or 1e-6 absolute,
+   whichever is looser.
+2. Exact comparison against the no-fast-math build, first for
+   frequency-mode interpolation between keyframes with disjoint spectra,
+   folding at the clamp, and frequency-interpolated audio fades. **SAS-35**
+   (the noisy-reference rule) then generalized it to every case where the
+   C++ reference itself amplifies fast-math noise. Salil named the 3
+   pitch-tracking LFO cases, the 8 chaotic Lorenz random-LFO cases, the 22
+   set-aside oscillator cases, and any future cases of the same kind. Each
+   case must still pass `--justify-nofastmath` in CI.
 
-The specific numbers below (4 f32 ULP or 1e-6 absolute, whichever is
-looser) are the coordinator's interpretation of "a few ULP", **pending owner
-confirmation**. The five allowlisted case ids are the measured instances of
-the three categories in decision 2. Both rules are enforced in code,
-identically, by `migration/scripts/run_corpus.py` and `port/crates/parity`
-(sas-parity).
+SAS-35 and SAS-36 are recorded in
+`migration/ledger/2026-10-21-owner-approval-sas-35-sas-36.md`. Both rules
+are enforced in code, identically, by `migration/scripts/run_corpus.py` and
+`port/crates/parity` (sas-parity).
 
 ## 1. JSON state parity is bounded, not byte-exact
 
@@ -26,9 +31,8 @@ must agree within a small bound.
   integer, float, string, array and object; an integer is not a float.
   Strings, integers, booleans and array lengths must match exactly.
 - **Floats** must agree within **4 f32 ulp** (after rounding both values to
-  f32) **or 1e-6 absolute, whichever is looser**. These numbers are the
-  coordinator's interpretation of the owner's "a few ULP", pending owner
-  confirmation.
+  f32) **or 1e-6 absolute, whichever is looser**. The owner approved these
+  numbers as implemented (SAS-36).
   - The absolute floor is needed because source-formula values near zero
     differ by up to 96 ulp but only 7.8e-7 absolute.
   - Below |x| = 4 the absolute floor is the looser term. At 1.0, 1e-6 is
@@ -71,21 +75,18 @@ must agree within a small bound.
 `assert_artifact!` picks the mode from the case file; a test cannot choose
 it.
 
-## 2. Ill-conditioned wavetable morphs are compared exactly against the no-fast-math build
+## 2. Cases where the reference amplifies fast-math noise are compared exactly against the no-fast-math build (SAS-35)
 
-The owner approved exact comparison against the no-fast-math build for
-frequency-mode interpolation between keyframes with disjoint spectra,
-folding at the clamp, and frequency-interpolated audio fades. Some content
-depends on FFT rounding noise. In frequency-mode keyframe
-interpolation between disjoint spectra, folding at the clamp and
-frequency-interpolated audio fades, upstream takes interpolated phases from
-`arg(conj(from)·to)` of noise-level bins.
+Some content turns fast-math rounding noise into large output differences
+in the C++ reference itself. Examples are pitch tracking, chaotic (Lorenz)
+random LFOs, long feedback and delay tails, and, in wavetable morphs,
+phases taken from `arg(conj(from)·to)` of noise-level FFT bins.
 
-- The official fast-math reference misses the module limits on this content
-  against its own `REF_FAST_MATH=OFF` build: −27 to −62 dB, and 2.6e-3 for
-  folding.
-- The port equals the no-fast-math build bit for bit (Wavetable Creator's
-  M4a measurements).
+- On such content the official fast-math reference misses the module limits
+  against its own `REF_FAST_MATH=OFF` build. In wavetable render it is −27
+  to −62 dB, and 2.6e-3 for folding.
+- A faithful port equals the no-fast-math build bit for bit (Wavetable
+  Creator's M4a measurements).
 - Such cases are therefore compared **exactly** against the no-fast-math
   build: arrays and artifacts must be bit-equal.
 - Well-conditioned content keeps the module limits against the official
@@ -95,8 +96,19 @@ frequency-interpolated audio fades, upstream takes interpolated phases from
 
 - **Declaration:** `"reference": "nofastmath"` on the case (never at file
   level).
-- **Allowlist gate:** the case id must be listed below. The resolvers read
-  the list from this section and nowhere else.
+- **Allowlist gate:** the case id must be listed in
+  `migration/decisions/nofastmath/<area>/<module>.md`, one file per corpus
+  module, as ``- `<area>/<module>/<case>` (SAS-35): <reason>``. The
+  resolvers read the list from these files and nowhere else. The format,
+  what is rejected and the steps to re-enable a parked case are in
+  [`nofastmath/README.md`](nofastmath/README.md).
+  - The cited approval must be a key pinned in both resolvers
+    (`NOFASTMATH_APPROVALS`: `SAS-35`). Its ledger heading must exist and
+    name the key.
+  - `run_corpus.py allowlist-approval --base <base>` (CI repo checks) fails
+    an added id unless it is a loaded module case that declares
+    `"reference": "nofastmath"`. So an id cannot be staged ahead of its
+    case or left pointing at a parked one. Removing an id needs nothing.
 - **No tolerances:**
   - The case cannot set `tolerances` or carry a `tolerance_exception`.
   - Its normal limits, used only by the calibration check, are the module
@@ -110,8 +122,7 @@ frequency-interpolated audio fades, upstream takes interpolated phases from
   against the no-fast-math build. The step is
   `run_corpus.py compare build/ref build/proxy --justify-nofastmath`. If the
   official reference passes, CI fails and the case must use the official
-  reference. This implements the owner's proposed general rule (pending
-  decision) alongside the explicit list; the owner may keep both.
+  reference. SAS-35 requires this for every listed case.
 - **Captures:**
   - The calibration job renders the no-fast-math tree and uploads it as
     `parity-captures-nofastmath`.
@@ -130,30 +141,8 @@ frequency-interpolated audio fades, upstream takes interpolated phases from
   - The official reference still renders and hash-pins these cases, so its
     determinism stays covered.
 
-### No-fast-math exact cases (allowlist)
-
-These five ids are the measured instances of the three approved categories:
-frequency-mode interpolation between keyframes with disjoint spectra,
-folding at the clamp, and frequency-interpolated audio fades.
-
-To add a case, add one line to this list. The lines must have the form
-``- `<case id>` `` followed by optional text. CI (`run_corpus.py
-allowlist-approval`) fails the change unless the same change adds a
-new file under `migration/ledger/` whose heading contains "owner approval"
-and which names each added id. Removing an id needs no approval: the case returns to the
-official reference.
-
-- `wavetable/render/wave_linear_freq_disjoint_spectra`: frequency-mode linear interpolation between disjoint spectra
-- `wavetable/render/wave_cubic_freq_disjoint_spectra`: frequency-mode cubic interpolation between disjoint spectra
-- `wavetable/render/multi_group_disjoint_spectra`: a multi-group table containing it
-- `wavetable/render/wave_folder_at_clamp`: wave folder at ±1
-- `wavetable/render/audio_fade_3_phase_0`: frequency-interpolated audio fade, phase style 0
-
-`audio_fade_3_phase_1` and `audio_fade_3_phase_2` are well-conditioned once
-the source formulas are fixed, so they stay on the official reference.
-Pending owner decisions may add some comb-filter and 120 Hz crossover (2×
-and above) cases. Oscillator pitch sweeps and reverb tails show the same
-pattern and are pending too.
+The first five ids (wavetable render, the three originally approved
+categories) are in `nofastmath/wavetable/render.md`.
 
 ### macOS arm64
 

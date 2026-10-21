@@ -216,7 +216,7 @@ class ToleranceRules(unittest.TestCase):
 
 
 ALLOWED = "filters/test/morph"
-DECISION = """# Owner decisions
+LEGACY_DECISION = """# Owner decisions
 
 ## No-fast-math exact cases (allowlist)
 
@@ -226,6 +226,10 @@ DECISION = """# Owner decisions
 
 - `filters/test/a`
 """ % ALLOWED
+APPROVAL_HEADING = rc.NOFASTMATH_APPROVALS["SAS-35"]
+APPROVAL_ENTRY = "## %s\n\nSAS-35: approved.\n" % APPROVAL_HEADING
+ALLOWLIST_FILE = "# filters/test\n\nProse naming `filters/test/other` is ignored.\n\n" \
+                 "- `%s` (SAS-35): noise-level phases\n" % ALLOWED
 
 
 def f32(value, ulps=0):
@@ -331,33 +335,47 @@ class ComparisonRules(unittest.TestCase):
         self.assertCaseError("cannot set json_bound", self.resolve, {"reference": "nofastmath",
                              "json_bound": {"ulp": 0}}, {"artifacts": {"saved.json": "json"}}, allowlist=[ALLOWED])
 
-    def test_allowlist_additions_need_a_new_owner_approval_entry(self):
-        base_doc = DECISION
-        head_doc = DECISION.replace("- `%s` (test)" % ALLOWED, "- `%s` (test)\n- `filters/test/comb`" % ALLOWED)
-        check = rc.unapproved_allowlist_additions
-        self.assertEqual(check(base_doc, head_doc, []), ["filters/test/comb"])
-        approved = "## 2026-10-23: owner approval — comb filter\n\nfilters/test/comb\n"
-        self.assertEqual(check(base_doc, head_doc, [approved]), [])
-        # The new entry must say "owner approval" and name the case.
-        self.assertEqual(check(base_doc, head_doc, ["## 2026-10-23: comb filter\n\nfilters/test/comb\n"]),
-                         ["filters/test/comb"])
-        self.assertEqual(check(base_doc, head_doc, ["## 2026-10-23: owner approval — comb\n\nfilters/test/comb_2\n"]),
-                         ["filters/test/comb"])
-        # Removals and a first doc with its approval are fine.
-        self.assertEqual(check(head_doc, base_doc, []), [])
-        self.assertEqual(check("", base_doc, ["## 2026-10-21: owner approval — x\n\n%s\n" % ALLOWED]), [])
-        self.assertEqual(check("", base_doc, []), [ALLOWED])
-        # Only dated headings count (reviewer note on #50).
-        self.assertEqual(check(base_doc, head_doc, ["## Owner approval: comb\n\nfilters/test/comb\n"]),
-                         ["filters/test/comb"])
+    def test_allowlist_additions_must_be_loaded_nofastmath_cases(self):
+        check = rc.allowlist_addition_problems
+        head = {ALLOWED: "SAS-35", "filters/test/comb": "SAS-35"}
+        self.assertEqual(check({ALLOWED}, head, {ALLOWED, "filters/test/comb"}), [])
+        # Staged ahead of its case, or still parked in pending/.
+        problems = check({ALLOWED}, head, {ALLOWED})
+        self.assertEqual(len(problems), 1)
+        self.assertIn("filters/test/comb was added", problems[0])
+        # Already listed at the base: not an addition. Removals need nothing.
+        self.assertEqual(check({ALLOWED, "filters/test/comb"}, head, set()), [])
+        self.assertEqual(check({ALLOWED, "filters/test/comb"}, {}, set()), [])
 
-    def test_allowlist_comes_from_its_decision_doc_section(self):
-        self.assertEqual(rc.allowlist_from(DECISION), [ALLOWED])
+    def test_allowlist_files_are_per_module_and_strict(self):
+        parsed = rc.allowlist_from_files({"filters/test.md": ALLOWLIST_FILE, "README.md": "- anything\n"})
+        self.assertEqual(parsed, {ALLOWED: "SAS-35"})
+        rc.check_allowlist_approvals(parsed, APPROVAL_ENTRY)
+        for path, text, fragment in (
+                ("filters/test.md", "- `filters/test/*` (SAS-35): glob\n", "list lines must be"),
+                ("filters/test.md", "- `filters/test/morph`: no approval\n", "list lines must be"),
+                ("filters/test.md", "- `filters/test/morph` (SAS-35):\n", "list lines must be"),
+                ("filters/test.md", "  - `filters/test/morph` (SAS-35): indented\n", "list lines must be"),
+                ("filters/test.md", "* `filters/test/morph` (SAS-35): star\n", "list lines must be"),
+                ("filters/test.md", "- `filters/test/morph/x` (SAS-35): deep\n", "list lines must be"),
+                ("filters/test.md", "- `filters/other/morph` (SAS-35): x\n", "lists filters/test cases only"),
+                ("filters/test.md", "- `filters/test/morph` (SAS-99): x\n", "not an approval pinned"),
+                ("filters/test.txt", "", "only <area>/<module>.md"),
+                ("filters/sub/test.md", "", "only <area>/<module>.md"),
+                ("test.md", "", "only <area>/<module>.md"),
+                ("filters/te.st.md", "", "module name")):
+            self.assertCaseError(fragment, rc.allowlist_from_files, {path: text})
+        self.assertCaseError("listed twice", rc.allowlist_from_files,
+                             {"filters/test.md": ALLOWLIST_FILE + "- `%s` (SAS-35): again\n" % ALLOWED})
+        # The cited approval's heading must exist and name the key.
+        for ledger_text in (LEDGER, "## %s\n\nSAS-350 only.\n" % APPROVAL_HEADING):
+            self.assertCaseError("cites SAS-35", rc.check_allowlist_approvals, parsed, ledger_text)
+        self.assertEqual(rc.legacy_allowlist_from(LEGACY_DECISION), [ALLOWED])
 
     def test_repository_allowlist_parses(self):
-        allowlist = rc.read_allowlist()
+        allowlist = rc.read_allowlist(rc.read_ledger())
         self.assertIn("wavetable/render/wave_linear_freq_disjoint_spectra", allowlist)
-        self.assertEqual(len(allowlist), len(set(allowlist)))
+        self.assertEqual(set(allowlist.values()), {"SAS-35"})
 
     def test_five_ulp_drift_fails_and_four_passes(self):
         # Above |x| = 4 the ulp term is the looser one (4 ulp > 1e-6).
@@ -761,10 +779,15 @@ class ScratchRepo(unittest.TestCase):
         self.assertEqual(code, 1, output)
         self.assertIn("$.settings.wavetables[0].groups[0].components[0].keyframes[0].wave_data[700]", output)
 
+    def write_file(self, rel, text, mode="w"):
+        path = os.path.join(self.tmp.name, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, mode) as handle:
+            handle.write(text)
+
     def write_morph_case(self):
-        os.makedirs(os.path.dirname(rc.DECISION_DOC), exist_ok=True)
-        with open(rc.DECISION_DOC, "w") as handle:
-            handle.write(DECISION)
+        self.write_file("migration/decisions/nofastmath/filters/test.md", ALLOWLIST_FILE)
+        self.write_file("migration/ledger/2026-10-21-owner-approval-sas-35-sas-36.md", APPROVAL_ENTRY)
         rc.write_json(os.path.join(rc.MODULE_CASES, "filters", "test.json"), {
             "module": "filter", "cases": {"a": {"num_samples": 4}, "morph": {"reference": "nofastmath"}}})
 
@@ -907,42 +930,52 @@ class ScratchRepo(unittest.TestCase):
                                 stderr=subprocess.STDOUT, text=True)
         self.assertEqual(result.returncode, 0, result.stdout)
 
-    def test_allowlist_approval_needs_a_new_entry_file(self):
-        os.makedirs(os.path.dirname(rc.DECISION_DOC), exist_ok=True)
-        with open(rc.DECISION_DOC, "w") as handle:
-            handle.write(DECISION)
-        self.git("init", "-q")
+    def commit(self, message):
         self.git("add", "-A")
-        self.git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base")
-        with open(rc.DECISION_DOC, "w") as handle:
-            handle.write(DECISION.replace("- `%s` (test)" % ALLOWED, "- `%s` (test)\n- `filters/test/comb`" % ALLOWED))
+        self.git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", message)
 
-        code, output = self.run_main("allowlist-approval", "--base", "HEAD")
-        self.assertEqual(code, 1, output)
-        self.assertIn("filters/test/comb was added", output)
-        # An approval appended to the frozen LEDGER.md does not count.
-        with open(rc.LEDGER, "a") as handle:
-            handle.write("\n## 2026-10-23: owner approval — comb\n\nfilters/test/comb\n")
-        code, output = self.run_main("allowlist-approval", "--base", "HEAD")
-        self.assertEqual(code, 1, output)
-
-        os.makedirs(os.path.join(self.tmp.name, "migration", "ledger"))
-        with open(os.path.join(self.tmp.name, "migration", "ledger", "2026-10-23-comb.md"), "w") as handle:
-            handle.write("## 2026-10-23: owner approval — comb filter\n\nfilters/test/comb\n")
+    def test_allowlist_approval_checks_additions_against_loaded_cases(self):
+        # A base with the legacy decision-doc allowlist: moving its ids into
+        # the per-module files is not an addition.
+        self.write_file("migration/decisions/owner-decisions-json-and-morphs.md", LEGACY_DECISION)
+        self.git("init", "-q")
+        self.commit("base")
+        self.write_morph_case()
+        os.remove(os.path.join(self.tmp.name, "migration", "decisions", "owner-decisions-json-and-morphs.md"))
         code, output = self.run_main("allowlist-approval", "--base", "HEAD")
         self.assertEqual(code, 0, output)
-        # An entry that already existed at the base does not count.
-        self.git("add", "-A")
-        self.git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "approve")
-        with open(rc.DECISION_DOC) as handle:
-            doc = handle.read()
-        with open(rc.DECISION_DOC, "w") as handle:
-            handle.write(doc.replace("- `filters/test/comb`", "- `filters/test/comb`\n- `filters/test/comb_2`"))
-        with open(os.path.join(self.tmp.name, "migration", "ledger", "2026-10-23-comb.md"), "a") as handle:
-            handle.write("filters/test/comb_2\n")
+        self.assertNotIn("added", output.replace("additions", ""))
+        self.commit("per-module allowlist")
+
+        # Listed, but the case is still parked: rejected.
+        comb = "- `filters/test/comb` (SAS-35): feedback tail\n"
+        self.write_file("migration/decisions/nofastmath/filters/test.md", comb, "a")
         code, output = self.run_main("allowlist-approval", "--base", "HEAD")
         self.assertEqual(code, 1, output)
-        self.assertIn("filters/test/comb_2 was added", output)
+        self.assertIn("added filters/test/comb (SAS-35)", output)
+        self.assertIn("filters/test/comb was added", output)
+        # The same change moves the case in: accepted, with no ledger entry.
+        rc.write_json(os.path.join(rc.MODULE_CASES, "filters", "test.json"), {
+            "module": "filter", "cases": {"a": {"num_samples": 4}, "morph": {"reference": "nofastmath"},
+                                          "comb": {"reference": "nofastmath"}}})
+        code, output = self.run_main("allowlist-approval", "--base", "HEAD")
+        self.assertEqual(code, 0, output)
+
+        # An uncited or unpinned approval fails at load (exit 2).
+        self.write_file("migration/decisions/nofastmath/filters/test.md",
+                        ALLOWLIST_FILE + "- `filters/test/comb` (SAS-99): feedback tail\n")
+        code, output = self.run_main("allowlist-approval", "--base", "HEAD")
+        self.assertEqual(code, 2, output)
+        self.assertIn("SAS-99 is not an approval pinned", output)
+        # Removing the approval's ledger entry fails at load too.
+        self.write_file("migration/decisions/nofastmath/filters/test.md", ALLOWLIST_FILE + comb)
+        os.remove(os.path.join(self.tmp.name, "migration", "ledger", "2026-10-21-owner-approval-sas-35-sas-36.md"))
+        code, output = self.run_main("allowlist-approval", "--base", "HEAD")
+        self.assertEqual(code, 2, output)
+        self.assertIn("cites SAS-35", output)
+
+        code, output = self.run_main("allowlist-approval", "--base", "no-such-rev")
+        self.assertEqual(code, 2, output)
 
     # B3: a failed render left stale data plus a new case.json.
     def test_failed_render_leaves_no_stale_capture(self):

@@ -175,14 +175,16 @@ none of them edits a shared list.
      compare`, including calibration. Determinism compares (`--exact`) and
      hashes stay byte-exact. `"json_bound"` may only tighten the bound.
      Details are in `decisions/owner-decisions-json-and-morphs.md`.
-   - *Ill-conditioned content* that the official reference cannot meet
-     against its own no-fast-math build may use `"reference": "nofastmath"`.
-     The case is then compared bit for bit against the `REF_FAST_MATH=OFF`
-     captures. Two conditions apply. First, its id must be listed in the
-     allowlist of `decisions/owner-decisions-json-and-morphs.md`, which
-     only the owner extends. Second, CI's calibration step must show the
-     official reference failing the case's normal limits against that build
-     (`compare --justify-nofastmath`). Such cases cannot set tolerances.
+   - *Content where the reference amplifies fast-math noise* (owner
+     decision SAS-35), which the official reference cannot meet against its
+     own no-fast-math build, may use `"reference": "nofastmath"`. The case
+     is then compared bit for bit against the `REF_FAST_MATH=OFF` captures.
+     Two conditions apply. First, its id must be listed, citing `SAS-35`, in
+     `decisions/nofastmath/<area>/<module>.md`, your module's own file.
+     Second, CI's calibration step must show the official reference failing
+     the case's normal limits against that build (`compare
+     --justify-nofastmath`). Such cases cannot set tolerances. The steps are
+     in `decisions/nofastmath/README.md`.
      Their no-fast-math hashes come from the `parity-captures-nofastmath`
      artifact:
      `run_corpus.py hashes <tree> --write --reference nofastmath`.
