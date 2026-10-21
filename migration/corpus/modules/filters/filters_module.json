@@ -1,0 +1,260 @@
+{
+  "description": "FiltersModule in the control harness: parallel routing, filter 1 into filter 2 and filter 2 into filter 1.",
+  "module": "filters_module",
+  "cases": {
+    "parallel": {
+      "num_samples": 22050,
+      "inputs": {
+        "filter_1_input": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "filter_2_input": {
+          "signal": "noise",
+          "amp": 0.3,
+          "seed": 3,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "filter_1_on": 1.0,
+        "filter_1_model": 3.0,
+        "filter_1_cutoff": {
+          "signal": "ramp",
+          "from": 30.0,
+          "to": 100.0
+        },
+        "filter_1_resonance": 0.6,
+        "filter_1_blend": 0.0,
+        "filter_2_on": 1.0,
+        "filter_2_model": 2.0,
+        "filter_2_cutoff": {
+          "signal": "ramp",
+          "from": 100.0,
+          "to": 30.0
+        },
+        "filter_2_resonance": 0.6,
+        "filter_2_blend": 0.0
+      }
+    },
+    "serial_1_into_2": {
+      "num_samples": 22050,
+      "inputs": {
+        "filter_1_input": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "filter_2_input": {
+          "signal": "noise",
+          "amp": 0.3,
+          "seed": 3,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "filter_2_filter_input": 1.0,
+        "filter_1_on": 1.0,
+        "filter_1_model": 0.0,
+        "filter_1_cutoff": 80.0,
+        "filter_1_resonance": 0.6,
+        "filter_1_blend": 0.0,
+        "filter_2_on": 1.0,
+        "filter_2_model": 3.0,
+        "filter_2_cutoff": {
+          "signal": "ramp",
+          "from": 40.0,
+          "to": 110.0
+        },
+        "filter_2_resonance": 0.6,
+        "filter_2_blend": 0.0
+      }
+    },
+    "serial_2_into_1": {
+      "num_samples": 22050,
+      "inputs": {
+        "filter_1_input": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "filter_2_input": {
+          "signal": "noise",
+          "amp": 0.3,
+          "seed": 3,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "filter_1_filter_input": 1.0,
+        "filter_1_on": 1.0,
+        "filter_1_model": 4.0,
+        "filter_1_cutoff": {
+          "signal": "ramp",
+          "from": 40.0,
+          "to": 110.0
+        },
+        "filter_1_resonance": 0.6,
+        "filter_1_blend": 0.0,
+        "filter_2_on": 1.0,
+        "filter_2_model": 1.0,
+        "filter_2_cutoff": 70.0,
+        "filter_2_resonance": 0.6,
+        "filter_2_blend": 0.0
+      }
+    },
+    "routing_switch": {
+      "num_samples": 44100,
+      "inputs": {
+        "filter_1_input": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "filter_2_input": {
+          "signal": "noise",
+          "amp": 0.3,
+          "seed": 3,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "filter_1_filter_input": {
+          "signal": "square",
+          "freq_hz": 3.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "filter_2_filter_input": {
+          "signal": "square",
+          "freq_hz": 5.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "filter_1_on": 1.0,
+        "filter_1_model": 3.0,
+        "filter_1_cutoff": 70.0,
+        "filter_1_resonance": 0.6,
+        "filter_1_blend": 0.0,
+        "filter_2_on": 1.0,
+        "filter_2_model": 0.0,
+        "filter_2_cutoff": 90.0,
+        "filter_2_resonance": 0.6,
+        "filter_2_blend": 0.0
+      }
+    },
+    "serial_with_filter_off": {
+      "num_samples": 22050,
+      "inputs": {
+        "filter_1_input": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "filter_2_input": {
+          "signal": "noise",
+          "amp": 0.3,
+          "seed": 3,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "filter_1_filter_input": 1.0,
+        "filter_1_on": 0.0,
+        "filter_1_model": 3.0,
+        "filter_1_cutoff": 70.0,
+        "filter_1_resonance": 0.6,
+        "filter_1_blend": 0.0,
+        "filter_2_on": 1.0,
+        "filter_2_model": 2.0,
+        "filter_2_cutoff": 90.0,
+        "filter_2_resonance": 0.6,
+        "filter_2_blend": 0.0
+      }
+    },
+    "parallel_keytrack_oversample_2x": {
+      "num_samples": 44100,
+      "sample_rate": 44100,
+      "oversample": 2,
+      "block_size": 128,
+      "inputs": {
+        "filter_1_input": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "filter_2_input": {
+          "signal": "noise",
+          "amp": 0.3,
+          "seed": 3,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": {
+          "signal": "ramp",
+          "from": 36.0,
+          "to": 96.0
+        },
+        "keytrack": {
+          "signal": "ramp",
+          "from": -24.0,
+          "to": 36.0
+        },
+        "filter_1_on": 1.0,
+        "filter_1_model": 3.0,
+        "filter_1_cutoff": 60.0,
+        "filter_1_resonance": 0.6,
+        "filter_1_blend": 0.0,
+        "filter_2_on": 1.0,
+        "filter_2_model": 5.0,
+        "filter_2_cutoff": 60.0,
+        "filter_2_resonance": 0.6,
+        "filter_2_blend": 0.0,
+        "filter_1_keytrack": 0.5,
+        "filter_2_formant_x": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    }
+  }
+}

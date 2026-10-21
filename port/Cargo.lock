@@ -518,6 +518,7 @@ version = "0.0.1"
 dependencies = [
  "sas-dsp-core",
  "sas-parity",
+ "sas-preset",
  "sas-simd",
  "serde_json",
 ]

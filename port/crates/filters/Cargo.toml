@@ -19,4 +19,5 @@ sas-simd.workspace = true
 
 [dev-dependencies]
 sas-parity.workspace = true
+sas-preset.workspace = true
 serde_json = "1"

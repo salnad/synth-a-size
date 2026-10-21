@@ -36,6 +36,7 @@ pub mod fir_halfband_decimator;
 pub mod iir_halfband_decimator;
 pub mod ladder_filter;
 pub mod linkwitz_riley_filter;
+pub mod modules;
 pub mod sallen_key_filter;
 pub mod synth_filter;
 pub mod upsampler;
@@ -85,7 +86,9 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/src/synthesis/filters/iir_halfband_decimator.cpp",
     "vital/src/synthesis/filters/fir_halfband_decimator.h",
     "vital/src/synthesis/filters/fir_halfband_decimator.cpp",
+    "vital/src/synthesis/modules/filter_module.h",
     "vital/src/synthesis/modules/filter_module.cpp",
+    "vital/src/synthesis/modules/filters_module.h",
     "vital/src/synthesis/modules/filters_module.cpp",
     "vital/src/synthesis/filters/phaser_filter.h",
     "vital/src/synthesis/filters/phaser_filter.cpp",
