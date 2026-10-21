@@ -1121,10 +1121,21 @@ pub fn set_spectral_morph_values_for(kind: i32, values: &mut [PolyFloat], spread
     }
 }
 
-/// The morph function `setWaveBuffers` uses for `kind`. Only the passthrough
-/// morph is ported so far; the other morphs of `spectral_morph.h` follow.
-pub fn morph_function(_kind: i32) -> MorphFn {
-    morph::passthrough_morph
+/// The morph function `setWaveBuffers` uses for `kind`.
+pub fn morph_function(kind: i32) -> MorphFn {
+    match kind {
+        sm::SHEPARD_TONE => morph::shepard_morph,
+        sm::VOCODE | sm::FORM_SCALE => morph::even_odd_vocode_morph,
+        sm::HARMONIC_SCALE => morph::harmonic_scale_morph,
+        sm::INHARMONIC_SCALE => morph::inharmonic_scale_morph,
+        sm::SMEAR => morph::smear_morph,
+        sm::RANDOM_AMPLITUDES => morph::random_amplitude_morph,
+        sm::LOW_PASS => morph::low_pass_morph,
+        sm::HIGH_PASS => morph::high_pass_morph,
+        sm::PHASE_DISPERSE => morph::phase_morph,
+        sm::SKEW => morph::wavetable_skew_morph,
+        _ => morph::passthrough_morph,
+    }
 }
 
 /// `SynthOscillator::runSpectralMorph` (used by displays).
