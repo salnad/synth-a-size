@@ -30,7 +30,6 @@
 //! assert!(saved.contains("\"source\":\"lfo_1\""));
 //! ```
 
-mod arith;
 pub mod constants;
 pub mod engine;
 mod json;

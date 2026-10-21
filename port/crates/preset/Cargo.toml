@@ -20,8 +20,3 @@ sas-parity.workspace = true
 # sas-simd's features of the same name); forwarded to every dependency that
 # has per-target behaviour.
 aarch64-semantics = ["sas-common/aarch64-semantics", "sas-wavetable/aarch64-semantics"]
-# Compute the upgrade chain with the formulas as written in the upstream
-# source instead of mirroring the x86 GCC -ffast-math code the reference
-# build emits (see src/arith.rs). Saved state then differs from the
-# reference in the last bits for the affected upgrade steps.
-source-formulas = []

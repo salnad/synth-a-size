@@ -10,15 +10,17 @@
 //! order. Reading a value the preset lacks fails the load, as it does
 //! upstream (nlohmann throws on converting `null` to a number).
 //!
-//! Float expressions whose result depends on the reference build's
-//! `-ffast-math` code generation go through [`crate::arith`].
+//! The float expressions are the source's. The reference build's
+//! `-ffast-math` code generation computes a few of them differently (see the
+//! M2 entries in `migration/LEDGER.md`); saved state is compared within the
+//! ULP bound the owner set for JSON state, which covers that.
 
 use sas_common::json::Value;
 use sas_common::load_save::convert_buffer_to_pcm;
+use sas_common::scalar::interpolate;
 use sas_common::LineGenerator;
 use sas_wavetable::creator::WavetableCreator;
 
-use crate::arith;
 use crate::constants::*;
 use crate::json::{ensure_object, read_f32, read_i32, read_string};
 use crate::version::older_than;
@@ -189,7 +191,7 @@ pub fn update_from_old_version(mut state: Value) -> Result<Value, Error> {
     }
 
     if older("0.2.1") {
-        adjust_envelope_times(&mut settings, arith::pow_two_thirds)?;
+        adjust_envelope_times(&mut settings, 1.0 / 1.5)?;
         if settings.count("wave_tables") != 0 {
             let wave_tables = settings.get("wave_tables")?.clone();
             settings.set("wavetables", wave_tables);
@@ -205,7 +207,7 @@ pub fn update_from_old_version(mut state: Value) -> Result<Value, Error> {
     }
 
     if older("0.2.5") {
-        adjust_envelope_times(&mut settings, arith::pow_three_quarters)?;
+        adjust_envelope_times(&mut settings, 3.0 / 4.0)?;
     }
 
     if older("0.2.6") {
@@ -216,13 +218,15 @@ pub fn update_from_old_version(mut state: Value) -> Result<Value, Error> {
     }
 
     if older("0.2.7") {
+        #[allow(clippy::excessive_precision, clippy::approx_constant)]
+        const ADJUSTMENT: f32 = 0.70710678119;
         let names = ["osc_1_level", "osc_2_level", "sub_level", "sample_level"];
         let mut levels = [0.0f32; 4];
         for (level, name) in levels.iter_mut().zip(names) {
             *level = read_f32(&settings, name)?;
         }
         for (level, name) in levels.iter().zip(names) {
-            settings.set(name, arith::adjusted_level(*level));
+            settings.set(name, (ADJUSTMENT * level * level).sqrt());
         }
     }
 
@@ -542,7 +546,7 @@ fn upgrade_0_5_0(settings: &mut Value, modulations: &mut Value) -> Result<Value,
     settings.set("osc_3_random_phase", 0.0f32);
 
     let sub_waveform = read_f32(settings, "sub_waveform")?;
-    settings.set("osc_3_wave_frame", arith::sub_wave_frame(sub_waveform));
+    settings.set("osc_3_wave_frame", sub_waveform * 257.0 / 6.0);
 
     let sub_filter1 = read_f32(settings, "filter_1_sub_input")?;
     let sub_filter2 = read_f32(settings, "filter_2_sub_input")?;
@@ -617,7 +621,7 @@ fn destination(filter1: f32, filter2: f32) -> f32 {
 /// `settings[x] = std::pow(settings[x], power)` for the attack, decay and
 /// release of each envelope, stopping at the first envelope without an
 /// attack.
-fn adjust_envelope_times(settings: &mut Value, power: fn(f32) -> f32) -> Result<(), Error> {
+fn adjust_envelope_times(settings: &mut Value, power: f32) -> Result<(), Error> {
     for i in 1..=NUM_ENVELOPES {
         let attack = format!("env_{i}_attack");
         if settings.count(&attack) == 0 {
@@ -625,7 +629,7 @@ fn adjust_envelope_times(settings: &mut Value, power: fn(f32) -> f32) -> Result<
         }
         for name in [attack, format!("env_{i}_decay"), format!("env_{i}_release")] {
             let value = read_f32(settings, &name)?;
-            settings.set(&name, power(value));
+            settings.set(&name, value.powf(power));
         }
     }
     Ok(())
@@ -670,7 +674,7 @@ fn upgrade_0_4_7(settings: &mut Value, modulations: &mut Value) -> Result<(), Er
         }
         let amount_name = format!("osc_{osc}_distortion_amount");
         let original_fm_amount = read_f32(settings, &amount_name)?;
-        let new_fm_amount = arith::pow_half(original_fm_amount);
+        let new_fm_amount = original_fm_amount.powf(1.0 / 2.0);
         settings.set(&amount_name, new_fm_amount);
 
         let mut index = 1;
@@ -700,8 +704,8 @@ fn upgrade_0_4_7(settings: &mut Value, modulations: &mut Value) -> Result<(), Er
                 max = std_max(up, down);
             }
 
-            let min_target = arith::pow_half(min);
-            let max_target = arith::pow_half(max);
+            let min_target = min.powf(1.0 / 2.0);
+            let max_target = max.powf(1.0 / 2.0);
             let mut new_amount = max_target - min_target;
             if bipolar {
                 new_amount = 2.0 * std_max(new_fm_amount - min_target, max_target - new_fm_amount);
@@ -711,9 +715,12 @@ fn upgrade_0_4_7(settings: &mut Value, modulations: &mut Value) -> Result<(), Er
             let mut scale = LineGenerator::new(LineGenerator::DEFAULT_RESOLUTION);
             scale.init_linear();
             scale.set_num_points(REMAP_RESOLUTION);
-            let points = arith::fm_remap_points(REMAP_RESOLUTION, min, max, min_target, new_amount);
-            for (i, point) in points.into_iter().enumerate() {
-                scale.set_point(i, point);
+            for i in 0..REMAP_RESOLUTION {
+                let t = i as f32 / (REMAP_RESOLUTION as f32 - 1.0);
+                let old_value = interpolate(min, max, t);
+                let adjusted_old_value = old_value.powf(1.0 / 2.0);
+                let y = 1.0 - (adjusted_old_value - min_target) / new_amount;
+                scale.set_point(i, (t, y));
             }
             modulation.set("line_mapping", scale.to_json());
             index += 1;

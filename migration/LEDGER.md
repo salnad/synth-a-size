@@ -2790,12 +2790,12 @@ PRs merge.
   start, so every save delays the sample by 4 frames and drops its last 4,
   and requantizes it (int16 → float → truncate). The port does the same,
   so the sample is not idempotent across round trips, upstream included.
-- The reference build's `-ffast-math` changes the upgrade arithmetic, and
-  saved state is compared byte for byte, so the port mirrors the code GCC
-  emits (read from the `ref-preset` disassembly). Every mirrored
-  expression is a function in `port/crates/preset/src/arith.rs`. The
-  `source-formulas` Cargo feature switches all of them back to the
-  formulas as written in the source:
+- The reference build's `-ffast-math` changes six upgrade-chain
+  expressions. The owner decided that JSON state parity is ULP-bounded
+  (within 4 f32 ulp or 1e-6 absolute, whichever is looser; keys, types and
+  strings exact), so the port uses the formulas as written in the source.
+  The table records what the x86 reference computes instead, in case a
+  future comparison needs it (the functions named were deleted):
 
   | Port function | Upstream expression (`vital/src/common/load_save.cpp`) | What GCC emits in the x86 reference |
   |---|---|---|
@@ -2806,15 +2806,20 @@ PRs merge.
   | `fm_remap_points` | `t = i / (kRemapResolution - 1.0f)`, `interpolate(min, max, t)`, `y = 1.0f - (pow(old, 1/2) - min_target) / new_amount`, 0.4.7 remap (636-641, 682-687) | `t = i * (1/31)`, `1/new_amount` hoisted out of the loop, `y = (min_target - sqrtf(old)) * (1/new_amount) + 1` |
   | `sub_wave_frame` | `sub_waveform * 257.0f / 6.0f`, 0.5.0 step (713) | `sub_waveform * (257.0f * (1.0f / 6.0f))` (folded reciprocal) |
 
-  With `source-formulas` on, 4 of the 15 test presets differ from the
-  reference: `upgrade_from_0_1_0` in 15 values, `upgrade_from_0_4_6_fm` in
-  18 and the two 0.5.0 presets in 1 each. The largest difference is
-  7.8e-7 absolute (up to 96 ulp, on remap-curve points near zero, after the
-  division amplifies it). The init preset, the corpus presets and
-  current-version presets do not depend on any of these expressions. All
-  of them must be re-checked against the arm64 (Apple clang) reference
-  once it exists; the owner is deciding whether state parity stays
-  byte-exact or allows an ulp bound with the source formulas.
+  Measured against the x86 reference with the source formulas (keys, types
+  and strings exact in every case):
+
+  | Preset | Numbers that differ | Max ulp | Max abs |
+  |---|---|---|---|
+  | `upgrade_from_0_1_0` | 15 | 52 | 7.8e-7 |
+  | `upgrade_from_0_4_6_fm` | 18 | 96 | 3.6e-7 |
+  | `upgrade_from_0_4_9_sub` | 1 | 1 | 3.8e-6 |
+  | `upgrade_from_0_4_9_sub_direct` | 1 | 1 | 1.5e-5 |
+
+  All are within the bound (the 52/96 ulp cases are remap-curve values
+  near zero, within 1e-6 absolute; the margin there is only 1.3x). The init
+  preset, the corpus presets and current-version presets do not depend on
+  these expressions and stay byte-identical.
 - nlohmann 3.1.2 implicit numeric conversions (`float x = j`) accept
   booleans. `sas-common` now does too (PR #4), and the preset crate uses
   its conversions directly. No preset field is enum-typed (every read in
@@ -2835,5 +2840,6 @@ PRs merge.
 **Open / blocked**
 
 - Rebase onto main when PRs #4 and #6 merge.
-- Owner decision on byte-exact state parity versus an ulp bound (see the
-  table above).
+- The preset-state cases switch to the JSON-bounded artifact comparison
+  (`"artifacts": {"state.json": "json"}`) once Harness Builder's PR lands;
+  until then the four upgrade presets above fail the byte-exact check.
