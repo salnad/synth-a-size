@@ -6,6 +6,8 @@
         "bit_crush_drive_sweep:drive": "b2a7e9fec84e9ecb",
         "down_sample_oversampled_2x:audio": "b77c334a67c720d3",
         "down_sample_oversampled_2x:drive": "1c1df414469f3683",
+        "down_sample_reentry:audio": "3c1ae7087943262b",
+        "down_sample_reentry:drive": "5acbadf3d8776283",
         "drive_beyond_range:audio": "44cf4283ea2530d3",
         "drive_beyond_range:drive": "3c055ffca6fe8a5b",
         "hard_clip_drive_sweep:audio": "1f1ce23dbb9c11b3",

@@ -245,6 +245,23 @@
           "to": 30.0
         }
       }
+    },
+    "down_sample_reentry": {
+      "num_samples": 8820,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.8
+        },
+        "type": {
+          "signal": "square",
+          "freq_hz": 10.0,
+          "amp": 2.5,
+          "offset": 2.5
+        },
+        "drive": 12.0
+      }
     }
   }
 }
