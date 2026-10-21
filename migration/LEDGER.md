@@ -1395,3 +1395,81 @@ against the PR's CI `reference-renders` artifact).
 - macOS arm64 hashes for `phaser_filter` once PR #2 merges.
 - M5b PR 2 (comb filter and comb module), PR 3 (formant filter, formant
   manager, vocal tract, formant module; needs M5a DigitalSvf).
+
+## 2026-10-21: M5b PR 2, `CombFilter` and `CombModule`; 7 cases blocked on reference fast-math noise
+
+Ports `vital/src/synthesis/filters/comb_filter.{h,cpp}` and
+`modules/comb_module.{h,cpp}` to `port/crates/filters/src/character/`
+(`comb_filter.rs`, `comb_module.rs`), stacked on M5b PR 1.
+
+- Structure as upstream: the tick template parameter (comb, positive
+  flange, negative flange) is a function pointer. The copy constructor's
+  partial reset is mirrored by a manual `Clone`: zeroed memory from
+  `Memory`'s copy constructor, most settings back to their initial values,
+  `feedback_filter_` reset, and `low_gain_`, `high_gain_` and
+  `feedback_filter2_` copied. A negative style leaves `process` writing
+  nothing, as upstream's `VITAL_ASSERT(false)` path does in release.
+- Per-ISA sites: the delay read `Memory::get` (A1a) inside `sas-dsp-core`.
+- `character::create_filter(Comb)` is `CombFilter(1)`, as upstream. Its
+  memory rounds to one sample, and upstream's `Memory::get` then reads
+  past the 2-float buffer (undefined behaviour); here it panics. Nothing in
+  upstream's engine calls `createFilter`, so it is not captured. The
+  `comb_filter` ref-module refuses `size < 2`.
+
+Reference: ref-modules `comb_filter` (`params.size`, default
+`CombModule::kMaxFeedbackSamples` = 25000, rounded up to 32768) and
+`comb_module` (the factory calls `init()`).
+
+Cases: `filters/comb_filter` (13) and `filters/comb_module` (3), all under
+`module_defaults`. They cover:
+
+- all six styles, plus 6..9 (`style / 3 >= 2` behaves as low/high blend);
+- MIDI cutoff −40..150 (filter cutoff 8..136 plus modulation; below about
+  −31 the period hits the 32763-sample memory clamp at 44.1 kHz);
+- blend transpose −48..132 (parameter range 0..84), blend −1..3, resonance
+  −0.5..1.5;
+- per-lane controls with per-voice resets, an impulse at full resonance,
+  96 kHz at block 128, and oversample 2.
+
+**Result: the port is bit-identical to the `REF_FAST_MATH=OFF` reference
+on all 16 cases**, as it is on the 9 phaser cases. Against the default
+fast-math reference, 9 cases pass and 7 fail. The proxy (CI
+`tolerance-calibration`) fails the same 7 with exactly the same numbers:
+
+| Case | max_abs_error | residual_db |
+|---|---|---|
+| `filters/comb_filter/negative_flange_sweep` | 8.0e-4 | **−76.8** |
+| `filters/comb_module/comb_style_sweep` | 2.8e-4 | −92.4 |
+| `filters/comb_filter/comb_cutoff_sweep` | 2.2e-4 | −95.6 |
+| `filters/comb_filter/band_spread_negative_flange` | 1.6e-4 | −84.1 |
+| `filters/comb_filter/comb_resonance_blend_ramps` | 1.3e-4 | −92.1 |
+| `filters/comb_module/band_spread_full_range` | 1.2e-4 | −93.7 |
+| `filters/comb_filter/comb_oversample2` | 1.2e-4 | −88.2 |
+
+Passing for comparison: `impulse_ringing` (fixed period of about 400
+samples) at 3.0e-8 / −133.5 dB, and `per_lane_controls_and_resets` (fixed
+cutoffs) at 1.2e-7 / −125.1 dB.
+
+Mechanism: every failing case sweeps or modulates the cutoff into long
+delay periods. The per-sample period `sample_rate / (base_frequency *
+midiOffsetToRatio(offset))` is a large-scale value of up to about 32k
+samples. The fast-math reference rounds it differently (reassociation and
+reciprocal-math in `futils::exp2` and the division). An ULP-level period
+difference of about 2e-3 samples at 30k shifts the Catmull-Rom read by
+that amount. The output error is that shift times the signal's slope,
+re-circulated by up to unity feedback, so noise and saw inputs show it most.
+The captured quantity is audio, so there is no normalized form to capture
+instead. Narrowing the cutoff range, the resonance or the input content to
+pass would be narrowing a test (rule 6).
+
+**Decision needed (human):** approve per-case tolerance exceptions for these
+7 cases, or another remedy. Proposal: `max_abs_error` 1e-3 for six of them;
+for `negative_flange_sweep`, `max_abs_error` 2e-3 and `residual_db` −70.
+Every other case stays at `module_defaults`. Until approved, these 7 fail
+both `parity` and `tolerance-calibration` in CI, so the PR stays draft.
+
+**Open / next**
+
+- The approval above. Then add the `tolerance_exception` blocks, citing
+  this heading or the approval heading.
+- macOS arm64 hashes after PR #2.

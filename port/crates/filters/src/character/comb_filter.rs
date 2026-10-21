@@ -22,6 +22,7 @@ use sas_dsp_core::{
 
 use crate::synth_filter::{input, FilterState, SynthFilter};
 
+#[allow(clippy::excessive_precision, clippy::approx_constant)]
 const FLANGE_SCALE: f32 = 0.707_106_781_19;
 
 /// `CombFilter::FeedbackStyle`. A negative style gives a negative
