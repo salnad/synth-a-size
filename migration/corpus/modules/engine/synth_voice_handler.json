@@ -1,0 +1,1145 @@
+{
+  "description": "SynthVoiceHandler (modules/synth_voice_handler.cpp), built and initialised as SoundEngine does, driven by authored note and expression scripts; note articulation (portamento, bend, tune, transpose), note_retrigger, midi_offset_output and status outputs. Ports: port/crates/engine. Cases avoid killed voices (polyphony overflow, mono retrigger): upstream frees them through the amplitude envelope, which the port builds with the modulation crate; those cases come with it (LEDGER).",
+  "module": "synth_voice_handler",
+  "cases": {
+    "chord_bend_tune": {
+      "params": {
+        "num_samples": 8192,
+        "polyphony": 8,
+        "controls": {
+          "pitch_bend_range": 12.0,
+          "voice_tune": 0.37,
+          "voice_transpose": -5.0,
+          "macro_control_1": 0.25,
+          "macro_control_3": 0.8
+        },
+        "events": [
+          {
+            "sample": 100,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.6,
+            "channel": 0
+          },
+          {
+            "sample": 110,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 120,
+            "type": "note_on",
+            "note": 64,
+            "velocity": 0.9,
+            "channel": 0
+          },
+          {
+            "sample": 300,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": -1.0
+          },
+          {
+            "sample": 320,
+            "type": "mod_wheel",
+            "channel": 0,
+            "value": 0.0
+          },
+          {
+            "sample": 700,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": -0.125
+          },
+          {
+            "sample": 720,
+            "type": "mod_wheel",
+            "channel": 0,
+            "value": 0.06666666666666667
+          },
+          {
+            "sample": 1100,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": 0.75
+          },
+          {
+            "sample": 1120,
+            "type": "mod_wheel",
+            "channel": 0,
+            "value": 0.13333333333333333
+          },
+          {
+            "sample": 1500,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": -0.5
+          },
+          {
+            "sample": 1520,
+            "type": "mod_wheel",
+            "channel": 0,
+            "value": 0.2
+          },
+          {
+            "sample": 1900,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": 0.375
+          },
+          {
+            "sample": 1920,
+            "type": "mod_wheel",
+            "channel": 0,
+            "value": 0.26666666666666666
+          },
+          {
+            "sample": 2300,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": -0.875
+          },
+          {
+            "sample": 2320,
+            "type": "mod_wheel",
+            "channel": 0,
+            "value": 0.3333333333333333
+          },
+          {
+            "sample": 2700,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": 0.0
+          },
+          {
+            "sample": 2720,
+            "type": "mod_wheel",
+            "channel": 0,
+            "value": 0.4
+          },
+          {
+            "sample": 3100,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": 0.875
+          },
+          {
+            "sample": 3120,
+            "type": "mod_wheel",
+            "channel": 0,
+            "value": 0.4666666666666667
+          },
+          {
+            "sample": 3500,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": -0.375
+          },
+          {
+            "sample": 3520,
+            "type": "mod_wheel",
+            "channel": 0,
+            "value": 0.5333333333333333
+          },
+          {
+            "sample": 3900,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": 0.5
+          },
+          {
+            "sample": 3920,
+            "type": "mod_wheel",
+            "channel": 0,
+            "value": 0.6
+          },
+          {
+            "sample": 4300,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": -0.75
+          },
+          {
+            "sample": 4320,
+            "type": "mod_wheel",
+            "channel": 0,
+            "value": 0.6666666666666666
+          },
+          {
+            "sample": 4700,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": 0.125
+          },
+          {
+            "sample": 4720,
+            "type": "mod_wheel",
+            "channel": 0,
+            "value": 0.7333333333333333
+          },
+          {
+            "sample": 5100,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": 1.0
+          },
+          {
+            "sample": 5120,
+            "type": "mod_wheel",
+            "channel": 0,
+            "value": 0.8
+          },
+          {
+            "sample": 5500,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": -0.25
+          },
+          {
+            "sample": 5520,
+            "type": "mod_wheel",
+            "channel": 0,
+            "value": 0.8666666666666667
+          },
+          {
+            "sample": 5900,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": 0.625
+          },
+          {
+            "sample": 5920,
+            "type": "mod_wheel",
+            "channel": 0,
+            "value": 0.9333333333333333
+          },
+          {
+            "sample": 6300,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": -0.625
+          },
+          {
+            "sample": 6320,
+            "type": "mod_wheel",
+            "channel": 0,
+            "value": 1.0
+          },
+          {
+            "sample": 4000,
+            "type": "note_on",
+            "note": 67,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 5200,
+            "type": "note_on",
+            "note": 72,
+            "velocity": 0.4,
+            "channel": 0
+          }
+        ]
+      }
+    },
+    "portamento_poly": {
+      "params": {
+        "num_samples": 8192,
+        "polyphony": 8,
+        "controls": {
+          "portamento_time": -3.0,
+          "portamento_slope": 2.5
+        },
+        "events": [
+          {
+            "sample": 100,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 1500,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 3000,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 4500,
+            "type": "note_on",
+            "note": 72,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 6000,
+            "type": "note_on",
+            "note": 36,
+            "velocity": 0.8,
+            "channel": 0
+          }
+        ]
+      }
+    },
+    "portamento_force_scale": {
+      "params": {
+        "num_samples": 8192,
+        "polyphony": 8,
+        "controls": {
+          "portamento_time": -2.0,
+          "portamento_slope": -3.0,
+          "portamento_force": 1.0,
+          "portamento_scale": 1.0
+        },
+        "events": [
+          {
+            "sample": 100,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 1500,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 3000,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 4500,
+            "type": "note_on",
+            "note": 72,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 6000,
+            "type": "note_on",
+            "note": 36,
+            "velocity": 0.8,
+            "channel": 0
+          }
+        ]
+      }
+    },
+    "mono_legato_glide": {
+      "params": {
+        "num_samples": 8192,
+        "polyphony": 1,
+        "voice_priority": 0,
+        "hold_released_voices": true,
+        "controls": {
+          "portamento_time": -2.5,
+          "pitch_bend_range": 2.0
+        },
+        "events": [
+          {
+            "sample": 100,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 1000,
+            "type": "note_on",
+            "note": 50,
+            "velocity": 0.55,
+            "channel": 0
+          },
+          {
+            "sample": 1300,
+            "type": "note_off",
+            "note": 48,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 1900,
+            "type": "note_on",
+            "note": 52,
+            "velocity": 0.6,
+            "channel": 0
+          },
+          {
+            "sample": 2200,
+            "type": "note_off",
+            "note": 50,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 2800,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.65,
+            "channel": 0
+          },
+          {
+            "sample": 3100,
+            "type": "note_off",
+            "note": 52,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 3700,
+            "type": "note_on",
+            "note": 53,
+            "velocity": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 4000,
+            "type": "note_off",
+            "note": 55,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 4600,
+            "type": "note_on",
+            "note": 52,
+            "velocity": 0.75,
+            "channel": 0
+          },
+          {
+            "sample": 4900,
+            "type": "note_off",
+            "note": 53,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 5500,
+            "type": "note_on",
+            "note": 50,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 5800,
+            "type": "note_off",
+            "note": 52,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 6400,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.8500000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 6700,
+            "type": "note_off",
+            "note": 50,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 2500,
+            "type": "pitch_wheel",
+            "channel": 0,
+            "value": -1.0
+          },
+          {
+            "sample": 3000,
+            "type": "pitch_wheel",
+            "channel": 0,
+            "value": -0.5
+          },
+          {
+            "sample": 3500,
+            "type": "pitch_wheel",
+            "channel": 0,
+            "value": 0.0
+          },
+          {
+            "sample": 4000,
+            "type": "pitch_wheel",
+            "channel": 0,
+            "value": 0.5
+          },
+          {
+            "sample": 4500,
+            "type": "pitch_wheel",
+            "channel": 0,
+            "value": 1.0
+          },
+          {
+            "sample": 5000,
+            "type": "pitch_wheel",
+            "channel": 0,
+            "value": -1.0
+          },
+          {
+            "sample": 5500,
+            "type": "pitch_wheel",
+            "channel": 0,
+            "value": -0.5
+          },
+          {
+            "sample": 6000,
+            "type": "pitch_wheel",
+            "channel": 0,
+            "value": 0.0
+          }
+        ],
+        "legato": true
+      }
+    },
+    "mpe_local_bend": {
+      "params": {
+        "num_samples": 8192,
+        "polyphony": 8,
+        "hold_released_voices": true,
+        "controls": {
+          "pitch_bend_range": 24.0
+        },
+        "events": [
+          {
+            "sample": 0,
+            "type": "pitch_wheel",
+            "channel": 1,
+            "value": -0.2
+          },
+          {
+            "sample": 1,
+            "type": "channel_aftertouch",
+            "channel": 1,
+            "value": 0.0
+          },
+          {
+            "sample": 2,
+            "type": "channel_slide",
+            "channel": 1,
+            "value": 0.5
+          },
+          {
+            "sample": 5,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.7,
+            "channel": 1
+          },
+          {
+            "sample": 50,
+            "type": "pitch_wheel",
+            "channel": 2,
+            "value": 0.0
+          },
+          {
+            "sample": 51,
+            "type": "channel_aftertouch",
+            "channel": 2,
+            "value": 0.3
+          },
+          {
+            "sample": 52,
+            "type": "channel_slide",
+            "channel": 2,
+            "value": 0.7
+          },
+          {
+            "sample": 55,
+            "type": "note_on",
+            "note": 64,
+            "velocity": 0.7,
+            "channel": 2
+          },
+          {
+            "sample": 100,
+            "type": "pitch_wheel",
+            "channel": 3,
+            "value": 0.2
+          },
+          {
+            "sample": 101,
+            "type": "channel_aftertouch",
+            "channel": 3,
+            "value": 0.6
+          },
+          {
+            "sample": 102,
+            "type": "channel_slide",
+            "channel": 3,
+            "value": 0.9
+          },
+          {
+            "sample": 105,
+            "type": "note_on",
+            "note": 68,
+            "velocity": 0.7,
+            "channel": 3
+          },
+          {
+            "sample": 500,
+            "type": "pitch_wheel",
+            "channel": 1,
+            "value": -1.0
+          },
+          {
+            "sample": 510,
+            "type": "channel_slide",
+            "channel": 1,
+            "value": 0.0
+          },
+          {
+            "sample": 520,
+            "type": "aftertouch",
+            "note": 60,
+            "channel": 1,
+            "value": 0.0
+          },
+          {
+            "sample": 1000,
+            "type": "pitch_wheel",
+            "channel": 2,
+            "value": 0.25
+          },
+          {
+            "sample": 1010,
+            "type": "channel_slide",
+            "channel": 2,
+            "value": 0.3333333333333333
+          },
+          {
+            "sample": 1020,
+            "type": "aftertouch",
+            "note": 64,
+            "channel": 2,
+            "value": 0.5
+          },
+          {
+            "sample": 1500,
+            "type": "pitch_wheel",
+            "channel": 3,
+            "value": -0.75
+          },
+          {
+            "sample": 1510,
+            "type": "channel_slide",
+            "channel": 3,
+            "value": 0.6666666666666666
+          },
+          {
+            "sample": 1520,
+            "type": "aftertouch",
+            "note": 68,
+            "channel": 3,
+            "value": 1.0
+          },
+          {
+            "sample": 2000,
+            "type": "pitch_wheel",
+            "channel": 1,
+            "value": 0.5
+          },
+          {
+            "sample": 2010,
+            "type": "channel_slide",
+            "channel": 1,
+            "value": 1.0
+          },
+          {
+            "sample": 2020,
+            "type": "aftertouch",
+            "note": 60,
+            "channel": 1,
+            "value": 0.0
+          },
+          {
+            "sample": 2500,
+            "type": "pitch_wheel",
+            "channel": 2,
+            "value": -0.5
+          },
+          {
+            "sample": 2510,
+            "type": "channel_slide",
+            "channel": 2,
+            "value": 0.0
+          },
+          {
+            "sample": 2520,
+            "type": "aftertouch",
+            "note": 64,
+            "channel": 2,
+            "value": 0.5
+          },
+          {
+            "sample": 3000,
+            "type": "pitch_wheel",
+            "channel": 3,
+            "value": 0.75
+          },
+          {
+            "sample": 3010,
+            "type": "channel_slide",
+            "channel": 3,
+            "value": 0.3333333333333333
+          },
+          {
+            "sample": 3020,
+            "type": "aftertouch",
+            "note": 68,
+            "channel": 3,
+            "value": 1.0
+          },
+          {
+            "sample": 3500,
+            "type": "pitch_wheel",
+            "channel": 1,
+            "value": -0.25
+          },
+          {
+            "sample": 3510,
+            "type": "channel_slide",
+            "channel": 1,
+            "value": 0.6666666666666666
+          },
+          {
+            "sample": 3520,
+            "type": "aftertouch",
+            "note": 60,
+            "channel": 1,
+            "value": 0.0
+          },
+          {
+            "sample": 4000,
+            "type": "pitch_wheel",
+            "channel": 2,
+            "value": 1.0
+          },
+          {
+            "sample": 4010,
+            "type": "channel_slide",
+            "channel": 2,
+            "value": 1.0
+          },
+          {
+            "sample": 4020,
+            "type": "aftertouch",
+            "note": 64,
+            "channel": 2,
+            "value": 0.5
+          },
+          {
+            "sample": 4500,
+            "type": "pitch_wheel",
+            "channel": 3,
+            "value": 0.0
+          },
+          {
+            "sample": 4510,
+            "type": "channel_slide",
+            "channel": 3,
+            "value": 0.0
+          },
+          {
+            "sample": 4520,
+            "type": "aftertouch",
+            "note": 68,
+            "channel": 3,
+            "value": 1.0
+          },
+          {
+            "sample": 5000,
+            "type": "pitch_wheel",
+            "channel": 1,
+            "value": -1.0
+          },
+          {
+            "sample": 5010,
+            "type": "channel_slide",
+            "channel": 1,
+            "value": 0.3333333333333333
+          },
+          {
+            "sample": 5020,
+            "type": "aftertouch",
+            "note": 60,
+            "channel": 1,
+            "value": 0.0
+          },
+          {
+            "sample": 5500,
+            "type": "pitch_wheel",
+            "channel": 2,
+            "value": 0.25
+          },
+          {
+            "sample": 5510,
+            "type": "channel_slide",
+            "channel": 2,
+            "value": 0.6666666666666666
+          },
+          {
+            "sample": 5520,
+            "type": "aftertouch",
+            "note": 64,
+            "channel": 2,
+            "value": 0.5
+          },
+          {
+            "sample": 6000,
+            "type": "pitch_wheel",
+            "channel": 3,
+            "value": -0.75
+          },
+          {
+            "sample": 6010,
+            "type": "channel_slide",
+            "channel": 3,
+            "value": 1.0
+          },
+          {
+            "sample": 6020,
+            "type": "aftertouch",
+            "note": 68,
+            "channel": 3,
+            "value": 1.0
+          },
+          {
+            "sample": 7000,
+            "type": "note_off",
+            "note": 64,
+            "lift": 0.9,
+            "channel": 2
+          }
+        ]
+      }
+    },
+    "poly_release_lift": {
+      "params": {
+        "num_samples": 8192,
+        "polyphony": 8,
+        "hold_released_voices": true,
+        "controls": {
+          "portamento_time": -4.0,
+          "macro_control_2": 0.6,
+          "macro_control_4": 1.0
+        },
+        "events": [
+          {
+            "sample": 100,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.9,
+            "channel": 0
+          },
+          {
+            "sample": 200,
+            "type": "note_on",
+            "note": 64,
+            "velocity": 0.3,
+            "channel": 0
+          },
+          {
+            "sample": 2000,
+            "type": "note_off",
+            "note": 60,
+            "lift": 0.1,
+            "channel": 0
+          },
+          {
+            "sample": 3000,
+            "type": "note_off",
+            "note": 64,
+            "lift": 0.95,
+            "channel": 0
+          },
+          {
+            "sample": 4000,
+            "type": "note_on",
+            "note": 67,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 4100,
+            "type": "note_on",
+            "note": 71,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 4200,
+            "type": "note_on",
+            "note": 74,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 5000,
+            "type": "note_off",
+            "note": 67,
+            "lift": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 6000,
+            "type": "note_on",
+            "note": 62,
+            "velocity": 0.2,
+            "channel": 0
+          }
+        ]
+      }
+    },
+    "portamento_poly_os2": {
+      "oversample": 2,
+      "block_size": 128,
+      "params": {
+        "num_samples": 16384,
+        "polyphony": 8,
+        "controls": {
+          "portamento_time": -3.0,
+          "portamento_slope": 2.5
+        },
+        "events": [
+          {
+            "sample": 100,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 1500,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 3000,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 4500,
+            "type": "note_on",
+            "note": 72,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 6000,
+            "type": "note_on",
+            "note": 36,
+            "velocity": 0.8,
+            "channel": 0
+          }
+        ]
+      }
+    },
+    "mono_legato_glide_b128": {
+      "block_size": 128,
+      "params": {
+        "num_samples": 8192,
+        "polyphony": 1,
+        "voice_priority": 0,
+        "hold_released_voices": true,
+        "controls": {
+          "portamento_time": -2.5,
+          "pitch_bend_range": 2.0
+        },
+        "events": [
+          {
+            "sample": 100,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 1000,
+            "type": "note_on",
+            "note": 50,
+            "velocity": 0.55,
+            "channel": 0
+          },
+          {
+            "sample": 1300,
+            "type": "note_off",
+            "note": 48,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 1900,
+            "type": "note_on",
+            "note": 52,
+            "velocity": 0.6,
+            "channel": 0
+          },
+          {
+            "sample": 2200,
+            "type": "note_off",
+            "note": 50,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 2800,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.65,
+            "channel": 0
+          },
+          {
+            "sample": 3100,
+            "type": "note_off",
+            "note": 52,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 3700,
+            "type": "note_on",
+            "note": 53,
+            "velocity": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 4000,
+            "type": "note_off",
+            "note": 55,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 4600,
+            "type": "note_on",
+            "note": 52,
+            "velocity": 0.75,
+            "channel": 0
+          },
+          {
+            "sample": 4900,
+            "type": "note_off",
+            "note": 53,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 5500,
+            "type": "note_on",
+            "note": 50,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 5800,
+            "type": "note_off",
+            "note": 52,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 6400,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.8500000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 6700,
+            "type": "note_off",
+            "note": 50,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 2500,
+            "type": "pitch_wheel",
+            "channel": 0,
+            "value": -1.0
+          },
+          {
+            "sample": 3000,
+            "type": "pitch_wheel",
+            "channel": 0,
+            "value": -0.5
+          },
+          {
+            "sample": 3500,
+            "type": "pitch_wheel",
+            "channel": 0,
+            "value": 0.0
+          },
+          {
+            "sample": 4000,
+            "type": "pitch_wheel",
+            "channel": 0,
+            "value": 0.5
+          },
+          {
+            "sample": 4500,
+            "type": "pitch_wheel",
+            "channel": 0,
+            "value": 1.0
+          },
+          {
+            "sample": 5000,
+            "type": "pitch_wheel",
+            "channel": 0,
+            "value": -1.0
+          },
+          {
+            "sample": 5500,
+            "type": "pitch_wheel",
+            "channel": 0,
+            "value": -0.5
+          },
+          {
+            "sample": 6000,
+            "type": "pitch_wheel",
+            "channel": 0,
+            "value": 0.0
+          }
+        ],
+        "legato": true
+      }
+    }
+  }
+}

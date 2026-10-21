@@ -1589,14 +1589,17 @@ impl VoiceHandler {
         output.buffer_size() > 1 || output.owner().is_some_and(|owner| !owner.is_control_rate())
     }
 
-    /// The kernel-side half of `registerOutput(output)`; see
-    /// [`register_output`].
-    fn add_registered_output(
+    /// `registerOutput(output)` from inside the kernel (`this` is the
+    /// handler node); see the free function [`register_output`].
+    pub fn register_output(
         &mut self,
+        this: &Processor,
         output: &Rc<Output>,
-        new_output: &Rc<Output>,
         accumulate: bool,
-    ) {
+    ) -> Rc<Output> {
+        let new_output = Output::new(output.buffer_size(), 1);
+        new_output.set_owner(Some(&this.this_ref()));
+        this.register_output(new_output.clone());
         if accumulate {
             self.accumulated_outputs
                 .push((output.clone(), new_output.clone()));
@@ -1604,6 +1607,26 @@ impl VoiceHandler {
             self.last_voice_outputs
                 .push((output.clone(), new_output.clone()));
         }
+        new_output
+    }
+
+    /// `registerControlRateOutput(output, active)` from inside the kernel.
+    pub fn register_control_rate_output(
+        &mut self,
+        this: &Processor,
+        output: &Rc<Output>,
+        active: bool,
+    ) -> Rc<Output> {
+        let new_output = Output::new_control_rate();
+        new_output.set_owner(Some(&this.this_ref()));
+        this.register_output(new_output.clone());
+        self.last_voice_outputs
+            .push((output.clone(), new_output.clone()));
+        if active {
+            self.nonaccumulated_outputs
+                .push((output.clone(), new_output.clone()));
+        }
+        new_output
     }
 }
 
@@ -1702,13 +1725,9 @@ pub fn register_output<K: HasVoiceHandler>(
     output: &Rc<Output>,
     accumulate: bool,
 ) -> Rc<Output> {
-    let new_output = Output::new(output.buffer_size(), 1);
-    new_output.set_owner(Some(&node.this_ref()));
-    node.register_output(new_output.clone());
-    with_voice_handler::<K, _>(node, |vh, _| {
-        vh.add_registered_output(output, &new_output, accumulate);
-    });
-    new_output
+    with_voice_handler::<K, _>(node, |vh, this| {
+        vh.register_output(this, output, accumulate)
+    })
 }
 
 /// `VoiceHandler::registerControlRateOutput(output, active)`.
@@ -1717,18 +1736,9 @@ pub fn register_control_rate_output<K: HasVoiceHandler>(
     output: &Rc<Output>,
     active: bool,
 ) -> Rc<Output> {
-    let new_output = Output::new_control_rate();
-    new_output.set_owner(Some(&node.this_ref()));
-    node.register_output(new_output.clone());
-    with_voice_handler::<K, _>(node, |vh, _| {
-        vh.last_voice_outputs
-            .push((output.clone(), new_output.clone()));
-        if active {
-            vh.nonaccumulated_outputs
-                .push((output.clone(), new_output.clone()));
-        }
-    });
-    new_output
+    with_voice_handler::<K, _>(node, |vh, this| {
+        vh.register_control_rate_output(this, output, active)
+    })
 }
 
 /// The handler's voice router, as a weak reference (for hooks).
