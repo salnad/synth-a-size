@@ -28,6 +28,35 @@
         "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
         "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
       }
+    },
+    {
+      "hashes": {
+        "pi_range_seed_4242:at_max": "315446a086a23133",
+        "pi_range_seed_4242:values": "82eb58602f540e01",
+        "seed_0:at_max": "315446a086a23133",
+        "seed_0:values": "82707167a6a858eb",
+        "seed_10694_edge_draw:at_max": "2fa183a08531045a",
+        "seed_10694_edge_draw:values": "004caa70a478e6df",
+        "seed_12345:at_max": "315446a086a23133",
+        "seed_12345:values": "803015f4694e32fd",
+        "seed_1:at_max": "315446a086a23133",
+        "seed_1:values": "ae0f739c431f1b1a",
+        "seed_2147483647:at_max": "315446a086a23133",
+        "seed_2147483647:values": "cb77afe65466982c",
+        "seed_minus_5:at_max": "315446a086a23133",
+        "seed_minus_5:values": "55154a4affc513ef",
+        "unit_range_seed_7:at_max": "315446a086a23133",
+        "unit_range_seed_7:values": "9616273c2a4eecb3"
+      },
+      "identity": {
+        "arch": "aarch64",
+        "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+        "fast_math": true,
+        "glibc": null,
+        "libm_variants": "Apple libm (macOS 15.7.9)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
     }
   ]
 }

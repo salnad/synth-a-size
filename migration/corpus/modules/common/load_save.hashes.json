@@ -36,6 +36,43 @@
         "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
         "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
       }
+    },
+    {
+      "hashes": {
+        "base64_decode_empty:result": "0278152792978efa",
+        "base64_decode_float_one:result": "08b74af0cd962ee1",
+        "base64_decode_full_group:result": "76ccbf2db769d14c",
+        "base64_decode_invalid_char_stops:result": "9c8a167cf9ee68b9",
+        "base64_decode_non_ascii_stops:result": "9c8a167cf9ee68b9",
+        "base64_decode_padded_one:result": "0072734059f3244b",
+        "base64_decode_padded_two:result": "fc60e595ee6461c4",
+        "base64_decode_padding_mid_group:result": "0072734059f3244b",
+        "base64_decode_padding_then_data:result": "c3523356856dda50",
+        "base64_decode_space_stops:result": "47fe0d7eaf8e51e3",
+        "base64_decode_truncated_group:result": "47fe0d7eaf8e51e3",
+        "base64_decode_two_groups:result": "7019c7e640430aaa",
+        "base64_decode_url_safe_chars:result": "47fe0d7eaf8e51e3",
+        "base64_encode_all_byte_values:artifact/base64.txt": "488888759c957f8d",
+        "base64_encode_empty:artifact/base64.txt": "14650fb0739d0383",
+        "base64_encode_high_bytes:artifact/base64.txt": "c94864ed24a63d0c",
+        "base64_encode_one_byte:artifact/base64.txt": "e33667319d7a8e8f",
+        "base64_encode_three_bytes:artifact/base64.txt": "c181dc318aa7bb57",
+        "base64_encode_two_bytes:artifact/base64.txt": "c17743318a9e62d7",
+        "pcm_round_trip:artifact/float.json": "71818bc0cefa4462",
+        "pcm_round_trip:artifact/pcm.json": "6c7627b1859f294f",
+        "pcm_round_trip:floats": "03f4c13689902afd",
+        "pcm_round_trip:pcm": "edaed0df2ff055f0",
+        "versions:results": "15a2e3d2b62fe36a"
+      },
+      "identity": {
+        "arch": "aarch64",
+        "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+        "fast_math": true,
+        "glibc": null,
+        "libm_variants": "Apple libm (macOS 15.7.9)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
     }
   ]
 }

@@ -2479,3 +2479,11 @@ is optional (manual dispatch).
   definition in C++14). GCC folds it at -O3; Apple clang does not. Fixed by
   passing `static_cast<int>(...)`. GCC -O0 reproduces it (1 undefined
   reference per object before, 0 after); x86 hashes unchanged (411/411).
+- Rebased again for #6, #13, #14.
+- macOS arm64 identity entries written from #2's own macOS 15 CI tree (run
+  39522321209) for every module file: `framework/*` (new), `common/*`
+  (new), `wavetable/creator_json` (new), and `simd/poly_function` (131; 19
+  entries rewritten because #11 redefined those cases). `distortion`
+  `sin_fold_drive_ramp` and `digital_svf` `lowpass_saw_sweep` changed
+  because their ramp inputs are now exact. All 489 generated inputs are
+  bit-identical on macOS and x86.
