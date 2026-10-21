@@ -69,8 +69,9 @@ REGISTER_REF_MODULE(refmod::ModuleDef{
 
 // Module "lfo_module_frequency": the same module, capturing only osc_frequency
 // as the phase increment. Full-range keytrack pitch passes official vs
-// no-fast-math in this consumer form while the LFO audio drifts, so it stays
-// active here when the audio cases are parked (pending/lfo_module.json).
+// no-fast-math in this consumer form, so it stays on the official reference
+// here while lfo_module compares the drifting LFO audio of the same inputs
+// exactly against the no-fast-math build (reference "nofastmath").
 REGISTER_REF_MODULE(refmod::ModuleDef{
   "lfo_module_frequency",
   "LfoModule, osc_frequency only (phase increment frequency / sample rate). Same params and inputs as lfo_module",

@@ -7,11 +7,13 @@
         "dotted_sync_type:value": "f48d63398ea6ab33",
         "free_frequency_extremes:value": "e1da0c675f5a2977",
         "free_frequency_min:value": "7e00bab820f292aa",
+        "free_lorenz:value": "7f158863a8516c10",
         "free_lorenz_low_frequency:value": "694b15f05d6b3ad5",
         "free_perlin:value": "ce259828ab1084b4",
         "free_sample_and_hold:value": "2b0325d1e0179acc",
         "free_sin:value": "146619f1bdb88c63",
         "keytrack_low_band:value": "761e1c81b1c132b5",
+        "tempo_extremes:value": "1e84279e107581ee",
         "tempo_free_running:value": "2d8e277a042306cf",
         "tempo_sync_type:value": "050d3e305ad712eb",
         "triplet_free_running:value": "e133a5bd725682eb",
@@ -34,11 +36,13 @@
         "dotted_sync_type:value": "f48d63398ea6ab33",
         "free_frequency_extremes:value": "e1da0c675f5a2977",
         "free_frequency_min:value": "a12581919d5e8a42",
+        "free_lorenz:value": "7f158863a8516c10",
         "free_lorenz_low_frequency:value": "694b15f05d6b3ad5",
         "free_perlin:value": "8983c473230c77fb",
         "free_sample_and_hold:value": "2b0325d1e0179acc",
         "free_sin:value": "78d0766b73387ea9",
         "keytrack_low_band:value": "5adb7f182e3d1c6b",
+        "tempo_extremes:value": "1e84279e107581ee",
         "tempo_free_running:value": "3a536df697964197",
         "tempo_sync_type:value": "050d3e305ad712eb",
         "triplet_free_running:value": "1dd9ceb8444fdb9b",
@@ -51,6 +55,36 @@
         "glibc": null,
         "libm_variants": "Apple libm (macOS 15.7.9)",
         "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    },
+    {
+      "hashes": {
+        "free_lorenz:value": "9c5bcfcd80901b88",
+        "tempo_extremes:value": "12253e7facec7f49"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": false,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    },
+    {
+      "hashes": {
+        "free_lorenz:value": "9c5bcfcd80901b88",
+        "tempo_extremes:value": "12253e7facec7f49"
+      },
+      "identity": {
+        "arch": "aarch64",
+        "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+        "fast_math": false,
+        "glibc": null,
+        "libm_variants": "Apple libm (macOS 15.7.9)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
         "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
       }
     }
