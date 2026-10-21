@@ -4,8 +4,8 @@
 //! Ports the render code of `vital/src/common/wavetable/*.cpp` (Copyright
 //! 2013-2019 Matt Tytel, GPL-3.0-or-later). Mixed `float`/`double`
 //! arithmetic follows the upstream types expression by expression. Double
-//! `exp`/`cos` come from `libm` (glibc's are CPU-dependent); float functions
-//! use the system libm like the reference.
+//! `exp`/`cos` go through [`crate::platform_libm`]; float functions use the
+//! system libm like the reference.
 
 use std::fmt;
 
@@ -211,7 +211,7 @@ impl FileSourceKeyframe {
         let fade_size = f64::from(fade_samples) * window_ratio;
         for i in 0..fade_samples {
             let t = f64::from(i as f32 / (fade_samples as f32 - 1.0));
-            let fade = 0.5 + 0.5 * libm::cos(f64::from(PI) * t);
+            let fade = 0.5 + 0.5 * crate::platform_libm::cos(f64::from(PI) * t);
 
             let write_index = wrap_index(start_index + i);
             let position = self.start_position + self.window_size + t * fade_size;
@@ -523,8 +523,8 @@ fn filter_power_scale(value: f64, power: f64) -> f64 {
         return value;
     }
     let abs_value = value.abs();
-    let numerator = libm::exp(power * abs_value) - 1.0;
-    let denominator = libm::exp(power) - 1.0;
+    let numerator = crate::platform_libm::exp(power * abs_value) - 1.0;
+    let denominator = crate::platform_libm::exp(power) - 1.0;
     if value >= 0.0 {
         numerator / denominator
     } else {
@@ -609,8 +609,14 @@ fn high_res_power_scale(value: f32, power: f32) -> f64 {
         return f64::from(value);
     }
     let abs_value = f64::from(value.abs());
-    let numerator = libm::exp(f64::from(power) * abs_value) - 1.0;
-    let denominator = libm::exp(f64::from(power)) - 1.0;
+    let numerator = crate::platform_libm::exp(f64::from(power) * abs_value) - 1.0;
+    // `exp(power) - 1.0f` with a float `power` (A12): libc++ resolves the
+    // call to `expf`, so on Apple the subtraction is in float too, then
+    // widened; libstdc++ (x86) resolves it to the double `exp`.
+    #[cfg(target_vendor = "apple")]
+    let denominator = f64::from(power.exp() - 1.0);
+    #[cfg(not(target_vendor = "apple"))]
+    let denominator = crate::platform_libm::exp(f64::from(power)) - 1.0;
     if value >= 0.0 {
         numerator / denominator
     } else {

@@ -2560,3 +2560,144 @@ arm64 CI) merges.
 
 **Next:** the remaining spectral morphs (PR B), then the sample source
 and sample module, then the oscillator and producers modules.
+
+---
+
+## 2026-10-21: macOS columns for paired sin/cos (A11) and complex division without fast-math (A10)
+
+Reported by ARM Reference while landing #2. The PR is not merged until #2
+lands.
+
+**A11, paired `sinf`/`cosf`:**
+- **The issue:** on the macOS no-fast-math capture,
+  `audio_fade_3_phase_0:phase_coefficients` was off by 1 ulp on 6,190 of
+  526,850 values. Apple clang merges a `sinf`/`cosf` pair of one angle
+  into `__sincosf_stret` even without fast-math (as in the capture's
+  `cosf`/`sinf` in `render.cpp`), while the port called them separately.
+- **Audit of upstream pairs in the ported code:**
+  - five `std::polar` sites: `phase_modifier.cpp:47`,
+    `wave_source.cpp:101, 143`, `file_source.cpp:113` and
+    `wavetable.cpp:174` (`loadNormalizedFrequencies`);
+  - JUCE's FFT twiddles, double `cos`/`sin` (`juce_FFT.cpp:203-204, 213-214`);
+  - every other `sin`/`cos` use is single.
+- **Compile evidence:** clang 18 for `arm64-apple-macos14` at `-O3`,
+  Darwin defaults. The capture pair and libc++'s `polar` body (NaN guards
+  included) each compile to `___sincosf_stret`, and the twiddle loop to
+  `___sincos_stret`. So the polar sites and the twiddles are merged in the
+  macOS reference too, which is consistent with the reference importing
+  both symbols.
+- **Port:**
+  - `sas_common::scalar::sin_cos(angle)` calls `__sincosf_stret` on Apple
+    targets and `sinf`/`cosf` elsewhere; glibc's `sincosf`, which GCC may
+    merge a pair into, gives the same bits.
+  - `Complex::polar` (every polar site) and the render test's
+    `phase_coefficients` use it.
+  - The FFT twiddles call `__sincos_stret` on Apple targets and keep the
+    pure-Rust `libm` crate elsewhere.
+  - Making the pair explicit also keeps the port independent of whether
+    its own LLVM merges two adjacent `.sin()`/`.cos()` calls, which
+    depends on the optimisation level.
+- **Limits:** Linux output is unchanged (all hashes and tests pass). The
+  Apple branches compile and pass clippy for `aarch64-apple-darwin`, but
+  bit-exactness on macOS still needs a macOS run (#2's job). This column
+  follows the target OS's libm, so `aarch64-semantics` on x86 cannot
+  emulate it.
+- **Refined by ARM Reference's macOS run of #2 + #52** (#53, run
+  39541999044):
+  - `audio_fade_3_phase_0:phase_coefficients` still differed in the same
+    6,190 values: cos-only and sin-only differences, no shared phase
+    error.
+  - Every `wave` and `coefficients` value of the five no-fast-math cases
+    matched, both before #52 (Rust already merged `Complex::polar`'s pair)
+    and with #52's explicit merge. So upstream's `polar` sites and the
+    twiddles behave as above in the no-fast-math build.
+  - The pair that differs is the capture's own `cosf`/`sinf` in
+    `render.cpp`, which the no-fast-math macOS build evaluates as separate
+    calls (ARM Reference is confirming with otool).
+  - The render test therefore computes that pair with
+    `sas_common::scalar::sin_cos_unmerged`: two calls, each in its own
+    non-inlined function. In the `aarch64-apple-darwin` release assembly
+    these tail-call `_sinf` and `_cosf`, so no compiler can merge them.
+- **otool on both macOS reference builds** (ARM Reference, runs 39543570959
+  and 39545018805):
+  - Merged into `___sincosf_stret` in both builds: `FileSource` render,
+    both `Wavetable::loadWaveFrame` overloads, `loadNormalizedFrequencies`,
+    `loadDefaultWavetable`, and `WaveSourceKeyframe`'s
+    linear/cubic frequency interpolation. JUCE's FFT twiddles use
+    `___sincos_stret`.
+  - The capture pair in `render.cpp` is separate in both builds, and the
+    ref-module and engine translation units use identical flags.
+  - `PhaseModifierKeyframe::render` differs between the builds: merged in
+    the official build, separate `_cosf`/`_sinf` without fast-math.
+- **Phase-modifier design:**
+  - The port follows the official (shipping) build: `Complex::polar`
+    always merges on Apple.
+  - Official comparisons cover the phase modifier with tolerances.
+  - No no-fast-math case contains a phase modifier, and
+    `render_parity.rs` enforces this: a `"reference": "nofastmath"` case
+    with a Phase Shift component fails with an explanation.
+  - If such a case is ever needed, it needs a per-case selector at this
+    one site.
+- After #52, ARM Reference's #53 re-run has `audio_fade_3_phase_0` and
+  `multi_group_disjoint_spectra` passing bit-exact on macOS.
+- **Platform libm for double transcendentals** (reference-arm.md
+  consequence 4):
+  - ARM Reference's full #53 run (#2 + #52 at a2fefa1, run 39547363154)
+    has all 5 no-fast-math render cases bit-exact on macOS. Only the 4
+    `warp_*:wave` outputs failed, by up to 2.0e-3 against the macOS
+    reference; the port tracked x86 exactly. The warp and
+    frequency-filter power scales called the portable `libm::exp`
+    (glibc's bits) where upstream calls the platform `exp`.
+  - New `sas-wavetable` module `platform_libm` with `exp`, `cos` and
+    `sin_cos` (the twiddles). It calls the system libm everywhere except
+    Linux, plus `__sincos_stret` for the pair on Apple (A11).
+  - Linux keeps the `libm` crate: the x86 reference pins glibc to its
+    baseline non-FMA variants (`GLIBC_TUNABLES`), and calling glibc
+    directly would pick whichever variant the CPU dispatches. Linux output
+    is therefore bit-identical to before.
+  - Covered: both warp `exp` calls, both frequency-filter `exp` calls, the
+    audio fade's `cos`, and the FFT twiddles. `ilogbf`/`scalbnf` in the
+    complex division stay on the crate; they are exact operations with the
+    same result everywhere.
+- **A12: `exp` overload resolution in `highResPowerScale`**
+  (`wave_warp_modifier.cpp:32`):
+  - `double denominator = exp(power) - 1.0f;` passes a float `power`.
+    libc++ (macOS) resolves the call to `expf`, so the subtraction happens
+    in float before widening; libstdc++ (x86) resolves it to the double
+    `exp`.
+  - The macOS ref-module imports 4 `_exp` and 4 `_expf`; x86 imports only
+    `exp`. ARM Reference found this; its diff of libm entry points across
+    the whole engine found no other site.
+  - `platform_libm` alone changed nothing (run 39549289498), because Apple's
+    double `exp` equals the `libm` crate on these inputs.
+  - Port: on Apple targets the denominator is `f64::from(power.exp() - 1.0)`,
+    i.e. `expf` and a float subtraction, as the C++ types dictate. Other
+    targets keep the double form. The numerator,
+    `exp(power * abs_value)` with a double product, is double on both.
+  - The frequency filter's `powerScale` takes a `double` power, so it is
+    unaffected.
+  - Check: forcing the Apple form on Linux (glibc `expf` standing in for
+    Apple's) reproduces the macOS failures against the x86 reference
+    almost exactly. The worst case is 3.87e-4 / −113.1 dB on
+    `warp_h_false_v_false`, against 3.9e-4 / −113 dB on macOS, and up to
+    1.99e-3 across the four cases, against 2.0e-3. Linux output is
+    unchanged.
+
+**A10, complex division without fast-math on macOS:**
+- Apple compiler-rt's `__divsc3`, which the macOS no-fast-math build
+  calls, is the logb/scalbn-scaled formula with FMAs:
+  `denom = fma(c, c, d·d)`, `re = fma(a, c, b·d)`, `im = fma(b, c, -(a·d))`.
+  ARM Reference verified it bit for bit on 4.2M random and 6,561 special
+  inputs.
+- `complex::div_compiler_rt` implements it with `mul_add`, which is
+  exactly fused on every target, and is now the aarch64 column. The
+  unfused `div_libcxx` is removed: it matched only the fast-math macOS
+  build, and the owner's rule is source semantics, i.e. the no-fast-math
+  builds; the x86 column is libgcc without fast-math in the same way.
+- Unit tests pin both columns on 11 inputs, including 4 where fusing
+  changes the result. Fused and unfused differ in about 12% of
+  unit-circle `1/z`.
+
+**After #2 lands:** run the port on the macOS job against its pinned and
+no-fast-math trees, and re-enable `audio_fade_3_phase_0` on arm64 if #2
+parked it.

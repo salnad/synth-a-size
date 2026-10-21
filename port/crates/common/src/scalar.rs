@@ -160,6 +160,61 @@ pub fn power_scale(value: f32, power: f32) -> f32 {
     numerator / denominator
 }
 
+/// `(sinf(angle), cosf(angle))` where upstream computes both for one angle
+/// (A11 in `migration/decisions/reference-arm.md`). On Apple targets, Clang
+/// merges such a pair into `__sincosf_stret` even without fast-math. That
+/// can differ from separate `sinf`/`cosf` by 1 ulp, so this calls it
+/// directly. Elsewhere it calls `sinf` and `cosf`; glibc's `sincosf`, which
+/// GCC may merge a pair into, returns the same bits.
+///
+/// Calling it explicitly also keeps the port independent of whether its own
+/// compiler happens to merge two separate calls, which depends on the
+/// optimisation level.
+#[inline]
+pub fn sin_cos(angle: f32) -> (f32, f32) {
+    #[cfg(target_vendor = "apple")]
+    {
+        let result = unsafe { apple::__sincosf_stret(angle) };
+        (result.sin, result.cos)
+    }
+    #[cfg(not(target_vendor = "apple"))]
+    {
+        (angle.sin(), angle.cos())
+    }
+}
+
+/// `(sinf(angle), cosf(angle))` as two separate library calls that no
+/// compiler can merge into a `sincos` (each lives in its own non-inlined
+/// function). This is for code whose reference evaluates the pair
+/// separately; on Apple targets the merged form can differ by 1 ulp.
+#[inline]
+pub fn sin_cos_unmerged(angle: f32) -> (f32, f32) {
+    (sin_unmerged(angle), cos_unmerged(angle))
+}
+
+#[inline(never)]
+fn sin_unmerged(angle: f32) -> f32 {
+    angle.sin()
+}
+
+#[inline(never)]
+fn cos_unmerged(angle: f32) -> f32 {
+    angle.cos()
+}
+
+#[cfg(target_vendor = "apple")]
+mod apple {
+    #[repr(C)]
+    pub struct SinCos {
+        pub sin: f32,
+        pub cos: f32,
+    }
+
+    extern "C" {
+        pub fn __sincosf_stret(angle: f32) -> SinCos;
+    }
+}
+
 /// `futils::tanh` (the `mono_float` overload, a rational approximation).
 #[inline]
 #[allow(clippy::excessive_precision)]
