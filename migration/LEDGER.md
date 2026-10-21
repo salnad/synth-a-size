@@ -2767,14 +2767,20 @@ Stacked on M7 PR 1.
   - the same two after a `stateToJson` → `jsonToState` round trip;
   - `scale_start_midi_note`, `reference_midi_note` and the stored scale;
   - `getName()` as an exact-match text artifact.
-- 12 cases in `migration/corpus/modules/engine/tuning.json`: default; Scala
+- 13 cases in `migration/corpus/modules/engine/tuning.json`: default; Scala
   in cents, ratios, 19-EDO and a stretched period with blank and annotated
   lines; Scala + kbm; kbm alone; a short kbm; `.tun` with comments, odd
   spacing, an out-of-range note and a stray section; `.tun` + kbm; reference
-  ratio with a start note; reference frequency.
+  ratio with a start note; reference frequency; and `tun_octave_then_kbm`, a
+  one-octave `.tun` + kbm whose values stay within ±256 semitones, so the
+  raw `converted` and `roundtrip` are captured for the `.tun` + `.kbm`
+  combination (large-scale rule: a raw case over the band that passes).
 
-**Metrics** (x86_64; the committed hashes equal those written from CI run 39522994531's artifact). Every comparison
-passes under `module_defaults`, and 26 of 57 are bit-identical:
+**Metrics** (x86_64; the committed hashes equal those written from CI run
+39522994531's artifact, except `tun_octave_then_kbm`, which is new and gets
+its hashes from this PR's next CI run). Every comparison passes under
+`module_defaults`: 88 numeric comparisons (13 cases, `state` and `scale`
+included), 43 bit-identical, and 13 exact `name.txt` artifacts:
 
 | Output | Worst max abs error | Worst residual |
 |---|---|---|
@@ -2784,24 +2790,45 @@ passes under `module_defaults`, and 26 of 57 are bit-identical:
 
 The voice handler with `scala_tuning` (21 cases) stays bit-identical.
 
-**Raw values not captured** (`params.skip_raw`), with the numbers measured
-before the normalized outputs replaced them. No tolerance changed:
+**Raw comparisons parked, pending the owner's noisy-reference decision
+(SAS-35).** Two raw comparisons fail only because the fast-math x86
+reference is noisy against its own `REF_FAST_MATH=OFF` build; the port
+matches the no-fast-math build on both (Graph Reviewer verified with
+`skip_raw` removed). No tolerance changed:
 
 - `tun_then_kbm`, raw `converted` and `roundtrip`: the `.tun` period is
   ~127 semitones and the kbm repeats it, so values reach ±697 semitones.
-  The max abs error is 1.2e-4 (2 ULP at that magnitude), against the 1e-4
-  gate; the residual is −138.5 dB. The normalized form passes, with 9.5e-7.
+  The official reference differs from no-fast-math by 1.22e-4 at |696.85|
+  (2 ULP), against the 1e-4 gate; the residual is −138.5 dB.
 - `scl_reference_frequency`, raw `reference_midi_note`:
   `setReferenceNoteFrequency(69, 440 Hz)` cancels to about 0. The source
-  formula `12 * logf(f / k) * kInvLogOf2` gives exactly 69.0 in f32, so the
-  port's value is 0. The fast-math reference reassociates it to
-  `logf(...) * (12 * kInvLogOf2)` and gets 68.99999, so its value is
-  −7.6e-6. The absolute error passes (7.6e-6), but the residual against a
-  near-zero reference is 0 dB. Per the owner decision, the port keeps the
-  source formula. `converted` and `converted_note_percent` carry the value
-  in the form `convertMidiNote` consumes, and pass with 1.5e-5 / 1.2e-7.
+  formula `12 * logf(f / k) * kInvLogOf2` gives exactly 69.0 in f32, and the
+  no-fast-math reference and the port give 0. The fast-math reference
+  reassociates it to `logf(...) * (12 * kInvLogOf2)` and gives −7.63e-6, so
+  the residual against a near-zero reference is 0 dB. The port keeps the
+  source formula.
+
+They sit, inputs unchanged and with every raw output captured, as
+`tun_then_kbm_raw` and `scl_reference_frequency_raw` in
+`migration/corpus/modules/engine/pending/tuning.json`. The loaders read only
+`modules/<area>/*.json`, so they are not rendered or tested until they move
+back. The active cases keep `skip_raw` and the normalized outputs:
+
+- `tun_then_kbm`'s `converted_note_percent` passes at 9.5e-7. That gate
+  resolves about 0.0127 semitone on this path (1e-4 × 127): +0.02 semitone
+  on the large values fails it, +0.01 passes (Graph Reviewer's mutations).
+  `tun_octave_then_kbm` now covers `.tun` + kbm at the raw gate's resolution.
+- `scl_reference_frequency`'s reference note is carried by `converted`,
+  where it is added to every note: +2e-4 on `reference_midi_note` fails
+  `converted`.
+
 - Two authored inputs were fixed, because upstream would either read past
   the end of the scale vector (a kbm mapping degrees 9–11 onto a 7-degree
   scale) or produce −∞ (a blank Scala ratio line reads as `logf(0)`). These
   are invalid inputs, not narrowed coverage. The blank line is still
-  exercised, as the description line.
+  exercised, as the description line. The −∞ itself is upstream's
+  deterministic behaviour (`ratioToMidiTranspose(0)` is `logf(0)`), which
+  the parity metrics cannot gate. A port unit test pins it
+  (`tuning::tests::blank_scala_degree_is_negative_infinity`).
+- `tun_octave_then_kbm`: max abs error 7.6e-6 on raw `converted` and
+  `roundtrip`, residual −155.9 dB; `reference_midi_note` bit-identical.

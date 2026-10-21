@@ -1,5 +1,5 @@
 {
-  "description": "Tuning (common/tuning.cpp) loaded from authored .scl/.kbm/.tun files; convertMidiNote for MIDI 0-127 (raw and as SynthVoiceHandler's note * 1/127) and a stateToJson/jsonToState round trip. Ports: port/crates/engine. skip_raw: raw outputs not captured where fast-math rounding of a cancelling or +-700-semitone value exceeds the absolute gate (LEDGER, M7 PR 1).",
+  "description": "Tuning (common/tuning.cpp) loaded from authored .scl/.kbm/.tun files; convertMidiNote for MIDI 0-127 (raw and as SynthVoiceHandler's note * 1/127) and a stateToJson/jsonToState round trip. Ports: port/crates/engine. skip_raw: raw outputs not captured where the fast-math reference's own rounding of a cancelling or +-697-semitone value exceeds the absolute gate; those raw comparisons are parked in modules/engine/pending/tuning.json pending the owner's noisy-reference decision (SAS-35). tun_octave_then_kbm keeps an active raw .tun + .kbm case within +-256 semitones (LEDGER, M7 PR 2).",
   "module": "tuning",
   "cases": {
     "default": {
@@ -471,6 +471,61 @@
         ],
         "skip_raw": [
           "reference_midi_note"
+        ]
+      }
+    },
+    "tun_octave_then_kbm": {
+      "params": {
+        "files": [
+          {
+            "name": "corpus_octave.tun",
+            "lines": [
+              "; corpus AnaMark tuning, one octave period",
+              "[Tuning]",
+              "basefreq = 8.1758",
+              "note 0 = -25.500",
+              "note 1 = 104.250",
+              "note 2 = 183.000",
+              "note 3 = 312.750",
+              "note 4 = 391.500",
+              "note 5 = 521.250",
+              "note 6 = 600.000",
+              "note 7 = 678.750",
+              "note 8 = 808.500",
+              "note 9 = 887.250",
+              "note 10 = 1017.000",
+              "note 11 = 1095.750",
+              "note 12 = 1174.500",
+              "[Exact Tuning]",
+              "note 12 = 1203.5"
+            ]
+          },
+          {
+            "name": "corpus_map.kbm",
+            "lines": [
+              "! corpus keyboard map",
+              "12",
+              "0",
+              "127",
+              "62",
+              "69",
+              "432.0",
+              "12",
+              "! mapping",
+              "0",
+              "x",
+              "2",
+              "3",
+              "x",
+              "5",
+              "6",
+              "7",
+              "X",
+              "9",
+              "10",
+              "11"
+            ]
+          }
         ]
       }
     }

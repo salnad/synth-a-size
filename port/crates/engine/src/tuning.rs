@@ -812,4 +812,21 @@ mod tests {
         assert_eq!(Tuning::note_to_midi_key("a#-1"), -2);
         assert_eq!(Tuning::note_to_midi_key("h4"), -1);
     }
+
+    /// A blank Scala degree line reads as ratio 0, and upstream's
+    /// `ratioToMidiTranspose(0)` is `logf(0)`: a −∞ degree. The parity
+    /// metrics cannot gate infinities, so the case lives here.
+    #[test]
+    fn blank_scala_degree_is_negative_infinity() {
+        assert_eq!(read_ratio_to_transpose(""), f32::NEG_INFINITY);
+
+        let lines: Vec<String> = ["blank degree", "2", "", "2/1"]
+            .iter()
+            .map(|l| l.to_string())
+            .collect();
+        let mut tuning = Tuning::new();
+        tuning.load_scala_lines(&lines);
+        assert_eq!(tuning.convert_midi_note(61), f32::NEG_INFINITY);
+        assert_eq!(tuning.convert_midi_note(62), 72.0);
+    }
 }

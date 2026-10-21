@@ -1,0 +1,136 @@
+{
+  "description": "PARKED (not loaded: the corpus loaders read modules/<area>/*.json only). The raw outputs that the active engine/tuning cases tun_then_kbm and scl_reference_frequency skip (skip_raw), with the same inputs and every raw output captured. They fail only because the fast-math x86 reference is noisy against its own REF_FAST_MATH=OFF build, which the port matches: tun_then_kbm_raw converted/roundtrip 1.22e-4 at |697| semitones (2 ULP), scl_reference_frequency_raw reference_midi_note -7.63e-6 against exactly 0. Parked pending the owner's noisy-reference decision (SAS-35; LEDGER 'M7 PR 2'). To re-enable, move the cases into modules/engine/tuning.json, write their hashes and apply the decided comparison; tests/tuning.rs picks them up by module name.",
+  "module": "tuning",
+  "cases": {
+    "tun_then_kbm_raw": {
+      "params": {
+        "files": [
+          {
+            "name": "corpus_tuning.tun",
+            "lines": [
+              "; corpus AnaMark tuning",
+              "[Info]",
+              "Name = corpus",
+              "[Tuning]",
+              "basefreq = 8.1758",
+              "note 0 = -20.000",
+              "note 3 = 290.500",
+              "note 6 = 601.000",
+              "note 9 = 911.500",
+              "note 12 = 1180.000",
+              "note 15 = 1490.500",
+              "note 18 = 1801.000",
+              "note 21 = 2111.500",
+              "note 24 = 2380.000",
+              "note 27 = 2690.500",
+              "note 30 = 3001.000",
+              "note 33 = 3311.500",
+              "note 36 = 3580.000",
+              "note 39 = 3890.500",
+              "note 42 = 4201.000",
+              "note 45 = 4511.500",
+              "note 48 = 4780.000",
+              "note 51 = 5090.500",
+              "note 54 = 5401.000",
+              "note 57 = 5711.500",
+              "note 60 = 5980.000",
+              "note 63 = 6290.500",
+              "note 66 = 6601.000",
+              "note 69 = 6911.500",
+              "note 72 = 7180.000",
+              "note 75 = 7490.500",
+              "note 78 = 7801.000",
+              "note 81 = 8111.500",
+              "note 84 = 8380.000",
+              "note 87 = 8690.500",
+              "note 90 = 9001.000",
+              "note 93 = 9311.500",
+              "note 96 = 9580.000",
+              "note 99 = 9890.500",
+              "note 102 = 10201.000",
+              "note 105 = 10511.500",
+              "note 108 = 10780.000",
+              "note 111 = 11090.500",
+              "note 114 = 11401.000",
+              "note 117 = 11711.500",
+              "note 120 = 11980.000",
+              "note 123 = 12290.500",
+              "note 126 = 12601.000",
+              "[Exact Tuning]",
+              "  BaseFreq= 8.5",
+              "note  5 = 512.25",
+              "Note 64=6400.5",
+              "note 200 = 1",
+              "note 120 = 12012.0",
+              "[Other]",
+              "note 1 = 99999"
+            ]
+          },
+          {
+            "name": "corpus_map.kbm",
+            "lines": [
+              "! corpus keyboard map",
+              "12",
+              "0",
+              "127",
+              "62",
+              "69",
+              "432.0",
+              "12",
+              "! mapping",
+              "0",
+              "x",
+              "2",
+              "3",
+              "x",
+              "5",
+              "6",
+              "7",
+              "X",
+              "9",
+              "10",
+              "11"
+            ]
+          }
+        ]
+      }
+    },
+    "scl_reference_frequency_raw": {
+      "params": {
+        "files": [
+          {
+            "name": "corpus_19.scl",
+            "lines": [
+              "! 19 equal divisions",
+              "corpus 19-edo",
+              "19",
+              "63.157895",
+              "126.315789",
+              "189.473684",
+              "252.631579",
+              "315.789474",
+              "378.947368",
+              "442.105263",
+              "505.263158",
+              "568.421053",
+              "631.578947",
+              "694.736842",
+              "757.894737",
+              "821.052632",
+              "884.210526",
+              "947.368421",
+              "1010.526316",
+              "1073.684211",
+              "1136.842105",
+              "1200.000000"
+            ]
+          }
+        ],
+        "reference_note_frequency": [
+          69,
+          440.0
+        ]
+      }
+    }
+  }
+}
