@@ -2401,6 +2401,18 @@ is optional (manual dispatch).
     the macOS no-fast-math tree, and the arm64 parity tests compare against
     it exactly. Cross-target justification is to be agreed with Parity
     Reviewer.
+- Owner decision (Salil, 2026-10-21, option (a)):
+  `wavetable/render/audio_fade_3_phase_0` is parked on the macOS arm64
+  reference only. Its `phase_coefficients` is 1 ulp off the macOS
+  no-fast-math capture in 6,190 of 526,850 values: Apple clang merges the
+  paired `cosf`/`sinf` into `__sincosf_stret` (A11 in
+  `decisions/reference-arm.md`). The fix is Wavetable Creator's #52. Inputs
+  and tolerances are unchanged, and x86 keeps the case active. Mechanism:
+  `migration/corpus/parked_arm64.json` lists it, and the macOS job sets
+  `SAS_PARITY_PARKED` to that file. `sas_parity::all_case_ids()` then omits
+  listed ids (it prints each one); no other job sets the variable.
+  `SAS_PARITY_FAILURES` in the macOS job is now an absolute path, so
+  failure dumps upload.
 - `migration/AGENTS.md`: every module PR adds its own macOS arm64 hash
   entries from its `ref-arm64-macos-15` artifact.
 - A10 (`std::complex<float>` division) recorded in

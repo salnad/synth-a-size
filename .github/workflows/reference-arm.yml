@@ -115,7 +115,10 @@ jobs:
           SAS_PARITY_CAPTURES: build/platform/pinned
           SAS_PARITY_CAPTURES_NOFASTMATH: build/platform/proxy
           SAS_PARITY_NO_BUILD: "1"
-          SAS_PARITY_FAILURES: build/parity-failures
+          # Tests run from their crate directory: absolute paths.
+          SAS_PARITY_FAILURES: ${{ github.workspace }}/build/parity-failures
+          # Cases parked on the macOS reference only (x86 keeps them active).
+          SAS_PARITY_PARKED: ${{ github.workspace }}/migration/corpus/parked_arm64.json
         run: cargo test --workspace --locked --no-fail-fast --manifest-path port/Cargo.toml
       - name: Hashes match the committed macOS arm64 identity
         if: ${{ !cancelled() }}

@@ -96,11 +96,41 @@ pub fn parity_report<O: ParityOutput + ?Sized>(id: &str, output: &O) -> Report {
     }
 }
 
-/// Every case id in the corpus (module cases, then renders).
+/// Every case id in the corpus (module cases, then renders), minus the cases
+/// parked on this reference (see [`parked_case_ids`]).
 pub fn all_case_ids() -> Vec<String> {
     let modules = cases::load_module_cases().unwrap_or_else(|e| panic!("sas-parity: {e}"));
     let renders = cases::load_render_cases().unwrap_or_else(|e| panic!("sas-parity: {e}"));
-    modules.into_iter().chain(renders).map(|c| c.id).collect()
+    let parked = parked_case_ids();
+    modules
+        .into_iter()
+        .chain(renders)
+        .map(|c| c.id)
+        .filter(|id| {
+            let skip = parked.contains(id);
+            if skip {
+                eprintln!("sas-parity: {id} is parked on this reference (SAS_PARITY_PARKED)");
+            }
+            !skip
+        })
+        .collect()
+}
+
+/// Case ids parked on one reference only: the keys of `"cases"` in the JSON
+/// file named by `SAS_PARITY_PARKED`. Only the macOS arm64 job sets it
+/// (`migration/corpus/parked_arm64.json`); elsewhere every case runs.
+pub fn parked_case_ids() -> Vec<String> {
+    let Some(path) = std::env::var_os("SAS_PARITY_PARKED").filter(|v| !v.is_empty()) else {
+        return Vec::new();
+    };
+    let path = PathBuf::from(path);
+    let value =
+        cases::read_json(&path).unwrap_or_else(|e| panic!("sas-parity: SAS_PARITY_PARKED: {e}"));
+    let parked = value
+        .get("cases")
+        .and_then(Value::as_object)
+        .unwrap_or_else(|| panic!("sas-parity: {}: missing \"cases\" object", path.display()));
+    parked.keys().cloned().collect()
 }
 
 enum ParsedId {
