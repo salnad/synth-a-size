@@ -31,6 +31,7 @@ pub mod dc_filter;
 pub mod decimator;
 pub mod digital_svf;
 pub mod diode_filter;
+pub mod dirty_filter;
 pub mod fir_halfband_decimator;
 pub mod iir_halfband_decimator;
 pub mod ladder_filter;
@@ -43,6 +44,7 @@ pub use dc_filter::DcFilter;
 pub use decimator::Decimator;
 pub use digital_svf::DigitalSvf;
 pub use diode_filter::DiodeFilter;
+pub use dirty_filter::DirtyFilter;
 pub use fir_halfband_decimator::FirHalfbandDecimator;
 pub use iir_halfband_decimator::IirHalfbandDecimator;
 pub use ladder_filter::LadderFilter;
@@ -69,6 +71,8 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/src/synthesis/filters/dc_filter.cpp",
     "vital/src/synthesis/filters/diode_filter.h",
     "vital/src/synthesis/filters/diode_filter.cpp",
+    "vital/src/synthesis/filters/dirty_filter.h",
+    "vital/src/synthesis/filters/dirty_filter.cpp",
     "vital/src/synthesis/filters/ladder_filter.h",
     "vital/src/synthesis/filters/ladder_filter.cpp",
     "vital/src/synthesis/filters/sallen_key_filter.h",

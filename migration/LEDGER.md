@@ -1968,3 +1968,39 @@ Core Filters (M5a), stacked on PR 5.
   shape as the parked case with the cutoff ramp starting at MIDI 110, which
   Filter Reviewer measured as well-conditioned. 1.3e-5 / −100.0 dB. 31
   cases in all.
+
+- `aarch64-semantics` (PR #40 rule): the crate forwards to `sas-simd`, its
+  only direct dependency with the feature today. It will also forward to
+  `sas-dsp-core/aarch64-semantics` once PR #40 adds that feature.
+
+## 2026-10-21: M5a PR 7, `DirtyFilter`
+
+Core Filters (M5a), stacked on PR 6.
+
+- `dirty_filter.rs` ports `dirty_filter.{h,cpp}` (model "dirty"): a
+  two-pole filter inside a `tanh` feedback loop with two `quickTanh`
+  one-pole stages, and a two-pole pre-stage for 24 dB and the other styles.
+  Kept from upstream: `process12` writes its feedback term as
+  `-resonance * (c - c²) + 1`, while the others write `resonance * (c² - c) + 1`
+  (different roundings). `processDual` computes `delta_drive_mult` but never
+  applies it, so it uses the previous block's `drive_mult_` (the new value
+  only on lanes reset this block). The parity test caught a first version
+  that applied the delta: `dual_notch_band_blend_sweep` differed from the
+  no-fast-math reference by 3.1e-4.
+- `create_filter(Dirty)` builds it. With this, every core model is ported.
+- New case file `filters/dirty`, 33 cases under `module_defaults` (no
+  tolerance changes), for every style 0–4: resonant cutoff sweeps MIDI 0–130
+  (0.8, 6 dB), full-range MIDI 0–140 sweeps without resonance, blend
+  −0.2–2.2, resonance −0.1–1.1 and drive −4–40 dB. Also resonant
+  full-range MIDI 0–140 sweeps for notch/pass swap, dual notch/band and
+  band/peak/notch, style steps 0→9, per-lane retriggers, 4× oversampling
+  (resonance 0.8), 96 kHz and block size 1.
+- Parity, x86_64: 33/33 pass. Worst max_abs_error 9.4e-5 and worst residual
+  −90.2 dB, both `dual_notch_band_cutoff_sweep`.
+- Parked: `migration/corpus/modules/filters/pending/dirty_full_range.json`
+  (3 cases). These are the resonant full-range MIDI 0–140 sweeps for 12 and
+  24 dB, at max_abs 1.38e-4 and 1.27e-4, and resonance 0.95 at 4×, at
+  max_abs 1.11e-4. Every residual passes (≤ −85.4 dB). The port is
+  bit-identical to the no-fast-math reference on `k12_cutoff_sweep`, the
+  one failing case checked through the Rust test. Same open question as
+  the crossover.
