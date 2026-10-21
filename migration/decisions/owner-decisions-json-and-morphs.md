@@ -122,7 +122,10 @@ phases taken from `arg(conj(from)·to)` of noise-level FFT bins.
   x86 **or** on macOS arm64. Its allowlist line declares those targets
   (`x86`, `macos`, or both), and each target's CI proves its own:
   `run_corpus.py compare <official> <nofastmath> --justify-nofastmath` in
-  `ci.yml` (x86) and in `reference-arm.yml` (macOS).
+  `ci.yml` (x86, gating), and in the advisory `reference-arm.yml` PR job and
+  the nightly `reference-arm-main.yml` suite (macOS). Under the Mac CI policy
+  a `macos` declaration needs the PR job's `justified on macos` result at the
+  PR head as evidence, which the reviewer checks before merge.
   - The step works out its target from the official tree's build identity:
     x86_64, or aarch64 built by Apple clang. Any other build, such as the
     aarch64 Linux proxy, is an error.

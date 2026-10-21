@@ -24,11 +24,18 @@ Every line that starts with a list marker must be exactly:
 
 `<targets>` lists the targets whose official reference fails the case's
 normal limits against that target's no-fast-math build: `x86`, `macos`, or
-`x86, macos`. A case qualifies if it fails on at least one target. Each
-target's CI gates the cases that declare it (`compare --justify-nofastmath`
-in `ci.yml` for x86 and in `reference-arm.yml` for macOS). A case declared
-for one target only is still compared exactly against the no-fast-math build
-on both.
+`x86, macos`. A case qualifies if it fails on at least one target.
+`compare --justify-nofastmath` proves a declaration on its own target.
+- **x86:** `ci.yml` runs it, and it gates the merge.
+- **macOS:** macOS CI is advisory (Mac CI policy, `decisions/reference-arm.md`).
+  The `Reference ARM (PR, advisory)` job runs the justification and writes its result to
+  the step summary. A `macos` declaration needs that run, at the PR head, to
+  show `justified on macos`; the reviewer cites it before merge. The nightly
+  full suite on main (`reference-arm-main.yml`) re-checks every `macos`
+  declaration.
+
+A case declared for one target only is still compared exactly against the
+no-fast-math build on both.
 
 Ids are exact, with no globs. Any other text is prose. Both resolvers
 (`run_corpus.py` and sas-parity) reject the following:
@@ -78,29 +85,36 @@ follows the official build (A11 in `../reference-arm.md`).
    - A case declared `x86` must print `justified on x86`. If it prints
      `NOT justified on x86`, the x86 official reference meets the limits:
      drop `x86` from its targets.
-   - A case declared `macos` only prints `not gated on x86`. Its macOS
-     justification comes from the `Reference ARM` workflow's macOS 15 job on
-     your PR (step 5), which runs the same check on the macOS trees.
+   - A case declared `macos` only prints `not gated on x86`. Its evidence is
+     the `Reference ARM (PR, advisory)` job on your PR. That job is advisory, but for a
+     `macos` declaration its step summary must show `justified on macos` at
+     your PR head, and the reviewer checks it before merge. If the job didn't
+     run the justification, ask the coordinator to dispatch it at the PR head
+     (`gh workflow run reference-arm.yml --ref <pr-branch>`; this needs push
+     rights, which agent tokens lack). It is rarely needed: the job always
+     runs it when the PR edits a `macos` line or the corpus.
    - If neither target fails, the case stays on the official reference, and
      a mismatch is a port bug.
 
-5. **Pin hashes** for both builds on both targets. x86 comes from your
-   local trees, or from CI's `reference-renders` and
-   `parity-captures-nofastmath` artifacts. macOS comes from the macOS 15
-   job's `ref-arm64-macos-15` artifact on your PR:
+5. **Pin hashes** for both builds.
+   - **x86 (required):** write them from your local trees, or from CI's
+     `reference-renders` and `parity-captures-nofastmath` artifacts.
+   - **macOS (expected, not gating):** the `Reference ARM (PR, advisory)` job writes
+     the missing entries, new keys only, as its `macos-hashes` artifact.
+     Commit them with `macos_hashes.sh`. A missing macOS hash only warns
+     on a PR, but the nightly full suite on main treats it as an error.
 
    ```bash
    python3 migration/scripts/run_corpus.py hashes build/parity --write
    python3 migration/scripts/run_corpus.py hashes build/proxy --write --reference nofastmath
-   gh run download <run-id> -n ref-arm64-macos-15 -D build/arm
-   python3 migration/scripts/run_corpus.py hashes build/arm/build/platform/pinned --write
-   python3 migration/scripts/run_corpus.py hashes build/arm/build/platform/proxy --write --reference nofastmath
+   migration/scripts/macos_hashes.sh <Reference ARM (PR, advisory) run id>
    ```
 
 6. **Make the port test exact.** Keep `assert_parity!`/`assert_artifact!`
    for the case; sas-parity compares a `nofastmath` case bit for bit
-   against the no-fast-math captures, on x86 locally and in `ci.yml`, and on
-   macOS arm64 in the macOS 15 job. Run it locally with
+   against the no-fast-math captures, on x86 locally and in `ci.yml` (gating),
+   and on macOS arm64 in the advisory `Reference ARM (PR, advisory)` job and the nightly
+   full suite. Run it locally with
    `SAS_PARITY_CAPTURES=build/parity SAS_PARITY_CAPTURES_NOFASTMATH=build/proxy
    cargo test --manifest-path port/Cargo.toml -p <crate>`. A port that is
    not bit-exact on either target is a port bug; do not add tolerances.
