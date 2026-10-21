@@ -63,7 +63,10 @@ pub struct RouterHooks {
     pub mono_router: Option<Weak<Processor>>,
     /// `getPolyRouter()` returns this router.
     pub poly_router: Option<Weak<Processor>>,
-    /// `addProcessor`/`removeProcessor` are forwarded to this router.
+    /// `addProcessor`, `addIdleProcessor` and `removeProcessor` are
+    /// forwarded to this router, as `VoiceHandler` forwards them to its voice
+    /// router. Before forwarding an add or idle add, the processor's sample
+    /// rate is set to this router's (`processor->setSampleRate(getSampleRate())`).
     pub forward_add_remove: Option<Weak<Processor>>,
 }
 
@@ -255,13 +258,17 @@ impl Processor {
     /// `addProcessor(processor)`: takes `processor` into this router's
     /// order (forwarded if a hook says so).
     pub fn add_processor(&self, processor: &ProcessorRef) {
-        if let Some(target) = self.rs().hooks.borrow().forward_add_remove.clone() {
-            if let Some(target) = target.upgrade() {
-                target.add_processor(processor);
-                return;
-            }
+        if let Some(target) = self.forward_target() {
+            processor.set_sample_rate(self.sample_rate());
+            target.add_processor(processor);
+            return;
         }
         self.add_processor_real_time(processor);
+    }
+
+    fn forward_target(&self) -> Option<ProcessorRef> {
+        let target = self.rs().hooks.borrow().forward_add_remove.clone();
+        target.and_then(|target| target.upgrade())
     }
 
     /// `addProcessorRealTime(processor)`.
@@ -292,8 +299,13 @@ impl Processor {
     }
 
     /// `addIdleProcessor(processor)`: owned (and oversampled) by this router
-    /// but not run by it.
+    /// but not run by it (forwarded if a hook says so).
     pub fn add_idle_processor(&self, processor: &ProcessorRef) {
+        if let Some(target) = self.forward_target() {
+            processor.set_sample_rate(self.sample_rate());
+            target.add_idle_processor(processor);
+            return;
+        }
         processor.set_router(Some(&self.this_ref()));
         self.rs()
             .idle_processors
@@ -303,11 +315,9 @@ impl Processor {
 
     /// `removeProcessor(processor)`.
     pub fn remove_processor(&self, processor: &ProcessorRef) {
-        if let Some(target) = self.rs().hooks.borrow().forward_add_remove.clone() {
-            if let Some(target) = target.upgrade() {
-                target.remove_processor(processor);
-                return;
-            }
+        if let Some(target) = self.forward_target() {
+            target.remove_processor(processor);
+            return;
         }
 
         for i in 0..processor.num_inputs() {

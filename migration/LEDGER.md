@@ -1104,3 +1104,35 @@ crates already did. The `simd/poly_function` mono cases now run through
 and `mono_log2` are bit-identical. `mono_power_scale` (1.0e-6) and
 `mono_tanh` (1.8e-7) differ from the fast-math reference by the same
 amounts as before.
+
+---
+
+## 2026-10-21: `RouterHooks` forwards idle adds and sets the sample rate (Voice Engine request)
+
+**Changed**
+
+- `port/crates/dsp-core/src/router.rs`: when `RouterHooks::forward_add_remove`
+  is set (only `VoiceHandler` uses it), the router now does what upstream's
+  `VoiceHandler` overrides do (`voice_handler.cpp:788-800`):
+  - `add_idle_processor` is forwarded as well as `add_processor` and
+    `remove_processor`;
+  - `add_processor` and `add_idle_processor` first call
+    `processor.set_sample_rate(self.sample_rate())`.
+
+  This fixes `SynthModule::create_poly_mod_control` on a voice handler: its
+  `add_idle_processor(&control_switch)` now lands in the voice router, so
+  the switch is polyphonic.
+- `tests/graph.rs`: `voice_handler_hooks_forward_to_the_voice_router`
+  mirrors the overrides on a `SynthModule` handler. It checks the owner,
+  sample rate and `isPolyphonic` of a forwarded add, a forwarded idle add
+  and a `create_poly_mod_control` switch, then the removal, and that a
+  router without the hook keeps its idle processors. The test fails on
+  the previous code.
+
+**Reference capture: none.** No single-module capture can tell the
+difference. `ref-module` calls `setSampleRate`/`setOversampleAmount` after
+building the module, and `VoiceHandler` propagates both to the voice
+router, so the add-time sample rate is overwritten before the first block.
+Where an idle processor lives changes only `isPolyphonic` and ownership,
+which no output exposes. Voice Engine's `SynthVoiceHandler` captures will
+cover it end to end.

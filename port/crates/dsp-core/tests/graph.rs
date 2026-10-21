@@ -9,7 +9,8 @@ use sas_dsp_core::operators::{self, Add, Negate, VariableAdd};
 use sas_dsp_core::synth_module::{set_parameter_lookup, ParameterDetails, ValueScale};
 use sas_dsp_core::utilities::value_switch::ValueSwitch;
 use sas_dsp_core::{
-    Feedback, Processor, ProcessorImpl, ProcessorRef, ProcessorRouter, SynthModule, Value,
+    Feedback, Processor, ProcessorImpl, ProcessorRef, ProcessorRouter, RouterHooks, SynthModule,
+    Value,
 };
 use sas_simd::PolyFloat;
 
@@ -263,4 +264,59 @@ fn synth_module_controls_and_switches() {
     module.enable(false);
     assert!(!module.enabled());
     let _ = operators::cr::Add::create();
+}
+
+/// `VoiceHandler`'s router overrides (`voice_handler.cpp`): `addProcessor`
+/// and `addIdleProcessor` set the processor's sample rate to the handler's
+/// and go to the voice router, `removeProcessor` goes there too, and
+/// `isPolyphonic` is true exactly for the voice router.
+#[test]
+fn voice_handler_hooks_forward_to_the_voice_router() {
+    let handler = SynthModule::create(0, 0, false);
+    let voice_router = ProcessorRouter::create(0, 0, false);
+    voice_router.set_router(Some(&handler));
+    handler.set_router_hooks(RouterHooks {
+        polyphonic_child: Some(Rc::downgrade(&voice_router)),
+        mono_router: Some(Rc::downgrade(&handler)),
+        poly_router: Some(Rc::downgrade(&voice_router)),
+        forward_add_remove: Some(Rc::downgrade(&voice_router)),
+    });
+    handler.set_sample_rate(96_000);
+    assert_eq!(voice_router.sample_rate(), 44_100);
+
+    let in_voice = |p: &ProcessorRef| p.router().is_some_and(|r| Rc::ptr_eq(&r, &voice_router));
+
+    let processor = accumulate();
+    handler.add_processor(&processor);
+    assert!(in_voice(&processor));
+    assert_eq!(processor.sample_rate(), 96_000);
+    assert!(processor.is_polyphonic());
+
+    let idle = Value::create_control_rate(0.0);
+    handler.add_idle_processor(&idle);
+    assert!(in_voice(&idle));
+    assert_eq!(idle.sample_rate(), 96_000);
+    assert!(idle.is_polyphonic());
+
+    handler.remove_processor(&processor);
+    assert!(processor.router().is_none());
+
+    // SynthModule::createPolyModControl adds its modulation switch with
+    // addIdleProcessor, so on a voice handler it is a polyphonic voice
+    // processor.
+    handler.create_poly_mod_control("voice_handler_level", false, false, None, None);
+    let switch = handler
+        .get_poly_modulation_switch("voice_handler_level")
+        .unwrap();
+    assert!(in_voice(&switch));
+    assert!(switch.is_polyphonic());
+
+    // Without the hook the same calls stay on the router, which is
+    // monophonic here.
+    let plain = SynthModule::create(0, 0, false);
+    let idle = Value::create_control_rate(0.0);
+    plain.add_idle_processor(&idle);
+    assert!(idle.router().is_some_and(|r| Rc::ptr_eq(&r, &plain)));
+    assert_eq!(idle.sample_rate(), 44_100);
+    assert!(!idle.is_polyphonic());
 }
