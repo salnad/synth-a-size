@@ -1723,6 +1723,9 @@ Margin ≥ 3.4× and ≥ 22.5 dB. The port is bit-identical to the
 
 - Switch the test's parameter details to `sas-preset` once it merges.
 - macOS arm64 hashes after PR #2.
+
+---
+
 ## 2026-10-21: wavetable odd lanes checked; libc++ complex division column (A10)
 
 **Odd lanes** (Chain Reviewer, #8):
