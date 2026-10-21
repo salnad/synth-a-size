@@ -1,7 +1,21 @@
+// Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Sound engine: voice handling, MIDI/MPE, tuning, full patch graph, offline render.
 //!
-//! Stub crate: nothing is ported yet. Porting starts in milestone M7
-//! (see `migration/PLAN.md`); follow `migration/AGENTS.md`.
+//! Milestone M7 (see `migration/PLAN.md`). Ported so far:
+//!
+//! - [`voice_handler`]: `vital::VoiceHandler`, `Voice` and `NoteHandler`
+//!   (`framework/voice_handler.*`, `note_handler.h`): allocation, voice
+//!   priority and override (stealing), legato, sustain and sostenuto, MPE
+//!   per-channel pitch bend, pressure and slide, and the per-voice-pair graph
+//!   copies;
+//! - [`tuning`]: the `Tuning` table (`common/tuning.*`) the voice handler
+//!   reads; tuning files follow in the next PR.
+//!
+//! The upstream per-ISA sites (`migration/decisions/reference-arm.md`) are
+//! reached only through `sas-simd`; the `aarch64-semantics` feature forwards
+//! to it.
 
 pub use sas_dsp_core;
 pub use sas_effects;
@@ -9,16 +23,27 @@ pub use sas_filters;
 pub use sas_modulation;
 pub use sas_oscillators;
 
+mod slot_queue;
+pub mod tuning;
+pub mod voice_handler;
+
+pub use tuning::Tuning;
+pub use voice_handler::{NoteHandler, VoiceHandler};
+
 /// Milestone in `migration/PLAN.md` that ports this crate.
 pub const MILESTONE: &str = "M7";
 
 /// Upstream files (relative to the repository root) this crate ports.
 pub const UPSTREAM_SOURCES: &[&str] = &[
+    "vital/src/synthesis/framework/voice_handler.h",
+    "vital/src/synthesis/framework/voice_handler.cpp",
+    "vital/src/synthesis/framework/note_handler.h",
+    "vital/src/synthesis/framework/circular_queue.h",
+    "vital/src/common/tuning.h",
+    "vital/src/common/tuning.cpp",
     "vital/src/synthesis/synth_engine/",
     "vital/src/synthesis/modules/synth_voice_handler.cpp",
-    "vital/src/synthesis/framework/voice_handler.cpp",
     "vital/src/common/midi_manager.cpp",
-    "vital/src/common/tuning.cpp",
 ];
 
 #[cfg(test)]

@@ -1,0 +1,2898 @@
+{
+  "description": "VoiceHandler (framework/voice_handler.cpp) driven by authored note, pedal and MPE scripts; per-voice trigger capture, block state and accumulated/last-voice outputs. Ports: port/crates/engine.",
+  "module": "voice_handler",
+  "cases": {
+    "poly_round_robin": {
+      "params": {
+        "polyphony": 4,
+        "events": [
+          {
+            "sample": 100,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.3,
+            "channel": 0
+          },
+          {
+            "sample": 1700,
+            "type": "note_off",
+            "note": 60,
+            "lift": 0.2,
+            "channel": 0
+          },
+          {
+            "sample": 607,
+            "type": "note_on",
+            "note": 64,
+            "velocity": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 2403,
+            "type": "note_off",
+            "note": 64,
+            "lift": 0.30000000000000004,
+            "channel": 0
+          },
+          {
+            "sample": 1114,
+            "type": "note_on",
+            "note": 67,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 3106,
+            "type": "note_off",
+            "note": 67,
+            "lift": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 1621,
+            "type": "note_on",
+            "note": 72,
+            "velocity": 0.6000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 3809,
+            "type": "note_off",
+            "note": 72,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 2128,
+            "type": "note_on",
+            "note": 62,
+            "velocity": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 4512,
+            "type": "note_off",
+            "note": 62,
+            "lift": 0.6000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 2635,
+            "type": "note_on",
+            "note": 65,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 5215,
+            "type": "note_off",
+            "note": 65,
+            "lift": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 6500,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 1.0,
+            "channel": 0
+          },
+          {
+            "sample": 6510,
+            "type": "note_on",
+            "note": 52,
+            "velocity": 0.9,
+            "channel": 0
+          },
+          {
+            "sample": 7300,
+            "type": "note_off",
+            "note": 48,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 7400,
+            "type": "note_off",
+            "note": 52,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ],
+        "num_samples": 8192
+      }
+    },
+    "kill_priority_newest": {
+      "params": {
+        "polyphony": 3,
+        "voice_priority": 0,
+        "voice_override": 0,
+        "events": [
+          {
+            "sample": 50,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 450,
+            "type": "note_on",
+            "note": 63,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 850,
+            "type": "note_on",
+            "note": 67,
+            "velocity": 0.6000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1250,
+            "type": "note_on",
+            "note": 70,
+            "velocity": 0.7000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1650,
+            "type": "note_on",
+            "note": 74,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 2050,
+            "type": "note_on",
+            "note": 58,
+            "velocity": 0.9,
+            "channel": 0
+          },
+          {
+            "sample": 3000,
+            "type": "note_off",
+            "note": 67,
+            "lift": 0.0,
+            "channel": 0
+          },
+          {
+            "sample": 3600,
+            "type": "note_off",
+            "note": 60,
+            "lift": 0.1,
+            "channel": 0
+          },
+          {
+            "sample": 4200,
+            "type": "note_off",
+            "note": 74,
+            "lift": 0.2,
+            "channel": 0
+          },
+          {
+            "sample": 4800,
+            "type": "note_off",
+            "note": 63,
+            "lift": 0.30000000000000004,
+            "channel": 0
+          },
+          {
+            "sample": 5400,
+            "type": "note_off",
+            "note": 58,
+            "lift": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 6000,
+            "type": "note_off",
+            "note": 70,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 7000,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 7600,
+            "type": "note_off",
+            "note": 55,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ],
+        "num_samples": 8192
+      }
+    },
+    "steal_priority_newest": {
+      "params": {
+        "polyphony": 3,
+        "voice_priority": 0,
+        "voice_override": 1,
+        "events": [
+          {
+            "sample": 50,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 450,
+            "type": "note_on",
+            "note": 63,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 850,
+            "type": "note_on",
+            "note": 67,
+            "velocity": 0.6000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1250,
+            "type": "note_on",
+            "note": 70,
+            "velocity": 0.7000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1650,
+            "type": "note_on",
+            "note": 74,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 2050,
+            "type": "note_on",
+            "note": 58,
+            "velocity": 0.9,
+            "channel": 0
+          },
+          {
+            "sample": 3000,
+            "type": "note_off",
+            "note": 67,
+            "lift": 0.0,
+            "channel": 0
+          },
+          {
+            "sample": 3600,
+            "type": "note_off",
+            "note": 60,
+            "lift": 0.1,
+            "channel": 0
+          },
+          {
+            "sample": 4200,
+            "type": "note_off",
+            "note": 74,
+            "lift": 0.2,
+            "channel": 0
+          },
+          {
+            "sample": 4800,
+            "type": "note_off",
+            "note": 63,
+            "lift": 0.30000000000000004,
+            "channel": 0
+          },
+          {
+            "sample": 5400,
+            "type": "note_off",
+            "note": 58,
+            "lift": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 6000,
+            "type": "note_off",
+            "note": 70,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 7000,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 7600,
+            "type": "note_off",
+            "note": 55,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ],
+        "num_samples": 8192
+      }
+    },
+    "kill_priority_oldest": {
+      "params": {
+        "polyphony": 3,
+        "voice_priority": 1,
+        "voice_override": 0,
+        "events": [
+          {
+            "sample": 50,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 450,
+            "type": "note_on",
+            "note": 63,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 850,
+            "type": "note_on",
+            "note": 67,
+            "velocity": 0.6000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1250,
+            "type": "note_on",
+            "note": 70,
+            "velocity": 0.7000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1650,
+            "type": "note_on",
+            "note": 74,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 2050,
+            "type": "note_on",
+            "note": 58,
+            "velocity": 0.9,
+            "channel": 0
+          },
+          {
+            "sample": 3000,
+            "type": "note_off",
+            "note": 67,
+            "lift": 0.0,
+            "channel": 0
+          },
+          {
+            "sample": 3600,
+            "type": "note_off",
+            "note": 60,
+            "lift": 0.1,
+            "channel": 0
+          },
+          {
+            "sample": 4200,
+            "type": "note_off",
+            "note": 74,
+            "lift": 0.2,
+            "channel": 0
+          },
+          {
+            "sample": 4800,
+            "type": "note_off",
+            "note": 63,
+            "lift": 0.30000000000000004,
+            "channel": 0
+          },
+          {
+            "sample": 5400,
+            "type": "note_off",
+            "note": 58,
+            "lift": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 6000,
+            "type": "note_off",
+            "note": 70,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 7000,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 7600,
+            "type": "note_off",
+            "note": 55,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ],
+        "num_samples": 8192
+      }
+    },
+    "steal_priority_oldest": {
+      "params": {
+        "polyphony": 3,
+        "voice_priority": 1,
+        "voice_override": 1,
+        "events": [
+          {
+            "sample": 50,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 450,
+            "type": "note_on",
+            "note": 63,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 850,
+            "type": "note_on",
+            "note": 67,
+            "velocity": 0.6000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1250,
+            "type": "note_on",
+            "note": 70,
+            "velocity": 0.7000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1650,
+            "type": "note_on",
+            "note": 74,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 2050,
+            "type": "note_on",
+            "note": 58,
+            "velocity": 0.9,
+            "channel": 0
+          },
+          {
+            "sample": 3000,
+            "type": "note_off",
+            "note": 67,
+            "lift": 0.0,
+            "channel": 0
+          },
+          {
+            "sample": 3600,
+            "type": "note_off",
+            "note": 60,
+            "lift": 0.1,
+            "channel": 0
+          },
+          {
+            "sample": 4200,
+            "type": "note_off",
+            "note": 74,
+            "lift": 0.2,
+            "channel": 0
+          },
+          {
+            "sample": 4800,
+            "type": "note_off",
+            "note": 63,
+            "lift": 0.30000000000000004,
+            "channel": 0
+          },
+          {
+            "sample": 5400,
+            "type": "note_off",
+            "note": 58,
+            "lift": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 6000,
+            "type": "note_off",
+            "note": 70,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 7000,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 7600,
+            "type": "note_off",
+            "note": 55,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ],
+        "num_samples": 8192
+      }
+    },
+    "kill_priority_highest": {
+      "params": {
+        "polyphony": 3,
+        "voice_priority": 2,
+        "voice_override": 0,
+        "events": [
+          {
+            "sample": 50,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 450,
+            "type": "note_on",
+            "note": 63,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 850,
+            "type": "note_on",
+            "note": 67,
+            "velocity": 0.6000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1250,
+            "type": "note_on",
+            "note": 70,
+            "velocity": 0.7000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1650,
+            "type": "note_on",
+            "note": 74,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 2050,
+            "type": "note_on",
+            "note": 58,
+            "velocity": 0.9,
+            "channel": 0
+          },
+          {
+            "sample": 3000,
+            "type": "note_off",
+            "note": 67,
+            "lift": 0.0,
+            "channel": 0
+          },
+          {
+            "sample": 3600,
+            "type": "note_off",
+            "note": 60,
+            "lift": 0.1,
+            "channel": 0
+          },
+          {
+            "sample": 4200,
+            "type": "note_off",
+            "note": 74,
+            "lift": 0.2,
+            "channel": 0
+          },
+          {
+            "sample": 4800,
+            "type": "note_off",
+            "note": 63,
+            "lift": 0.30000000000000004,
+            "channel": 0
+          },
+          {
+            "sample": 5400,
+            "type": "note_off",
+            "note": 58,
+            "lift": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 6000,
+            "type": "note_off",
+            "note": 70,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 7000,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 7600,
+            "type": "note_off",
+            "note": 55,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ],
+        "num_samples": 8192
+      }
+    },
+    "steal_priority_highest": {
+      "params": {
+        "polyphony": 3,
+        "voice_priority": 2,
+        "voice_override": 1,
+        "events": [
+          {
+            "sample": 50,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 450,
+            "type": "note_on",
+            "note": 63,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 850,
+            "type": "note_on",
+            "note": 67,
+            "velocity": 0.6000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1250,
+            "type": "note_on",
+            "note": 70,
+            "velocity": 0.7000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1650,
+            "type": "note_on",
+            "note": 74,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 2050,
+            "type": "note_on",
+            "note": 58,
+            "velocity": 0.9,
+            "channel": 0
+          },
+          {
+            "sample": 3000,
+            "type": "note_off",
+            "note": 67,
+            "lift": 0.0,
+            "channel": 0
+          },
+          {
+            "sample": 3600,
+            "type": "note_off",
+            "note": 60,
+            "lift": 0.1,
+            "channel": 0
+          },
+          {
+            "sample": 4200,
+            "type": "note_off",
+            "note": 74,
+            "lift": 0.2,
+            "channel": 0
+          },
+          {
+            "sample": 4800,
+            "type": "note_off",
+            "note": 63,
+            "lift": 0.30000000000000004,
+            "channel": 0
+          },
+          {
+            "sample": 5400,
+            "type": "note_off",
+            "note": 58,
+            "lift": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 6000,
+            "type": "note_off",
+            "note": 70,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 7000,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 7600,
+            "type": "note_off",
+            "note": 55,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ],
+        "num_samples": 8192
+      }
+    },
+    "kill_priority_lowest": {
+      "params": {
+        "polyphony": 3,
+        "voice_priority": 3,
+        "voice_override": 0,
+        "events": [
+          {
+            "sample": 50,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 450,
+            "type": "note_on",
+            "note": 63,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 850,
+            "type": "note_on",
+            "note": 67,
+            "velocity": 0.6000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1250,
+            "type": "note_on",
+            "note": 70,
+            "velocity": 0.7000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1650,
+            "type": "note_on",
+            "note": 74,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 2050,
+            "type": "note_on",
+            "note": 58,
+            "velocity": 0.9,
+            "channel": 0
+          },
+          {
+            "sample": 3000,
+            "type": "note_off",
+            "note": 67,
+            "lift": 0.0,
+            "channel": 0
+          },
+          {
+            "sample": 3600,
+            "type": "note_off",
+            "note": 60,
+            "lift": 0.1,
+            "channel": 0
+          },
+          {
+            "sample": 4200,
+            "type": "note_off",
+            "note": 74,
+            "lift": 0.2,
+            "channel": 0
+          },
+          {
+            "sample": 4800,
+            "type": "note_off",
+            "note": 63,
+            "lift": 0.30000000000000004,
+            "channel": 0
+          },
+          {
+            "sample": 5400,
+            "type": "note_off",
+            "note": 58,
+            "lift": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 6000,
+            "type": "note_off",
+            "note": 70,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 7000,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 7600,
+            "type": "note_off",
+            "note": 55,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ],
+        "num_samples": 8192
+      }
+    },
+    "steal_priority_lowest": {
+      "params": {
+        "polyphony": 3,
+        "voice_priority": 3,
+        "voice_override": 1,
+        "events": [
+          {
+            "sample": 50,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 450,
+            "type": "note_on",
+            "note": 63,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 850,
+            "type": "note_on",
+            "note": 67,
+            "velocity": 0.6000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1250,
+            "type": "note_on",
+            "note": 70,
+            "velocity": 0.7000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1650,
+            "type": "note_on",
+            "note": 74,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 2050,
+            "type": "note_on",
+            "note": 58,
+            "velocity": 0.9,
+            "channel": 0
+          },
+          {
+            "sample": 3000,
+            "type": "note_off",
+            "note": 67,
+            "lift": 0.0,
+            "channel": 0
+          },
+          {
+            "sample": 3600,
+            "type": "note_off",
+            "note": 60,
+            "lift": 0.1,
+            "channel": 0
+          },
+          {
+            "sample": 4200,
+            "type": "note_off",
+            "note": 74,
+            "lift": 0.2,
+            "channel": 0
+          },
+          {
+            "sample": 4800,
+            "type": "note_off",
+            "note": 63,
+            "lift": 0.30000000000000004,
+            "channel": 0
+          },
+          {
+            "sample": 5400,
+            "type": "note_off",
+            "note": 58,
+            "lift": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 6000,
+            "type": "note_off",
+            "note": 70,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 7000,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 7600,
+            "type": "note_off",
+            "note": 55,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ],
+        "num_samples": 8192
+      }
+    },
+    "kill_priority_round_robin": {
+      "params": {
+        "polyphony": 3,
+        "voice_priority": 4,
+        "voice_override": 0,
+        "events": [
+          {
+            "sample": 50,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 450,
+            "type": "note_on",
+            "note": 63,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 850,
+            "type": "note_on",
+            "note": 67,
+            "velocity": 0.6000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1250,
+            "type": "note_on",
+            "note": 70,
+            "velocity": 0.7000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1650,
+            "type": "note_on",
+            "note": 74,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 2050,
+            "type": "note_on",
+            "note": 58,
+            "velocity": 0.9,
+            "channel": 0
+          },
+          {
+            "sample": 3000,
+            "type": "note_off",
+            "note": 67,
+            "lift": 0.0,
+            "channel": 0
+          },
+          {
+            "sample": 3600,
+            "type": "note_off",
+            "note": 60,
+            "lift": 0.1,
+            "channel": 0
+          },
+          {
+            "sample": 4200,
+            "type": "note_off",
+            "note": 74,
+            "lift": 0.2,
+            "channel": 0
+          },
+          {
+            "sample": 4800,
+            "type": "note_off",
+            "note": 63,
+            "lift": 0.30000000000000004,
+            "channel": 0
+          },
+          {
+            "sample": 5400,
+            "type": "note_off",
+            "note": 58,
+            "lift": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 6000,
+            "type": "note_off",
+            "note": 70,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 7000,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 7600,
+            "type": "note_off",
+            "note": 55,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ],
+        "num_samples": 8192
+      }
+    },
+    "steal_priority_round_robin": {
+      "params": {
+        "polyphony": 3,
+        "voice_priority": 4,
+        "voice_override": 1,
+        "events": [
+          {
+            "sample": 50,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 450,
+            "type": "note_on",
+            "note": 63,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 850,
+            "type": "note_on",
+            "note": 67,
+            "velocity": 0.6000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1250,
+            "type": "note_on",
+            "note": 70,
+            "velocity": 0.7000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 1650,
+            "type": "note_on",
+            "note": 74,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 2050,
+            "type": "note_on",
+            "note": 58,
+            "velocity": 0.9,
+            "channel": 0
+          },
+          {
+            "sample": 3000,
+            "type": "note_off",
+            "note": 67,
+            "lift": 0.0,
+            "channel": 0
+          },
+          {
+            "sample": 3600,
+            "type": "note_off",
+            "note": 60,
+            "lift": 0.1,
+            "channel": 0
+          },
+          {
+            "sample": 4200,
+            "type": "note_off",
+            "note": 74,
+            "lift": 0.2,
+            "channel": 0
+          },
+          {
+            "sample": 4800,
+            "type": "note_off",
+            "note": 63,
+            "lift": 0.30000000000000004,
+            "channel": 0
+          },
+          {
+            "sample": 5400,
+            "type": "note_off",
+            "note": 58,
+            "lift": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 6000,
+            "type": "note_off",
+            "note": 70,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 7000,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 7600,
+            "type": "note_off",
+            "note": 55,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ],
+        "num_samples": 8192
+      }
+    },
+    "mono_legato": {
+      "params": {
+        "polyphony": 1,
+        "legato": true,
+        "voice_priority": 0,
+        "events": [
+          {
+            "sample": 100,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 1200,
+            "type": "note_off",
+            "note": 48,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 900,
+            "type": "note_on",
+            "note": 50,
+            "velocity": 0.55,
+            "channel": 0
+          },
+          {
+            "sample": 2000,
+            "type": "note_off",
+            "note": 50,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 1700,
+            "type": "note_on",
+            "note": 52,
+            "velocity": 0.6,
+            "channel": 0
+          },
+          {
+            "sample": 2800,
+            "type": "note_off",
+            "note": 52,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 2500,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.65,
+            "channel": 0
+          },
+          {
+            "sample": 3600,
+            "type": "note_off",
+            "note": 55,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 3300,
+            "type": "note_on",
+            "note": 53,
+            "velocity": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 4400,
+            "type": "note_off",
+            "note": 53,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 4100,
+            "type": "note_on",
+            "note": 52,
+            "velocity": 0.75,
+            "channel": 0
+          },
+          {
+            "sample": 5200,
+            "type": "note_off",
+            "note": 52,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 4900,
+            "type": "note_on",
+            "note": 50,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 6000,
+            "type": "note_off",
+            "note": 50,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 5700,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.8500000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 6800,
+            "type": "note_off",
+            "note": 48,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ],
+        "num_samples": 8192
+      }
+    },
+    "mono_retrigger": {
+      "params": {
+        "polyphony": 1,
+        "legato": false,
+        "voice_priority": 0,
+        "events": [
+          {
+            "sample": 100,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 1200,
+            "type": "note_off",
+            "note": 48,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 900,
+            "type": "note_on",
+            "note": 50,
+            "velocity": 0.55,
+            "channel": 0
+          },
+          {
+            "sample": 2000,
+            "type": "note_off",
+            "note": 50,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 1700,
+            "type": "note_on",
+            "note": 52,
+            "velocity": 0.6,
+            "channel": 0
+          },
+          {
+            "sample": 2800,
+            "type": "note_off",
+            "note": 52,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 2500,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.65,
+            "channel": 0
+          },
+          {
+            "sample": 3600,
+            "type": "note_off",
+            "note": 55,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 3300,
+            "type": "note_on",
+            "note": 53,
+            "velocity": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 4400,
+            "type": "note_off",
+            "note": 53,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 4100,
+            "type": "note_on",
+            "note": 52,
+            "velocity": 0.75,
+            "channel": 0
+          },
+          {
+            "sample": 5200,
+            "type": "note_off",
+            "note": 52,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 4900,
+            "type": "note_on",
+            "note": 50,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 6000,
+            "type": "note_off",
+            "note": 50,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 5700,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.8500000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 6800,
+            "type": "note_off",
+            "note": 48,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ],
+        "num_samples": 8192
+      }
+    },
+    "duo_legato_steal": {
+      "params": {
+        "polyphony": 2,
+        "legato": true,
+        "voice_override": 1,
+        "voice_priority": 0,
+        "events": [
+          {
+            "sample": 100,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 1200,
+            "type": "note_off",
+            "note": 48,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 900,
+            "type": "note_on",
+            "note": 50,
+            "velocity": 0.55,
+            "channel": 0
+          },
+          {
+            "sample": 2000,
+            "type": "note_off",
+            "note": 50,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 1700,
+            "type": "note_on",
+            "note": 52,
+            "velocity": 0.6,
+            "channel": 0
+          },
+          {
+            "sample": 2800,
+            "type": "note_off",
+            "note": 52,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 2500,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.65,
+            "channel": 0
+          },
+          {
+            "sample": 3600,
+            "type": "note_off",
+            "note": 55,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 3300,
+            "type": "note_on",
+            "note": 53,
+            "velocity": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 4400,
+            "type": "note_off",
+            "note": 53,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 4100,
+            "type": "note_on",
+            "note": 52,
+            "velocity": 0.75,
+            "channel": 0
+          },
+          {
+            "sample": 5200,
+            "type": "note_off",
+            "note": 52,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 4900,
+            "type": "note_on",
+            "note": 50,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 6000,
+            "type": "note_off",
+            "note": 50,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 5700,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.8500000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 6800,
+            "type": "note_off",
+            "note": 48,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ],
+        "num_samples": 8192
+      }
+    },
+    "sustain_sostenuto": {
+      "params": {
+        "polyphony": 6,
+        "events": [
+          {
+            "sample": 100,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 200,
+            "type": "note_on",
+            "note": 64,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 400,
+            "type": "sostenuto_on",
+            "channel": 0
+          },
+          {
+            "sample": 600,
+            "type": "note_on",
+            "note": 67,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 900,
+            "type": "note_off",
+            "note": 60,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 950,
+            "type": "note_off",
+            "note": 64,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 1000,
+            "type": "sustain_on",
+            "channel": 0
+          },
+          {
+            "sample": 1200,
+            "type": "note_off",
+            "note": 67,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 1500,
+            "type": "note_on",
+            "note": 72,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 1800,
+            "type": "note_off",
+            "note": 72,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 2600,
+            "type": "sustain_off",
+            "channel": 0
+          },
+          {
+            "sample": 3000,
+            "type": "note_on",
+            "note": 62,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 3500,
+            "type": "sostenuto_off",
+            "channel": 0
+          },
+          {
+            "sample": 3600,
+            "type": "sustain_on",
+            "channel": 0
+          },
+          {
+            "sample": 4000,
+            "type": "note_off",
+            "note": 62,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 4200,
+            "type": "note_on",
+            "note": 62,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 4400,
+            "type": "note_off",
+            "note": 62,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 5200,
+            "type": "sustain_off",
+            "channel": 0
+          },
+          {
+            "sample": 5300,
+            "type": "note_on",
+            "note": 65,
+            "velocity": 0.8,
+            "channel": 1
+          },
+          {
+            "sample": 5400,
+            "type": "sustain_on",
+            "channel": 1
+          },
+          {
+            "sample": 5500,
+            "type": "note_off",
+            "note": 65,
+            "lift": 0.5,
+            "channel": 1
+          },
+          {
+            "sample": 6000,
+            "type": "sostenuto_on",
+            "channel": 1
+          },
+          {
+            "sample": 6400,
+            "type": "sustain_off",
+            "channel": 1
+          },
+          {
+            "sample": 7000,
+            "type": "sostenuto_off",
+            "channel": 1
+          }
+        ],
+        "num_samples": 8192
+      }
+    },
+    "mpe_expression": {
+      "params": {
+        "polyphony": 8,
+        "events": [
+          {
+            "sample": 0,
+            "type": "pitch_wheel",
+            "channel": 1,
+            "value": -0.15
+          },
+          {
+            "sample": 5,
+            "type": "channel_aftertouch",
+            "channel": 1,
+            "value": 0.0
+          },
+          {
+            "sample": 6,
+            "type": "channel_slide",
+            "channel": 1,
+            "value": 0.9
+          },
+          {
+            "sample": 10,
+            "type": "note_on",
+            "note": 57,
+            "velocity": 0.6,
+            "channel": 1
+          },
+          {
+            "sample": 80,
+            "type": "pitch_wheel",
+            "channel": 2,
+            "value": -0.04999999999999999
+          },
+          {
+            "sample": 85,
+            "type": "channel_aftertouch",
+            "channel": 2,
+            "value": 0.2
+          },
+          {
+            "sample": 86,
+            "type": "channel_slide",
+            "channel": 2,
+            "value": 0.7
+          },
+          {
+            "sample": 90,
+            "type": "note_on",
+            "note": 62,
+            "velocity": 0.6,
+            "channel": 2
+          },
+          {
+            "sample": 160,
+            "type": "pitch_wheel",
+            "channel": 3,
+            "value": 0.05000000000000002
+          },
+          {
+            "sample": 165,
+            "type": "channel_aftertouch",
+            "channel": 3,
+            "value": 0.4
+          },
+          {
+            "sample": 166,
+            "type": "channel_slide",
+            "channel": 3,
+            "value": 0.5
+          },
+          {
+            "sample": 170,
+            "type": "note_on",
+            "note": 67,
+            "velocity": 0.6,
+            "channel": 3
+          },
+          {
+            "sample": 240,
+            "type": "pitch_wheel",
+            "channel": 4,
+            "value": 0.15000000000000005
+          },
+          {
+            "sample": 245,
+            "type": "channel_aftertouch",
+            "channel": 4,
+            "value": 0.6000000000000001
+          },
+          {
+            "sample": 246,
+            "type": "channel_slide",
+            "channel": 4,
+            "value": 0.29999999999999993
+          },
+          {
+            "sample": 250,
+            "type": "note_on",
+            "note": 72,
+            "velocity": 0.6,
+            "channel": 4
+          },
+          {
+            "sample": 600,
+            "type": "pitch_wheel",
+            "channel": 1,
+            "value": -1.0
+          },
+          {
+            "sample": 603,
+            "type": "channel_aftertouch",
+            "channel": 1,
+            "value": 0.0
+          },
+          {
+            "sample": 609,
+            "type": "channel_slide",
+            "channel": 1,
+            "value": 0.0
+          },
+          {
+            "sample": 620,
+            "type": "aftertouch",
+            "note": 57,
+            "channel": 1,
+            "value": 0.0
+          },
+          {
+            "sample": 630,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": -1.0
+          },
+          {
+            "sample": 631,
+            "type": "mod_wheel",
+            "channel": 1,
+            "value": 0.0
+          },
+          {
+            "sample": 1000,
+            "type": "pitch_wheel",
+            "channel": 2,
+            "value": 0.6
+          },
+          {
+            "sample": 1003,
+            "type": "channel_aftertouch",
+            "channel": 2,
+            "value": 0.25
+          },
+          {
+            "sample": 1009,
+            "type": "channel_slide",
+            "channel": 2,
+            "value": 0.42857142857142855
+          },
+          {
+            "sample": 1020,
+            "type": "aftertouch",
+            "note": 62,
+            "channel": 2,
+            "value": 0.5
+          },
+          {
+            "sample": 1030,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": -0.8333333333333334
+          },
+          {
+            "sample": 1031,
+            "type": "mod_wheel",
+            "channel": 2,
+            "value": 0.09090909090909091
+          },
+          {
+            "sample": 1400,
+            "type": "pitch_wheel",
+            "channel": 3,
+            "value": 0.1
+          },
+          {
+            "sample": 1403,
+            "type": "channel_aftertouch",
+            "channel": 3,
+            "value": 0.5
+          },
+          {
+            "sample": 1409,
+            "type": "channel_slide",
+            "channel": 3,
+            "value": 0.8571428571428571
+          },
+          {
+            "sample": 1420,
+            "type": "aftertouch",
+            "note": 67,
+            "channel": 3,
+            "value": 1.0
+          },
+          {
+            "sample": 1430,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": -0.6666666666666666
+          },
+          {
+            "sample": 1431,
+            "type": "mod_wheel",
+            "channel": 3,
+            "value": 0.18181818181818182
+          },
+          {
+            "sample": 1800,
+            "type": "pitch_wheel",
+            "channel": 4,
+            "value": -0.4
+          },
+          {
+            "sample": 1803,
+            "type": "channel_aftertouch",
+            "channel": 4,
+            "value": 0.75
+          },
+          {
+            "sample": 1809,
+            "type": "channel_slide",
+            "channel": 4,
+            "value": 0.14285714285714285
+          },
+          {
+            "sample": 1820,
+            "type": "aftertouch",
+            "note": 72,
+            "channel": 4,
+            "value": 0.0
+          },
+          {
+            "sample": 1830,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": -0.5
+          },
+          {
+            "sample": 1831,
+            "type": "mod_wheel",
+            "channel": 4,
+            "value": 0.2727272727272727
+          },
+          {
+            "sample": 2200,
+            "type": "pitch_wheel",
+            "channel": 1,
+            "value": -0.9
+          },
+          {
+            "sample": 2203,
+            "type": "channel_aftertouch",
+            "channel": 1,
+            "value": 1.0
+          },
+          {
+            "sample": 2209,
+            "type": "channel_slide",
+            "channel": 1,
+            "value": 0.5714285714285714
+          },
+          {
+            "sample": 2220,
+            "type": "aftertouch",
+            "note": 57,
+            "channel": 1,
+            "value": 0.5
+          },
+          {
+            "sample": 2230,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": -0.3333333333333333
+          },
+          {
+            "sample": 2231,
+            "type": "mod_wheel",
+            "channel": 1,
+            "value": 0.36363636363636365
+          },
+          {
+            "sample": 2600,
+            "type": "pitch_wheel",
+            "channel": 2,
+            "value": 0.7
+          },
+          {
+            "sample": 2603,
+            "type": "channel_aftertouch",
+            "channel": 2,
+            "value": 0.0
+          },
+          {
+            "sample": 2609,
+            "type": "channel_slide",
+            "channel": 2,
+            "value": 1.0
+          },
+          {
+            "sample": 2620,
+            "type": "aftertouch",
+            "note": 62,
+            "channel": 2,
+            "value": 1.0
+          },
+          {
+            "sample": 2630,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": -0.16666666666666666
+          },
+          {
+            "sample": 2631,
+            "type": "mod_wheel",
+            "channel": 2,
+            "value": 0.45454545454545453
+          },
+          {
+            "sample": 3000,
+            "type": "pitch_wheel",
+            "channel": 3,
+            "value": 0.2
+          },
+          {
+            "sample": 3003,
+            "type": "channel_aftertouch",
+            "channel": 3,
+            "value": 0.25
+          },
+          {
+            "sample": 3009,
+            "type": "channel_slide",
+            "channel": 3,
+            "value": 0.2857142857142857
+          },
+          {
+            "sample": 3020,
+            "type": "aftertouch",
+            "note": 67,
+            "channel": 3,
+            "value": 0.0
+          },
+          {
+            "sample": 3030,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": 0.0
+          },
+          {
+            "sample": 3031,
+            "type": "mod_wheel",
+            "channel": 3,
+            "value": 0.5454545454545454
+          },
+          {
+            "sample": 3400,
+            "type": "pitch_wheel",
+            "channel": 4,
+            "value": -0.3
+          },
+          {
+            "sample": 3403,
+            "type": "channel_aftertouch",
+            "channel": 4,
+            "value": 0.5
+          },
+          {
+            "sample": 3409,
+            "type": "channel_slide",
+            "channel": 4,
+            "value": 0.7142857142857143
+          },
+          {
+            "sample": 3420,
+            "type": "aftertouch",
+            "note": 72,
+            "channel": 4,
+            "value": 0.5
+          },
+          {
+            "sample": 3430,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": 0.16666666666666666
+          },
+          {
+            "sample": 3431,
+            "type": "mod_wheel",
+            "channel": 4,
+            "value": 0.6363636363636364
+          },
+          {
+            "sample": 3800,
+            "type": "pitch_wheel",
+            "channel": 1,
+            "value": -0.8
+          },
+          {
+            "sample": 3803,
+            "type": "channel_aftertouch",
+            "channel": 1,
+            "value": 0.75
+          },
+          {
+            "sample": 3809,
+            "type": "channel_slide",
+            "channel": 1,
+            "value": 0.0
+          },
+          {
+            "sample": 3820,
+            "type": "aftertouch",
+            "note": 57,
+            "channel": 1,
+            "value": 1.0
+          },
+          {
+            "sample": 3830,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": 0.3333333333333333
+          },
+          {
+            "sample": 3831,
+            "type": "mod_wheel",
+            "channel": 1,
+            "value": 0.7272727272727273
+          },
+          {
+            "sample": 4200,
+            "type": "pitch_wheel",
+            "channel": 2,
+            "value": 0.8
+          },
+          {
+            "sample": 4203,
+            "type": "channel_aftertouch",
+            "channel": 2,
+            "value": 1.0
+          },
+          {
+            "sample": 4209,
+            "type": "channel_slide",
+            "channel": 2,
+            "value": 0.42857142857142855
+          },
+          {
+            "sample": 4220,
+            "type": "aftertouch",
+            "note": 62,
+            "channel": 2,
+            "value": 0.0
+          },
+          {
+            "sample": 4230,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": 0.5
+          },
+          {
+            "sample": 4231,
+            "type": "mod_wheel",
+            "channel": 2,
+            "value": 0.8181818181818182
+          },
+          {
+            "sample": 4600,
+            "type": "pitch_wheel",
+            "channel": 3,
+            "value": 0.3
+          },
+          {
+            "sample": 4603,
+            "type": "channel_aftertouch",
+            "channel": 3,
+            "value": 0.0
+          },
+          {
+            "sample": 4609,
+            "type": "channel_slide",
+            "channel": 3,
+            "value": 0.8571428571428571
+          },
+          {
+            "sample": 4620,
+            "type": "aftertouch",
+            "note": 67,
+            "channel": 3,
+            "value": 0.5
+          },
+          {
+            "sample": 4630,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": 0.6666666666666666
+          },
+          {
+            "sample": 4631,
+            "type": "mod_wheel",
+            "channel": 3,
+            "value": 0.9090909090909091
+          },
+          {
+            "sample": 5000,
+            "type": "pitch_wheel",
+            "channel": 4,
+            "value": -0.2
+          },
+          {
+            "sample": 5003,
+            "type": "channel_aftertouch",
+            "channel": 4,
+            "value": 0.25
+          },
+          {
+            "sample": 5009,
+            "type": "channel_slide",
+            "channel": 4,
+            "value": 0.14285714285714285
+          },
+          {
+            "sample": 5020,
+            "type": "aftertouch",
+            "note": 72,
+            "channel": 4,
+            "value": 1.0
+          },
+          {
+            "sample": 5030,
+            "type": "zoned_pitch_wheel",
+            "from": 0,
+            "to": 15,
+            "value": 0.8333333333333334
+          },
+          {
+            "sample": 5031,
+            "type": "mod_wheel",
+            "channel": 4,
+            "value": 1.0
+          },
+          {
+            "sample": 3500,
+            "type": "channel_range_aftertouch",
+            "from": 1,
+            "to": 2,
+            "value": 0.33
+          },
+          {
+            "sample": 3600,
+            "type": "channel_range_slide",
+            "from": 2,
+            "to": 4,
+            "value": 0.77
+          },
+          {
+            "sample": 3700,
+            "type": "sustain_on_range",
+            "from": 1,
+            "to": 3
+          },
+          {
+            "sample": 3800,
+            "type": "sostenuto_on_range",
+            "from": 3,
+            "to": 4
+          },
+          {
+            "sample": 4000,
+            "type": "note_off",
+            "note": 57,
+            "lift": 0.5,
+            "channel": 1
+          },
+          {
+            "sample": 4100,
+            "type": "note_off",
+            "note": 62,
+            "lift": 0.5,
+            "channel": 2
+          },
+          {
+            "sample": 4200,
+            "type": "note_off",
+            "note": 67,
+            "lift": 0.5,
+            "channel": 3
+          },
+          {
+            "sample": 4300,
+            "type": "note_off",
+            "note": 72,
+            "lift": 0.5,
+            "channel": 4
+          },
+          {
+            "sample": 5000,
+            "type": "sostenuto_off_range",
+            "from": 2,
+            "to": 3
+          },
+          {
+            "sample": 5600,
+            "type": "sustain_off_range",
+            "from": 1,
+            "to": 2
+          },
+          {
+            "sample": 6200,
+            "type": "zoned_pitch_wheel",
+            "from": 3,
+            "to": 3,
+            "value": 0.5
+          },
+          {
+            "sample": 6300,
+            "type": "note_on",
+            "note": 64,
+            "velocity": 0.7,
+            "channel": 3
+          },
+          {
+            "sample": 6400,
+            "type": "mod_wheel_all",
+            "value": 0.25
+          },
+          {
+            "sample": 7000,
+            "type": "all_notes_off_range",
+            "from": 0,
+            "to": 15
+          }
+        ],
+        "num_samples": 8192
+      }
+    },
+    "all_off": {
+      "params": {
+        "polyphony": 8,
+        "events": [
+          {
+            "sample": 100,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 110,
+            "type": "note_on",
+            "note": 64,
+            "velocity": 0.8,
+            "channel": 1
+          },
+          {
+            "sample": 120,
+            "type": "note_on",
+            "note": 67,
+            "velocity": 0.8,
+            "channel": 2
+          },
+          {
+            "sample": 1000,
+            "type": "all_notes_off",
+            "channel": 1
+          },
+          {
+            "sample": 1500,
+            "type": "note_on",
+            "note": 70,
+            "velocity": 0.8,
+            "channel": 1
+          },
+          {
+            "sample": 2500,
+            "type": "all_notes_off"
+          },
+          {
+            "sample": 3500,
+            "type": "note_on",
+            "note": 72,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 3510,
+            "type": "note_on",
+            "note": 76,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 4000,
+            "type": "all_sounds_off"
+          },
+          {
+            "sample": 4100,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 5000,
+            "type": "note_off",
+            "note": 48,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ],
+        "num_samples": 8192
+      }
+    },
+    "polyphony_change": {
+      "params": {
+        "polyphony": 8,
+        "events": [
+          {
+            "sample": 100,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 150,
+            "type": "note_on",
+            "note": 61,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 200,
+            "type": "note_on",
+            "note": 62,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 250,
+            "type": "note_on",
+            "note": 63,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 300,
+            "type": "note_on",
+            "note": 64,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 350,
+            "type": "note_on",
+            "note": 65,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 400,
+            "type": "note_on",
+            "note": 66,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 450,
+            "type": "note_on",
+            "note": 67,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 2000,
+            "type": "polyphony",
+            "value": 3
+          },
+          {
+            "sample": 4000,
+            "type": "note_off",
+            "note": 60,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 4100,
+            "type": "note_off",
+            "note": 61,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 4200,
+            "type": "note_off",
+            "note": 62,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 5000,
+            "type": "polyphony",
+            "value": 6
+          },
+          {
+            "sample": 5100,
+            "type": "note_on",
+            "note": 40,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 5200,
+            "type": "note_on",
+            "note": 41,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 6500,
+            "type": "note_off",
+            "note": 40,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 6600,
+            "type": "note_off",
+            "note": 41,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 7000,
+            "type": "note_off",
+            "note": 63,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 7010,
+            "type": "note_off",
+            "note": 64,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 7020,
+            "type": "note_off",
+            "note": 65,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 7030,
+            "type": "note_off",
+            "note": 66,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 7040,
+            "type": "note_off",
+            "note": 67,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ],
+        "num_samples": 8192
+      }
+    },
+    "poly_round_robin_os2": {
+      "oversample": 2,
+      "block_size": 128,
+      "params": {
+        "polyphony": 4,
+        "events": [
+          {
+            "sample": 100,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.3,
+            "channel": 0
+          },
+          {
+            "sample": 1700,
+            "type": "note_off",
+            "note": 60,
+            "lift": 0.2,
+            "channel": 0
+          },
+          {
+            "sample": 607,
+            "type": "note_on",
+            "note": 64,
+            "velocity": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 2403,
+            "type": "note_off",
+            "note": 64,
+            "lift": 0.30000000000000004,
+            "channel": 0
+          },
+          {
+            "sample": 1114,
+            "type": "note_on",
+            "note": 67,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 3106,
+            "type": "note_off",
+            "note": 67,
+            "lift": 0.4,
+            "channel": 0
+          },
+          {
+            "sample": 1621,
+            "type": "note_on",
+            "note": 72,
+            "velocity": 0.6000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 3809,
+            "type": "note_off",
+            "note": 72,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 2128,
+            "type": "note_on",
+            "note": 62,
+            "velocity": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 4512,
+            "type": "note_off",
+            "note": 62,
+            "lift": 0.6000000000000001,
+            "channel": 0
+          },
+          {
+            "sample": 2635,
+            "type": "note_on",
+            "note": 65,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 5215,
+            "type": "note_off",
+            "note": 65,
+            "lift": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 6500,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 1.0,
+            "channel": 0
+          },
+          {
+            "sample": 6510,
+            "type": "note_on",
+            "note": 52,
+            "velocity": 0.9,
+            "channel": 0
+          },
+          {
+            "sample": 7300,
+            "type": "note_off",
+            "note": 48,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 7400,
+            "type": "note_off",
+            "note": 52,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ],
+        "num_samples": 16384
+      }
+    },
+    "sustain_sostenuto_b128": {
+      "block_size": 128,
+      "params": {
+        "polyphony": 6,
+        "events": [
+          {
+            "sample": 100,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 200,
+            "type": "note_on",
+            "note": 64,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 400,
+            "type": "sostenuto_on",
+            "channel": 0
+          },
+          {
+            "sample": 600,
+            "type": "note_on",
+            "note": 67,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 900,
+            "type": "note_off",
+            "note": 60,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 950,
+            "type": "note_off",
+            "note": 64,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 1000,
+            "type": "sustain_on",
+            "channel": 0
+          },
+          {
+            "sample": 1200,
+            "type": "note_off",
+            "note": 67,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 1500,
+            "type": "note_on",
+            "note": 72,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 1800,
+            "type": "note_off",
+            "note": 72,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 2600,
+            "type": "sustain_off",
+            "channel": 0
+          },
+          {
+            "sample": 3000,
+            "type": "note_on",
+            "note": 62,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 3500,
+            "type": "sostenuto_off",
+            "channel": 0
+          },
+          {
+            "sample": 3600,
+            "type": "sustain_on",
+            "channel": 0
+          },
+          {
+            "sample": 4000,
+            "type": "note_off",
+            "note": 62,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 4200,
+            "type": "note_on",
+            "note": 62,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 4400,
+            "type": "note_off",
+            "note": 62,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 5200,
+            "type": "sustain_off",
+            "channel": 0
+          },
+          {
+            "sample": 5300,
+            "type": "note_on",
+            "note": 65,
+            "velocity": 0.8,
+            "channel": 1
+          },
+          {
+            "sample": 5400,
+            "type": "sustain_on",
+            "channel": 1
+          },
+          {
+            "sample": 5500,
+            "type": "note_off",
+            "note": 65,
+            "lift": 0.5,
+            "channel": 1
+          },
+          {
+            "sample": 6000,
+            "type": "sostenuto_on",
+            "channel": 1
+          },
+          {
+            "sample": 6400,
+            "type": "sustain_off",
+            "channel": 1
+          },
+          {
+            "sample": 7000,
+            "type": "sostenuto_off",
+            "channel": 1
+          }
+        ],
+        "num_samples": 8192
+      }
+    }
+  }
+}
