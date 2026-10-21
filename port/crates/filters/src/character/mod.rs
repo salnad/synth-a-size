@@ -7,8 +7,12 @@
 
 use sas_dsp_core::ProcessorRef;
 
+pub mod comb_filter;
+pub mod comb_module;
 pub mod phaser_filter;
 
+pub use comb_filter::CombFilter;
+pub use comb_module::CombModule;
 pub use phaser_filter::PhaserFilter;
 
 use crate::synth_filter::FilterModel;
