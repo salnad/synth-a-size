@@ -9,10 +9,10 @@
 //! (`Memory::get`) goes through `utils::toInt` (site A1a of
 //! `migration/decisions/reference-arm.md`), inside `sas-dsp-core`.
 //!
-//! `CombFilter(1)` (what `SynthFilter::createFilter` builds) has a
-//! one-sample memory, and upstream's `Memory::get` then reads past the
-//! buffer; nothing in upstream's engine creates it. Here the same read
-//! panics. `CombModule` uses `CombFilter(kMaxFeedbackSamples)`.
+//! `CombFilter(1)` (what upstream's `SynthFilter::createFilter` builds) has
+//! a one-sample memory, and upstream's `Memory::get` then reads past the
+//! buffer; here the same read panics, and `create_filter(Comb)` returns
+//! `None`. `CombModule` uses `CombFilter(kMaxFeedbackSamples)`.
 
 use sas_dsp_core::sas_simd::common::{MIN_NYQUIST_MULT, NOTES_PER_OCTAVE};
 use sas_dsp_core::sas_simd::{futils, poly_utils as utils, utils as mono, PolyFloat, PolyMask};

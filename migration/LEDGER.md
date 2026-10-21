@@ -1410,11 +1410,12 @@ Ports `vital/src/synthesis/filters/comb_filter.{h,cpp}` and
   `feedback_filter2_` copied. A negative style leaves `process` writing
   nothing, as upstream's `VITAL_ASSERT(false)` path does in release.
 - Per-ISA sites: the delay read `Memory::get` (A1a) inside `sas-dsp-core`.
-- `character::create_filter(Comb)` is `CombFilter(1)`, as upstream. Its
-  memory rounds to one sample, and upstream's `Memory::get` then reads
-  past the 2-float buffer (undefined behaviour); here it panics. Nothing in
-  upstream's engine calls `createFilter`, so it is not captured. The
-  `comb_filter` ref-module refuses `size < 2`.
+- Upstream's `createFilter(kComb)` builds `CombFilter(1)`. Its memory
+  rounds to one sample, and `Memory::get` then reads past the 2-float
+  buffer (undefined behaviour); `CombFilter::create(1)` panics on the same
+  read. `synth_filter::create_filter(Comb)` returns `None` (M5a follow-up),
+  and nothing in upstream's engine calls `createFilter`, so it is not
+  captured. The `comb_filter` ref-module refuses `size < 2`.
 
 Reference: ref-modules `comb_filter` (`params.size`, default
 `CombModule::kMaxFeedbackSamples` = 25000, rounded up to 32768) and
