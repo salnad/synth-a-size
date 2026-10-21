@@ -1555,3 +1555,111 @@ would then use different columns.
 don't depend on dsp-core. Also forward to every other direct dependency
 that has the feature (e.g. `sas-wavetable`). Never forward to `sas-common`
 alone if sas-simd is anywhere in your dependency graph.
+
+---
+
+## 2026-10-21: M5b PR 2, `CombFilter` and `CombModule`; 7 cases parked pending the owner
+
+Ports `vital/src/synthesis/filters/comb_filter.{h,cpp}` and
+`modules/comb_module.{h,cpp}` to `port/crates/filters/src/character/`
+(`comb_filter.rs`, `comb_module.rs`), stacked on M5b PR 1.
+
+- Structure as upstream: the tick template parameter (comb, positive
+  flange, negative flange) is a function pointer. The copy constructor's
+  partial reset is mirrored by a manual `Clone`: filter state and feedback
+  style copied, zeroed memory from `Memory`'s copy constructor, the
+  settings it assigns back to their initial values, and `feedback_filter_`
+  reset. The members it does not mention are default-initialized, not
+  copied: `low_gain_` and `high_gain_` (0) and `feedback_filter2_` (a reset
+  `OnePoleFilter`). This was corrected in review (Parity Reviewer, #19). A negative style leaves `process` writing
+  nothing, as upstream's `VITAL_ASSERT(false)` path does in release.
+- Per-ISA sites: the delay read `Memory::get` (A1a) inside `sas-dsp-core`.
+- Upstream's `createFilter(kComb)` builds `CombFilter(1)`. Its memory
+  rounds to one sample, and `Memory::get` then reads past the 2-float
+  buffer (undefined behaviour); `CombFilter::create(1)` panics on the same
+  read. `synth_filter::create_filter(Comb)` returns `None` (M5a follow-up),
+  and nothing in upstream's engine calls `createFilter`, so it is not
+  captured. The `comb_filter` ref-module refuses `size < 2`.
+
+Reference: ref-modules `comb_filter` (`params.size`, default
+`CombModule::kMaxFeedbackSamples` = 25000, rounded up to 32768) and
+`comb_module` (the factory calls `init()`).
+
+Cases (19 authored, all under `module_defaults`; 12 active in
+`filters/comb_filter` (10) and `filters/comb_module` (2), 7 parked, see below;
+3 of the active ones are interim, see "Interim cases"). They cover:
+
+- all six styles, plus 6..9 (`style / 3 >= 2` behaves as low/high blend);
+- MIDI cutoff −40..150 (filter cutoff 8..136 plus modulation; below about
+  −31 the period hits the 32763-sample memory clamp at 44.1 kHz);
+- blend transpose −48..132 (parameter range 0..84), blend −1..3, resonance
+  −0.5..1.5;
+- per-lane controls with per-voice resets, an impulse at full resonance,
+  96 kHz at block 128, and oversample 2.
+
+**Result: the port is bit-identical to the `REF_FAST_MATH=OFF` reference
+on all 16 cases**, as it is on the 9 phaser cases. Against the default
+fast-math reference, 9 cases pass and 7 fail. The proxy (CI
+`tolerance-calibration`) fails the same 7 with exactly the same numbers:
+
+| Case | max_abs_error | residual_db |
+|---|---|---|
+| `filters/comb_filter/negative_flange_sweep` | 8.0e-4 | **−76.8** |
+| `filters/comb_module/comb_style_sweep` | 2.8e-4 | −92.4 |
+| `filters/comb_filter/comb_cutoff_sweep` | 2.2e-4 | −95.6 |
+| `filters/comb_filter/band_spread_negative_flange` | 1.6e-4 | −84.1 |
+| `filters/comb_filter/comb_resonance_blend_ramps` | 1.3e-4 | −92.1 |
+| `filters/comb_module/band_spread_full_range` | 1.2e-4 | −93.7 |
+| `filters/comb_filter/comb_oversample2` | 1.2e-4 | −88.2 |
+
+Active cases, port vs fast-math reference: worst `max_abs_error` 9.8e-5
+(`comb_96k_block128`, a cutoff sweep down to −30 at 96 kHz; it passes with
+only 2 % margin by the same mechanism), worst `residual_db` −94.2 dB
+(`out_of_range_controls`), best 3.0e-8 / −133.5 dB (`impulse_ringing`).
+**At risk on the arm64 reference:** `comb_96k_block128` may miss against
+the macOS arm64 reference, whose fast-math rounding differs. If it does, it
+is parked under `modules/filters/pending/` like the 7 above (same rule, same
+owner decision); its tolerances are not loosened.
+
+Mechanism: every failing case sweeps or modulates the cutoff into long
+delay periods. The per-sample period `sample_rate / (base_frequency *
+midiOffsetToRatio(offset))` is a large-scale value of up to about 32k
+samples. The fast-math reference rounds it differently (reassociation and
+reciprocal-math in `futils::exp2` and the division). An ULP-level period
+difference of about 2e-3 samples at 30k shifts the Catmull-Rom read by
+that amount. The output error is that shift times the signal's slope,
+re-circulated by up to unity feedback, so noise and saw inputs show it most.
+The captured quantity is audio, so there is no normalized form to capture
+instead. Narrowing the cutoff range, the resonance or the input content to
+pass would be narrowing a test (rule 6).
+
+**Parked, pending the owner (escalated 2026-10-21).** No tolerance exception
+is added. The 7 cases above sit unchanged, inputs kept, in
+`migration/corpus/modules/filters/pending/comb_filter.json` (5) and
+`pending/comb_module.json` (2). Both loaders read only
+`modules/<area>/*.json`, so they are not rendered or tested until they move
+back. The recommendation under review is the `reference: nofastmath`
+exact-match allowlist, not looser tolerances. An earlier draft of this entry
+proposed per-case tolerance exceptions; that proposal is superseded by the
+escalation and withdrawn.
+
+**Interim cases (Parity Reviewer, #19).** While the 7 are parked, style 5
+(band spread with negative flange), oversampling and the module's style
+routing had no active coverage. Three additional well-conditioned cases
+were added, each labelled interim in its `description`. They keep the
+cutoff at 70..130 (or 100 ± 24), so the delay period stays short. The parked
+full-range cases are unchanged; nothing is narrowed or replaced.
+
+| Case | max_abs_error | residual_db |
+|---|---|---|
+| `filters/comb_filter/interim_band_spread_negative_flange` (style 5) | 6.4e-6 | −118.6 |
+| `filters/comb_filter/interim_oversample2` (oversample 2, styles 0..5) | 1.5e-5 | −100.8 |
+| `filters/comb_module/interim_style_sweep` (styles 0..5) | 1.8e-5 | −107.5 |
+
+All three also pass the no-fast-math proxy.
+
+**Open / next**
+
+- The owner's decision on the 7 parked cases. Then move them back and apply
+  the chosen mechanism.
+- macOS arm64 hashes after PR #2.

@@ -1,0 +1,31 @@
+{
+  "description": "CombModule (the filter section's comb model): routing of the module's inputs to its CombFilter(kMaxFeedbackSamples), and per-voice reset through getLocalProcessor. Inputs as at the filter module: midi_cutoff in semitones (cutoff 8..136 plus modulation), midi_blend_transpose 0..84, filter_cutoff_blend 0..2, resonance 0..1, style 0..9.",
+  "module": "comb_module",
+  "pending": "Parked, not run: these cases miss module_defaults against the fast-math reference while the port is bit-identical to the REF_FAST_MATH=OFF reference (LEDGER, 2026-10-21 M5b PR 2). Awaiting the owner's decision (escalated: nofastmath exact-match allowlist). Loaders read only modules/<area>/*.json, so this directory is inert until the cases move back.",
+  "cases": {
+    "comb_style_sweep": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": { "signal": "saw", "freq_hz": 110.0, "amp": 0.5 },
+        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
+        "midi_cutoff": { "signal": "ramp", "from": -40.0, "to": 150.0 },
+        "midi_blend_transpose": { "signal": "ramp", "from": 0.0, "to": 84.0 },
+        "filter_cutoff_blend": { "signal": "ramp", "from": 2.0, "to": 0.0 },
+        "resonance": 0.8,
+        "style": { "signal": "ramp", "from": 0.0, "to": 5.99 }
+      }
+    },
+    "band_spread_full_range": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": { "signal": "saw", "freq_hz": 73.4, "amp": 0.7 },
+        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
+        "midi_cutoff": { "signal": "ramp", "from": 136.0, "to": 8.0 },
+        "midi_blend_transpose": { "signal": "ramp", "from": 84.0, "to": 0.0 },
+        "filter_cutoff_blend": { "signal": "ramp", "from": 0.0, "to": 2.0 },
+        "resonance": 0.95,
+        "style": 3
+      }
+    }
+  }
+}

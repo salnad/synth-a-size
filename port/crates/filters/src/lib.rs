@@ -46,6 +46,10 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/src/synthesis/modules/filters_module.cpp",
     "vital/src/synthesis/filters/phaser_filter.h",
     "vital/src/synthesis/filters/phaser_filter.cpp",
+    "vital/src/synthesis/filters/comb_filter.h",
+    "vital/src/synthesis/filters/comb_filter.cpp",
+    "vital/src/synthesis/modules/comb_module.h",
+    "vital/src/synthesis/modules/comb_module.cpp",
 ];
 
 #[cfg(test)]
