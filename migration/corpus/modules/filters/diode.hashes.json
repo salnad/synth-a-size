@@ -1,0 +1,37 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "dual_notch_band_blend_sweep:audio": "afc87285866d8d0b",
+        "dual_notch_band_cutoff_sweep:audio": "374332a94dfe85d3",
+        "dual_notch_band_cutoff_sweep_no_resonance:audio": "947c579b8cc5b5c3",
+        "dual_notch_band_drive_sweep:audio": "03da369e5f5fd0c3",
+        "dual_notch_band_resonance_sweep:audio": "55674fd6fa139483",
+        "k12_blend_sweep:audio": "972d3a23c2a8205b",
+        "k12_block_1:audio": "0dbefac343f40a6b",
+        "k12_cutoff_sweep:audio": "297662f8a53f34fb",
+        "k12_cutoff_sweep_no_resonance:audio": "14c7da8eaf0dd743",
+        "k12_drive_sweep:audio": "6344d4226820f7fb",
+        "k12_oversample_4x:audio": "6ffca5a6d7cf5303",
+        "k12_resonance_sweep:audio": "aec5672351436a03",
+        "k24_96k_block_128:audio": "91f52c96309d904b",
+        "k24_blend_sweep:audio": "5538a8ca43dcf917",
+        "k24_cutoff_sweep:audio": "374332a94dfe85d3",
+        "k24_cutoff_sweep_no_resonance:audio": "947c579b8cc5b5c3",
+        "k24_drive_sweep:audio": "03da369e5f5fd0c3",
+        "k24_resonance_sweep:audio": "55674fd6fa139483",
+        "k24_retrigger_voices:audio": "c245311b722577df",
+        "style_steps_0_to_9:audio": "6f18b8c4ce60213f"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}
