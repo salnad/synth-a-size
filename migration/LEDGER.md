@@ -1873,14 +1873,11 @@ edit.
 
 **Open / next**
 
-- dsp-core API request (via the coordinator): `RouterHooks` forwarding does
-  not cover upstream `VoiceHandler::addIdleProcessor`, nor the
-  `processor->setSampleRate(getSampleRate())` that `addProcessor` runs before
-  forwarding. `SynthModule::create_poly_mod_control` calls
-  `add_idle_processor` on the handler node, so the modulation switches of
-  `SynthVoiceHandler` would be owned by the handler instead of the voice
-  router (`isPolyphonic` false). The engine's own entry points already do the
-  right thing; the hook is needed before `SynthVoiceHandler`.
+- The `RouterHooks` request (forward `addIdleProcessor`, set the sample
+  rate before forwarding) merged as #26. What remains open is its end-to-end
+  coverage, which the `SynthVoiceHandler` captures provide (M7 PR 3).
+- The polyphony input's `static_cast<int>(std::roundf(...))` goes through
+  `sas_simd::conversions::float_to_i32` (an A3 site), like dsp-core's casts.
 - `MidiManager` (and its MPE zone parsing) calls `SoundEngine` directly, so
   its parity comes with the engine PR, through engine-level captures and
   authored MPE MIDI renders.

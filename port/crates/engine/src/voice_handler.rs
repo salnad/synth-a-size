@@ -36,6 +36,7 @@ use sas_dsp_core::{
     Output, Processor, ProcessorImpl, ProcessorRef, ProcessorRouter, RouterHooks, SynthModule,
 };
 use sas_simd::common::{VoiceEvent, MIDI_SIZE, NOTES_PER_OCTAVE, NUM_MIDI_CHANNELS};
+use sas_simd::conversions;
 use sas_simd::poly_utils as utils;
 use sas_simd::{PolyFloat, PolyMask};
 
@@ -551,7 +552,8 @@ impl VoiceHandler {
             return;
         }
 
-        let polyphony = this.input(Self::POLYPHONY).at(0).get(0).round() as i32;
+        // `static_cast<int>(std::roundf(...))`: a per-ISA cast (A3).
+        let polyphony = conversions::float_to_i32(this.input(Self::POLYPHONY).at(0).get(0).round());
         self.set_polyphony(polyphony.clamp(1, MAX_ACTIVE_POLYPHONY));
 
         self.voice_priority =
