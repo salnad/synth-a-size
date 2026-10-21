@@ -1,0 +1,60 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "bit_crush_drive_sweep:audio": "7c8ac23024a2c53b",
+        "defaults_saw:audio": "a45f41f4e0db2287",
+        "down_sample_constant_drive:audio": "2f9ce9570403907b",
+        "enable_toggle:audio": "2127b8e87d76e7d7",
+        "filter_after:audio": "f000cab7d737a537",
+        "hard_clip_drive_sweep:audio": "52ea75df7f073293",
+        "interim_filter_before_constant:audio": "19a0551f0f4e970c",
+        "interim_filter_before_sin_fold:audio": "8c91025f8496ec37",
+        "interim_filter_before_sweep_short:audio": "8dd145edf24778c4",
+        "linear_fold_drive_sweep:audio": "229bf788e2324b4f",
+        "mix_and_type_sweep:audio": "a9f3b7aad7f61063",
+        "oversampled_2x:audio": "b6ca272ef6ff716f",
+        "rate_96k:audio": "af86ea45d1d8327f",
+        "sin_fold_drive_sweep:audio": "5a209ad8573be6a3",
+        "soft_clip_drive_sweep:audio": "9bcb54e7a0f64c47"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    },
+    {
+      "hashes": {
+        "bit_crush_drive_sweep:audio": "7c8ac23024a2c53b",
+        "defaults_saw:audio": "cc89c5a8bfdcef27",
+        "down_sample_constant_drive:audio": "2f9ce9570403907b",
+        "enable_toggle:audio": "66a4f91606f1182b",
+        "filter_after:audio": "230c8b88ac7f919f",
+        "hard_clip_drive_sweep:audio": "52ea75df7f073293",
+        "interim_filter_before_constant:audio": "42172c021050bb4e",
+        "interim_filter_before_sin_fold:audio": "8d5235c468cad4a3",
+        "interim_filter_before_sweep_short:audio": "79ffbdc21cb5c9b6",
+        "linear_fold_drive_sweep:audio": "229bf788e2324b4f",
+        "mix_and_type_sweep:audio": "60b61ae2afb8a538",
+        "oversampled_2x:audio": "14984c175152a3ef",
+        "rate_96k:audio": "db3950a16ab04a4b",
+        "sin_fold_drive_sweep:audio": "fa0204e1884b8e8f",
+        "soft_clip_drive_sweep:audio": "e4966f7d10545c77"
+      },
+      "identity": {
+        "arch": "aarch64",
+        "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+        "fast_math": true,
+        "glibc": null,
+        "libm_variants": "Apple libm (macOS 15.7.9)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}

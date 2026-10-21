@@ -1,0 +1,276 @@
+{
+  "description": "DistortionModule through effect_module_harness.h (controls set once per block; 'on' toggles enable()). Cases named interim_* cover the filter-before order while the swept case waits in pending/distortion_module.json.",
+  "module": "distortion_module",
+  "cases": {
+    "defaults_saw": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.8
+        }
+      }
+    },
+    "soft_clip_drive_sweep": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 220.0,
+          "amp": 0.8
+        },
+        "distortion_type": 0,
+        "distortion_drive": {
+          "signal": "ramp",
+          "from": -30.0,
+          "to": 30.0
+        }
+      }
+    },
+    "hard_clip_drive_sweep": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 220.0,
+          "amp": 0.8
+        },
+        "distortion_type": 1,
+        "distortion_drive": {
+          "signal": "ramp",
+          "from": -30.0,
+          "to": 30.0
+        }
+      }
+    },
+    "linear_fold_drive_sweep": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 220.0,
+          "amp": 0.8
+        },
+        "distortion_type": 2,
+        "distortion_drive": {
+          "signal": "ramp",
+          "from": -30.0,
+          "to": 30.0
+        }
+      }
+    },
+    "sin_fold_drive_sweep": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 220.0,
+          "amp": 0.8
+        },
+        "distortion_type": 3,
+        "distortion_drive": {
+          "signal": "ramp",
+          "from": -30.0,
+          "to": 30.0
+        }
+      }
+    },
+    "bit_crush_drive_sweep": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 220.0,
+          "amp": 0.8
+        },
+        "distortion_type": 4,
+        "distortion_drive": {
+          "signal": "ramp",
+          "from": -30.0,
+          "to": 30.0
+        }
+      }
+    },
+    "down_sample_constant_drive": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.8
+        },
+        "distortion_type": 5,
+        "distortion_drive": 12.0
+      }
+    },
+    "filter_after": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.8
+        },
+        "distortion_type": 0,
+        "distortion_drive": 18.0,
+        "distortion_filter_order": 2,
+        "distortion_filter_cutoff": {
+          "signal": "ramp",
+          "from": 8.0,
+          "to": 136.0
+        },
+        "distortion_filter_resonance": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "distortion_filter_blend": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 2.0
+        }
+      }
+    },
+    "mix_and_type_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.6,
+          "stereo": true,
+          "seed": 3
+        },
+        "distortion_type": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 4.99
+        },
+        "distortion_drive": 10.0,
+        "distortion_mix": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    },
+    "enable_toggle": {
+      "num_samples": 132300,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.8
+        },
+        "on": {
+          "signal": "square",
+          "freq_hz": 1.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "distortion_drive": 12.0,
+        "distortion_filter_order": 2
+      }
+    },
+    "rate_96k": {
+      "sample_rate": 96000,
+      "block_size": 128,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.8
+        },
+        "distortion_type": 3,
+        "distortion_drive": {
+          "signal": "ramp",
+          "from": -30.0,
+          "to": 30.0
+        },
+        "distortion_filter_order": 1
+      }
+    },
+    "oversampled_2x": {
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.8
+        },
+        "distortion_type": 1,
+        "distortion_drive": {
+          "signal": "ramp",
+          "from": -30.0,
+          "to": 30.0
+        },
+        "distortion_filter_order": 2
+      }
+    },
+    "interim_filter_before_constant": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.6,
+          "stereo": true,
+          "seed": 2
+        },
+        "distortion_type": 2,
+        "distortion_drive": 12.0,
+        "distortion_filter_order": 1,
+        "distortion_filter_cutoff": 70.0,
+        "distortion_filter_resonance": 0.6,
+        "distortion_filter_blend": 1.0
+      }
+    },
+    "interim_filter_before_sweep_short": {
+      "num_samples": 4410,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.6,
+          "stereo": true,
+          "seed": 2
+        },
+        "distortion_type": 2,
+        "distortion_drive": 12.0,
+        "distortion_filter_order": 1,
+        "distortion_filter_cutoff": {
+          "signal": "ramp",
+          "from": 136.0,
+          "to": 8.0
+        },
+        "distortion_filter_resonance": {
+          "signal": "ramp",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "distortion_filter_blend": {
+          "signal": "ramp",
+          "from": 2.0,
+          "to": 0.0
+        }
+      }
+    },
+    "interim_filter_before_sin_fold": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.8
+        },
+        "distortion_type": 3,
+        "distortion_drive": 6.0,
+        "distortion_filter_order": 1,
+        "distortion_filter_cutoff": 90.0,
+        "distortion_filter_resonance": 0.3,
+        "distortion_filter_blend": 0.5
+      }
+    }
+  }
+}

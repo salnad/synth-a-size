@@ -23,6 +23,8 @@ pub use sas_filters;
 pub mod delay;
 pub mod delay_module;
 pub mod distortion;
+pub mod distortion_module;
+pub mod equalizer_module;
 pub mod phaser;
 pub mod phaser_module;
 pub mod reverb;
@@ -31,6 +33,8 @@ pub mod reverb_module;
 pub use delay::{Delay, MultiDelay, StereoDelay};
 pub use delay_module::DelayModule;
 pub use distortion::{Distortion, DistortionType};
+pub use distortion_module::DistortionModule;
+pub use equalizer_module::EqualizerModule;
 pub use phaser::Phaser;
 pub use phaser_module::PhaserModule;
 pub use reverb::Reverb;
@@ -48,6 +52,10 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/src/synthesis/modules/delay_module.cpp",
     "vital/src/synthesis/effects/distortion.h",
     "vital/src/synthesis/effects/distortion.cpp",
+    "vital/src/synthesis/modules/distortion_module.h",
+    "vital/src/synthesis/modules/distortion_module.cpp",
+    "vital/src/synthesis/modules/equalizer_module.h",
+    "vital/src/synthesis/modules/equalizer_module.cpp",
     "vital/src/synthesis/effects/reverb.h",
     "vital/src/synthesis/effects/reverb.cpp",
     "vital/src/synthesis/modules/reverb_module.h",

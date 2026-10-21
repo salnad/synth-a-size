@@ -1,0 +1,247 @@
+{
+  "description": "EqualizerModule through effect_module_harness.h (controls set once per block; 'on' toggles enable()).",
+  "module": "equalizer_module",
+  "cases": {
+    "defaults_noise": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 1
+        }
+      }
+    },
+    "shelf_gain_sweeps": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 2
+        },
+        "eq_low_gain": {
+          "signal": "ramp",
+          "from": -15.0,
+          "to": 15.0
+        },
+        "eq_band_gain": {
+          "signal": "ramp",
+          "from": 15.0,
+          "to": -15.0
+        },
+        "eq_high_gain": {
+          "signal": "ramp",
+          "from": -15.0,
+          "to": 15.0
+        }
+      }
+    },
+    "shelf_cutoff_sweeps": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "eq_low_cutoff": {
+          "signal": "ramp",
+          "from": 8.0,
+          "to": 136.0
+        },
+        "eq_band_cutoff": {
+          "signal": "ramp",
+          "from": 136.0,
+          "to": 8.0
+        },
+        "eq_high_cutoff": {
+          "signal": "ramp",
+          "from": 8.0,
+          "to": 136.0
+        },
+        "eq_low_gain": 9.0,
+        "eq_band_gain": -9.0,
+        "eq_high_gain": 6.0
+      }
+    },
+    "shelf_resonance_sweeps": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 3
+        },
+        "eq_low_resonance": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "eq_band_resonance": {
+          "signal": "ramp",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "eq_high_resonance": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "eq_low_gain": 12.0,
+        "eq_band_gain": 12.0,
+        "eq_high_gain": -12.0
+      }
+    },
+    "pass_and_notch_modes": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 4
+        },
+        "eq_low_mode": 1,
+        "eq_band_mode": 1,
+        "eq_high_mode": 1,
+        "eq_low_cutoff": {
+          "signal": "ramp",
+          "from": 8.0,
+          "to": 80.0
+        },
+        "eq_band_cutoff": {
+          "signal": "ramp",
+          "from": 40.0,
+          "to": 120.0
+        },
+        "eq_high_cutoff": {
+          "signal": "ramp",
+          "from": 136.0,
+          "to": 60.0
+        },
+        "eq_low_resonance": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "eq_band_resonance": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "eq_high_resonance": {
+          "signal": "ramp",
+          "from": 1.0,
+          "to": 0.0
+        }
+      }
+    },
+    "mode_switching": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 165.0,
+          "amp": 0.4
+        },
+        "eq_low_mode": {
+          "signal": "square",
+          "freq_hz": 3.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "eq_band_mode": {
+          "signal": "square",
+          "freq_hz": 2.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "eq_high_mode": {
+          "signal": "square",
+          "freq_hz": 5.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "eq_low_gain": 6.0,
+        "eq_band_gain": -6.0,
+        "eq_high_gain": 6.0
+      }
+    },
+    "enable_toggle": {
+      "num_samples": 132300,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "on": {
+          "signal": "square",
+          "freq_hz": 1.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "eq_low_gain": 9.0,
+        "eq_high_gain": -9.0
+      }
+    },
+    "rate_48k": {
+      "sample_rate": 48000,
+      "block_size": 128,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 5
+        },
+        "eq_band_gain": 12.0,
+        "eq_band_cutoff": {
+          "signal": "ramp",
+          "from": 30.0,
+          "to": 120.0
+        }
+      }
+    },
+    "rate_96k": {
+      "sample_rate": 96000,
+      "block_size": 128,
+      "num_samples": 192000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 6
+        },
+        "eq_band_gain": 12.0,
+        "eq_high_cutoff": {
+          "signal": "ramp",
+          "from": 60.0,
+          "to": 136.0
+        }
+      }
+    },
+    "oversampled_2x": {
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 7
+        },
+        "eq_low_gain": 12.0,
+        "eq_band_gain": -12.0,
+        "eq_high_gain": 12.0
+      }
+    }
+  }
+}
