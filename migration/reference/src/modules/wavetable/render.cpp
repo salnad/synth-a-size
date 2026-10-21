@@ -14,6 +14,12 @@
 // The complex pairs share one channel: the residual is then relative to the
 // whole spectrum. As two channels, an all-real spectrum (cleared phases) has
 // an imaginary channel of pure rounding noise that no residual limit fits.
+//   lanes              [3, 1]              over all frames: harmonics whose odd
+//                                          lane [2h + 1] differs from [2h] in
+//                                          frequency_amplitudes, the same for
+//                                          phases, and non-zero padding floats
+//                                          after the last harmonic in the three
+//                                          arrays (bit comparisons; exact)
 //   info               [4, 1]              num_frames / kNumOscillatorWaveFrames,
 //                                          frequency_ratio,
 //                                          sample_rate / kDefaultSampleRate,
@@ -31,6 +37,7 @@
 #include "synth_constants.h"
 
 #include <cmath>
+#include <cstring>
 
 REGISTER_REF_MODULE(refmod::ModuleDef{
   "wavetable_render",
@@ -62,6 +69,13 @@ REGISTER_REF_MODULE(refmod::ModuleDef{
 
     const vital::Wavetable::WavetableData* data = wavetable.getAllData();
     constexpr int kHarmonics = vital::Wavetable::kNumHarmonics;
+    constexpr int kFrequencyFloats = sizeof(data->frequency_amplitudes[0]) / sizeof(float);
+    auto bits = [](float value) {
+      uint32_t result;
+      memcpy(&result, &value, sizeof(result));
+      return result;
+    };
+    float amplitude_lane_mismatches = 0.0f, phase_lane_mismatches = 0.0f, nonzero_padding = 0.0f;
     std::vector<float> wave, coefficients, phase_coefficients;
     for (int w = 0; w < data->num_frames; ++w) {
       wave.insert(wave.end(), data->wave_data[w], data->wave_data[w] + vital::WaveFrame::kWaveformSize);
@@ -74,11 +88,19 @@ REGISTER_REF_MODULE(refmod::ModuleDef{
         coefficients.push_back(amplitude * normalized[2 * h + 1]);
         phase_coefficients.push_back(amplitude * cosf(phases[2 * h]));
         phase_coefficients.push_back(amplitude * sinf(phases[2 * h]));
+        amplitude_lane_mismatches += bits(amplitudes[2 * h + 1]) != bits(amplitudes[2 * h]) ? 1.0f : 0.0f;
+        phase_lane_mismatches += bits(phases[2 * h + 1]) != bits(phases[2 * h]) ? 1.0f : 0.0f;
+      }
+      for (int i = 2 * kHarmonics; i < kFrequencyFloats; ++i) {
+        nonzero_padding += bits(amplitudes[i]) != 0 ? 1.0f : 0.0f;
+        nonzero_padding += bits(normalized[i]) != 0 ? 1.0f : 0.0f;
+        nonzero_padding += bits(phases[i]) != 0 ? 1.0f : 0.0f;
       }
     }
     sink.array("wave", wave, 1);
     sink.array("coefficients", coefficients, 1);
     sink.array("phase_coefficients", phase_coefficients, 1);
+    sink.array("lanes", { amplitude_lane_mismatches, phase_lane_mismatches, nonzero_padding }, 1);
     sink.array("info", { data->num_frames / static_cast<float>(vital::kNumOscillatorWaveFrames),
                          data->frequency_ratio, data->sample_rate / vital::kDefaultSampleRate,
                          wavetable.isShepardTable() ? 1.0f : 0.0f }, 1);

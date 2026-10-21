@@ -8,13 +8,14 @@ use sas_common::json;
 use sas_parity::{assert_parity, ModuleCase};
 use sas_wavetable::creator::WavetableCreator;
 use sas_wavetable::wave_frame::DEFAULT_SAMPLE_RATE;
-use sas_wavetable::wavetable::NUM_HARMONICS;
+use sas_wavetable::wavetable::{FREQUENCY_FLOATS, NUM_HARMONICS};
 use sas_wavetable::{Wavetable, NUM_OSCILLATOR_WAVE_FRAMES};
 
 struct Rendered {
     wave: Vec<f32>,
     coefficients: Vec<f32>,
     phase_coefficients: Vec<f32>,
+    lanes: Vec<f32>,
     info: Vec<f32>,
 }
 
@@ -40,6 +41,7 @@ fn render(case: &ModuleCase) -> Rendered {
         wave: Vec::new(),
         coefficients: Vec::new(),
         phase_coefficients: Vec::new(),
+        lanes: vec![0.0; 3],
         info: vec![
             data.num_frames as f32 / NUM_OSCILLATOR_WAVE_FRAMES as f32,
             data.frequency_ratio,
@@ -68,6 +70,17 @@ fn render(case: &ModuleCase) -> Rendered {
                 amplitude * phases[2 * h].cos(),
                 amplitude * phases[2 * h].sin(),
             ]);
+            rendered.lanes[0] += f32::from(u8::from(
+                amplitudes[2 * h + 1].to_bits() != amplitudes[2 * h].to_bits(),
+            ));
+            rendered.lanes[1] += f32::from(u8::from(
+                phases[2 * h + 1].to_bits() != phases[2 * h].to_bits(),
+            ));
+        }
+        for i in 2 * NUM_HARMONICS..FREQUENCY_FLOATS {
+            for array in [amplitudes, normalized, phases] {
+                rendered.lanes[2] += f32::from(u8::from(array[i].to_bits() != 0));
+            }
         }
     }
     rendered
@@ -79,6 +92,7 @@ fn wavetable_render() {
         let case = ModuleCase::load(&id);
         let rendered = render(&case);
         assert_parity!(&format!("{id}:info"), rendered.info);
+        assert_parity!(&format!("{id}:lanes"), rendered.lanes);
         assert_parity!(&format!("{id}:wave"), rendered.wave);
         assert_parity!(&format!("{id}:coefficients"), rendered.coefficients);
         assert_parity!(
