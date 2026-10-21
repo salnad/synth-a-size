@@ -610,6 +610,12 @@ fn high_res_power_scale(value: f32, power: f32) -> f64 {
     }
     let abs_value = f64::from(value.abs());
     let numerator = crate::platform_libm::exp(f64::from(power) * abs_value) - 1.0;
+    // `exp(power) - 1.0f` with a float `power` (A12): libc++ resolves the
+    // call to `expf`, so on Apple the subtraction is in float too, then
+    // widened; libstdc++ (x86) resolves it to the double `exp`.
+    #[cfg(target_vendor = "apple")]
+    let denominator = f64::from(power.exp() - 1.0);
+    #[cfg(not(target_vendor = "apple"))]
     let denominator = crate::platform_libm::exp(f64::from(power)) - 1.0;
     if value >= 0.0 {
         numerator / denominator

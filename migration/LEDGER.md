@@ -2462,6 +2462,29 @@ lands.
     audio fade's `cos`, and the FFT twiddles. `ilogbf`/`scalbnf` in the
     complex division stay on the crate; they are exact operations with the
     same result everywhere.
+- **A12: `exp` overload resolution in `highResPowerScale`**
+  (`wave_warp_modifier.cpp:32`):
+  - `double denominator = exp(power) - 1.0f;` passes a float `power`.
+    libc++ (macOS) resolves the call to `expf`, so the subtraction happens
+    in float before widening; libstdc++ (x86) resolves it to the double
+    `exp`.
+  - The macOS ref-module imports 4 `_exp` and 4 `_expf`; x86 imports only
+    `exp`. ARM Reference found this; its diff of libm entry points across
+    the whole engine found no other site.
+  - `platform_libm` alone changed nothing (run 39549289498), because Apple's
+    double `exp` equals the `libm` crate on these inputs.
+  - Port: on Apple targets the denominator is `f64::from(power.exp() - 1.0)`,
+    i.e. `expf` and a float subtraction, as the C++ types dictate. Other
+    targets keep the double form. The numerator,
+    `exp(power * abs_value)` with a double product, is double on both.
+  - The frequency filter's `powerScale` takes a `double` power, so it is
+    unaffected.
+  - Check: forcing the Apple form on Linux (glibc `expf` standing in for
+    Apple's) reproduces the macOS failures against the x86 reference
+    almost exactly. The worst case is 3.87e-4 / −113.1 dB on
+    `warp_h_false_v_false`, against 3.9e-4 / −113 dB on macOS, and up to
+    1.99e-3 across the four cases, against 2.0e-3. Linux output is
+    unchanged.
 
 **A10, complex division without fast-math on macOS:**
 - Apple compiler-rt's `__divsc3`, which the macOS no-fast-math build
