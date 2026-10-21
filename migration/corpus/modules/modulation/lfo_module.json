@@ -1,0 +1,752 @@
+{
+ "description": "LfoModule: SynthLfo wired to registry controls with the tempo-sync frequency switch (free, tempo, dotted, triplet, keytrack). Control values are the normalized parameter values set after init(). osc_frequency is captured as the phase increment frequency / sample rate.",
+ "module": "lfo_module",
+ "cases": {
+  "defaults_audio": {
+   "params": {
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_off"
+      }
+     ]
+    }
+   }
+  },
+  "defaults_control": {
+   "params": {
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_off"
+      }
+     ]
+    }
+   }
+  },
+  "free_frequency_audio": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "controls": {
+     "lfo_1_sync": 0.0,
+     "lfo_1_frequency": 2.5,
+     "lfo_1_phase": 0.25,
+     "lfo_1_stereo": 0.3,
+     "lfo_1_smooth_mode": 0.0,
+     "lfo_1_fade_time": 0.4,
+     "lfo_1_delay_time": 0.1
+    },
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 10,
+       "value": "voice_on"
+      },
+      {
+       "sample": 15000,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "free_frequency_control": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "controls": {
+     "lfo_1_sync": 0.0,
+     "lfo_1_frequency": 2.5,
+     "lfo_1_phase": 0.25,
+     "lfo_1_stereo": 0.3,
+     "lfo_1_smooth_mode": 0.0,
+     "lfo_1_fade_time": 0.4,
+     "lfo_1_delay_time": 0.1
+    },
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 10,
+       "value": "voice_on"
+      },
+      {
+       "sample": 15000,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "frequency_extremes_audio": {
+   "params": {
+    "prefix": "lfo_4",
+    "shape": "sin",
+    "controls": {
+     "lfo_4_sync": 0.0,
+     "lfo_4_frequency": 9.0,
+     "lfo_4_smooth_mode": 0.0
+    },
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "frequency_extremes_control": {
+   "params": {
+    "prefix": "lfo_4",
+    "shape": "sin",
+    "controls": {
+     "lfo_4_sync": 0.0,
+     "lfo_4_frequency": 9.0,
+     "lfo_4_smooth_mode": 0.0
+    },
+    "control_rate": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "frequency_min_audio": {
+   "params": {
+    "prefix": "lfo_4",
+    "shape": "saw_up",
+    "controls": {
+     "lfo_4_sync": 0.0,
+     "lfo_4_frequency": -7.0,
+     "lfo_4_smooth_mode": 0.0,
+     "lfo_4_sync_type": 2.0
+    },
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "frequency_min_control": {
+   "params": {
+    "prefix": "lfo_4",
+    "shape": "saw_up",
+    "controls": {
+     "lfo_4_sync": 0.0,
+     "lfo_4_frequency": -7.0,
+     "lfo_4_smooth_mode": 0.0,
+     "lfo_4_sync_type": 2.0
+    },
+    "control_rate": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "tempo_sync_audio": {
+   "params": {
+    "prefix": "lfo_2",
+    "shape": "triangle",
+    "beats_per_second": 2.25,
+    "sync_seconds": 3.1,
+    "controls": {
+     "lfo_2_sync": 1.0,
+     "lfo_2_tempo": 9.0,
+     "lfo_2_sync_type": 1.0,
+     "lfo_2_smooth_mode": 0.0
+    },
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on",
+       "voices": "0"
+      }
+     ]
+    }
+   }
+  },
+  "tempo_sync_control": {
+   "params": {
+    "prefix": "lfo_2",
+    "shape": "triangle",
+    "beats_per_second": 2.25,
+    "sync_seconds": 3.1,
+    "controls": {
+     "lfo_2_sync": 1.0,
+     "lfo_2_tempo": 9.0,
+     "lfo_2_sync_type": 1.0,
+     "lfo_2_smooth_mode": 0.0
+    },
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on",
+       "voices": "0"
+      }
+     ]
+    }
+   }
+  },
+  "dotted_sync_audio": {
+   "params": {
+    "prefix": "lfo_2",
+    "shape": "triangle",
+    "beats_per_second": 2.25,
+    "sync_seconds": 3.1,
+    "controls": {
+     "lfo_2_sync": 2.0,
+     "lfo_2_tempo": 9.0,
+     "lfo_2_sync_type": 1.0,
+     "lfo_2_smooth_mode": 0.0
+    },
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on",
+       "voices": "0"
+      }
+     ]
+    }
+   }
+  },
+  "dotted_sync_control": {
+   "params": {
+    "prefix": "lfo_2",
+    "shape": "triangle",
+    "beats_per_second": 2.25,
+    "sync_seconds": 3.1,
+    "controls": {
+     "lfo_2_sync": 2.0,
+     "lfo_2_tempo": 9.0,
+     "lfo_2_sync_type": 1.0,
+     "lfo_2_smooth_mode": 0.0
+    },
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on",
+       "voices": "0"
+      }
+     ]
+    }
+   }
+  },
+  "triplet_sync_audio": {
+   "params": {
+    "prefix": "lfo_2",
+    "shape": "triangle",
+    "beats_per_second": 2.25,
+    "sync_seconds": 3.1,
+    "controls": {
+     "lfo_2_sync": 3.0,
+     "lfo_2_tempo": 9.0,
+     "lfo_2_sync_type": 1.0,
+     "lfo_2_smooth_mode": 0.0
+    },
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on",
+       "voices": "0"
+      }
+     ]
+    }
+   }
+  },
+  "triplet_sync_control": {
+   "params": {
+    "prefix": "lfo_2",
+    "shape": "triangle",
+    "beats_per_second": 2.25,
+    "sync_seconds": 3.1,
+    "controls": {
+     "lfo_2_sync": 3.0,
+     "lfo_2_tempo": 9.0,
+     "lfo_2_sync_type": 1.0,
+     "lfo_2_smooth_mode": 0.0
+    },
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on",
+       "voices": "0"
+      }
+     ]
+    }
+   }
+  },
+  "tempo_extremes_audio": {
+   "params": {
+    "prefix": "lfo_2",
+    "shape": "sin",
+    "beats_per_second": 4.0,
+    "controls": {
+     "lfo_2_sync": 1.0,
+     "lfo_2_tempo": 12.0,
+     "lfo_2_smooth_mode": 0.0
+    },
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "tempo_extremes_control": {
+   "params": {
+    "prefix": "lfo_2",
+    "shape": "sin",
+    "beats_per_second": 4.0,
+    "controls": {
+     "lfo_2_sync": 1.0,
+     "lfo_2_tempo": 12.0,
+     "lfo_2_smooth_mode": 0.0
+    },
+    "control_rate": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "keytrack_control": {
+   "params": {
+    "prefix": "lfo_3",
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "controls": {
+     "lfo_3_sync": 4.0,
+     "lfo_3_keytrack_transpose": 12.0,
+     "lfo_3_keytrack_tune": 0.37,
+     "lfo_3_sync_type": 4.0,
+     "lfo_3_phase": 0.5
+    },
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "midi": {
+     "value": [
+      48.0,
+      48.0,
+      84.0,
+      84.0
+     ]
+    },
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "smooth_time_audio": {
+   "params": {
+    "prefix": "lfo_8",
+    "shape": "square",
+    "controls": {
+     "lfo_8_sync": 0.0,
+     "lfo_8_frequency": 3.0,
+     "lfo_8_smooth_mode": 1.0,
+     "lfo_8_smooth_time": -3.0,
+     "lfo_8_sync_type": 5.0,
+     "lfo_8_phase": 0.6
+    },
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_off"
+      }
+     ]
+    },
+    "note_count": 3
+   }
+  },
+  "smooth_time_control": {
+   "params": {
+    "prefix": "lfo_8",
+    "shape": "square",
+    "controls": {
+     "lfo_8_sync": 0.0,
+     "lfo_8_frequency": 3.0,
+     "lfo_8_smooth_mode": 1.0,
+     "lfo_8_smooth_time": -3.0,
+     "lfo_8_sync_type": 5.0,
+     "lfo_8_phase": 0.6
+    },
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_off"
+      }
+     ]
+    },
+    "note_count": 3
+   }
+  },
+  "keytrack_low_band_audio": {
+   "params": {
+    "prefix": "lfo_3",
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "control_rate": false,
+    "controls": {
+     "lfo_3_sync": 4.0,
+     "lfo_3_keytrack_transpose": -48.0,
+     "lfo_3_keytrack_tune": 0.37,
+     "lfo_3_sync_type": 0.0,
+     "lfo_3_smooth_mode": 0.0
+    }
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "midi": {
+     "value": [
+      24.0,
+      24.0,
+      40.0,
+      40.0
+     ]
+    },
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "keytrack_low_band_control": {
+   "params": {
+    "prefix": "lfo_3",
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "control_rate": true,
+    "controls": {
+     "lfo_3_sync": 4.0,
+     "lfo_3_keytrack_transpose": -48.0,
+     "lfo_3_keytrack_tune": 0.37,
+     "lfo_3_sync_type": 0.0,
+     "lfo_3_smooth_mode": 0.0
+    }
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "midi": {
+     "value": [
+      24.0,
+      24.0,
+      40.0,
+      40.0
+     ]
+    },
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  }
+ }
+}

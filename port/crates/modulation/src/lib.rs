@@ -30,9 +30,13 @@ pub use sas_dsp_core;
 
 pub mod envelope;
 pub mod envelope_module;
+pub mod lfo_module;
+pub mod synth_lfo;
 
 pub use envelope::Envelope;
 pub use envelope_module::EnvelopeModule;
+pub use lfo_module::LfoModule;
+pub use synth_lfo::SynthLfo;
 
 /// Milestone in `migration/PLAN.md` that ports this crate.
 pub const MILESTONE: &str = "M3";
@@ -43,6 +47,10 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/src/synthesis/modulators/envelope.cpp",
     "vital/src/synthesis/modules/envelope_module.h",
     "vital/src/synthesis/modules/envelope_module.cpp",
+    "vital/src/synthesis/modulators/synth_lfo.h",
+    "vital/src/synthesis/modulators/synth_lfo.cpp",
+    "vital/src/synthesis/modules/lfo_module.h",
+    "vital/src/synthesis/modules/lfo_module.cpp",
 ];
 
 #[cfg(test)]

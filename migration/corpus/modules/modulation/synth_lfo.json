@@ -1,0 +1,1601 @@
+{
+ "description": "SynthLfo (shape LFO), every sync type at control and audio rate. Inputs are processor values (frequency in Hz, times in seconds; upstream ranges: frequency 2^-7..2^9 Hz free, delay 0..4 s, fade 0..8 s, smooth time 2^-10..2^4 s). osc_frequency is captured as the phase increment frequency / sample rate.",
+ "module": "synth_lfo",
+ "cases": {
+  "trigger_sin_audio": {
+   "params": {
+    "shape": "sin",
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 3.0,
+    "sync_type": 0,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 100,
+       "value": "voice_on"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_off"
+      },
+      {
+       "sample": 36000,
+       "value": "voice_on"
+      }
+     ]
+    },
+    "note_count": 2
+   }
+  },
+  "trigger_sin_control": {
+   "params": {
+    "shape": "sin",
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 3.0,
+    "sync_type": 0,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 100,
+       "value": "voice_on"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_off"
+      },
+      {
+       "sample": 36000,
+       "value": "voice_on"
+      }
+     ]
+    },
+    "note_count": 2
+   }
+  },
+  "trigger_triangle_phase_audio": {
+   "params": {
+    "shape": "triangle",
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 7.25,
+    "phase": 0.3,
+    "sync_type": 0,
+    "stereo_phase": 0.5,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 100,
+       "value": "voice_on"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_off"
+      },
+      {
+       "sample": 36000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "trigger_triangle_phase_control": {
+   "params": {
+    "shape": "triangle",
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 7.25,
+    "phase": 0.3,
+    "sync_type": 0,
+    "stereo_phase": 0.5,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 100,
+       "value": "voice_on"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_off"
+      },
+      {
+       "sample": 36000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "sync_audio": {
+   "params": {
+    "sync_seconds": 1.37,
+    "shape": "saw_up",
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 2.5,
+    "sync_type": 1,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 100,
+       "value": "voice_on"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_off"
+      },
+      {
+       "sample": 36000,
+       "value": "voice_on"
+      }
+     ]
+    },
+    "stereo_phase": -0.5
+   }
+  },
+  "sync_control": {
+   "params": {
+    "sync_seconds": 1.37,
+    "shape": "saw_up",
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 2.5,
+    "sync_type": 1,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 100,
+       "value": "voice_on"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_off"
+      },
+      {
+       "sample": 36000,
+       "value": "voice_on"
+      }
+     ]
+    },
+    "stereo_phase": -0.5
+   }
+  },
+  "envelope_audio": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 1.5,
+    "phase": 0.2,
+    "sync_type": 2,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 31000,
+       "value": "voice_on",
+       "voices": "0"
+      }
+     ]
+    }
+   }
+  },
+  "envelope_control": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 1.5,
+    "phase": 0.2,
+    "sync_type": 2,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 31000,
+       "value": "voice_on",
+       "voices": "0"
+      }
+     ]
+    }
+   }
+  },
+  "sustain_envelope_audio": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": true
+    },
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 2.0,
+    "phase": 0.6,
+    "sync_type": 3,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 10,
+       "value": "voice_on"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_off"
+      },
+      {
+       "sample": 25000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 26000,
+       "value": "voice_off",
+       "voices": "1"
+      },
+      {
+       "sample": 40000,
+       "value": "voice_off"
+      }
+     ]
+    }
+   }
+  },
+  "sustain_envelope_control": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": true
+    },
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 2.0,
+    "phase": 0.6,
+    "sync_type": 3,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 10,
+       "value": "voice_on"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_off"
+      },
+      {
+       "sample": 25000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 26000,
+       "value": "voice_off",
+       "voices": "1"
+      },
+      {
+       "sample": 40000,
+       "value": "voice_off"
+      }
+     ]
+    }
+   }
+  },
+  "loop_point_audio": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 2.0,
+    "phase": 0.3,
+    "sync_type": 4,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 22050,
+       "value": "voice_off"
+      }
+     ]
+    }
+   }
+  },
+  "loop_point_control": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 2.0,
+    "phase": 0.3,
+    "sync_type": 4,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 22050,
+       "value": "voice_off"
+      }
+     ]
+    }
+   }
+  },
+  "loop_hold_audio": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 3.0,
+    "phase": 0.7,
+    "sync_type": 5,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 22050,
+       "value": "voice_off"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on",
+       "voices": "0"
+      }
+     ]
+    }
+   }
+  },
+  "loop_hold_control": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 3.0,
+    "phase": 0.7,
+    "sync_type": 5,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 22050,
+       "value": "voice_off"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on",
+       "voices": "0"
+      }
+     ]
+    }
+   }
+  },
+  "delay_fade_audio": {
+   "params": {
+    "shape": "sin",
+    "control_rate": false
+   },
+   "num_samples": 66150,
+   "inputs": {
+    "frequency": 5.0,
+    "sync_type": 0,
+    "delay": 0.2,
+    "fade": 0.5,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 37,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "delay_fade_control": {
+   "params": {
+    "shape": "sin",
+    "control_rate": true
+   },
+   "num_samples": 66150,
+   "inputs": {
+    "frequency": 5.0,
+    "sync_type": 0,
+    "delay": 0.2,
+    "fade": 0.5,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 37,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "delay_fade_envelope_audio": {
+   "params": {
+    "shape": "square",
+    "control_rate": false
+   },
+   "num_samples": 66150,
+   "inputs": {
+    "frequency": 1.0,
+    "sync_type": 2,
+    "delay": 0.3,
+    "fade": 0.25,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 37,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "delay_fade_envelope_control": {
+   "params": {
+    "shape": "square",
+    "control_rate": true
+   },
+   "num_samples": 66150,
+   "inputs": {
+    "frequency": 1.0,
+    "sync_type": 2,
+    "delay": 0.3,
+    "fade": 0.25,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 37,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "max_delay_fade_audio": {
+   "params": {
+    "shape": "sin",
+    "control_rate": false
+   },
+   "num_samples": 264600,
+   "inputs": {
+    "frequency": 4.0,
+    "sync_type": 0,
+    "delay": 4.0,
+    "fade": 8.0,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "max_delay_fade_control": {
+   "params": {
+    "shape": "sin",
+    "control_rate": true
+   },
+   "num_samples": 264600,
+   "inputs": {
+    "frequency": 4.0,
+    "sync_type": 0,
+    "delay": 4.0,
+    "fade": 8.0,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "smooth_audio": {
+   "params": {
+    "shape": "square",
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 4.0,
+    "sync_type": 0,
+    "smooth_mode": 1,
+    "smooth_time": 0.05,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "smooth_control": {
+   "params": {
+    "shape": "square",
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 4.0,
+    "sync_type": 0,
+    "smooth_mode": 1,
+    "smooth_time": 0.05,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "smooth_max_time_audio": {
+   "params": {
+    "shape": "square",
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 4.0,
+    "sync_type": 4,
+    "phase": 0.5,
+    "smooth_mode": 1,
+    "smooth_time": 16.0,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "smooth_max_time_control": {
+   "params": {
+    "shape": "square",
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 4.0,
+    "sync_type": 4,
+    "phase": 0.5,
+    "smooth_mode": 1,
+    "smooth_time": 16.0,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "smooth_below_min_half_life_audio": {
+   "params": {
+    "shape": "saw_down",
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "frequency": 9.0,
+    "sync_type": 5,
+    "phase": 0.4,
+    "smooth_mode": 1,
+    "smooth_time": 0.0009765625,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 11000,
+       "value": "voice_off"
+      }
+     ]
+    }
+   }
+  },
+  "smooth_below_min_half_life_control": {
+   "params": {
+    "shape": "saw_down",
+    "control_rate": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "frequency": 9.0,
+    "sync_type": 5,
+    "phase": 0.4,
+    "smooth_mode": 1,
+    "smooth_time": 0.0009765625,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 11000,
+       "value": "voice_off"
+      }
+     ]
+    }
+   }
+  },
+  "max_frequency_audio": {
+   "params": {
+    "shape": "sin",
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "frequency": 512.0,
+    "sync_type": 0,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 3,
+       "value": "voice_on"
+      }
+     ]
+    },
+    "stereo_phase": 0.25
+   }
+  },
+  "max_frequency_control": {
+   "params": {
+    "shape": "sin",
+    "control_rate": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "frequency": 512.0,
+    "sync_type": 0,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 3,
+       "value": "voice_on"
+      }
+     ]
+    },
+    "stereo_phase": 0.25
+   }
+  },
+  "min_frequency_audio": {
+   "params": {
+    "shape": "triangle",
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 0.0078125,
+    "sync_type": 0,
+    "phase": 0.9,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 3,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "min_frequency_control": {
+   "params": {
+    "shape": "triangle",
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 0.0078125,
+    "sync_type": 0,
+    "phase": 0.9,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 3,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "modulated_inputs_audio": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": true
+    },
+    "control_rate": false
+   },
+   "num_samples": 88200,
+   "inputs": {
+    "frequency": {
+     "signal": "ramp",
+     "from": 0.0078125,
+     "to": 512.0
+    },
+    "phase": {
+     "signal": "sine",
+     "freq_hz": 0.7,
+     "amp": 0.5,
+     "offset": 0.5
+    },
+    "stereo_phase": {
+     "signal": "ramp",
+     "from": -0.5,
+     "to": 0.5
+    },
+    "fade": {
+     "signal": "ramp",
+     "from": 1.0,
+     "to": 0.0
+    },
+    "sync_type": 0,
+    "note_count": 5,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 44100,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 60000,
+       "value": "voice_off"
+      }
+     ]
+    }
+   }
+  },
+  "modulated_inputs_control": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": true
+    },
+    "control_rate": true
+   },
+   "num_samples": 88200,
+   "inputs": {
+    "frequency": {
+     "signal": "ramp",
+     "from": 0.0078125,
+     "to": 512.0
+    },
+    "phase": {
+     "signal": "sine",
+     "freq_hz": 0.7,
+     "amp": 0.5,
+     "offset": 0.5
+    },
+    "stereo_phase": {
+     "signal": "ramp",
+     "from": -0.5,
+     "to": 0.5
+    },
+    "fade": {
+     "signal": "ramp",
+     "from": 1.0,
+     "to": 0.0
+    },
+    "sync_type": 0,
+    "note_count": 5,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 44100,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 60000,
+       "value": "voice_off"
+      }
+     ]
+    }
+   }
+  },
+  "block_128_48k_audio": {
+   "params": {
+    "shape": "sin",
+    "control_rate": false
+   },
+   "sample_rate": 48000,
+   "block_size": 128,
+   "num_samples": 48000,
+   "inputs": {
+    "frequency": 11.0,
+    "sync_type": 0,
+    "delay": 0.05,
+    "fade": 0.1,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 127,
+       "value": "voice_on"
+      },
+      {
+       "sample": 128,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "block_37_96k_audio": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "control_rate": false
+   },
+   "sample_rate": 96000,
+   "block_size": 37,
+   "num_samples": 48000,
+   "inputs": {
+    "frequency": 6.0,
+    "sync_type": 3,
+    "phase": 0.5,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 36,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_off"
+      }
+     ]
+    }
+   }
+  },
+  "oversample_2_audio": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "control_rate": false
+   },
+   "sample_rate": 48000,
+   "oversample": 2,
+   "block_size": 256,
+   "num_samples": 96000,
+   "inputs": {
+    "frequency": 3.0,
+    "sync_type": 4,
+    "phase": 0.25,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 255,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "block_1_control": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "control_rate": true
+   },
+   "block_size": 1,
+   "num_samples": 11025,
+   "inputs": {
+    "frequency": 13.0,
+    "sync_type": 5,
+    "phase": 0.6,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 6000,
+       "value": "voice_off"
+      }
+     ]
+    }
+   }
+  },
+  "envelope_smooth_audio": {
+   "params": {
+    "shape": "square",
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 2.0,
+    "phase": 0.1,
+    "sync_type": 2,
+    "smooth_mode": 1,
+    "smooth_time": 0.03,
+    "fade": 0.2,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 25000,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "sustain_envelope_smooth_audio": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 3.0,
+    "phase": 0.55,
+    "sync_type": 3,
+    "smooth_mode": 1,
+    "smooth_time": 0.02,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 10,
+       "value": "voice_on"
+      },
+      {
+       "sample": 18000,
+       "value": "voice_off"
+      },
+      {
+       "sample": 24000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_off",
+       "voices": "0"
+      }
+     ]
+    }
+   }
+  },
+  "envelope_smooth_control": {
+   "params": {
+    "shape": "square",
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 2.0,
+    "phase": 0.1,
+    "sync_type": 2,
+    "smooth_mode": 1,
+    "smooth_time": 0.03,
+    "fade": 0.2,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 25000,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "sustain_envelope_smooth_control": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 3.0,
+    "phase": 0.55,
+    "sync_type": 3,
+    "smooth_mode": 1,
+    "smooth_time": 0.02,
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 10,
+       "value": "voice_on"
+      },
+      {
+       "sample": 18000,
+       "value": "voice_off"
+      },
+      {
+       "sample": 24000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_off",
+       "voices": "0"
+      }
+     ]
+    }
+   }
+  }
+ }
+}

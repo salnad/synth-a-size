@@ -10,6 +10,7 @@
 
 use sas_dsp_core::{Processor, ProcessorImpl, ProcessorRef};
 use sas_simd::common::{VoiceEvent, VOICE_KILL_TIME};
+use sas_simd::conversions::float_to_i32;
 use sas_simd::poly_utils as utils;
 use sas_simd::{futils, PolyFloat, PolyInt, PolyMask};
 
@@ -283,7 +284,7 @@ impl Envelope {
             let mut end_cycle =
                 utils::mask_load(num_samples as f32, cycles_remaining + i as f32, attack_mask);
             end_cycle = utils::min(end_cycle, utils::to_float(triggered_position));
-            let last_cycle = (utils::min_float(end_cycle) as i32).max(i as i32 + 1) as usize;
+            let last_cycle = float_to_i32(utils::min_float(end_cycle)).max(i as i32 + 1) as usize;
 
             let current_sustain = utils::interpolate(self.sustain, sustain_end, block_t);
             let start = utils::mask_load(self.start_value, 1.0, decay_mask | hold_mask);

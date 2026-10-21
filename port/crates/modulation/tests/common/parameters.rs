@@ -8,7 +8,11 @@
 //! `vital/src/common/synth_parameters.cpp` (`env_parameter_list`,
 //! `lfo_parameter_list`, `random_lfo_parameter_list`,
 //! `mod_parameter_list`: min, max, default, post offset, scale). The parity
-//! captures check them: a wrong row changes the module output.
+//! captures check the default and scale of every control these modules
+//! create. Min and max only matter where an exponential scale clamps to them,
+//! or once a modulation is connected, so a capture catches a wrong bound only
+//! when a case drives the control past it; the rest is checked against the
+//! source rows by review.
 
 use sas_dsp_core::synth_module::{set_parameter_lookup, ParameterDetails};
 use sas_dsp_core::ValueScale::{self, Exponential, Indexed, Linear, Quartic};
