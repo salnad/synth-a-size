@@ -2413,6 +2413,14 @@ is optional (manual dispatch).
   listed ids (it prints each one); no other job sets the variable.
   `SAS_PARITY_FAILURES` in the macOS job is now an absolute path, so
   failure dumps upload.
+- A11 refined and A12 added in `decisions/reference-arm.md`, from #53
+  (test PR: #2 + #52 on macOS). `otool -tV` on both macOS builds:
+  `PhaseModifierKeyframe::render` is merged only in the official build, and
+  the harness's `phase_coefficients` pair is separate in both. A12:
+  `highResPowerScale`'s `exp(power)` with a float argument is `expf` under
+  libc++ and the double `exp` under libstdc++, which explains all four
+  `warp_*:wave` macOS misses. The `otool` call-site pattern in
+  `machine_info.sh` now matches `symbol stub for:` lines.
 - `migration/AGENTS.md`: every module PR adds its own macOS arm64 hash
   entries from its `ref-arm64-macos-15` artifact.
 - A10 (`std::complex<float>` division) recorded in

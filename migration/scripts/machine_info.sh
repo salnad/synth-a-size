@@ -113,7 +113,7 @@ if [[ "$os" == "Darwin" ]]; then
     for bin in ref-render ref-module; do
       [[ -x "$build/$bin" ]] || continue
       otool -tV "$build/$bin" \
-        | awk '/^[^ \t].*:$/ { fn = substr($0, 1, length($0) - 1) } /\tbl\t___sincos(f)?_stret/ { print $NF "\t" fn }' \
+        | awk '/^[^ \t].*:$/ { fn = substr($0, 1, length($0) - 1) } /symbol stub for: ___sincos(f)?_stret/ { print $NF "\t" fn }' \
         | sort | uniq -c | c++filt > "$out/sincos_call_sites_$bin.txt"
       echo "## $bin __sincos(f)_stret call sites: $(wc -l < "$out/sincos_call_sites_$bin.txt")"
     done
