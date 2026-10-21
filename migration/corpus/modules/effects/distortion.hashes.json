@@ -18,8 +18,6 @@
         "interim_down_sample_96k_constant_drive:drive": "b9a08ae3d8ed3b83",
         "interim_down_sample_drive_steps:audio": "473fe5e28d0105f3",
         "interim_down_sample_drive_steps:drive": "54c29ae894fdbc23",
-        "interim_down_sample_drive_sweep_short:audio": "b559a9c6c798d5a3",
-        "interim_down_sample_drive_sweep_short:drive": "ab88c6af7d3e0f63",
         "linear_fold_drive_sweep:audio": "70b22f06988288c3",
         "linear_fold_drive_sweep:drive": "b2a7e9fec84e9ecb",
         "odd_block_bit_crush:audio": "1c97d78dced39983",

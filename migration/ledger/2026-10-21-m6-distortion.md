@@ -39,3 +39,15 @@ are bit-identical to the reference and the proxy.
 the `current_samples_` reset on a type change is pinned (a mutant without it
 fails at −17.6 dB). Port 3.0e-7 / −143.9 dB. With it and the interim cases,
 32 outputs pass and 26 are bit-identical.
+
+**macOS arm64 (after #2):** `effects/distortion/interim_down_sample_drive_sweep_short`
+misses the macOS no-fast-math proxy (max abs 0.18, residual −44 dB) although
+it is bit-identical on x86. It is the same swept-drive sample-and-hold timing
+effect as the two parked cases. Per `migration/AGENTS.md` it is parked with
+its inputs unchanged in
+`migration/corpus/modules/effects/pending/distortion_arm64.json`, its x86 hash
+entries are removed, and no tolerance changes. It returns with the other two
+under SAS-35 (`reference: nofastmath`). 30 outputs stay loaded on x86. Every
+other distortion output passes the macOS proxy (Reference ARM run
+39622357646), and the macOS arm64 hashes come from that run's
+`ref-arm64-macos-15` artifact.
