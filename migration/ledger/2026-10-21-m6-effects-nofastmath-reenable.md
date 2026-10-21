@@ -1,21 +1,19 @@
 ## 2026-10-21: M6 effects, parked cases re-enabled as no-fast-math exact (SAS-35)
 
-**Changed.** Every parked effects case from the landed M6 PRs is back in its module file, unchanged, with `"reference": "nofastmath"`. Each is listed in `migration/decisions/nofastmath/effects/<module>.md`, and all `migration/corpus/modules/effects/pending/` files are deleted. That makes 50 cases:
+**Changed.** Every parked effects case from the M6 PRs is back in its module file, unchanged, with `"reference": "nofastmath"`. Each is listed in `migration/decisions/nofastmath/effects/<module>.md`, and `migration/corpus/modules/effects/pending/` is gone. That makes 69 cases:
 
-- **x86-justified (40):** 10 reverb, 3 reverb module, 2 distortion, 1 distortion module, 16 chorus and 8 flanger cases.
+- **x86-justified (59):** 10 reverb, 3 reverb module, 2 distortion, 1 distortion module, 16 chorus, 8 flanger, 13 multiband compressor and 6 compressor module cases.
 - **macOS-only (10):** 2 stereo delay, 1 distortion and 7 flanger cases. These were the arm64 parks that had also dropped the cases from x86. Declared `macos`, they are now compared exactly against the no-fast-math build on both targets, so x86 has them again too.
 
-The compressor's 19 multiband parks follow once #48 lands.
+**x86 justification** (`compare build/parity build/proxy --justify-nofastmath`): all 59 `x86` cases print `justified on x86`, and the 10 `macos` cases print `not gated on x86`. 2475 compared, 0 failed.
 
-**x86 justification** (`compare build/parity build/proxy --justify-nofastmath`): all 40 `x86` cases print `justified on x86`, and the 10 `macos` cases print `not gated on x86`. 1922 compared, 0 failed.
+**Port exactness:** on x86 the port is bit-identical to the no-fast-math captures on all 69 cases (`SAS_PARITY_CAPTURES_NOFASTMATH`, sas-effects parity tests).
 
-**Port exactness:** on x86 the port is bit-identical to the no-fast-math captures on all 50 cases (`SAS_PARITY_CAPTURES_NOFASTMATH`, sas-effects parity tests).
-
-**Hashes:** x86 hashes for both builds come from local CI-identity trees. `hashes --check --require-known-identity` covers 1989 hashes and the no-fast-math check covers 174, both with 0 problems.
+**Hashes:** x86 hashes for both builds come from local CI-identity trees. `hashes --check --require-known-identity` covers 2620 hashes and the no-fast-math check covers 272, both with 0 problems.
 
 **macOS:** Reference ARM is non-gating by owner policy. The macOS official and no-fast-math hashes for these cases, and the macOS justification of the `macos` targets, come from this PR's macOS 15 artifact when it is available. A case that also fails the official reference on macOS gets `macos` added to its targets then.
 
-`allowlist-approval --base origin/main` lists the 50 additions with 0 problems.
+`allowlist-approval --base origin/main` lists the 69 additions with 0 problems.
 
 Official vs no-fast-math, worst output per case (max abs / residual). x86 values are from this change; macOS values are from the earlier Reference ARM artifacts (runs 39622357646 and 39622362623):
 
@@ -71,3 +69,22 @@ Official vs no-fast-math, worst output per case (max abs / residual). x86 values
 | `effects/reverb_module/long_tail_max_decay` | x86 | 6.5e−06 / −66.8 dB |
 | `effects/stereo_delay/clamped_dampened_damping_sweep` | macos | 3.8e-4 / −92 dB (LEDGER.md, #2) |
 | `effects/stereo_delay/unclamped_unfiltered_negative_feedback` | macos | 1.3e-4 / −92 dB (LEDGER.md, #2) |
+| `effects/compressor_module/defaults_noise` | x86 | 8.4e−05 / −78.8 dB |
+| `effects/compressor_module/threshold_and_ratio_sweeps` | x86 | 5.1e−04 / −76.6 dB |
+| `effects/compressor_module/gain_attack_release_mix` | x86 | 1.0e−03 / −71.2 dB |
+| `effects/compressor_module/enable_toggle` | x86 | 1.0e−04 / −83.4 dB |
+| `effects/compressor_module/rate_96k` | x86 | 3.5e−04 / −64.5 dB |
+| `effects/compressor_module/oversampled_2x` | x86 | 3.1e−04 / −65.8 dB |
+| `effects/multiband_compressor/multiband_noise` | x86 | 8.4e−05 / −78.8 dB |
+| `effects/multiband_compressor/multiband_saw_loud` | x86 | 6.3e−05 / −86.5 dB |
+| `effects/multiband_compressor/multiband_quiet_expansion` | x86 | 2.3e−05 / −75.8 dB |
+| `effects/multiband_compressor/upper_threshold_sweeps` | x86 | 1.9e−04 / −76.7 dB |
+| `effects/multiband_compressor/lower_threshold_sweeps` | x86 | 5.5e−04 / −79.4 dB |
+| `effects/multiband_compressor/ratio_sweeps` | x86 | 1.6e−04 / −77.5 dB |
+| `effects/multiband_compressor/gain_sweeps` | x86 | 3.7e−04 / −76.5 dB |
+| `effects/multiband_compressor/attack_release_sweeps` | x86 | 9.0e−04 / −73.0 dB |
+| `effects/multiband_compressor/mix_sweep` | x86 | 3.7e−05 / −91.1 dB |
+| `effects/multiband_compressor/band_switching` | x86 | 1.0e−04 / −83.5 dB |
+| `effects/multiband_compressor/rate_48k` | x86 | 1.0e−04 / −77.3 dB |
+| `effects/multiband_compressor/rate_96k` | x86 | 3.4e−04 / −64.1 dB |
+| `effects/multiband_compressor/oversampled_2x` | x86 | 3.6e−04 / −65.8 dB |
