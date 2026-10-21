@@ -817,10 +817,8 @@ Harness Builder's `sas-parity` helper.)
   tests only; upstream throws there, and the port returns the error.
 - `LineGenerator::from_json` rejects `num_points == 0` with an error.
   Upstream's behaviour is undefined there; the port used to panic.
-- Pending a harness fix: `run_corpus.py compare` reports text-only module
-  cases (here `common/json/*`) as "no reference outputs", which fails CI's
-  determinism and calibration steps. I reported it to the coordinator for
-  Harness Builder.
+
+---
 
 ## 2026-10-20: M4a wavetable state model, FFT and WaveFrame
 
@@ -910,6 +908,13 @@ the committed parity captures wait for `sas-parity`, PR #3)
   fast-math FFT noise (1.2e-7 relative). I'll measure the proxy and
   official-reference metrics on captures before choosing a representation,
   and ask a human rather than change limits.
+
+- `sas-wavetable` forwards the `aarch64-semantics` feature to
+  `sas-common`, for the RNG's libc++ column (A9). The Audio File Source's
+  random phase generator uses that RNG. Every crate that uses the RNG
+  forwards it the same way.
+
+---
 
 ## 2026-10-20: M4a wavetable creator JSON parity captures
 

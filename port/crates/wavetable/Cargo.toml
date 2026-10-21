@@ -8,6 +8,12 @@ repository.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[features]
+# The aarch64 reference's semantics on every target (see sas-common's and
+# sas-simd's features of the same name); forwarded to every dependency that
+# has per-target behaviour.
+aarch64-semantics = ["sas-common/aarch64-semantics"]
+
 [dependencies]
 sas-common.workspace = true
 libm.workspace = true
