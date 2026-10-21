@@ -2733,12 +2733,13 @@ no-fast-math trees, and re-enable `audio_fade_3_phase_0` on arm64 if #2
 parked it.
 
 
+---
+
 ## 2026-10-20: M2 parameter registry and preset load/save (`sas-preset`)
 
 Built on `sas-common` (PR #4: nlohmann-exact JSON, JUCE base64, RNG,
 `LineGenerator`, version comparison and PCM helpers) and the
-`sas-wavetable` state model (PR #6), which this branch includes until those
-PRs merge.
+`sas-wavetable` state model (PR #6), both merged.
 
 **Changed**
 
@@ -2761,14 +2762,14 @@ PRs merge.
   `migration/corpus/modules/preset/{registry,state}.json`, one per
   corpus preset, preset test and the init preset, with their hashes in
   `*.hashes.json`. CI renders them in the reference job; the tests compare
-  with `assert_artifact` (byte for byte, hash-verified). Nothing else is
-  committed.
+  with `assert_artifact` (hash-verified; saved states under the JSON
+  bound, the registry and load errors exact). Nothing else is committed.
 - `generate.py` writes 15 authored presets to
   `migration/corpus/preset_tests/`: six old-version presets that together
   run every upgrade step, edge cases for controls, metadata, LFO shapes
   and modulation slots, and five presets the loader must reject.
 
-**Measured** (all byte-exact against the fast-math reference)
+**Measured**
 
 - The artifacts are byte-identical to the goldens of the earlier
   `ref-preset` tool, which they replace (28 files, 1.7 MB no longer
@@ -2777,10 +2778,12 @@ PRs merge.
   display field and string table matches. The engine has 772 controls (22
   legacy parameters are never instantiated or saved), 32 modulation
   sources and 428 modulation destinations.
-- `saveToJson().dump()` after loading equals the reference byte for byte
-  for the init preset, the 5 corpus presets and the 10 loading test
-  presets. All 5 rejected presets fail in both with the same error class.
-- Second load→save round trip: equal to the reference's for init and all
+- `saveToJson().dump()` after loading matches the reference for the init
+  preset, the 5 corpus presets and the 10 loading test presets: bit for
+  bit against the no-fast-math reference, and within the JSON bound
+  against the default reference (table under Findings). All 5 rejected
+  presets fail in both with the same error class.
+- Second load→save round trip: matches the reference's for init and all
   corpus presets. Everything except the sample is a fixed point after the
   first save.
 
@@ -2806,20 +2809,26 @@ PRs merge.
   | `fm_remap_points` | `t = i / (kRemapResolution - 1.0f)`, `interpolate(min, max, t)`, `y = 1.0f - (pow(old, 1/2) - min_target) / new_amount`, 0.4.7 remap (636-641, 682-687) | `t = i * (1/31)`, `1/new_amount` hoisted out of the loop, `y = (min_target - sqrtf(old)) * (1/new_amount) + 1` |
   | `sub_wave_frame` | `sub_waveform * 257.0f / 6.0f`, 0.5.0 step (713) | `sub_waveform * (257.0f * (1.0f / 6.0f))` (folded reciprocal) |
 
-  Measured against the x86 reference with the source formulas (keys, types
-  and strings exact in every case):
+  The `preset/state` cases declare `state.json` and `roundtrip.json` as
+  `"json"` artifacts with `"base64_f32_keys": ["wave_data"]` (PR #34);
+  `load_error.txt` and the registry stay exact. Measured state.json, port
+  vs reference (wave_data compared as decoded f32):
 
-  | Preset | Numbers that differ | Max ulp | Max abs |
-  |---|---|---|---|
-  | `upgrade_from_0_1_0` | 15 | 52 | 7.8e-7 |
-  | `upgrade_from_0_4_6_fm` | 18 | 96 | 3.6e-7 |
-  | `upgrade_from_0_4_9_sub` | 1 | 1 | 3.8e-6 |
-  | `upgrade_from_0_4_9_sub_direct` | 1 | 1 | 1.5e-5 |
+  | Case | vs default (fast-math) reference | vs no-fast-math reference |
+  |---|---|---|
+  | `init`, the 5 corpus presets and 7 test presets | ≤ 12 wave_data samples, ≤ 4 ulp, ≤ 1.2e-7 abs | identical |
+  | `upgrade_from_0_1_0` | 15 values: max 52 ulp, 7.7e-7 abs; wave_data ≤ 4 ulp | identical |
+  | `upgrade_from_0_4_6_fm` | 18 values: max 96 ulp, 3.6e-7 abs; wave_data ≤ 4 ulp | identical |
+  | `upgrade_from_0_4_9_sub` | 1 value: 1 ulp (3.8e-6 abs); 372 wave_data samples ≤ 3 ulp, 1.8e-7 abs | identical |
+  | `upgrade_from_0_4_9_sub_direct` | 1 value: 1 ulp (1.5e-5 abs); 380 wave_data samples ≤ 4 ulp, 1.8e-7 abs | identical |
 
-  All are within the bound (the 52/96 ulp cases are remap-curve values
-  near zero, within 1e-6 absolute; the margin there is only 1.3x). The init
-  preset, the corpus presets and current-version presets do not depend on
-  these expressions and stay byte-identical.
+  Every difference is within the bound. The wave_data ones come from
+  sas-wavetable's default saw and predefined waves, which now also use the
+  source formulas. The 52/96 ulp values are remap-curve points near zero,
+  within 1e-6 absolute (1.3x margin). Bit-identical results against the
+  no-fast-math reference confirm the differences are fast-math codegen
+  only. The proxy calibration (`compare build/ref build/proxy`) passes all
+  708 comparisons.
 - nlohmann 3.1.2 implicit numeric conversions (`float x = j`) accept
   booleans. `sas-common` now does too (PR #4), and the preset crate uses
   its conversions directly. No preset field is enum-typed (every read in
@@ -2839,7 +2848,5 @@ PRs merge.
 
 **Open / blocked**
 
-- Rebase onto main when PRs #4 and #6 merge.
-- The preset-state cases switch to the JSON-bounded artifact comparison
-  (`"artifacts": {"state.json": "json"}`) once Harness Builder's PR lands;
-  until then the four upgrade presets above fail the byte-exact check.
+- If ARM Reference's #2 lands, add macOS-identity hash entries for the
+  preset modules from the macos-15 CI tree.

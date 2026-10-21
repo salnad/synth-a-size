@@ -39,12 +39,14 @@ macro-name fallbacks, a stereo sample, and presets the loader must
 reject.
 
 The reference's saved state for each of them, for every preset in
-`presets/` (plus a second load→save round trip) and for the init preset is
-captured as exact-match artifacts by the module cases in
+`presets/` (plus a second load→save round trip) and for the init preset
+is captured as artifacts (compared under the JSON bound, `wave_data` as
+base64 f32) by the module cases in
 [`modules/preset/state.json`](modules/preset/state.json). The parameter
 registry and engine tables are captured by
 [`modules/preset/registry.json`](modules/preset/registry.json). Every
-preset here needs a case in `state.json`; the `sas-preset` tests check that.
+preset here needs a case in `state.json`; the `sas-preset` tests check
+that.
 
 ## MIDI (`midi/*.mid`)
 

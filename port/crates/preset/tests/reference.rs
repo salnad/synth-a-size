@@ -2,10 +2,11 @@
 
 //! Parity with the reference: the registry and engine tables, and the saved
 //! state after loading every corpus preset, every preset-state test preset and
-//! the init preset, compared byte for byte with the reference's exact-match
-//! artifacts (module cases `preset/registry` and `preset/state` in
-//! `migration/corpus/modules/preset/`, rendered by `ref-module` and pinned by
-//! hash).
+//! the init preset, compared with the reference's artifacts (module cases
+//! `preset/registry` and `preset/state` in `migration/corpus/modules/preset/`,
+//! rendered by `ref-module` and pinned by hash). The registry is exact; saved
+//! states are compared under the owner-approved JSON bound declared in
+//! `state.json`, with `wave_data` decoded as base64 f32.
 
 use std::path::{Path, PathBuf};
 
@@ -36,74 +37,10 @@ fn init_content() -> InitContent {
     InitContent { sample_seed }
 }
 
-/// The first place two JSON values differ, for readable failures.
-fn first_difference(path: &str, expected: &Value, actual: &Value) -> Option<String> {
-    match (expected, actual) {
-        (Value::Object(a), Value::Object(b)) => {
-            for key in a.keys().chain(b.keys()) {
-                let (x, y) = (
-                    a.get(key).unwrap_or(&Value::Null),
-                    b.get(key).unwrap_or(&Value::Null),
-                );
-                if a.contains_key(key) != b.contains_key(key) {
-                    return Some(format!(
-                        "{path}/{key}: expected {}, got {}",
-                        x.dump(),
-                        y.dump()
-                    ));
-                }
-                if let Some(difference) = first_difference(&format!("{path}/{key}"), x, y) {
-                    return Some(difference);
-                }
-            }
-            None
-        }
-        (Value::Array(a), Value::Array(b)) => {
-            for i in 0..a.len().max(b.len()) {
-                let (x, y) = (
-                    a.get(i).unwrap_or(&Value::Null),
-                    b.get(i).unwrap_or(&Value::Null),
-                );
-                if let Some(difference) = first_difference(&format!("{path}/{i}"), x, y) {
-                    return Some(difference);
-                }
-            }
-            None
-        }
-        _ if expected.dump() == actual.dump() => None,
-        _ => {
-            let (x, y) = (expected.dump(), actual.dump());
-            let shorten = |text: String| {
-                if text.len() > 120 {
-                    format!("{}…", &text[..120])
-                } else {
-                    text
-                }
-            };
-            Some(format!(
-                "{path}: expected {}, got {}",
-                shorten(x),
-                shorten(y)
-            ))
-        }
-    }
-}
-
-/// Asserts with `assert_artifact` (byte for byte, hash-verified); on a
-/// mismatch it first prints where the JSON differs.
+/// Asserts with `assert_artifact`: hash-verified, and under the JSON bound the
+/// case declares for `state.json` and `roundtrip.json`.
 fn assert_same_state(case: &ModuleCase, artifact: &str, state: &PresetState) {
-    let actual = state.to_json_string() + "\n";
-    let expected = case.artifact(artifact);
-    if actual != expected {
-        let expected = json::parse(&expected).expect("artifact parses");
-        let difference = first_difference("", &expected, &state.to_json())
-            .unwrap_or_else(|| "same values, different serialization".to_string());
-        eprintln!(
-            "{}:{artifact}: saved state differs from the reference at {difference}",
-            case.id()
-        );
-    }
-    case.assert_artifact(artifact, &actual);
+    case.assert_artifact(artifact, &(state.to_json_string() + "\n"));
 }
 
 /// The preset-state cases: (case, preset path relative to migration/corpus,
