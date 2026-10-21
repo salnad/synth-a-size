@@ -71,6 +71,8 @@ def main():
     parser.add_argument("--pair", action="append", default=[], help="LABEL=REFERENCE_TREE:TEST_TREE")
     parser.add_argument("--gate", action="append", default=[], help="label of a pair that must pass")
     parser.add_argument("--audio-diff")
+    parser.add_argument("--probe-pair", action="append", default=[],
+                        help="LABEL=DIAG_DIR_A:DIAG_DIR_B; compares fp_probe.json and rng_probe.json")
     args = parser.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
@@ -113,11 +115,35 @@ def main():
                 fmt(c["residual_db"], "db"), fmt(c["lsd_db"], "db"), fmt(c["rms_diff_db"], "db")))
         lines.append("\n</details>\n")
 
+    probe_results = []
+    for spec in args.probe_pair:
+        label, dirs = spec.split("=", 1)
+        dir_a, dir_b = dirs.split(":", 1)
+        lines.append("### Probes: %s\n" % label)
+        lines.append("| Probe file | Keys equal | Keys different | Different keys |\n|---|---|---|---|")
+        for probe in ("fp_probe.json", "rng_probe.json"):
+            path_a, path_b = os.path.join(dir_a, probe), os.path.join(dir_b, probe)
+            if not (os.path.exists(path_a) and os.path.exists(path_b)):
+                lines.append("| %s | missing | | |" % probe)
+                continue
+            with open(path_a) as handle:
+                a = json.load(handle)
+            with open(path_b) as handle:
+                b = json.load(handle)
+            a, b = a.get("hashes", a), b.get("hashes", b)
+            common = sorted(set(a) & set(b))
+            different = [k for k in common if a[k] != b[k]]
+            probe_results.append({"label": label, "probe": probe, "equal": len(common) - len(different),
+                                  "different": different})
+            lines.append("| %s | %d | %d | %s |" % (probe, len(common) - len(different), len(different),
+                                                     ", ".join(different) if different else "-"))
+        lines.append("")
+
     markdown = "\n".join(lines) + "\n"
     with open(os.path.join(args.out, "report.md"), "w") as handle:
         handle.write(markdown)
     with open(os.path.join(args.out, "report.json"), "w") as handle:
-        json.dump(results, handle, indent=2, default=str)
+        json.dump({"pairs": results, "probes": probe_results}, handle, indent=2, default=str)
     print(markdown)
     return 1 if failed_gate else 0
 

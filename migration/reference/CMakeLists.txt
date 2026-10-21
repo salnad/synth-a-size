@@ -223,6 +223,11 @@ add_executable(ref-module src/module_main.cpp src/module_registry.cpp ${REF_MODU
 target_include_directories(ref-module PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(ref-module PRIVATE harness_common)
 
+# Diagnostic: hashes upstream's RandomGenerator streams. Linked against the
+# engine (same flags) on purpose, unlike ref-fp-probe.
+add_executable(ref-rng-probe src/rng_probe.cpp)
+target_link_libraries(ref-rng-probe PRIVATE harness_common)
+
 # Diagnostic: hashes libm and rcpps/rsqrtps results so two machines can be
 # compared directly (see migration/decisions/reference-determinism.md).
 add_executable(ref-fp-probe src/fp_probe.cpp)

@@ -129,6 +129,7 @@ jobs:
             migration/reference/build/ref-render
             migration/reference/build/ref-module
             migration/reference/build/ref-fp-probe
+            migration/reference/build/ref-rng-probe
           if-no-files-found: error
           retention-days: 14
 
@@ -243,7 +244,9 @@ jobs:
             --pair "macOS vDSP FFT vs fallback FFT=$m/pinned:$m/vdsp" \
             --pair "macOS no-fast-math proxy=$m/pinned:$m/proxy" \
             --pair "aarch64 Linux vs macOS 15=$m/pinned:$a/ref-aarch64-linux/pinned" \
-            --pair "aarch64 Linux vs x86_64 Linux=$a/ref-x86_64-linux/pinned:$a/ref-aarch64-linux/pinned"
+            --pair "aarch64 Linux vs x86_64 Linux=$a/ref-x86_64-linux/pinned:$a/ref-aarch64-linux/pinned" \
+            --probe-pair "x86_64 Linux vs macOS 15 arm64=$a/ref-x86_64-linux/diag:$m/diag" \
+            --probe-pair "macOS 15 vs macOS 14 (same binaries)=$m/diag:$a/ref-arm64-macos-14/diag"
           python3 migration/scripts/arm_attribution.py compare $a/ref-x86_64-linux/attribution $m/attribution \
             --audio-diff migration/tools/audio-diff/target/release/audio-diff --markdown build/cross/attribution.md
           cat build/cross/report.md >> "$GITHUB_STEP_SUMMARY"
