@@ -32,13 +32,15 @@ What is **not** listed:
 
 ### D1. Host text entry reads the displayed value, clamped
 
+*Pending: in #59, open.*
+
 - **Differs:** what a value typed into a host parameter's text field sets.
 - **Upstream:** `ValueBridge::getValueForText` returns
   `unskew(text / display_multiply)`, an engine-domain value. JUCE's VST3
   wrapper hands it to the host as the *normalized* value
   (`juce_VST3_Wrapper.cpp:529`), and `convertToEngineValue` never clamps it.
   - Typing "72" into Filter 1 Cutoff sets the engine cutoff to
-    72 × 128 + 8 = 9224 (about 9224).
+    72 × 128 + 8 = 9224.
   - An option name parses as 0, so it selects option 0.
 - **Port:** the typed value is read as the displayed value: `post_offset` is
   removed, the value is divided by `display_multiply`, unskewed and clamped
@@ -49,11 +51,15 @@ What is **not** listed:
   input to [0, 1] anyway, so the closest reproduction would make every typed
   number above 1 select the maximum. Only the host's parameter text entry
   is affected; engine values, automation and preset state are not.
-- **Approved:** owner (Salil), 2026-10-21. Implemented in #59. The decision
-  is recorded in `migration/ledger/2026-10-21-owner-approval-plugin-text-entry.md`
-  and `decisions/plugin-framework.md`.
+- **Approved:** owner (Salil), 2026-10-21, relayed by the coordinator.
+  Today the decision is recorded in #59's description. Its ledger entry
+  (`migration/ledger/2026-10-21-owner-approval-plugin-text-entry.md`) and
+  the `decisions/plugin-framework.md` update arrive with #59; neither is on
+  main yet.
 
 ### D2. Note events addressed to every channel or key are dropped
+
+*Pending: in #59, open.*
 
 - **Differs:** note-on, note-off and poly-pressure events that address all
   channels or all keys.
@@ -66,6 +72,8 @@ What is **not** listed:
 - **Approved:** #59.
 
 ### D3. A host tempo of zero or less is ignored
+
+*Pending: in #59, open.*
 
 - **Differs:** a block whose host transport reports a tempo ≤ 0.
 - **Upstream:** `SynthPlugin::processBlock` skips `setBpm` when the tempo
@@ -81,6 +89,8 @@ What is **not** listed:
 - **Approved:** #59.
 
 ### D4. A preset or host state that fails to load changes nothing
+
+*Preset loading: merged (#7). Host state restore: pending, in #59, open.*
 
 - **Differs:** loading a corrupted preset, or one from a newer version.
   This applies to `PresetState` loads and to host state restores.
@@ -146,20 +156,49 @@ What is **not** listed:
 - **Why:** there is no defined output to reproduce.
 - **Approved:** #4 (`sas-common`).
 
-### D8. JSON numbers out of double range, NaN, infinity and subnormals
+### D8. Source formulas instead of the release build's fast-math codegen
 
-- **Differs:** parsing `1E400`, and dumping NaN, infinity or subnormal
-  doubles, in the JSON library.
-- **Upstream (release, fast-math):** `isfinite` is folded away. So `1E400`
-  parses as infinity, NaN and infinity dump as a garbage double, and the DAZ
-  flag makes subnormal doubles dump as `0.0`.
-- **Port:** follows nlohmann's documented, no-fast-math behaviour. Overflow
-  is a parse error, NaN and infinity dump as `null`, and subnormals print
-  normally (`sas-common` JSON).
-- **Why:** upstream's results are fast-math artefacts of degenerate input.
-  Authored content never contains these values.
-- **Approved:** #4. Recorded in `migration/LEDGER.md` ("M4a `sas-common`",
-  Decisions).
+- **Differs:** float results wherever upstream's `-ffast-math` release build
+  compiles a source formula into something else (reassociation, folded
+  checks, inlined approximations).
+- **Upstream (release, fast-math):** the codegen differs from the source.
+  - `PredefinedWaveFrames::createSaturatedSin`'s `tanh` is reordered.
+  - The default saw's `i / 2047.0f` (`wavetable_group.cpp:95`) becomes a
+    multiplication by a reciprocal.
+  - The JSON dump's `signbit` test is folded, so `-0.0` prints as `0.0`.
+  - `std::abs(std::complex<float>)` is inlined as `sqrtf(re² + im²)`.
+  - The preset remap curves and wave data are reassociated.
+  - Degenerate JSON numbers: `isfinite` is folded, so `1E400` parses as
+    infinity, NaN and infinity dump as a garbage double, and the DAZ flag
+    makes subnormal doubles dump as `0.0`.
+- **Port:** follows the source.
+  - `futils::tanh` keeps the source order.
+  - The saw divides by 2047.
+  - The dump tests `signbit`.
+  - `abs` is `hypotf` (`port/crates/wavetable/src/complex.rs`).
+  - The remap and wave data follow the source formulas.
+  - JSON follows nlohmann's documented behaviour: overflow is a parse
+    error, NaN and infinity dump as `null`, and subnormals print normally
+    (`sas-common`).
+  - The result is bit-identical to the `REF_FAST_MATH=OFF` build. Against
+    the official build the difference is rounding-level. For example,
+    `keyframe_waves` is 1.2e-7 instead of exact, and preset values differ
+    by up to 96 ulp, within 1e-6. All of it is inside the parity
+    tolerances and the SAS-36 JSON bound.
+- **Exception:** A10, `std::complex<float>` division at the phase
+  modifier, follows the official build's plain float formula on every
+  target since #54. That is a deliberate return to the release form, so it
+  is not a divergence.
+- **Why:** the fast-math forms are compiler artefacts with no source to
+  port. Mirroring them would mean reproducing GCC's choices call site by
+  call site, and they differ between compilers and targets. Authored
+  content never hits the degenerate JSON values.
+- **Approved:** owner decision 2026-10-21. It is recorded in
+  `migration/LEDGER.md` ("Source semantics, owner decisions and the
+  remaining cases (2026-10-21)", and "M4a `sas-common`", Decisions, for
+  the JSON numbers), in `decisions/owner-decisions-json-and-morphs.md`
+  and in `migration/ledger/2026-10-20-m2-preset-registry.md`. Implemented
+  in #4, #6, #7 and #8.
 
 ### D9. Unsupported `clone()` panics
 
@@ -175,11 +214,68 @@ What is **not** listed:
 - **Approved:** #30 (oversampling: `Upsampler`, `Decimator`,
   `IirHalfbandDecimator`) and #21 (`VoiceHandler`).
 
+### D10. No FMA contraction, no estimates, and JUCE's fallback FFT
+
+- **Differs:** floating-point codegen and the FFT backend, mainly on the
+  shipping target (arm64 macOS).
+- **Upstream (release):**
+  - The real Mac build contracts multiply-adds. Apple clang defaults to
+    `-ffp-contract=on`, and upstream's NEON `vmlaq_f32`/`vmlsq_f32` fuse
+    into FMLA.
+  - JUCE's FFT uses Accelerate/vDSP (`JUCE_USE_VDSP_FRAMEWORK` defaults to
+    1).
+  - On x86, `-ffast-math` turns vectorised division and `sqrtf` into
+    `RCPPS`/`RSQRTPS` estimates plus a Newton step. It also sends
+    auto-vectorised libm calls to glibc's libmvec.
+- **Port:**
+  - It never contracts (no `mul_add`/`vfmaq_f32` where upstream multiplies
+    and adds separately).
+  - It uses no reciprocal or rsqrt estimates, and division and sqrt are
+    exact.
+  - It ports JUCE's portable fallback FFT on every target.
+  - Transcendentals go to the platform libm without libmvec.
+- **Why:** these are CPU- and compiler-dependent rounding with no source
+  to port. Fused contraction and estimate instructions make results
+  differ between machines. The pinned reference avoids them too (see
+  Verification exceptions).
+  - Measured on macOS arm64: contraction −91.2 dB residual, vDSP FFT
+    −127.5 dB.
+  - Both are far below every tolerance.
+- **Approved:**
+  - `decisions/reference-arm.md`: "Consequences for the Rust port" 2–3
+    and "Residual risks", owner-approved with #2.
+  - `decisions/reference-determinism.md`, for x86 `RCPPS` and libmvec.
+  - migration/AGENTS.md hard rule 5 and "Reference-specific facts".
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change
 **what the port is compared against or how**, never what the port does. Each
 has its own decision record.
+
+- **The pinned reference build.** Parity is measured against a pinned C++
+  build of `/vital`, not upstream's shipped binaries.
+  - Flags: `-ffp-contract=off`, `-mno-recip` and `-U__FAST_MATH__` (no
+    libmvec).
+  - glibc is re-executed with `GLIBC_TUNABLES` pinned to its baseline
+    variants.
+  - `JUCE_USE_VDSP_FRAMEWORK=0` (JUCE's fallback FFT).
+  - The macOS runner image is fixed; macOS 15 is the primary reference.
+  - See `decisions/reference-determinism.md` and
+    `decisions/reference-arm.md`. D10 is the port-side counterpart.
+- **Tolerance floors and `tolerance_exception`.** Outside SAS-35, parity is
+  within tolerances, not exact.
+  - The floors `RENDER_FLOOR` and `MODULE_FLOOR` were owner-approved on
+    2026-10-20 and are pinned in `run_corpus.py` and sas-parity.
+  - A case may only loosen with a structured `tolerance_exception` citing
+    a dated ledger heading that names it.
+  - See `decisions/reference-determinism.md` and migration/AGENTS.md
+    rule 6.
+- **Normalized-form captures.** Large-scale quantities (Hz, ms, samples)
+  may be captured in the form their upstream consumer uses, computed the
+  same way in the ref-module and the parity test. For example, a keytrack
+  frequency is captured as `frequency * (1.0f / sample_rate)`, with a raw
+  case over the band that passes. See migration/AGENTS.md.
 
 - **Bounded JSON state (SAS-36).** Declared JSON artifacts compare
   structurally, with floats within 4 f32 ulp or 1e-6. See
@@ -188,6 +284,10 @@ has its own decision record.
   cases compare bit for bit against the `REF_FAST_MATH=OFF` build, gated
   per target by `--justify-nofastmath`. See `decisions/nofastmath/` and
   `migration/ledger/2026-10-21-owner-approval-sas-35-sas-36.md`.
+  - **A11 constraint:** the port follows the official build's merged
+    sin/cos in the phase modifier (A11). So no `reference: nofastmath` case
+    may render a phase modifier, whose no-fast-math form would differ. See
+    `decisions/nofastmath/README.md`.
 - **macOS libm drift list.** Cases where Apple libm differs between macOS 14
   and 15 are reported with their metrics instead of failing the same-binary
   check. See `migration/corpus/macos_libm_drift.json` and

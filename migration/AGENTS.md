@@ -57,7 +57,10 @@ the upstream pin in [UPSTREAM.md](UPSTREAM.md).
    - Any PR that introduces such a divergence adds an entry to
      [DIVERGENCES.md](DIVERGENCES.md) giving what differs, upstream's
      behaviour, the port's behaviour, why, and the approving decision or
-     PR. Reviewers check for it.
+     PR. Reviewers check for it: they look in the PR for a new `panic!` or
+     error on an input upstream handles, a `None` or clamp for upstream UB,
+     a formula that differs from the source, or a `#[cfg]` fork with no
+     matching A-site.
    - Per-target emulation that matches upstream on each target is not a
      divergence. Harness comparison policies go under its "Verification
      exceptions".

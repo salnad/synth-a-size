@@ -28,10 +28,29 @@ difference between the Rust port and upstream in a dedicated file,
     A10's official-build division);
   - behaviours the port mirrors (VST3 note expressions dropped as in JUCE,
     the `setOversampleAmount` no-op, sample padding on save).
+- **Parity Reviewer changes on #60:**
+  - D8 is now the whole class "source formulas instead of the release
+    build's fast-math codegen": `tanh` order, saw /2047, `signbit`,
+    `abs` via `hypotf`, the preset remap and wave data, and the degenerate
+    JSON numbers. It is rounding-level against the official build, and A10
+    is the exception since #54.
+  - New D10: no FMA contraction, no estimates and JUCE's fallback FFT,
+    where upstream's real Mac build fuses and uses vDSP (−91 / −127 dB on
+    the shipping target; `decisions/reference-arm.md`).
+  - D1–D3 and D4's host-state half are marked pending (#59 is open), and
+    D1 says its approval ledger file arrives with #59.
+  - Rule 5 says what reviewers look for.
 - **Verification exceptions.** These are harness policies, not port
-  behaviour, and sit in their own short section: SAS-36 bounded JSON,
-  SAS-35 no-fast-math comparisons, the macOS libm drift list, arm64 parks,
-  and `pending/` case files.
+  behaviour, and sit in their own section:
+  - the pinned reference build;
+  - tolerance floors and `tolerance_exception`;
+  - normalized-form captures;
+  - SAS-36 bounded JSON;
+  - SAS-35 no-fast-math comparisons, with the A11 no-phase-modifier
+    constraint;
+  - the macOS libm drift list;
+  - arm64 parks;
+  - `pending/` case files.
 - **Rule** in migration/AGENTS.md, under hard rule 5: any PR that
   introduces an intentional behavioural divergence adds a DIVERGENCES.md
   entry, and reviewers check for it. migration/README.md lists the file.
