@@ -1,0 +1,121 @@
+{
+  "description": "FormantFilter (four DigitalSvf stages at resonance bounds 4..30, summed by FormantManager) for both vowel styles. Inputs at the ports, as FormantModule feeds them: interpolate_x/y = formant X/Y 0..1 (audio rate; the audio-rate BilinearInterpolate clamps them to -1..2, the control-rate ones do not), transpose = formant transpose -12..12 semitones (audio rate), resonance = formant resonance 0.3..1, spread = formant spread -1..1.",
+  "module": "formant_filter",
+  "params": {
+    "style": 0
+  },
+  "cases": {
+    "aoie_center": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": { "signal": "saw", "freq_hz": 110.0, "amp": 0.5 },
+        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
+        "resonance": 0.85
+      }
+    },
+    "aoie_xy_sweep": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": { "signal": "saw", "freq_hz": 98.0, "amp": 0.5 },
+        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
+        "interpolate_x": { "signal": "ramp", "from": 0.0, "to": 1.0 },
+        "interpolate_y": { "signal": "sine", "freq_hz": 1.5, "amp": 0.5, "offset": 0.5 },
+        "resonance": 1.0
+      }
+    },
+    "aoie_transpose_spread_resonance": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": { "signal": "noise", "amp": 0.5, "seed": 17, "stereo": true },
+        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
+        "interpolate_x": 0.25,
+        "interpolate_y": 0.75,
+        "transpose": { "signal": "ramp", "from": -12.0, "to": 12.0 },
+        "spread": { "signal": "ramp", "from": -1.0, "to": 1.0 },
+        "resonance": { "signal": "ramp", "from": 0.3, "to": 1.0 }
+      }
+    },
+    "aoie_out_of_range": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": { "signal": "saw", "freq_hz": 146.83, "amp": 0.7 },
+        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
+        "interpolate_x": { "signal": "ramp", "from": -1.5, "to": 2.5 },
+        "interpolate_y": { "signal": "ramp", "from": 2.5, "to": -1.5 },
+        "transpose": { "signal": "sine", "freq_hz": 0.75, "amp": 36.0 },
+        "spread": { "signal": "ramp", "from": -1.5, "to": 1.5 },
+        "resonance": { "signal": "ramp", "from": 0.0, "to": 1.2 }
+      }
+    },
+    "aiuo_xy_corners": {
+      "params": { "style": 1 },
+      "num_samples": 22050,
+      "inputs": {
+        "audio": { "signal": "saw", "freq_hz": 110.0, "amp": 0.5 },
+        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
+        "interpolate_x": { "signal": "square", "freq_hz": 2.0, "amp": 0.5, "offset": 0.5 },
+        "interpolate_y": { "signal": "square", "freq_hz": 1.0, "amp": 0.5, "offset": 0.5 },
+        "resonance": 0.85
+      }
+    },
+    "aiuo_full_sweep": {
+      "params": { "style": 1 },
+      "num_samples": 22050,
+      "inputs": {
+        "audio": { "signal": "noise", "amp": 0.5, "seed": 23 },
+        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
+        "interpolate_x": { "signal": "sine", "freq_hz": 0.9, "amp": 0.5, "offset": 0.5 },
+        "interpolate_y": { "signal": "ramp", "from": 1.0, "to": 0.0 },
+        "transpose": { "signal": "ramp", "from": 12.0, "to": -12.0 },
+        "spread": { "signal": "sine", "freq_hz": 1.3, "amp": 1.0 },
+        "resonance": { "signal": "ramp", "from": 1.0, "to": 0.3 }
+      }
+    },
+    "aiuo_per_lane_and_resets": {
+      "params": { "style": 1 },
+      "num_samples": 22050,
+      "inputs": {
+        "audio": { "signal": "saw", "freq_hz": 130.81, "amp": 0.5 },
+        "reset": {
+          "trigger": [
+            { "sample": 0, "value": "voice_on" },
+            { "sample": 7000, "value": "voice_on", "voices": "0" },
+            { "sample": 14037, "value": "voice_on", "voices": "1" }
+          ]
+        },
+        "interpolate_x": { "value": [ 0.0, 0.33, 0.66, 1.0 ] },
+        "interpolate_y": { "value": [ 1.0, 0.66, 0.33, 0.0 ] },
+        "transpose": { "value": [ -12.0, -4.0, 4.0, 12.0 ] },
+        "spread": { "value": [ -1.0, -0.3, 0.3, 1.0 ] },
+        "resonance": { "value": [ 0.3, 0.55, 0.8, 1.0 ] }
+      }
+    },
+    "aoie_96k_block128": {
+      "sample_rate": 96000,
+      "block_size": 128,
+      "num_samples": 48000,
+      "inputs": {
+        "audio": { "signal": "saw", "freq_hz": 110.0, "amp": 0.5 },
+        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
+        "interpolate_x": { "signal": "ramp", "from": 0.0, "to": 1.0 },
+        "interpolate_y": { "signal": "ramp", "from": 1.0, "to": 0.0 },
+        "transpose": { "signal": "ramp", "from": -12.0, "to": 12.0 },
+        "resonance": 0.9
+      }
+    },
+    "aiuo_oversample2": {
+      "params": { "style": 1 },
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 44100,
+      "inputs": {
+        "audio": { "signal": "noise", "amp": 0.5, "seed": 29, "stereo": true },
+        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
+        "interpolate_x": { "signal": "sine", "freq_hz": 1.0, "amp": 0.5, "offset": 0.5 },
+        "interpolate_y": 0.3,
+        "spread": 0.5,
+        "resonance": 0.95
+      }
+    }
+  }
+}

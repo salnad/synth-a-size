@@ -50,6 +50,14 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/src/synthesis/filters/comb_filter.cpp",
     "vital/src/synthesis/modules/comb_module.h",
     "vital/src/synthesis/modules/comb_module.cpp",
+    "vital/src/synthesis/filters/formant_filter.h",
+    "vital/src/synthesis/filters/formant_filter.cpp",
+    "vital/src/synthesis/filters/formant_manager.h",
+    "vital/src/synthesis/filters/formant_manager.cpp",
+    "vital/src/synthesis/filters/vocal_tract.h",
+    "vital/src/synthesis/filters/vocal_tract.cpp",
+    "vital/src/synthesis/modules/formant_module.h",
+    "vital/src/synthesis/modules/formant_module.cpp",
 ];
 
 #[cfg(test)]
