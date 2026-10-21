@@ -14,7 +14,11 @@
 
 pub mod parameters;
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard};
+
+use sas_common::LineGenerator;
 
 use sas_dsp_core::testing::{run_module, DriverInput, DriverSettings, InputRate, TriggerEvent};
 use sas_dsp_core::ProcessorRef;
@@ -87,6 +91,40 @@ pub fn param_bool(params: &Json, name: &str, fallback: bool) -> bool {
 
 pub fn param_str<'a>(params: &'a Json, name: &str, fallback: &'a str) -> &'a str {
     params.get(name).and_then(Json::as_str).unwrap_or(fallback)
+}
+
+/// `refmod_modulation::createLineShape` (`line_shape.h`): the line
+/// generator named or described by `params[key]` (default `"triangle"`).
+pub fn line_shape(params: &Json, key: &str) -> Rc<RefCell<LineGenerator>> {
+    let mut line = LineGenerator::default();
+    match params.get(key) {
+        None => line.init_triangle(),
+        Some(Json::String(name)) => match name.as_str() {
+            "linear" => line.init_linear(),
+            "triangle" => line.init_triangle(),
+            "square" => line.init_square(),
+            "sin" => line.init_sin(),
+            "saw_up" => line.init_saw_up(),
+            "saw_down" => line.init_saw_down(),
+            other => panic!("unknown shape {other}"),
+        },
+        Some(shape) => {
+            let points = shape["points"].as_array().expect("shape.points");
+            line.set_num_points(points.len());
+            for (i, point) in points.iter().enumerate() {
+                let x = point[0].as_f64().unwrap() as f32;
+                let y = point[1].as_f64().unwrap() as f32;
+                line.set_point(i, (x, y));
+                let power = shape
+                    .get("powers")
+                    .map_or(0.0, |powers| powers[i].as_f64().unwrap() as f32);
+                line.set_power(i, power);
+            }
+            line.set_smooth(param_bool(shape, "smooth", false));
+            line.render();
+        }
+    }
+    Rc::new(RefCell::new(line))
 }
 
 /// Sets `params.controls` on a module after `init()`, as the C++ factories do.
