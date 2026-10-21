@@ -1,0 +1,182 @@
+{
+  "description": "ChorusModule through effect_module_harness.h. INTERIM, well-conditioned cases (zero or small modulation depth, short renders) so the LFO phase drift of the fast-math reference cannot move delay reads; the full-range cases are in pending/chorus_module.json.",
+  "module": "chorus_module",
+  "cases": {
+    "interim_no_depth_voices_1": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "chorus_voices": 1,
+        "chorus_mod_depth": 0.0,
+        "chorus_feedback": 0.6
+      }
+    },
+    "interim_no_depth_voices_2": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "chorus_voices": 2,
+        "chorus_mod_depth": 0.0,
+        "chorus_feedback": 0.6
+      }
+    },
+    "interim_no_depth_voices_3": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "chorus_voices": 3,
+        "chorus_mod_depth": 0.0,
+        "chorus_feedback": 0.6
+      }
+    },
+    "interim_no_depth_voices_4": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "chorus_voices": 4,
+        "chorus_mod_depth": 0.0,
+        "chorus_feedback": 0.6
+      }
+    },
+    "interim_no_depth_delay_times": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 3
+        },
+        "chorus_mod_depth": 0.0,
+        "chorus_delay_1": {
+          "signal": "ramp",
+          "from": -10.0,
+          "to": -5.64386
+        },
+        "chorus_delay_2": {
+          "signal": "ramp",
+          "from": -5.64386,
+          "to": -10.0
+        }
+      }
+    },
+    "interim_no_depth_feedback_filter_wet": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 82.0,
+          "amp": 0.6
+        },
+        "chorus_mod_depth": 0.0,
+        "chorus_feedback": {
+          "signal": "ramp",
+          "from": -0.95,
+          "to": 0.95
+        },
+        "chorus_cutoff": {
+          "signal": "ramp",
+          "from": 8.0,
+          "to": 136.0
+        },
+        "chorus_spread": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "chorus_dry_wet": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    },
+    "interim_no_depth_enable_toggle": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "on": {
+          "signal": "square",
+          "freq_hz": 4.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "chorus_mod_depth": 0.0
+      }
+    },
+    "interim_no_depth_48k": {
+      "sample_rate": 48000,
+      "block_size": 128,
+      "num_samples": 24000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "chorus_mod_depth": 0.0
+      }
+    },
+    "interim_no_depth_oversampled_2x": {
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "chorus_mod_depth": 0.0
+      }
+    },
+    "interim_small_depth_short": {
+      "num_samples": 4410,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "chorus_mod_depth": 0.05
+      }
+    },
+    "interim_small_depth_tempo_sync": {
+      "num_samples": 4410,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "chorus_mod_depth": 0.05,
+        "chorus_sync": {
+          "signal": "ramp",
+          "from": 1.0,
+          "to": 3.99
+        },
+        "chorus_tempo": 8
+      }
+    }
+  }
+}
