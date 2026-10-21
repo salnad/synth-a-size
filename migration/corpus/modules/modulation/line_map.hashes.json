@@ -1,0 +1,29 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "custom:phase": "69fb5fc9bd682343",
+        "custom:value": "885231d64621aec3",
+        "custom_smooth:phase": "69fb5fc9bd682343",
+        "custom_smooth:value": "1ed12e794eccf8c3",
+        "sin:phase": "69fb5fc9bd682343",
+        "sin:value": "10275f34f85dc103",
+        "square:phase": "69fb5fc9bd682343",
+        "square:value": "3d61910e2ea19d03",
+        "stereo_noise:phase": "22557476f0c6afa7",
+        "stereo_noise:value": "fd98ad5fe16e91db",
+        "triangle:phase": "69fb5fc9bd682343",
+        "triangle:value": "08659f0b6b3af103"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}

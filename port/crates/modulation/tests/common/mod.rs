@@ -93,12 +93,11 @@ pub fn param_str<'a>(params: &'a Json, name: &str, fallback: &'a str) -> &'a str
     params.get(name).and_then(Json::as_str).unwrap_or(fallback)
 }
 
-/// `refmod_modulation::createLineShape` (`line_shape.h`): the line
-/// generator named or described by `params[key]` (default `"triangle"`).
-pub fn line_shape(params: &Json, key: &str) -> Rc<RefCell<LineGenerator>> {
-    let mut line = LineGenerator::default();
+/// `refmod_modulation::applyLineShape` (`line_shape.h`): applies the shape
+/// named or described by `params[key]`; leaves `line` alone when absent.
+pub fn apply_line_shape(line: &mut LineGenerator, params: &Json, key: &str) {
     match params.get(key) {
-        None => line.init_triangle(),
+        None => {}
         Some(Json::String(name)) => match name.as_str() {
             "linear" => line.init_linear(),
             "triangle" => line.init_triangle(),
@@ -124,6 +123,14 @@ pub fn line_shape(params: &Json, key: &str) -> Rc<RefCell<LineGenerator>> {
             line.render();
         }
     }
+}
+
+/// `refmod_modulation::createLineShape`: a new generator with `params[key]`
+/// applied, `"triangle"` when absent.
+pub fn line_shape(params: &Json, key: &str) -> Rc<RefCell<LineGenerator>> {
+    let mut line = LineGenerator::default();
+    line.init_triangle();
+    apply_line_shape(&mut line, params, key);
     Rc::new(RefCell::new(line))
 }
 

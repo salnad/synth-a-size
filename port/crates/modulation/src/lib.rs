@@ -31,6 +31,8 @@ pub use sas_dsp_core;
 pub mod envelope;
 pub mod envelope_module;
 pub mod lfo_module;
+pub mod line_map;
+pub mod modulation_connection_processor;
 pub mod random_lfo;
 pub mod random_lfo_module;
 pub mod synth_lfo;
@@ -39,6 +41,8 @@ pub mod trigger_random;
 pub use envelope::Envelope;
 pub use envelope_module::EnvelopeModule;
 pub use lfo_module::LfoModule;
+pub use line_map::LineMap;
+pub use modulation_connection_processor::ModulationConnectionProcessor;
 pub use random_lfo::RandomLfo;
 pub use random_lfo_module::RandomLfoModule;
 pub use synth_lfo::SynthLfo;
@@ -63,6 +67,10 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/src/synthesis/modulators/trigger_random.cpp",
     "vital/src/synthesis/modules/random_lfo_module.h",
     "vital/src/synthesis/modules/random_lfo_module.cpp",
+    "vital/src/synthesis/modulators/line_map.h",
+    "vital/src/synthesis/modulators/line_map.cpp",
+    "vital/src/synthesis/modules/modulation_connection_processor.h",
+    "vital/src/synthesis/modules/modulation_connection_processor.cpp",
 ];
 
 #[cfg(test)]

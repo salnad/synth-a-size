@@ -1,0 +1,165 @@
+{
+ "description": "LineMap: a control-rate phase through a line shape (polynomial interpolation), including phases outside 0..1.",
+ "module": "line_map",
+ "cases": {
+  "triangle": {
+   "params": {
+    "shape": "triangle"
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "phase": {
+     "signal": "ramp",
+     "from": -0.25,
+     "to": 1.25
+    }
+   }
+  },
+  "sin": {
+   "params": {
+    "shape": "sin"
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "phase": {
+     "signal": "ramp",
+     "from": -0.25,
+     "to": 1.25
+    }
+   }
+  },
+  "square": {
+   "params": {
+    "shape": "square"
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "phase": {
+     "signal": "ramp",
+     "from": -0.25,
+     "to": 1.25
+    }
+   }
+  },
+  "custom": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.3,
+       0.2
+      ],
+      [
+       0.6,
+       0.8
+      ],
+      [
+       1.0,
+       0.0
+      ]
+     ],
+     "powers": [
+      4.0,
+      -3.0,
+      8.0,
+      0.0
+     ],
+     "smooth": false
+    }
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "phase": {
+     "signal": "ramp",
+     "from": -0.25,
+     "to": 1.25
+    }
+   }
+  },
+  "custom_smooth": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.3,
+       0.2
+      ],
+      [
+       0.6,
+       0.8
+      ],
+      [
+       1.0,
+       0.0
+      ]
+     ],
+     "powers": [
+      4.0,
+      -3.0,
+      8.0,
+      0.0
+     ],
+     "smooth": true
+    }
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "phase": {
+     "signal": "ramp",
+     "from": -0.25,
+     "to": 1.25
+    }
+   }
+  },
+  "stereo_noise": {
+   "params": {
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.3,
+       0.2
+      ],
+      [
+       0.6,
+       0.8
+      ],
+      [
+       1.0,
+       0.0
+      ]
+     ],
+     "powers": [
+      4.0,
+      -3.0,
+      8.0,
+      0.0
+     ],
+     "smooth": true
+    }
+   },
+   "block_size": 1,
+   "num_samples": 8192,
+   "inputs": {
+    "phase": {
+     "signal": "noise",
+     "seed": 9,
+     "stereo": true,
+     "amp": 0.6,
+     "offset": 0.5
+    }
+   }
+  }
+ }
+}

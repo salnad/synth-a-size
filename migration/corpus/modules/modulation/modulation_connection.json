@@ -1,0 +1,1684 @@
+{
+ "description": "ModulationConnectionProcessor: one modulation slot (amount, bipolar, stereo, power morph, remap line, bypass, destination scale) on its control-rate path and every audio-rate path. Control values are set after init().",
+ "module": "modulation_connection",
+ "cases": {
+  "linear_audio": {
+   "params": {
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.5,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "linear_control": {
+   "params": {
+    "control_rate": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.5,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "bipolar_stereo_audio": {
+   "params": {
+    "controls": {
+     "modulation_1_bipolar": 1.0,
+     "modulation_1_stereo": 1.0
+    },
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "noise",
+     "seed": 3,
+     "stereo": true,
+     "amp": 0.6,
+     "offset": 0.5
+    },
+    "modulation_amount": -0.7,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "bipolar_stereo_control": {
+   "params": {
+    "controls": {
+     "modulation_1_bipolar": 1.0,
+     "modulation_1_stereo": 1.0
+    },
+    "control_rate": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "noise",
+     "seed": 3,
+     "stereo": true,
+     "amp": 0.6,
+     "offset": 0.5
+    },
+    "modulation_amount": -0.7,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "morphed_audio": {
+   "params": {
+    "destination_scale": 0.25,
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.8,
+    "modulation_power": 3.0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "morphed_control": {
+   "params": {
+    "destination_scale": 0.25,
+    "control_rate": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.8,
+    "modulation_power": 3.0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "morphed_bipolar_stereo_audio": {
+   "params": {
+    "controls": {
+     "modulation_1_bipolar": 1.0,
+     "modulation_1_stereo": 1.0
+    },
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "noise",
+     "seed": 3,
+     "stereo": true,
+     "amp": 0.6,
+     "offset": 0.5
+    },
+    "modulation_amount": 1.0,
+    "modulation_power": -4.5,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "morphed_bipolar_stereo_control": {
+   "params": {
+    "controls": {
+     "modulation_1_bipolar": 1.0,
+     "modulation_1_stereo": 1.0
+    },
+    "control_rate": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "noise",
+     "seed": 3,
+     "stereo": true,
+     "amp": 0.6,
+     "offset": 0.5
+    },
+    "modulation_amount": 1.0,
+    "modulation_power": -4.5,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "power_max_audio": {
+   "params": {
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 1.0,
+    "modulation_power": 10.0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "power_max_control": {
+   "params": {
+    "control_rate": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 1.0,
+    "modulation_power": 10.0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "power_min_audio": {
+   "params": {
+    "controls": {
+     "modulation_1_bipolar": 1.0
+    },
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": -1.0,
+    "modulation_power": -10.0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "power_min_control": {
+   "params": {
+    "controls": {
+     "modulation_1_bipolar": 1.0
+    },
+    "control_rate": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": -1.0,
+    "modulation_power": -10.0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "remapped_audio": {
+   "params": {
+    "map": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.3,
+       0.2
+      ],
+      [
+       0.6,
+       0.8
+      ],
+      [
+       1.0,
+       0.0
+      ]
+     ],
+     "powers": [
+      4.0,
+      -3.0,
+      8.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.6,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "remapped_control": {
+   "params": {
+    "map": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.3,
+       0.2
+      ],
+      [
+       0.6,
+       0.8
+      ],
+      [
+       1.0,
+       0.0
+      ]
+     ],
+     "powers": [
+      4.0,
+      -3.0,
+      8.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "control_rate": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.6,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "remapped_smooth_bipolar_audio": {
+   "params": {
+    "map": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.3,
+       0.2
+      ],
+      [
+       0.6,
+       0.8
+      ],
+      [
+       1.0,
+       0.0
+      ]
+     ],
+     "powers": [
+      4.0,
+      -3.0,
+      8.0,
+      0.0
+     ],
+     "smooth": true
+    },
+    "controls": {
+     "modulation_1_bipolar": 1.0,
+     "modulation_1_stereo": 1.0
+    },
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "noise",
+     "seed": 3,
+     "stereo": true,
+     "amp": 0.6,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.9,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "remapped_smooth_bipolar_control": {
+   "params": {
+    "map": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.3,
+       0.2
+      ],
+      [
+       0.6,
+       0.8
+      ],
+      [
+       1.0,
+       0.0
+      ]
+     ],
+     "powers": [
+      4.0,
+      -3.0,
+      8.0,
+      0.0
+     ],
+     "smooth": true
+    },
+    "controls": {
+     "modulation_1_bipolar": 1.0,
+     "modulation_1_stereo": 1.0
+    },
+    "control_rate": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "noise",
+     "seed": 3,
+     "stereo": true,
+     "amp": 0.6,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.9,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "remapped_morphed_audio": {
+   "params": {
+    "map": "sin",
+    "destination_scale": 48.0,
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.4,
+    "modulation_power": 2.0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "remapped_morphed_control": {
+   "params": {
+    "map": "sin",
+    "destination_scale": 48.0,
+    "control_rate": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.4,
+    "modulation_power": 2.0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "bypass_audio": {
+   "params": {
+    "controls": {
+     "modulation_1_bypass": 1.0
+    },
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.5,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "bypass_control": {
+   "params": {
+    "controls": {
+     "modulation_1_bypass": 1.0
+    },
+    "control_rate": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.5,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "index_5_audio": {
+   "params": {
+    "index": 5,
+    "controls": {
+     "modulation_6_bipolar": 1.0
+    },
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.3,
+    "modulation_power": 1.0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "index_5_control": {
+   "params": {
+    "index": 5,
+    "controls": {
+     "modulation_6_bipolar": 1.0
+    },
+    "control_rate": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.3,
+    "modulation_power": 1.0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "input_out_of_range_audio": {
+   "params": {
+    "destination_scale": 128.0,
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "ramp",
+     "from": -0.5,
+     "to": 1.5
+    },
+    "modulation_amount": {
+     "signal": "ramp",
+     "from": -1.5,
+     "to": 1.5
+    },
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "input_out_of_range_control": {
+   "params": {
+    "destination_scale": 128.0,
+    "control_rate": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "ramp",
+     "from": -0.5,
+     "to": 1.5
+    },
+    "modulation_amount": {
+     "signal": "ramp",
+     "from": -1.5,
+     "to": 1.5
+    },
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "power_crosses_zero_audio": {
+   "params": {
+    "map": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.3,
+       0.2
+      ],
+      [
+       0.6,
+       0.8
+      ],
+      [
+       1.0,
+       0.0
+      ]
+     ],
+     "powers": [
+      4.0,
+      -3.0,
+      8.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.7,
+    "modulation_power": {
+     "signal": "sine",
+     "freq_hz": 2.0,
+     "amp": 10.0
+    },
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "power_crosses_zero_control": {
+   "params": {
+    "map": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.3,
+       0.2
+      ],
+      [
+       0.6,
+       0.8
+      ],
+      [
+       1.0,
+       0.0
+      ]
+     ],
+     "powers": [
+      4.0,
+      -3.0,
+      8.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.7,
+    "modulation_power": {
+     "signal": "sine",
+     "freq_hz": 2.0,
+     "amp": 10.0
+    },
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "amount_modulated_resets_audio": {
+   "params": {
+    "destination_scale": 2.0,
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "noise",
+     "seed": 3,
+     "stereo": true,
+     "amp": 0.6,
+     "offset": 0.5
+    },
+    "modulation_amount": {
+     "signal": "square",
+     "freq_hz": 9.0,
+     "amp": 0.8
+    },
+    "modulation_power": 0.0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 1000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 2000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 3000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 4000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 6000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 7000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 8000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 10000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 11000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 13000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 14000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 15000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 16000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 17000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 18000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 19000,
+       "value": "voice_on",
+       "voices": "0"
+      }
+     ]
+    }
+   }
+  },
+  "amount_modulated_resets_control": {
+   "params": {
+    "destination_scale": 2.0,
+    "control_rate": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "noise",
+     "seed": 3,
+     "stereo": true,
+     "amp": 0.6,
+     "offset": 0.5
+    },
+    "modulation_amount": {
+     "signal": "square",
+     "freq_hz": 9.0,
+     "amp": 0.8
+    },
+    "modulation_power": 0.0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 1000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 2000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 3000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 4000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 6000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 7000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 8000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 10000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 11000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 13000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 14000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 15000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 16000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 17000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 18000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 19000,
+       "value": "voice_on",
+       "voices": "0"
+      }
+     ]
+    }
+   }
+  },
+  "control_rate_source_audio": {
+   "params": {
+    "controls": {
+     "modulation_1_bipolar": 1.0
+    },
+    "map": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.3,
+       0.2
+      ],
+      [
+       0.6,
+       0.8
+      ],
+      [
+       1.0,
+       0.0
+      ]
+     ],
+     "powers": [
+      4.0,
+      -3.0,
+      8.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5,
+     "rate": "control"
+    },
+    "modulation_amount": 0.6,
+    "modulation_power": -2.0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "block_128_48k_audio": {
+   "params": {
+    "map": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.3,
+       0.2
+      ],
+      [
+       0.6,
+       0.8
+      ],
+      [
+       1.0,
+       0.0
+      ]
+     ],
+     "powers": [
+      4.0,
+      -3.0,
+      8.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "control_rate": false
+   },
+   "num_samples": 24000,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.6,
+    "modulation_power": 2.0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   },
+   "sample_rate": 48000,
+   "block_size": 128
+  },
+  "block_37_96k_audio": {
+   "params": {
+    "control_rate": false
+   },
+   "num_samples": 24000,
+   "inputs": {
+    "modulation_input": {
+     "signal": "noise",
+     "seed": 3,
+     "stereo": true,
+     "amp": 0.6,
+     "offset": 0.5
+    },
+    "modulation_amount": -0.6,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   },
+   "sample_rate": 96000,
+   "block_size": 37
+  },
+  "block_1_control": {
+   "params": {
+    "map": "triangle",
+    "control_rate": true
+   },
+   "num_samples": 4410,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.6,
+    "modulation_power": 2.0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 5000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 12000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   },
+   "block_size": 1
+  }
+ }
+}
