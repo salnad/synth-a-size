@@ -18,9 +18,12 @@ aarch64-semantics = [
     "sas-effects/aarch64-semantics",
     "sas-oscillators/aarch64-semantics",
     "sas-preset/aarch64-semantics",
+    "sas-modulation/aarch64-semantics",
+    "sas-common/aarch64-semantics",
 ]
 
 [dependencies]
+sas-common.workspace = true
 sas-simd.workspace = true
 sas-dsp-core.workspace = true
 sas-oscillators.workspace = true
