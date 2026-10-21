@@ -10,6 +10,10 @@
 # Linux x86_64 is the supported reference platform (that is what CI uses).
 
 cmake_minimum_required(VERSION 3.16)
+# macOS: one deployment target for every reference build, so a binary built on
+# a newer macOS runner also runs on macOS 14 (used to separate Apple libm /
+# OS drift from compiler drift; migration/decisions/reference-arm.md).
+set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS version")
 project(synth_a_size_reference CXX)
 
 set(CMAKE_CXX_STANDARD 14)
@@ -24,6 +28,13 @@ endif()
 # default so the reference behaves like the shipped plugin; the flag is
 # recorded in every render's metadata.
 option(REF_FAST_MATH "Compile the reference with -ffast-math like upstream release builds" ON)
+
+# Experiment switches, OFF for the reference (migration/decisions/reference-arm.md):
+# REF_FP_CONTRACT lets the compiler fuse a*b+c into FMA (GCC on aarch64 and
+# Apple clang do so by default); REF_USE_VDSP lets JUCE use Accelerate/vDSP
+# for the FFT on Apple, as upstream's Mac builds do.
+option(REF_FP_CONTRACT "Allow FMA contraction (experiment only)" OFF)
+option(REF_USE_VDSP "Apple only: JUCE FFT via Accelerate/vDSP (experiment only)" OFF)
 
 get_filename_component(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 set(VITAL_DIR "${REPO_ROOT}/vital")
@@ -46,9 +57,20 @@ set(JUCE_UNITS
   juce_dsp
   juce_events
 )
+# JUCE needs Objective-C++ on Apple platforms (same split as upstream's
+# headless JuceLibraryCode: include_*.cpp vs include_*.mm).
+if(APPLE)
+  enable_language(OBJCXX)
+  set(CMAKE_OBJCXX_STANDARD 14)
+  set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+  set(JUCE_UNIT_EXT mm)
+else()
+  set(JUCE_UNIT_EXT cpp)
+endif()
+
 set(JUCE_SOURCES "")
 foreach(unit ${JUCE_UNITS})
-  list(APPEND JUCE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/juce_config/include_${unit}.cpp")
+  list(APPEND JUCE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/juce_config/include_${unit}.${JUCE_UNIT_EXT}")
 endforeach()
 
 # Engine + JUCE in one static library shared by both CLIs.
@@ -84,8 +106,11 @@ target_include_directories(upstream_engine PUBLIC
   "${VITAL_DIR}/third_party"
 )
 
+if(NOT APPLE)
+  target_compile_definitions(upstream_engine PUBLIC LINUX=1)
+endif()
+
 target_compile_definitions(upstream_engine PUBLIC
-  LINUX=1
   NDEBUG=1
   HEADLESS=1
   NO_AUTH=1
@@ -127,9 +152,42 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
   # - -ffp-contract=off keeps FMA contraction out even if someone overrides
   #   -march with an FMA-capable target.
   list(APPEND REF_OPT_FLAGS -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+  # ARM determinism (migration/decisions/reference-arm.md):
+  # - GCC (GNU mode) defaults to -ffp-contract=fast and Apple clang to
+  #   -ffp-contract=on; both fuse a*b+c into FMADD/FMLA, including upstream's
+  #   NEON mulAdd/mulSub (vmlaq_f32/vmlsq_f32 are written as a + b * c in
+  #   arm_neon.h). Turning contraction off gives the same unfused
+  #   multiply-then-add as the x86 SSE2 path.
+  # - GCC: pin the baseline ISA and generic tuning (some -mtune targets
+  #   enable FRECPE/FRSQRTE-based division and sqrt approximations).
+  # - Apple: pin JUCE's FFT to its portable fallback instead of vDSP, the
+  #   same FFT code the x86 reference runs.
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    list(APPEND REF_OPT_FLAGS -march=armv8-a -mtune=generic)
+  endif()
+  if(NOT REF_FP_CONTRACT)
+    list(APPEND REF_OPT_FLAGS -ffp-contract=off)
+  endif()
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 17)
+    # Apple clang 15 passes -menable-unsafe-fp-math for -ffast-math, and its
+    # backend then fuses FMAs even with -ffp-contract=off (measured by
+    # scripts/fp_contract_flags_probe.sh). check_fp_determinism.sh fails such
+    # a build; the macOS reference identity uses Apple clang 17 (macOS 15).
+    message(WARNING "Apple clang < 17 ignores -ffp-contract=off under -ffast-math; this build will not match the macOS reference")
+  endif()
+endif()
+if(APPLE)
+  if(REF_USE_VDSP)
+    list(APPEND REF_OPT_FLAGS -DJUCE_USE_VDSP_FRAMEWORK=1)
+  else()
+    list(APPEND REF_OPT_FLAGS -DJUCE_USE_VDSP_FRAMEWORK=0)
+  endif()
 endif()
 
 list(JOIN REF_OPT_FLAGS " " REF_OPT_FLAGS_STRING)
+message(STATUS "Reference: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION} on ${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}")
+message(STATUS "Reference optimisation flags: ${REF_OPT_FLAGS_STRING}")
 target_compile_definitions(upstream_engine PUBLIC "REF_OPT_FLAGS=\"${REF_OPT_FLAGS_STRING}\"")
 
 target_compile_options(upstream_engine PUBLIC
@@ -139,7 +197,16 @@ target_compile_options(upstream_engine PUBLIC
   -w
 )
 
-target_link_libraries(upstream_engine PUBLIC Threads::Threads ${CMAKE_DL_LIBS} rt)
+target_link_libraries(upstream_engine PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
+if(APPLE)
+  # OSXFrameworks declared by the six JUCE modules.
+  target_link_libraries(upstream_engine PUBLIC
+    "-framework Cocoa" "-framework Foundation" "-framework IOKit"
+    "-framework CoreAudio" "-framework CoreMIDI" "-framework QuartzCore"
+    "-framework AudioToolbox" "-framework Accelerate")
+else()
+  target_link_libraries(upstream_engine PUBLIC rt)
+endif()
 
 add_library(harness_common STATIC src/harness_io.cpp)
 target_link_libraries(harness_common PUBLIC upstream_engine)
@@ -152,12 +219,33 @@ target_link_libraries(ref-render PRIVATE harness_common)
 # Compiled straight into the executable (not a static library) so the linker
 # keeps every registration.
 file(GLOB_RECURSE REF_MODULE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/modules/*.cpp")
-add_executable(ref-module src/module_main.cpp src/module_registry.cpp ${REF_MODULE_SOURCES})
+add_executable(ref-module src/module_main.cpp src/module_registry.cpp src/signal_gen.cpp ${REF_MODULE_SOURCES})
+set_source_files_properties(src/signal_gen.cpp PROPERTIES COMPILE_OPTIONS "-fno-fast-math;-ffp-contract=off")
 target_include_directories(ref-module PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(ref-module PRIVATE harness_common)
+
+# Diagnostic: hashes upstream's RandomGenerator streams. Linked against the
+# engine (same flags) on purpose, unlike ref-fp-probe.
+add_executable(ref-rng-probe src/rng_probe.cpp)
+target_link_libraries(ref-rng-probe PRIVATE harness_common)
+
+# Diagnostic: std::complex<float> division (A10). complex_ops_fast.cpp gets the
+# engine flags; the strict files are the same on every machine.
+add_executable(ref-complex-probe
+  src/complex_probe/complex_probe.cpp
+  src/complex_probe/complex_algos.cpp
+  src/complex_probe/complex_ops_fast.cpp
+  src/complex_probe/complex_ops_strict.cpp)
+set_source_files_properties(src/complex_probe/complex_algos.cpp src/complex_probe/complex_ops_strict.cpp
+  PROPERTIES COMPILE_OPTIONS "-fno-fast-math;-ffp-contract=off")
+target_include_directories(ref-complex-probe PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(ref-complex-probe PRIVATE harness_common)
 
 # Diagnostic: hashes libm and rcpps/rsqrtps results so two machines can be
 # compared directly (see migration/decisions/reference-determinism.md).
 add_executable(ref-fp-probe src/fp_probe.cpp)
 target_compile_options(ref-fp-probe PRIVATE -O2 -fno-fast-math)
-target_link_libraries(ref-fp-probe PRIVATE mvec m)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
+  target_compile_definitions(ref-fp-probe PRIVATE REF_PROBE_LIBMVEC=1)
+  target_link_libraries(ref-fp-probe PRIVATE mvec m)
+endif()

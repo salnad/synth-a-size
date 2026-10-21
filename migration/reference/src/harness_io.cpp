@@ -13,6 +13,9 @@
 #if defined(__GLIBC__)
   #include <gnu/libc-version.h>
 #endif
+#if defined(__APPLE__)
+  #include <sys/sysctl.h>
+#endif
 
 namespace harness {
 
@@ -91,8 +94,23 @@ json buildInfo() {
   info["glibc"] = gnu_get_libc_version();
 #endif
   const char* pinned = getenv(kPinnedMarker);
+#if defined(__GLIBC__) && defined(__x86_64__)
   info["libm_variants"] = pinned ? std::string("baseline (GLIBC_TUNABLES ") + kLibmTunables + ")"
                                  : std::string("cpu-dispatched (not pinned)");
+#elif defined(__GLIBC__)
+  // glibc has no CPU-dispatched scalar libm variants on aarch64.
+  info["libm_variants"] = "glibc generic (no CPU dispatch)";
+#elif defined(__APPLE__)
+  // Apple's libm ships with the OS, so the macOS version identifies it.
+  char version[64] = { 0 };
+  size_t size = sizeof(version);
+  if (sysctlbyname("kern.osproductversion", version, &size, nullptr, 0) != 0)
+    std::snprintf(version, sizeof(version), "unknown");
+  info["libm_variants"] = std::string("Apple libm (macOS ") + version + ")";
+#else
+  info["libm_variants"] = "unknown";
+#endif
+  (void)pinned;
 #if defined(__VERSION__)
   info["compiler"] = __VERSION__;
 #endif

@@ -13,6 +13,7 @@
 pub mod complex;
 pub mod creator;
 pub mod fourier_transform;
+mod platform_libm;
 pub mod wave_frame;
 pub mod wavetable;
 

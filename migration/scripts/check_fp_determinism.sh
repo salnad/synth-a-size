@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
-# Fails if the reference binaries contain instructions whose results depend
-# on the CPU model: SSE approximate reciprocals (RCPPS/RCPSS/RSQRTPS/RSQRTSS),
-# AVX-512 approximations, FMA (only possible if the ISA pin was overridden),
-# or x87 transcendentals; or if they call glibc libmvec (whose SSE kernels use
-# RCPPS/RSQRTPS internally). See migration/decisions/reference-determinism.md.
+# Fails if the reference binaries contain floating-point instructions whose
+# results depend on the CPU model or that break agreement with the x86
+# reference, or call vendor vector-math libraries:
+#   x86_64:  SSE approximate reciprocals (RCPPS/RCPSS/RSQRTPS/RSQRTSS),
+#            AVX-512 approximations, FMA (only possible if the ISA pin was
+#            overridden), x87 transcendentals;
+#   aarch64: reciprocal / rsqrt estimates and steps (FRECPE/FRECPS/FRSQRTE/
+#            FRSQRTS) and any fused multiply-add (FMADD/FMSUB/FNMADD/FNMSUB/
+#            FMLA/FMLS), which appear when FP contraction is on;
+#   imports: glibc libmvec (_ZGV*), and on macOS Accelerate vDSP / vForce
+#            (the reference pins JUCE's FFT to its portable fallback).
+# See migration/decisions/reference-determinism.md and reference-arm.md.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,7 +24,19 @@ allowlist=(
   "juce::dsp::FIR::Coefficients<float>::normalise()"
 )
 
-pattern='(rcpps|rcpss|rsqrtps|rsqrtss|vrcp14|vrsqrt14|vrcp28|vrsqrt28|vfmadd|vfmsub|vfnmadd|vfnmsub|fsin|fcos|fsincos|fptan|fpatan|f2xm1|fyl2x|fyl2xp1)'
+case "$(uname -m)" in
+  x86_64|amd64)
+    pattern='(rcpps|rcpss|rsqrtps|rsqrtss|vrcp14|vrsqrt14|vrcp28|vrsqrt28|vfmadd|vfmsub|vfnmadd|vfnmsub|fsin|fcos|fsincos|fptan|fpatan|f2xm1|fyl2x|fyl2xp1)' ;;
+  aarch64|arm64)
+    pattern='(frecpe|frecps|frsqrte|frsqrts|fmadd|fmsub|fnmadd|fnmsub|fmla|fmls|fmlal|fmlsl)' ;;
+  *)
+    echo "unsupported architecture $(uname -m)" >&2; exit 2 ;;
+esac
+
+undefined_symbols() {
+  if [[ "$(uname -s)" == "Darwin" ]]; then nm -u "$1"; else nm -D --undefined-only "$1"; fi
+}
+
 status=0
 
 for bin in ref-render ref-module; do
@@ -39,9 +58,9 @@ for bin in ref-render ref-module; do
     [[ $allowed -eq 0 ]] && unexpected+="$line"$'\n'
   done <<< "$hits"
 
-  libmvec="$(nm -D --undefined-only "$path" | grep -E ' _ZGV' || true)"
-  if [[ -n "$libmvec" ]]; then
-    unexpected+="libmvec imports:"$'\n'"$libmvec"$'\n'
+  vector_math="$(undefined_symbols "$path" | grep -E '(^| )_?_ZGV|(^| )_vDSP_|(^| )_vv[a-z]' || true)"
+  if [[ -n "$vector_math" ]]; then
+    unexpected+="vector math library imports:"$'\n'"$vector_math"$'\n'
   fi
 
   if [[ -n "$unexpected" ]]; then

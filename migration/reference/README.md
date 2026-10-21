@@ -23,9 +23,13 @@ migration/scripts/build_reference.sh            # -> migration/reference/build/{
 migration/scripts/build_reference.sh -DREF_FAST_MATH=OFF   # extra CMake args are passed through
 ```
 
-A full build takes about 30 s on 8 cores. macOS and arm64 are not
-supported or tested; the reference goldens are defined as Linux x86_64
-builds.
+A full build takes about 30 s on 8 cores. The same build also runs on
+Apple Silicon macOS (Apple clang 17, `CXX=clang++`, the primary reference
+for the shipped arm64 plugin) and on aarch64 Linux (GCC). The arm64 pins
+(no FP contraction, JUCE's portable FFT instead of vDSP) and the
+ARM-vs-x86 differences in upstream are described in
+[`../decisions/reference-arm.md`](../decisions/reference-arm.md). CI:
+`.github/workflows/reference-arm.yml`.
 
 ### How the build differs from upstream
 

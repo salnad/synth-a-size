@@ -20,6 +20,27 @@
         "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
         "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
       }
+    },
+    {
+      "hashes": {
+        "analog_filter_lfo__chords": "6c472245f2d6a64f",
+        "analog_filter_lfo__velocity_96k_b512": "acc54eefc3efd453",
+        "init_saw__chords": "9493f49d197a6f4f",
+        "init_saw__single_note": "7833744cebab33c7",
+        "init_saw__single_note_48k_b128": "18654d508a22991b",
+        "line_wavetable_fold__velocity": "d30482ef1f96af47",
+        "mono_legato_glide__legato": "4a36b6c72051fcb3",
+        "unison_pad_fx__chords": "0807b0c1119d2d3f"
+      },
+      "identity": {
+        "arch": "aarch64",
+        "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+        "fast_math": true,
+        "glibc": null,
+        "libm_variants": "Apple libm (macOS 15.7.9)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
     }
   ]
 }

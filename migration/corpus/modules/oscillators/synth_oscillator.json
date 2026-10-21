@@ -656,33 +656,6 @@
         "distortion_phase": 0.3
       }
     },
-    "distortion_1_spread": {
-      "params": {
-        "wavetable": {
-          "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
-        }
-      },
-      "num_samples": 8000,
-      "inputs": {
-        "reset": {
-          "trigger": [
-            {
-              "sample": 0,
-              "value": "voice_on"
-            }
-          ]
-        },
-        "distortion_type": 1.0,
-        "distortion_amount": {
-          "signal": "ramp",
-          "from": 0.0,
-          "to": 1.0
-        },
-        "distortion_spread": 0.3,
-        "unison_voices": 4.0,
-        "unison_detune": 0.2
-      }
-    },
     "distortion_2": {
       "params": {
         "wavetable": {
@@ -704,33 +677,6 @@
         "distortion_phase": 0.3
       }
     },
-    "distortion_2_spread": {
-      "params": {
-        "wavetable": {
-          "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
-        }
-      },
-      "num_samples": 8000,
-      "inputs": {
-        "reset": {
-          "trigger": [
-            {
-              "sample": 0,
-              "value": "voice_on"
-            }
-          ]
-        },
-        "distortion_type": 2.0,
-        "distortion_amount": {
-          "signal": "ramp",
-          "from": 0.0,
-          "to": 1.0
-        },
-        "distortion_spread": 0.3,
-        "unison_voices": 4.0,
-        "unison_detune": 0.2
-      }
-    },
     "distortion_3": {
       "params": {
         "wavetable": {
@@ -750,33 +696,6 @@
         "distortion_type": 3.0,
         "distortion_amount": 0.5,
         "distortion_phase": 0.3
-      }
-    },
-    "distortion_3_spread": {
-      "params": {
-        "wavetable": {
-          "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
-        }
-      },
-      "num_samples": 8000,
-      "inputs": {
-        "reset": {
-          "trigger": [
-            {
-              "sample": 0,
-              "value": "voice_on"
-            }
-          ]
-        },
-        "distortion_type": 3.0,
-        "distortion_amount": {
-          "signal": "ramp",
-          "from": 0.0,
-          "to": 1.0
-        },
-        "distortion_spread": 0.3,
-        "unison_voices": 4.0,
-        "unison_detune": 0.2
       }
     },
     "distortion_4": {

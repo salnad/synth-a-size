@@ -38,6 +38,45 @@
         "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
         "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
       }
+    },
+    {
+      "hashes": {
+        "impulse_10000hz:high": "29a770c07fd28013",
+        "impulse_10000hz:low": "4afb3e69a4fea043",
+        "impulse_120hz:high": "7fbb8218c5702853",
+        "impulse_120hz:low": "b79e13f16b4ff453",
+        "impulse_20000hz:high": "0fa179c6eb6bf51b",
+        "impulse_20000hz:low": "a491cb9aa0265283",
+        "impulse_2500hz:high": "fa0aa8d8b2d73b3b",
+        "impulse_2500hz:low": "dfc86a92ec91e4a3",
+        "noise_10000hz:high": "a3d0a2016dc0dbe3",
+        "noise_10000hz:low": "ef176bc0dacac2f7",
+        "noise_120hz:high": "c6958fae590f1ce7",
+        "noise_120hz:low": "527b1294af6bad1f",
+        "noise_120hz_48k_block_1:high": "f9e9c7f5ee40d07f",
+        "noise_120hz_48k_block_1:low": "00e865b7dc71bb93",
+        "noise_20000hz:high": "fb7498f46adf87f7",
+        "noise_20000hz:low": "f4b5a4118a8bff2b",
+        "noise_2500hz:high": "96fb1e164b359f27",
+        "noise_2500hz:low": "142a48f120067733",
+        "noise_2500hz_oversample_2x:high": "14fb781e7d9d1223",
+        "noise_2500hz_oversample_2x:low": "893b4ac2795a1ed3",
+        "saw_120hz_48k_block_128:high": "fb29d992fdb3db3b",
+        "saw_120hz_48k_block_128:low": "75227d8c22ff7a9b",
+        "saw_2500hz_192k_oversample_2x:high": "1485f1b3a60137bb",
+        "saw_2500hz_192k_oversample_2x:low": "62841435ef0b0d2b",
+        "saw_2500hz_96k:high": "a324e85b3d06c4fb",
+        "saw_2500hz_96k:low": "13219a8cdedb4c13"
+      },
+      "identity": {
+        "arch": "aarch64",
+        "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+        "fast_math": true,
+        "glibc": null,
+        "libm_variants": "Apple libm (macOS 15.7.9)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
     }
   ]
 }

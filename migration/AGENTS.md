@@ -209,6 +209,23 @@ none of them edits a shared list.
      the CI identity, and `sas-parity` checks every loaded capture against
      these hashes.
 
+     Every hash file also needs the **macOS arm64 identity** (the shipping
+     target; see `decisions/reference-arm.md`). The `Reference ARM`
+     workflow's macOS 15 job renders your PR's cases on Apple Silicon, runs
+     `sas-parity` natively against them and fails on missing entries.
+     Write them from that job's artifact in the same PR:
+
+     ```bash
+     gh run download <run-id> -n ref-arm64-macos-15 -D build/arm
+     python3 migration/scripts/run_corpus.py hashes build/arm/build/platform/pinned --write
+     # "reference": "nofastmath" cases also need the macOS no-fast-math entries:
+     python3 migration/scripts/run_corpus.py hashes build/arm/build/platform/proxy --write --reference nofastmath
+     ```
+
+     The same job requires the macOS no-fast-math proxy to pass. A case that
+     passes on x86 but misses there is parked and re-enabled under
+     `reference: nofastmath` like any other noisy-reference case.
+
 3. **Port faithfully.** Keep upstream's structure where practical,
    including processing order, control-rate vs audio-rate behaviour,
    sub-block splitting at 128 samples, smoothing, denormal handling and the
@@ -297,11 +314,22 @@ none of them edits a shared list.
   port: approximate reciprocal/rsqrt instructions, vendor SIMD math
   libraries (libmvec, SVML), or FMA in one build but not another.
   `check_fp_determinism.sh` guards the reference.
-- Engine randomness is a `std::mt19937` stream through libstdc++'s
+- Upstream computes different results on arm64 and x86 at a few
+  enumerated sites (`utils::toInt` rounding vs truncation, undefined
+  float→int conversions in random phase). The shipped plugin is arm64
+  macOS, so its parity is checked against the macOS arm64 reference.
+  Mirror those sites per target, exactly as listed in
+  `decisions/reference-arm.md`, and keep everything else ISA-independent.
+- Engine randomness is a `std::mt19937` stream through the C++ library's
   `uniform_real_distribution<float>`, seeded from a global counter in
-  construction order. Exact parity for random features needs an exact
-  replica. Otherwise compare those cases only with phase-blind metrics
-  (`rms_diff_db`, `lsd_db`), and record that choice in the ledger.
+  construction order. That library is libstdc++ in the x86 reference and
+  libc++ in the macOS arm64 reference. The two agree except at the
+  `generate_canonical` round-to-1.0 edge, about 3e-8 per draw, where
+  libc++ returns exactly `max` (A9 in `decisions/reference-arm.md`,
+  mirrored per target in `sas-common`). Exact parity for random features
+  needs an exact replica, including A9. Otherwise compare those cases only
+  with phase-blind metrics (`rms_diff_db`, `lsd_db`), and record that
+  choice in the ledger.
 - Presets missing controls load parameter defaults. Presets missing
   `wavetables` or `lfos` keep the init state. Presets missing `sample`
   fail to load. The port's loader must match (M2).

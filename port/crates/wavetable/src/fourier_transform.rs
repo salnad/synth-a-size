@@ -36,6 +36,12 @@ struct FftConfig {
     twiddles: Vec<Complex>,
 }
 
+/// One twiddle, `(float) cos(phase), (float) sin(phase)` in double.
+fn twiddle_at(phase: f64) -> Complex {
+    let (sin, cos) = crate::platform_libm::sin_cos(phase);
+    Complex::new(cos as f32, sin as f32)
+}
+
 impl FftConfig {
     fn new(fft_size: usize, inverse: bool) -> Self {
         let inverse_factor =
@@ -45,12 +51,12 @@ impl FftConfig {
         if fft_size <= 4 {
             for (i, twiddle) in twiddles.iter_mut().enumerate() {
                 let phase = i as f64 * inverse_factor;
-                *twiddle = Complex::new(libm::cos(phase) as f32, libm::sin(phase) as f32);
+                *twiddle = twiddle_at(phase);
             }
         } else {
             for (i, twiddle) in twiddles.iter_mut().enumerate().take(fft_size / 4) {
                 let phase = i as f64 * inverse_factor;
-                *twiddle = Complex::new(libm::cos(phase) as f32, libm::sin(phase) as f32);
+                *twiddle = twiddle_at(phase);
             }
             for i in fft_size / 4..fft_size / 2 {
                 let other = twiddles[i - fft_size / 4];

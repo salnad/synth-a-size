@@ -2230,6 +2230,220 @@ Uses #34's mechanism (`migration/decisions/owner-decisions-json-and-morphs.md`).
   failed;
 - `cargo test --workspace` with `SAS_PARITY_CAPTURES_NOFASTMATH` set;
 - clippy and fmt.
+
+## 2026-10-20: Apple Silicon reference (ARM Reference worker)
+
+**Context:** the owner set the only shipping target to an arm64 macOS VST3.
+Full write-up: `decisions/reference-arm.md`.
+
+**Changed**
+
+- Reference build supports macOS arm64 (Apple clang, JUCE `.mm` units and
+  frameworks, `LINUX`/`rt` only on Linux) and aarch64 Linux.
+- arm64 pins: `-ffp-contract=off`; GCC `-march=armv8-a -mtune=generic`;
+  Apple `JUCE_USE_VDSP_FRAMEWORK=0` (portable FFT); deployment target 14.0.
+  Experiment switches `REF_FP_CONTRACT` and `REF_USE_VDSP` (OFF).
+- Render metadata identifies the libm (Apple libm plus the macOS version).
+- `ref-fp-probe` is portable (splitmix inputs). It adds ARM estimate,
+  contraction, `toInt` and undefined-conversion probes.
+- `machine_info.sh` and `check_fp_determinism.sh` support aarch64 and macOS.
+  The guard covers FMA/estimate instructions and vDSP/libmvec imports.
+- New `.github/workflows/reference-arm.yml`:
+  - macOS 15 primary reference, with vDSP, contraction and proxy variants;
+  - macOS 14 running the macOS 15 binary;
+  - optional aarch64 Linux;
+  - a cross-platform report.
+- New scripts: `cross_platform_report.py`, `arm_attribution.py` and
+  `fp_contract_flags_probe.sh`.
+
+**Measured** (tolerances unchanged)
+
+- macOS 15 arm64 vs x86 reference: 9 of 15 outputs pass. The failures are
+  upstream ISA-dependent semantics, not noise:
+  - negative float → `uint32_t` in random phase (undefined behaviour: x86
+    wraps, arm64 saturates to 0);
+  - `utils::toInt` rounds on SSE2 and truncates on NEON, which affects
+    delay-line interpolation and the wave-frame index.
+
+  Attribution: each failing case passes once its mechanism is removed
+  (random phase off → −135 dB; chorus/delay off → −65.7 dB; wave-frame
+  modulation off → −137.5 dB).
+- On macOS the reference is deterministic. Repeat renders are identical,
+  and the same binary is bit-identical on macOS 14 and 15. Apple's `powf`
+  differs between those versions, but no corpus case hits it.
+- Pinned effects:
+  - contraction: −91 dB;
+  - vDSP vs fallback FFT: −127 dB;
+  - macOS vs aarch64 Linux (Apple libm/clang vs glibc/GCC): −95 dB.
+- Apple clang 15 ignores `-ffp-contract=off` under `-ffast-math`
+  (`-menable-unsafe-fp-math`); Apple clang 17 honours it. The reference
+  identity requires Apple clang 17.
+- The no-fast-math proxy passes the tolerances on macOS (worst −62.9 dB).
+- The port workspace, including the nice-plug plugin, builds on macOS
+  arm64.
+
+**Decision:** shipped-plugin parity is checked on macOS arm64 against the
+macOS arm64 reference. The Rust port mirrors upstream per target at the
+enumerated sites only, and everything else must be ISA-independent: no
+FMA, no estimates, the JUCE fallback FFT, the platform libm. aarch64 Linux
+is optional (manual dispatch).
+
+**After PR #3 merged**
+
+- Rebased.
+- Added the macOS arm64 build identity to `reference_hashes.json` and the
+  module `.hashes.json` files, written from the CI tree with
+  `hashes --write --new-identity`.
+- The macOS 15 job now runs `hashes --check --require-known-identity`.
+- The macOS 15 job runs `sas-parity` natively on arm64 against its own
+  captures: 40 tests passed, 0 failed.
+- Added A4–A8 (from Core Framework) to `decisions/reference-arm.md`:
+  - A4: horizontal `sum` order;
+  - A5: float `max`/`min` NaN and ±0 handling;
+  - A6: `notEqual` ordering;
+  - A7: signed vs unsigned `poly_int::min`, which turns a negative `clamp`
+    index into an out-of-bounds read on x86 but clamps to `hi` on arm64;
+  - A8: the `anyMask` value, used only as a boolean.
+- A4 attribution: reverb on in an otherwise-matching patch moves macOS vs
+  x86 from −135.4 to −91.5 dB (passes). A5–A8 are not reached by the
+  corpus.
+- macOS vs x86 on the 16-output corpus: 10/16 pass (the same six fail).
+  Every macOS-only comparison passes 16/16.
+
+**Parity Reviewer's blocking item (libc++ vs libstdc++)**
+
+- New `ref-rng-probe`, linked against the engine with the reference flags.
+  It hashes upstream `RandomGenerator` streams: 21 streams (every engine
+  range with distinct seeds, plus `polyVoiceNext`), 2.05e8 draws.
+- x86 (libstdc++) vs macOS (libc++): the 14 streams with no
+  `generate_canonical` round-to-1.0 input are bit-identical. The 7 with
+  one edge input each differ, and macOS returns exactly `max` there.
+- Recorded as A9, mirrored per target in `sas-common` (PR #4). A2 stays
+  attributed to the cast.
+- AGENTS.md randomness line updated.
+- Added the macOS arm64 entries for `simd/poly_function.hashes.json` (127),
+  written from #2's own macOS 15 CI tree.
+- poly_function macOS vs x86: 124/127 pass (95 bit-exact). `to_int`,
+  `trunc` and `encode_phase_and_voice` fail, all A1.
+
+**Rebase on #5 + #11 (processor graph)**
+
+- Rebased on main; only LEDGER conflicts.
+- The macOS no-fast-math proxy failed 2/224:
+  `framework/lookups/memory_ramp_delay` and `stereo_memory_ramp_delay`
+  (max abs 1.6e-4 vs 1e-4; residual −88.6 dB passes). The cause is the
+  harness driver, not Vital: Clang `-ffast-math` turns the ramp
+  generator's division into a reciprocal multiply, moving the delay inputs by
+  1 ulp, which white-noise audio amplifies through Catmull-Rom. Fixed by
+  moving the input generators (ramp, sine, saw, square) into
+  `src/signal_gen.cpp`, built with
+  `-fno-fast-math -ffp-contract=off`. GCC already emitted the exact
+  division, so x86 hashes are unchanged. Recorded in
+  `decisions/reference-arm.md` B.
+- Rebased again for #4 + #12 (CI does not run while the PR conflicts, and
+  the macOS hashes must cover `common/*`).
+- #4's `common/line_generator*` harness modules failed to link on macOS
+  (ODR-use of `LineGenerator::kDefaultResolution` under C++14). #2 carried
+  the fix until #38 landed the same change on main.
+- Rebased again for #6, #13, #14.
+- macOS arm64 identity entries written from #2's own macOS 15 CI tree (run
+  39522321209) for every module file: `framework/*` (new), `common/*`
+  (new), `wavetable/creator_json` (new), and `simd/poly_function` (131; 19
+  entries rewritten because #11 redefined those cases). `distortion`
+  `sin_fold_drive_ramp` and `digital_svf` `lowpass_saw_sweep` changed
+  because their ramp inputs are now exact. All 489 generated inputs are
+  bit-identical on macOS and x86.
+
+**Rebase on #8, #15, #16, #19, #22, #26, #31, #34, #38, #40; A10**
+
+- Rebased (LEDGER-only conflicts). This block now sits before the last
+  main section, so appends at the end of the file no longer conflict
+  with #2 and block its CI.
+- `filters/comb_filter/comb_96k_block128` fails the macOS no-fast-math
+  proxy (max abs 1.5e-4 vs 1e-4; residual −101.6 dB passes), as the comb
+  entry predicted. Parked unchanged in
+  `modules/filters/pending/comb_filter.json` under the same rule; its x86
+  hash entry is removed like the other seven parked cases'. No tolerance
+  changed.
+- A first version built all of `module_main.cpp` without fast-math. That
+  changed upstream behaviour: the driver and the modules instantiate the
+  same inline nlohmann-json code, and the linker kept the strict copy, so
+  `-0.0` dumps changed in `harness/echo` `json_state`, `common/json`
+  `negative_zero` and three `line_generator_edit` flip cases. The strict
+  file now holds only the generators and includes no headers. All 1253 x86
+  hashes match main unchanged.
+- macOS arm64 hash entries written from #2's macOS 15 CI tree (run
+  39526324283) for every module file on main: new for `filters/*` (comb
+  filter and module, digital_svf and settings, formant filter and module,
+  phaser), `wavetable/render`.
+- `effects/stereo_delay` `clamped_dampened_damping_sweep` (max abs 3.8e-4)
+  and `unclamped_unfiltered_negative_feedback` (1.3e-4) fail the macOS
+  no-fast-math proxy (residuals −92 dB pass). Parked unchanged in
+  `modules/effects/pending/stereo_delay_arm64.json`, x86 hash entries removed,
+  per the coordinator's decision. They fail official vs no-fast-math on
+  arm64 only, which qualifies them under SAS-35. They and
+  `comb_96k_block128` are re-enabled with `reference: nofastmath` after #51.
+- Owner approval (Salil, 2026-10-21) for two more changes:
+  - Parked 4 cases that fail the macOS no-fast-math proxy only, inputs
+    unchanged, no tolerance change, x86 (and macOS) hash entries removed.
+    `filters/dirty/dual_notch_band_cutoff_sweep` (max abs 3.2e-4, residual
+    −81.5 dB) is in `modules/filters/pending/dirty_arm64.json`.
+    `oscillators/synth_oscillator/distortion_{1,2,3}_spread` (2.2e-3,
+    1.5e-3, 8.8e-4; residuals −86 to −91 dB) are in
+    `modules/oscillators/pending/synth_oscillator_arm64.json`. The delay
+    file is renamed `effects/pending/stereo_delay_arm64.json`. They return
+    under the SAS-35 no-fast-math rule once #51 lands.
+  - The macOS proxy step runs without the "official must fail" gate.
+    `wavetable/render` `wave_linear_freq_disjoint_spectra`,
+    `wave_cubic_freq_disjoint_spectra` and `multi_group_disjoint_spectra`
+    are noisy on x86 but pass the normal limits on macOS. x86 keeps
+    `--justify-nofastmath`. On macOS, `reference: nofastmath` cases resolve to
+    the macOS no-fast-math tree, and the arm64 parity tests compare against
+    it exactly. Cross-target justification is to be agreed with Parity
+    Reviewer.
+- Owner decision (Salil, 2026-10-21, option (a)):
+  `wavetable/render/audio_fade_3_phase_0` is parked on the macOS arm64
+  reference only. Its `phase_coefficients` is 1 ulp off the macOS
+  no-fast-math capture in 6,190 of 526,850 values: Apple clang merges the
+  paired `cosf`/`sinf` into `__sincosf_stret` (A11 in
+  `decisions/reference-arm.md`). The fix is Wavetable Creator's #52. Inputs
+  and tolerances are unchanged, and x86 keeps the case active. Mechanism:
+  `migration/corpus/parked_arm64.json` lists it, and the macOS job sets
+  `SAS_PARITY_PARKED` to that file. `sas_parity::all_case_ids()` then omits
+  listed ids (it prints each one); no other job sets the variable.
+  `SAS_PARITY_FAILURES` in the macOS job is now an absolute path, so
+  failure dumps upload.
+- A11 refined and A12 added in `decisions/reference-arm.md`, from #53
+  (test PR: #2 + #52 on macOS). `otool -tV` on both macOS builds:
+  `PhaseModifierKeyframe::render` is merged only in the official build, and
+  the harness's `phase_coefficients` pair is separate in both. A12:
+  `highResPowerScale`'s `exp(power)` with a float argument is `expf` under
+  libc++ and the double `exp` under libstdc++, which explains all four
+  `warp_*:wave` macOS misses. The `otool` call-site pattern in
+  `machine_info.sh` now matches `symbol stub for:` lines.
+- Owner approval (Salil, 2026-10-21): #52 (Wavetable Creator; A10 fused
+  compiler-rt `__divsc3`, A11 merged sin/cos, A12 `expf` overload,
+  platform libm for double exp/cos/sin) is folded into #2 at 5a192bb.
+  Parity Reviewer reconfirmed that head. With it, nothing is parked on
+  macOS: the `audio_fade_3_phase_0` arm64 park is removed, and
+  `parked_arm64.json` stays as the empty mechanism. #53 (#2 + #52, nothing
+  parked) was green on macOS 15 (run 39550768412, 219 parity tests). The
+  earlier macOS-only parks of noisy-reference cases (delay, comb, dirty
+  sweep, `distortion_*_spread`) stay. `decisions/reference-arm.md`
+  consequence 1: A9, A10 and A12 follow `aarch64-semantics`; A11 is
+  Apple-only (`target_vendor = "apple"`) and cannot be emulated on x86.
+- Owner approval: the macOS 14 vs 15 same-binary check stays exact, except
+  the committed known-drift list `migration/corpus/macos_libm_drift.json`.
+  It holds `simd/poly_function/poly_pow:out` (Apple `powf`, max 4.8e-7,
+  residual −161 dB), reported with its metrics and not gated. Implemented
+  by `migration/scripts/compare_known_drift.py`, checked locally on run
+  39550768412's trees: exit 0 with the list, exit 1 without it.
+- `migration/AGENTS.md`: every module PR adds its own macOS arm64 hash
+  entries from its `ref-arm64-macos-15` artifact.
+- A10 (`std::complex<float>` division) recorded in
+  `decisions/reference-arm.md` with `ref-complex-probe` evidence: not a
+  reference difference. Both references compute naive float division.
+
 ## 2026-10-21: M4b `SynthOscillator` (sas-oscillators, PR A of the M4b stack)
 
 **Added**
@@ -2363,3 +2577,149 @@ arm64 CI) merges.
 
 **Next:** the remaining spectral morphs (PR B), then the sample source
 and sample module, then the oscillator and producers modules.
+
+---
+
+## 2026-10-21: macOS columns for paired sin/cos (A11) and complex division without fast-math (A10)
+
+Reported by ARM Reference while landing #2. The PR is not merged until #2
+lands.
+
+**A11, paired `sinf`/`cosf`:**
+- **The issue:** on the macOS no-fast-math capture,
+  `audio_fade_3_phase_0:phase_coefficients` was off by 1 ulp on 6,190 of
+  526,850 values. Apple clang merges a `sinf`/`cosf` pair of one angle
+  into `__sincosf_stret` even without fast-math (as in the capture's
+  `cosf`/`sinf` in `render.cpp`), while the port called them separately.
+- **Audit of upstream pairs in the ported code:**
+  - five `std::polar` sites: `phase_modifier.cpp:47`,
+    `wave_source.cpp:101, 143`, `file_source.cpp:113` and
+    `wavetable.cpp:174` (`loadNormalizedFrequencies`);
+  - JUCE's FFT twiddles, double `cos`/`sin` (`juce_FFT.cpp:203-204, 213-214`);
+  - every other `sin`/`cos` use is single.
+- **Compile evidence:** clang 18 for `arm64-apple-macos14` at `-O3`,
+  Darwin defaults. The capture pair and libc++'s `polar` body (NaN guards
+  included) each compile to `___sincosf_stret`, and the twiddle loop to
+  `___sincos_stret`. So the polar sites and the twiddles are merged in the
+  macOS reference too, which is consistent with the reference importing
+  both symbols.
+- **Port:**
+  - `sas_common::scalar::sin_cos(angle)` calls `__sincosf_stret` on Apple
+    targets and `sinf`/`cosf` elsewhere; glibc's `sincosf`, which GCC may
+    merge a pair into, gives the same bits.
+  - `Complex::polar` (every polar site) and the render test's
+    `phase_coefficients` use it.
+  - The FFT twiddles call `__sincos_stret` on Apple targets and keep the
+    pure-Rust `libm` crate elsewhere.
+  - Making the pair explicit also keeps the port independent of whether
+    its own LLVM merges two adjacent `.sin()`/`.cos()` calls, which
+    depends on the optimisation level.
+- **Limits:** Linux output is unchanged (all hashes and tests pass). The
+  Apple branches compile and pass clippy for `aarch64-apple-darwin`, but
+  bit-exactness on macOS still needs a macOS run (#2's job). This column
+  follows the target OS's libm, so `aarch64-semantics` on x86 cannot
+  emulate it.
+- **Refined by ARM Reference's macOS run of #2 + #52** (#53, run
+  39541999044):
+  - `audio_fade_3_phase_0:phase_coefficients` still differed in the same
+    6,190 values: cos-only and sin-only differences, no shared phase
+    error.
+  - Every `wave` and `coefficients` value of the five no-fast-math cases
+    matched, both before #52 (Rust already merged `Complex::polar`'s pair)
+    and with #52's explicit merge. So upstream's `polar` sites and the
+    twiddles behave as above in the no-fast-math build.
+  - The pair that differs is the capture's own `cosf`/`sinf` in
+    `render.cpp`, which the no-fast-math macOS build evaluates as separate
+    calls (ARM Reference is confirming with otool).
+  - The render test therefore computes that pair with
+    `sas_common::scalar::sin_cos_unmerged`: two calls, each in its own
+    non-inlined function. In the `aarch64-apple-darwin` release assembly
+    these tail-call `_sinf` and `_cosf`, so no compiler can merge them.
+- **otool on both macOS reference builds** (ARM Reference, runs 39543570959
+  and 39545018805):
+  - Merged into `___sincosf_stret` in both builds: `FileSource` render,
+    both `Wavetable::loadWaveFrame` overloads, `loadNormalizedFrequencies`,
+    `loadDefaultWavetable`, and `WaveSourceKeyframe`'s
+    linear/cubic frequency interpolation. JUCE's FFT twiddles use
+    `___sincos_stret`.
+  - The capture pair in `render.cpp` is separate in both builds, and the
+    ref-module and engine translation units use identical flags.
+  - `PhaseModifierKeyframe::render` differs between the builds: merged in
+    the official build, separate `_cosf`/`_sinf` without fast-math.
+- **Phase-modifier design:**
+  - The port follows the official (shipping) build: `Complex::polar`
+    always merges on Apple.
+  - Official comparisons cover the phase modifier with tolerances.
+  - No no-fast-math case contains a phase modifier, and
+    `render_parity.rs` enforces this: a `"reference": "nofastmath"` case
+    with a Phase Shift component fails with an explanation.
+  - If such a case is ever needed, it needs a per-case selector at this
+    one site.
+- After #52, ARM Reference's #53 re-run has `audio_fade_3_phase_0` and
+  `multi_group_disjoint_spectra` passing bit-exact on macOS.
+- **Platform libm for double transcendentals** (reference-arm.md
+  consequence 4):
+  - ARM Reference's full #53 run (#2 + #52 at a2fefa1, run 39547363154)
+    has all 5 no-fast-math render cases bit-exact on macOS. Only the 4
+    `warp_*:wave` outputs failed, by up to 2.0e-3 against the macOS
+    reference; the port tracked x86 exactly. The warp and
+    frequency-filter power scales called the portable `libm::exp`
+    (glibc's bits) where upstream calls the platform `exp`.
+  - New `sas-wavetable` module `platform_libm` with `exp`, `cos` and
+    `sin_cos` (the twiddles). It calls the system libm everywhere except
+    Linux, plus `__sincos_stret` for the pair on Apple (A11).
+  - Linux keeps the `libm` crate: the x86 reference pins glibc to its
+    baseline non-FMA variants (`GLIBC_TUNABLES`), and calling glibc
+    directly would pick whichever variant the CPU dispatches. Linux output
+    is therefore bit-identical to before.
+  - Covered: both warp `exp` calls, both frequency-filter `exp` calls, the
+    audio fade's `cos`, and the FFT twiddles. `ilogbf`/`scalbnf` in the
+    complex division stay on the crate; they are exact operations with the
+    same result everywhere.
+- **A12: `exp` overload resolution in `highResPowerScale`**
+  (`wave_warp_modifier.cpp:32`):
+  - `double denominator = exp(power) - 1.0f;` passes a float `power`.
+    libc++ (macOS) resolves the call to `expf`, so the subtraction happens
+    in float before widening; libstdc++ (x86) resolves it to the double
+    `exp`.
+  - The macOS ref-module imports 4 `_exp` and 4 `_expf`; x86 imports only
+    `exp`. ARM Reference found this; its diff of libm entry points across
+    the whole engine found no other site.
+  - `platform_libm` alone changed nothing (run 39549289498), because Apple's
+    double `exp` equals the `libm` crate on these inputs.
+  - Port: under `sas_common::AARCH64_SEMANTICS` (aarch64, or the
+    `aarch64-semantics` feature, like A9) the denominator is
+    `f64::from(power.exp() - 1.0)`, i.e. `expf` and a float subtraction,
+    as the C++ types dictate. Otherwise it keeps the double form. It is a
+    libc++ overload difference rather than an Apple library, so x86
+    developers can reproduce it with the feature; glibc's `expf` gives the
+    macOS deltas within 3e-6. A11 and `platform_libm` call Apple-only
+    functions and so stay keyed on `target_vendor = "apple"`. The numerator,
+    `exp(power * abs_value)` with a double product, is double on both.
+  - The frequency filter's `powerScale` takes a `double` power, so it is
+    unaffected.
+  - Check: forcing the Apple form on Linux (glibc `expf` standing in for
+    Apple's) reproduces the macOS failures against the x86 reference
+    almost exactly. The worst case is 3.87e-4 / −113.1 dB on
+    `warp_h_false_v_false`, against 3.9e-4 / −113 dB on macOS, and up to
+    1.99e-3 across the four cases, against 2.0e-3. Linux output is
+    unchanged.
+
+**A10, complex division without fast-math on macOS:**
+- Apple compiler-rt's `__divsc3`, which the macOS no-fast-math build
+  calls, is the logb/scalbn-scaled formula with FMAs:
+  `denom = fma(c, c, d·d)`, `re = fma(a, c, b·d)`, `im = fma(b, c, -(a·d))`.
+  ARM Reference verified it bit for bit on 4.2M random and 6,561 special
+  inputs.
+- `complex::div_compiler_rt` implements it with `mul_add`, which is
+  exactly fused on every target, and is now the aarch64 column. The
+  unfused `div_libcxx` is removed: it matched only the fast-math macOS
+  build, and the owner's rule is source semantics, i.e. the no-fast-math
+  builds; the x86 column is libgcc without fast-math in the same way.
+- Unit tests pin both columns on 11 inputs, including 4 where fusing
+  changes the result. Fused and unfused differ in about 12% of
+  unit-circle `1/z`.
+
+**After #2 lands:** run the port on the macOS job against its pinned and
+no-fast-math trees, and re-enable `audio_fade_3_phase_0` on arm64 if #2
+parked it.
