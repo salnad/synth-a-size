@@ -36,26 +36,9 @@ struct FftConfig {
     twiddles: Vec<Complex>,
 }
 
-/// One twiddle, `(float) cos(phase), (float) sin(phase)` in double. On Apple
-/// targets Clang merges the pair into `__sincos_stret` (A11), so that is
-/// called; elsewhere the pure-Rust `libm` crate stands in for glibc, whose
-/// double `sin`/`cos` depend on the CPU's FMA support.
+/// One twiddle, `(float) cos(phase), (float) sin(phase)` in double.
 fn twiddle_at(phase: f64) -> Complex {
-    #[cfg(target_vendor = "apple")]
-    let (sin, cos) = {
-        #[repr(C)]
-        struct SinCos {
-            sin: f64,
-            cos: f64,
-        }
-        extern "C" {
-            fn __sincos_stret(angle: f64) -> SinCos;
-        }
-        let result = unsafe { __sincos_stret(phase) };
-        (result.sin, result.cos)
-    };
-    #[cfg(not(target_vendor = "apple"))]
-    let (sin, cos) = (libm::sin(phase), libm::cos(phase));
+    let (sin, cos) = crate::platform_libm::sin_cos(phase);
     Complex::new(cos as f32, sin as f32)
 }
 

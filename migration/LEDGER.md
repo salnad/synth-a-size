@@ -2443,6 +2443,25 @@ lands.
     one site.
 - After #52, ARM Reference's #53 re-run has `audio_fade_3_phase_0` and
   `multi_group_disjoint_spectra` passing bit-exact on macOS.
+- **Platform libm for double transcendentals** (reference-arm.md
+  consequence 4):
+  - ARM Reference's full #53 run (#2 + #52 at a2fefa1, run 39547363154)
+    has all 5 no-fast-math render cases bit-exact on macOS. Only the 4
+    `warp_*:wave` outputs failed, by up to 2.0e-3 against the macOS
+    reference; the port tracked x86 exactly. The warp and
+    frequency-filter power scales called the portable `libm::exp`
+    (glibc's bits) where upstream calls the platform `exp`.
+  - New `sas-wavetable` module `platform_libm` with `exp`, `cos` and
+    `sin_cos` (the twiddles). It calls the system libm everywhere except
+    Linux, plus `__sincos_stret` for the pair on Apple (A11).
+  - Linux keeps the `libm` crate: the x86 reference pins glibc to its
+    baseline non-FMA variants (`GLIBC_TUNABLES`), and calling glibc
+    directly would pick whichever variant the CPU dispatches. Linux output
+    is therefore bit-identical to before.
+  - Covered: both warp `exp` calls, both frequency-filter `exp` calls, the
+    audio fade's `cos`, and the FFT twiddles. `ilogbf`/`scalbnf` in the
+    complex division stay on the crate; they are exact operations with the
+    same result everywhere.
 
 **A10, complex division without fast-math on macOS:**
 - Apple compiler-rt's `__divsc3`, which the macOS no-fast-math build
