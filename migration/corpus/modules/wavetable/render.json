@@ -221,6 +221,16 @@
       "params": {
         "preset": "predefined"
       }
+    },
+    "audio_fade_3_phase_1": {
+      "params": {
+        "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Audio File Source\", \"normalize_gain\": false, \"normalize_mult\": true, \"window_size\": 401.37, \"fade_style\": 3, \"phase_style\": 1, \"random_seed\": 4242, \"audio_sample_rate\": 44100, \"audio_file\": {\"$wave\": {\"shape\": \"mix\", \"length\": 30000, \"parts\": [{\"shape\": \"saw\", \"period\": 401, \"slope\": 0.00390625}, {\"shape\": \"triangle\", \"period\": 263, \"slope\": 0.0078125}], \"weights\": [0.5, 0.25], \"encoding\": \"pcm\"}}, \"keyframes\": [{\"position\": 0, \"start_position\": 0, \"window_fade\": 0.6, \"window_size\": 401.37}, {\"position\": 256, \"start_position\": 25000.5, \"window_fade\": 0.2, \"window_size\": 401.37}]}]}]}"
+      }
+    },
+    "audio_fade_3_phase_2": {
+      "params": {
+        "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Audio File Source\", \"normalize_gain\": false, \"normalize_mult\": true, \"window_size\": 401.37, \"fade_style\": 3, \"phase_style\": 2, \"random_seed\": 4242, \"audio_sample_rate\": 44100, \"audio_file\": {\"$wave\": {\"shape\": \"mix\", \"length\": 30000, \"parts\": [{\"shape\": \"saw\", \"period\": 401, \"slope\": 0.00390625}, {\"shape\": \"triangle\", \"period\": 263, \"slope\": 0.0078125}], \"weights\": [0.5, 0.25], \"encoding\": \"pcm\"}}, \"keyframes\": [{\"position\": 0, \"start_position\": 0, \"window_fade\": 0.6, \"window_size\": 401.37}, {\"position\": 256, \"start_position\": 25000.5, \"window_fade\": 0.2, \"window_size\": 401.37}]}]}]}"
+      }
     }
   }
 }
