@@ -1,0 +1,220 @@
+{
+  "description": "OscillatorModule pitch (vital/src/synthesis/modules/oscillator_module.cpp driving SynthOscillator::setPhaseIncBufferSnap): the osc_1 transpose, tune, transpose-quantize and MIDI-track controls, scaled through the registry details and the audio-rate modulation sums, captured as the oscillator's per-sample phase increment / 2^32 (frequency / sample rate). Includes the inputs of the parked oscillator_module audio cases (pending/oscillator_module.json); unison detune is a separate per-voice multiplier and is not part of this capture. Ported in port/crates/oscillators.",
+  "module": "oscillator_module_pitch",
+  "seed": 0,
+  "cases": {
+    "transpose_tune": {
+      "params": {
+        "wavetable": {
+          "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+        },
+        "controls": {
+          "osc_1_transpose": 7.0,
+          "osc_1_tune": 0.3,
+          "osc_1_transpose_quantize": 2741.0
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "transpose_tune_unsnapped": {
+      "params": {
+        "wavetable": {
+          "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+        },
+        "controls": {
+          "osc_1_transpose": 7.0,
+          "osc_1_tune": 0.3
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "detune_power_range": {
+      "params": {
+        "wavetable": {
+          "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+        },
+        "controls": {
+          "osc_1_unison_voices": 8.0,
+          "osc_1_unison_detune": 6.0,
+          "osc_1_detune_power": -2.5,
+          "osc_1_detune_range": 24.0,
+          "osc_1_distortion_spread": 0.3,
+          "osc_1_spectral_morph_spread": 0.2,
+          "osc_1_spectral_unison": 0.0
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "transpose_tune_negative": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        },
+        "controls": {
+          "osc_1_transpose": -24.5,
+          "osc_1_tune": -0.8
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "transpose_quantize_global": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        },
+        "controls": {
+          "osc_1_transpose_quantize": 6837.0,
+          "osc_1_transpose": 13.3
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "transpose_max_tune_max": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        },
+        "controls": {
+          "osc_1_transpose": 48.0,
+          "osc_1_tune": 1.0
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": 72.0
+      }
+    },
+    "no_midi_track_transpose": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        },
+        "controls": {
+          "osc_1_midi_track": 0.0,
+          "osc_1_transpose": 5.5
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "voice_1_transpose": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        },
+        "controls": {
+          "osc_1_transpose": 3.7
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "active_voices": {
+          "value": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        }
+      }
+    },
+    "sample_rate_48000_tune": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        },
+        "controls": {
+          "osc_1_tune": 0.61,
+          "osc_1_transpose": -7.0
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      },
+      "sample_rate": 48000
+    }
+  }
+}
