@@ -35,8 +35,8 @@ now a real `sas_engine::Tuning`, using Voice Engine's port of
 The Steinberg validator on the Linux dev bundle still gives 537 passed,
 0 failed.
 
-**Deliberate difference (for `migration/DIVERGENCES.md` once it is on
-main).** A state whose `"tuning"` is not an object is rejected whole, so
+**Deliberate difference (D4 in `migration/DIVERGENCES.md`, extended here).**
+A state whose `"tuning"` is not an object is rejected whole, so
 nothing changes, consistent with how the port treats an unloadable preset.
 Upstream applies the preset, then `jsonToState` throws on the bad tuning and
 `setStateInformation` reports the state as corrupted, keeping the preset.
