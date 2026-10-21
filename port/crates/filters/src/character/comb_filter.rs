@@ -170,10 +170,12 @@ pub struct CombFilter {
 }
 
 impl Clone for CombFilter {
-    /// Upstream's copy constructor: zeroed memory (`Memory`'s copy
-    /// constructor), most settings back to their initial values,
-    /// `feedback_filter_` reset; `low_gain_`, `high_gain_` and
-    /// `feedback_filter2_` are copied.
+    /// Upstream's user-defined copy constructor: copies the filter state
+    /// and feedback style, zeroed memory (`Memory`'s copy constructor), the
+    /// settings it assigns back to their initial values, `feedback_filter_`
+    /// reset. Members it does not mention are default-initialized:
+    /// `low_gain_`, `high_gain_` (0) and `feedback_filter2_` (a reset
+    /// `OnePoleFilter`).
     fn clone(&self) -> Self {
         let mut feedback_filter = self.feedback_filter;
         feedback_filter.reset(PolyMask::full());
@@ -185,13 +187,13 @@ impl Clone for CombFilter {
             feedback: PolyFloat::zero(),
             filter_coefficient: PolyFloat::zero(),
             filter2_coefficient: PolyFloat::zero(),
-            low_gain: self.low_gain,
-            high_gain: self.high_gain,
+            low_gain: PolyFloat::zero(),
+            high_gain: PolyFloat::zero(),
             scale: PolyFloat::zero(),
             filter_midi_cutoff: PolyFloat::zero(),
             filter2_midi_cutoff: PolyFloat::zero(),
             feedback_filter,
-            feedback_filter2: self.feedback_filter2,
+            feedback_filter2: OnePoleFilter::new(),
         }
     }
 }
@@ -480,5 +482,35 @@ impl ProcessorImpl for CombFilter {
 
     fn hard_reset(&mut self, _this: &Processor) {
         self.reset_state(PolyMask::full());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clone_default_initializes_what_the_copy_constructor_does_not_mention() {
+        let mut filter = CombFilter::new(64);
+        filter.low_gain = PolyFloat::splat(0.7);
+        filter.high_gain = PolyFloat::splat(0.3);
+        filter.scale = PolyFloat::splat(0.5);
+        filter.feedback_style = FeedbackStyle::NegativeFlange;
+        filter
+            .feedback_filter2
+            .tick_basic(PolyFloat::splat(1.0), PolyFloat::splat(0.5));
+        filter
+            .feedback_filter
+            .tick_basic(PolyFloat::splat(1.0), PolyFloat::splat(0.5));
+
+        let copy = filter.clone();
+        let zero = PolyFloat::zero().to_array();
+        assert_eq!(copy.low_gain.to_array(), zero);
+        assert_eq!(copy.high_gain.to_array(), zero);
+        assert_eq!(copy.scale.to_array(), zero);
+        assert_eq!(copy.feedback_filter2.next_state().to_array(), zero);
+        assert_eq!(copy.feedback_filter.next_state().to_array(), zero);
+        assert_eq!(copy.feedback_style, FeedbackStyle::NegativeFlange);
+        assert_eq!(copy.max_period.to_array(), [Memory::MIN_PERIOD; 4]);
     }
 }

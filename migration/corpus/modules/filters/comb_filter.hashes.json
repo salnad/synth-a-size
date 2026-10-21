@@ -6,6 +6,8 @@
         "band_spread_positive_flange:audio": "6b7283ec2d8c60eb",
         "comb_96k_block128:audio": "77fb10773661f6d3",
         "impulse_ringing:audio": "b0f8f8aad6089b13",
+        "interim_band_spread_negative_flange:audio": "8f8142e524c854fb",
+        "interim_oversample2:audio": "ee0aaae3d0585693",
         "out_of_range_controls:audio": "e5c015fd26bb2133",
         "per_lane_controls_and_resets:audio": "7400d62ea3454cce",
         "positive_flange_sweep:audio": "b7299e4d656e6dcb",

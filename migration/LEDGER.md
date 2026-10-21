@@ -1404,10 +1404,12 @@ Ports `vital/src/synthesis/filters/comb_filter.{h,cpp}` and
 
 - Structure as upstream: the tick template parameter (comb, positive
   flange, negative flange) is a function pointer. The copy constructor's
-  partial reset is mirrored by a manual `Clone`: zeroed memory from
-  `Memory`'s copy constructor, most settings back to their initial values,
-  `feedback_filter_` reset, and `low_gain_`, `high_gain_` and
-  `feedback_filter2_` copied. A negative style leaves `process` writing
+  partial reset is mirrored by a manual `Clone`: filter state and feedback
+  style copied, zeroed memory from `Memory`'s copy constructor, the
+  settings it assigns back to their initial values, and `feedback_filter_`
+  reset. The members it does not mention are default-initialized, not
+  copied: `low_gain_` and `high_gain_` (0) and `feedback_filter2_` (a reset
+  `OnePoleFilter`). This was corrected in review (Parity Reviewer, #19). A negative style leaves `process` writing
   nothing, as upstream's `VITAL_ASSERT(false)` path does in release.
 - Per-ISA sites: the delay read `Memory::get` (A1a) inside `sas-dsp-core`.
 - Upstream's `createFilter(kComb)` builds `CombFilter(1)`. Its memory
@@ -1421,8 +1423,9 @@ Reference: ref-modules `comb_filter` (`params.size`, default
 `CombModule::kMaxFeedbackSamples` = 25000, rounded up to 32768) and
 `comb_module` (the factory calls `init()`).
 
-Cases (16 authored, all under `module_defaults`; 9 active in
-`filters/comb_filter` (8) and `filters/comb_module` (1), 7 parked, see below). They cover:
+Cases (19 authored, all under `module_defaults`; 12 active in
+`filters/comb_filter` (10) and `filters/comb_module` (2), 7 parked, see below;
+3 of the active ones are interim, see "Interim cases"). They cover:
 
 - all six styles, plus 6..9 (`style / 3 >= 2` behaves as low/high blend);
 - MIDI cutoff −40..150 (filter cutoff 8..136 plus modulation; below about
@@ -1477,6 +1480,21 @@ back. The recommendation under review is the `reference: nofastmath`
 exact-match allowlist, not looser tolerances. An earlier draft of this entry
 proposed per-case tolerance exceptions; that proposal is superseded by the
 escalation and withdrawn.
+
+**Interim cases (Parity Reviewer, #19).** While the 7 are parked, style 5
+(band spread with negative flange), oversampling and the module's style
+routing had no active coverage. Three additional well-conditioned cases
+were added, each labelled interim in its `description`. They keep the
+cutoff at 70..130 (or 100 ± 24), so the delay period stays short. The parked
+full-range cases are unchanged; nothing is narrowed or replaced.
+
+| Case | max_abs_error | residual_db |
+|---|---|---|
+| `filters/comb_filter/interim_band_spread_negative_flange` (style 5) | 6.4e-6 | −118.6 |
+| `filters/comb_filter/interim_oversample2` (oversample 2, styles 0..5) | 1.5e-5 | −100.8 |
+| `filters/comb_module/interim_style_sweep` (styles 0..5) | 1.8e-5 | −107.5 |
+
+All three also pass the no-fast-math proxy.
 
 **Open / next**
 
