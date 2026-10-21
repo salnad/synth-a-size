@@ -1954,7 +1954,7 @@ Core Filters (M5a), stacked on PR 5.
   resonance −0.1–1.1 and drive −4–40 dB. Also style steps 0→9, per-lane
   retriggers, 4× oversampling (MIDI 130→8 at resonance 0.8), 96 kHz and
   block size 1.
-- Parity, x86_64: 30/30 pass. Worst max_abs_error 1.5e-5
+- Parity, x86_64: 31/31 pass. Worst max_abs_error 1.5e-5
   (`band_peak_notch_cutoff_sweep`), worst residual −99.9 dB
   (`k24_cutoff_sweep`).
 - Parked: `migration/corpus/modules/filters/pending/analog_full_range.json`
@@ -1962,6 +1962,9 @@ Core Filters (M5a), stacked on PR 5.
   reference against the no-fast-math proxy (identical to the port) gives
   max_abs_error 1.002e-4 against the 1e-4 gate (residual −84.5 dB passes).
   Same open question as the crossover and the ladder.
-- `aarch64-semantics` (PR #40 rule): the crate forwards to `sas-simd`, its
-  only direct dependency with the feature today. It will also forward to
-  `sas-dsp-core/aarch64-semantics` once PR #40 adds that feature.
+- `aarch64-semantics` (PR #40 rule): the crate forwards to both
+  `sas-dsp-core` and `sas-simd` (added on PR 2 after #40 merged).
+- Added after review: `k12_oversample_4x_resonance_0_95_from_110`, the same
+  shape as the parked case with the cutoff ramp starting at MIDI 110, which
+  Filter Reviewer measured as well-conditioned. 1.3e-5 / −100.0 dB. 31
+  cases in all.

@@ -18,6 +18,7 @@
         "k12_cutoff_sweep_no_resonance:audio": "b32d5f08b959ccb3",
         "k12_drive_sweep:audio": "0ed59bce5463798b",
         "k12_oversample_4x:audio": "fea39ccfe4444b7b",
+        "k12_oversample_4x_resonance_0_95_from_110:audio": "f5debad6ca8f3ee3",
         "k12_resonance_sweep:audio": "142b08e7145a8173",
         "k24_96k_block_128:audio": "9a3bdb8e5fdacf73",
         "k24_blend_sweep:audio": "f0c8d4d63adf3aeb",
