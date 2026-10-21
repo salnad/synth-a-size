@@ -23,6 +23,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 PRESET_DIR = os.path.join(HERE, "presets")
 MIDI_DIR = os.path.join(HERE, "midi")
+PRESET_TEST_DIR = os.path.join(HERE, "preset_tests")
 
 # Matches ProjectInfo::versionString of the upstream plugin build the reference
 # harness compiles (see migration/reference/juce_config/JuceHeader.h).
@@ -219,6 +220,259 @@ PRESETS = {
 
 
 # --------------------------------------------------------------------------
+# Preset state tests (M2): load -> save cases for the preset loader, written to
+# migration/corpus/preset_tests. They are not rendered; the reference's saved
+# state for each is captured by the module cases in modules/preset/state.json.
+# --------------------------------------------------------------------------
+
+def float_sample(length=256, sample_rate=44100):
+    """Like corpus_sample, but as float32 base64, the format before 0.3.7."""
+    data = bytearray()
+    for i in range(length):
+        value = 0.5 * math.sin(2 * math.pi * 3 * i / length) * (1.0 - i / length)
+        data += struct.pack("<f", value)
+    return {
+        "name": "corpus float tone",
+        "length": length,
+        "sample_rate": sample_rate,
+        "samples": base64.b64encode(bytes(data)).decode("ascii"),
+    }
+
+
+def stereo_sample(length=512, sample_rate=48000):
+    left = corpus_sample(length, sample_rate)
+    pcm = bytearray()
+    for i in range(length):
+        value = 0.4 * math.sin(2 * math.pi * 5 * i / length)
+        pcm += struct.pack("<h", int(round(value * 32767)))
+    left["name"] = "corpus stereo tone"
+    left["samples_stereo"] = base64.b64encode(bytes(pcm)).decode("ascii")
+    return left
+
+
+def state_preset(version, settings, modulations=(), sample=True, **fields):
+    """A preset with raw modulation entries; amounts go in `settings`."""
+    settings = dict(settings)
+    settings["modulations"] = [dict(entry) for entry in modulations]
+    if sample is True:
+        settings["sample"] = corpus_sample()
+    elif sample is not None:
+        settings["sample"] = sample
+    data = {"synth_version": version, "author": AUTHOR, "settings": settings}
+    data.update(fields)
+    if data.get("synth_version") is None:
+        del data["synth_version"]
+    return data
+
+
+def mod(source, destination, **extra):
+    entry = {"source": source, "destination": destination}
+    entry.update(extra)
+    return entry
+
+
+# Settings read by the upgrade steps from 0.2.0 to 0.9.0 (except the sub
+# oscillator step at 0.5.0, which only runs when "sub_on" is present).
+OLD_SETTINGS = {
+    "sub_waveform": 4.0, "sub_octave": -1.0,
+    "osc_1_filter_routing": 0.0, "osc_2_filter_routing": 1.0,
+    "sample_filter_routing": 1.0, "sub_filter_routing": 0.0,
+    "filter_1_style": 2.0, "filter_2_style": 3.0,
+    "env_1_attack": 0.3, "env_1_decay": 0.75, "env_1_release": 1.7,
+    "env_2_attack": 0.0, "env_2_decay": 2.0, "env_2_release": 0.1,
+    "portamento_type": 0.0,
+    "osc_1_level": 0.8, "osc_2_level": 0.6, "sub_level": 0.5, "sample_level": 0.9,
+    "reverb_damping": 0.25, "reverb_feedback": 0.85,
+    "sample_transpose": -12.0, "sample_keytrack": True,
+    "osc_1_transpose": 7.0, "osc_1_midi_track": 0.0,
+    "osc_2_transpose": -5.0, "osc_2_midi_track": 1.0,
+    "effect_chain_order": 1234.0,
+    "osc_1_distortion_type": 2.0, "osc_1_distortion_amount": 0.6,
+    "osc_2_distortion_type": 8.0, "osc_2_distortion_amount": 0.49,
+    "lfo_1_sync_type": 3.0, "lfo_2_sync_type": 1.0,
+    "compressor_low_band": 1.0, "compressor_high_band": 0.0,
+    "flanger_tempo": 3.0, "phaser_tempo": 2.0, "chorus_tempo": 4.0, "delay_tempo": 8.0,
+    "lfo_2_tempo": 6.0, "random_1_tempo": 5.0,
+    "delay_sync": 1.0, "delay_frequency": 3.5, "delay_style": 2.0,
+    "stereo_routing": -0.4,
+    "flanger_center": 20.0,
+    "filter_1_model": 6.0, "filter_2_model": 4.0, "filter_2_blend": 1.2,
+    "modulation_1_amount": 0.3, "modulation_2_amount": 0.5, "modulation_3_amount": -0.4,
+    "modulation_4_amount": 0.7, "modulation_5_amount": 0.2, "modulation_6_amount": 0.6,
+    "modulation_7_amount": 0.8, "modulation_8_amount": 0.1, "modulation_8_bipolar": True,
+}
+
+OLD_MODULATIONS = [
+    mod("lfo_1", "reverb_damping"),
+    mod("perlin", "osc_1_wave_frame"),
+    mod("env_2", "osc_1_distortion_amount"),
+    mod("macro_control_1", "chorus_damping"),
+    mod("lfo_2", "flanger_center"),
+    mod("env_3", "phaser_center"),
+    mod("velocity", "filter_2_blend"),
+    mod("random_1", "osc_2_distortion_amount"),
+]
+
+LATE_SETTINGS = {
+    "flanger_tempo": 3.0, "phaser_tempo": 2.0, "chorus_tempo": 4.0, "delay_tempo": 8.0,
+    "delay_sync": 2.0, "delay_frequency": -1.0, "delay_style": 0.0,
+    "stereo_routing": 0.6,
+    "filter_1_model": 4.0, "filter_2_model": 6.0, "filter_2_style": 1.0,
+    "filter_1_blend": 0.7,
+}
+
+
+SUB_SETTINGS = {
+    "sub_on": 1.0, "sub_level": 0.6, "sub_pan": -0.25, "sub_transpose": -12.0, "sub_tune": 0.1,
+    "filter_1_sub_input": 1.0, "filter_2_sub_input": 1.0, "sub_direct_out": 0.0,
+    "filter_1_osc1_input": 1.0, "filter_2_osc1_input": 0.0,
+    "filter_1_osc2_input": 0.0, "filter_2_osc2_input": 1.0,
+    "filter_1_sample_input": 0.0, "filter_2_sample_input": 0.0,
+}
+
+
+def old_wavetable(name, version):
+    wavetable = line_fold_wavetable()
+    wavetable["name"] = name
+    wavetable["version"] = version
+    return wavetable
+
+
+def bypass_line(name, points, powers, smooth=False):
+    flat = []
+    for x, y in points:
+        flat += [x, y]
+    return {"name": name, "num_points": len(points), "points": flat, "powers": powers, "smooth": smooth}
+
+
+PRESET_TESTS = {
+    "controls_and_metadata": state_preset(
+        "1.0.6",
+        {
+            "osc_1_on": True,
+            "filter_1_on": 1,
+            "filter_1_cutoff": 500,
+            "osc_1_level": 0.1,
+            "env_1_attack": 1e-3,
+            "voice_tune": -0.0,
+            "volume": 6000.123456789,
+            "not_a_parameter": 5.0,
+            "sub_level": 0.3,
+            "lfo_0_smooth_mode": 1.0,
+            "lfos": [
+                bypass_line("custom", [(0.0, 0.0), (0.3, 1.0), (1.0, 0.0)], [1.5, -2.0, 0.0], smooth=True),
+                {"num_points": 2, "points": [0.0, 1.0, 1.0, 0.1], "powers": [0.0, 0.25]},
+            ],
+        },
+        sample=stereo_sample(),
+        preset_name="ignored: the file name wins",
+        comments="Unicode h\u00e9llo \u2713, quotes \" and a\nnewline.",
+        preset_style="Lead",
+        macro1="Cutoff",
+        macro2="   ",
+        macro4="",
+    ),
+    "modulation_slots": state_preset(
+        "1.0.6",
+        {
+            "modulation_1_amount": 0.5, "modulation_3_amount": 0.25, "modulation_4_amount": 0.75,
+            "modulation_6_amount": -0.5, "modulation_7_amount": 0.125, "modulation_8_amount": 1.0,
+            "modulation_6_bipolar": 1.0,
+        },
+        modulations=[
+            mod("lfo_1", "filter_1_cutoff",
+                line_mapping=bypass_line("", [(0.0, 1.0), (0.5, 0.25), (1.0, 0.0)], [0.0, 2.0, 0.0])),
+            mod("", ""),
+            mod("nope", "osc_1_level", line_mapping=bypass_line("", [(0.0, 0.0), (1.0, 1.0)], [0.0, 0.0])),
+            mod("env_2", "osc_1_on"),
+            mod("env_2", "sub_level"),
+            mod("macro_control_1", "modulation_1_amount"),
+            mod("velocity", "filter_1_cutoff",
+                line_mapping=bypass_line("Linear", [(0.0, 1.0), (1.0, 0.0)], [0.0, 0.0])),
+            mod("lfo_1", "filter_1_cutoff"),
+            mod("random", "osc_1_wave_frame",
+                line_mapping={"num_points": 2, "points": [0.0, 0.1, 1.0, 0.9], "powers": [0.5, 0.0]}),
+        ],
+    ),
+    "version_1_0_9": state_preset("1.0.9", {"osc_2_on": 1.0}),
+    "sub_octave_current": state_preset(
+        "1.0.6",
+        {key: OLD_SETTINGS[key] for key in [
+            "sub_waveform", "sub_octave", "osc_1_filter_routing", "osc_2_filter_routing",
+            "sample_filter_routing", "sub_filter_routing", "filter_1_style", "filter_2_style"]},
+    ),
+    "upgrade_from_0_1_0": state_preset(
+        "0.1.0",
+        dict(OLD_SETTINGS, wave_tables=[line_fold_wavetable()]),
+        modulations=OLD_MODULATIONS,
+        sample=float_sample(),
+    ),
+    "upgrade_from_0_4_3_sync": state_preset(
+        "0.4.3",
+        dict(LATE_SETTINGS, **{
+            "osc_1_distortion_type": 1.0, "osc_1_distortion_amount": 0.4,
+            "osc_2_distortion_type": 0.0, "osc_2_distortion_amount": 0.5,
+            "compressor_low_band": 0.0, "compressor_high_band": 0.0,
+            "modulation_1_amount": 0.6, "modulation_2_amount": -0.2,
+        }),
+        modulations=[mod("lfo_3", "osc_1_distortion_amount"), mod("env_1", "osc_1_distortion_amount")],
+    ),
+    "upgrade_from_0_4_6_fm": state_preset(
+        "0.4.6",
+        dict(LATE_SETTINGS, **{
+            "osc_1_distortion_type": 9.0, "osc_1_distortion_amount": 0.36,
+            "osc_2_distortion_type": 8.0, "osc_2_distortion_amount": 0.5,
+            "osc_1_spectral_morph_type": 9.0, "osc_1_spectral_morph_amount": 0.3,
+            "modulation_1_amount": 0.0, "modulation_2_amount": 0.2, "modulation_3_amount": 0.4,
+            "modulation_2_bipolar": 0.0, "modulation_4_amount": -0.3, "modulation_4_bipolar": 1.0,
+            "modulation_5_amount": 0.5,
+        }),
+        modulations=[
+            mod("lfo_1", "osc_1_distortion_amount"),
+            mod("lfo_2", "filter_1_cutoff"),
+            mod("lfo_3", "osc_1_distortion_amount"),
+            mod("env_2", "osc_2_distortion_amount"),
+            mod("env_3", "osc_1_spectral_morph_amount"),
+        ],
+    ),
+    "upgrade_from_0_6_5": state_preset(
+        "0.6.5",
+        {
+            "stereo_mode": 0.0, "stereo_routing": 0.3, "chorus_damping": 0.4,
+            "filter_1_model": 6.0, "filter_1_style": 1.0, "filter_2_model": 2.0,
+            "filter_fx_model": 6.0, "filter_fx_style": 1.0,
+            "osc_2_spectral_morph_type": 9.0, "osc_2_spectral_morph_amount": 0.8,
+            "osc_3_spectral_morph_type": 10.0, "flanger_center": 30.0,
+            "lfo_8_smooth_mode": 1.0, "modulation_1_amount": 0.5, "modulation_2_amount": 0.25,
+        },
+        modulations=[mod("lfo_1", "chorus_damping"), mod("lfo_2", "osc_2_spectral_morph_amount")],
+    ),
+    "upgrade_from_0_4_9_sub": state_preset(
+        "0.4.9",
+        dict(LATE_SETTINGS, **SUB_SETTINGS, **{
+            "sub_waveform": 1.0,
+            "wavetables": [old_wavetable("first", "1.0.6"), old_wavetable("second", "1.0.6")],
+            "modulation_1_amount": 0.5, "modulation_2_amount": -0.5,
+        }),
+        modulations=[mod("lfo_1", "sub_level"), mod("env_2", "sub_tune")],
+    ),
+    "upgrade_from_0_4_9_sub_direct": state_preset(
+        "0.4.9",
+        dict(dict(LATE_SETTINGS, **SUB_SETTINGS), **{
+            "sub_waveform": 5.0, "sub_direct_out": 1.0, "sub_transpose_quantize": 1365.0,
+            "modulation_1_amount": 0.3,
+        }),
+        modulations=[mod("macro_control_2", "sub_pan")],
+    ),
+    "error_newer_version": state_preset("1.1.0", {}),
+    "error_missing_sample": state_preset("1.0.6", {}, sample=None),
+    "error_missing_version": state_preset(None, {}),
+    "error_upgrade_missing_key": state_preset("0.8.5", {"filter_2_model": 1.0}),
+    "error_control_string": state_preset("1.0.6", {"osc_1_level": "loud"}),
+}
+
+
+# --------------------------------------------------------------------------
 # MIDI
 # --------------------------------------------------------------------------
 
@@ -307,6 +561,9 @@ def outputs():
         files[os.path.join(PRESET_DIR, name + ".vital")] = (json.dumps(data, indent=2, sort_keys=True) + "\n").encode()
     for name, events in MIDI.items():
         files[os.path.join(MIDI_DIR, name + ".mid")] = midi_file(events)
+    for name, data in PRESET_TESTS.items():
+        path = os.path.join(PRESET_TEST_DIR, name + ".vital")
+        files[path] = (json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) + "\n").encode()
     return files
 
 

@@ -1,0 +1,221 @@
+{
+  "author": "synth-a-size test corpus",
+  "settings": {
+    "chorus_tempo": 4.0,
+    "delay_frequency": -1.0,
+    "delay_style": 0.0,
+    "delay_sync": 2.0,
+    "delay_tempo": 8.0,
+    "filter_1_blend": 0.7,
+    "filter_1_model": 4.0,
+    "filter_1_osc1_input": 1.0,
+    "filter_1_osc2_input": 0.0,
+    "filter_1_sample_input": 0.0,
+    "filter_1_sub_input": 1.0,
+    "filter_2_model": 6.0,
+    "filter_2_osc1_input": 0.0,
+    "filter_2_osc2_input": 1.0,
+    "filter_2_sample_input": 0.0,
+    "filter_2_style": 1.0,
+    "filter_2_sub_input": 1.0,
+    "flanger_tempo": 3.0,
+    "modulation_1_amount": 0.5,
+    "modulation_2_amount": -0.5,
+    "modulations": [
+      {
+        "destination": "sub_level",
+        "source": "lfo_1"
+      },
+      {
+        "destination": "sub_tune",
+        "source": "env_2"
+      }
+    ],
+    "phaser_tempo": 2.0,
+    "sample": {
+      "length": 2048,
+      "name": "corpus decay tone",
+      "sample_rate": 44100,
+      "samples": "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Rf9F/0T/Qv8//zr/Nf8u/yb/Hv8U/wr/AP/1/un+3v7S/sf+vP6y/qf+nv6W/o7+iP6C/n7+fP57/nv+ff6A/ob+jP6V/p/+q/64/sf+1/7p/vz+EP8m/zz/U/9r/4T/nf+2/8//6f8CABsANABMAGQAewCQAKUAuQDLANwA7AD6AAcBEwEcASQBKwEwATQBNgE3ATYBNAExAS0BJwEhARoBEgEKAQEB+ADvAOUA2wDSAMkAwAC4ALAAqACiAJwAlwCTAI8AjQCMAIsAjACNAJAAkwCYAJ0AogCpALAAtwC/AMcA0ADYAOEA6QDyAPoAAQEIAQ4BFAEZAR0BIAEiASMBIwEiAR8BHAEXARABCQEAAfYA7ADfANIAxAC1AKUAlQCDAHIAXwBNADoAJwAUAAEA7v/c/8r/uP+n/5f/h/94/2r/Xv9S/0f/Pf81/y3/J/8i/x7/G/8a/xn/Gf8b/x3/IP8k/yn/Lv80/zr/QP9H/07/Vf9c/2P/av9x/3f/ff+C/4f/jP+P/5P/lf+X/5j/mP+Y/5f/lf+S/4//i/+H/4L/ff94/3L/bP9l/1//WP9S/0z/Rv9A/zv/Nv8y/y7/K/8p/yf/Jv8m/yf/Kf8s/y//NP85/0D/R/9P/1j/Yv9s/3f/g/+P/5z/qf+3/8X/0//h/+///f8LABkAJwA0AEEATQBZAGQAbgB4AIAAiQCQAJYAnAChAKQApwCqAKsArACrAKoAqQCnAKQAoACdAJgAlACPAIoAhQB/AHoAdQBwAGsAZgBiAF4AWgBXAFQAUgBQAE4ATgBNAE4ATwBQAFIAVABXAFoAXgBhAGYAagBvAHMAeAB9AIIAhgCLAI8AkwCXAJoAnQCfAKEAogCjAKMAogChAJ8AnQCZAJUAkQCLAIUAfwB3AHAAZwBfAFUATABCADgALgAjABgADgADAPn/7//k/9v/0f/I/7//t/+v/6j/of+b/5b/kf+N/4n/hv+E/4L/gf+B/4H/gf+C/4T/hv+J/4v/j/+S/5X/mf+d/6H/pf+p/63/sP+0/7f/uv+9/7//wf/D/8X/xv/G/8b/xv/G/8X/w//B/7//vf+6/7f/tP+x/67/qv+n/6P/n/+c/5j/lf+S/4//jf+L/4n/iP+H/4b/hv+G/4f/if+L/43/kP+U/5f/nP+h/6b/rP+y/7n/v//G/87/1f/d/+X/7f/1//z/BAAMABQAGwAiACkALwA2ADsAQQBGAEoATwBSAFUAWABaAFwAXQBeAF8AXwBeAF0AXABbAFkAVwBVAFIATwBNAEoARwBEAEEAPgA8ADkANgA0ADIAMAAvAC0ALAAsACsAKwArACwALAAtAC8AMAAyADQANgA4ADsAPQBAAEMARQBIAEsATQBQAFIAVABWAFcAWQBaAFsAWwBbAFsAWgBZAFgAVgBUAFEATwBLAEgARAA/ADsANgAxACwAJgAhABsAFQAPAAkAAwD+//j/8v/t/+f/4v/d/9n/1P/Q/8z/yf/G/8P/wf+//73/vP+7/7r/uv+6/7r/u/+7/7z/vv+//8H/w//F/8f/yf/L/83/z//S/9T/1v/X/9n/2//c/93/3v/f/9//4P/g/+D/4P/f/97/3f/c/9v/2f/Y/9b/1P/S/9D/zv/M/8r/yP/G/8X/w//B/8D/v/++/73/vP+8/7z/vP+8/73/vv+//8H/w//F/8f/yv/N/9D/1P/X/9v/3//j/+f/6//w//T/+P/9/wEABQAKAA4AEgAWABkAHQAgACMAJgApACsALQAvADAAMgAzADMANAA0ADQANAA0ADMAMgAxADAALwAuACwAKwApACcAJgAkACMAIQAgAB4AHQAcABsAGgAZAA=="
+    },
+    "stereo_routing": 0.6,
+    "sub_direct_out": 0.0,
+    "sub_level": 0.6,
+    "sub_on": 1.0,
+    "sub_pan": -0.25,
+    "sub_transpose": -12.0,
+    "sub_tune": 0.1,
+    "sub_waveform": 1.0,
+    "wavetables": [
+      {
+        "author": "synth-a-size test corpus",
+        "full_normalize": true,
+        "groups": [
+          {
+            "components": [
+              {
+                "interpolation_style": 1,
+                "keyframes": [
+                  {
+                    "line": {
+                      "name": "",
+                      "num_points": 4,
+                      "points": [
+                        0.0,
+                        0.0,
+                        0.5,
+                        0.0,
+                        0.5,
+                        1.0,
+                        1.0,
+                        1.0
+                      ],
+                      "powers": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                      ],
+                      "smooth": false
+                    },
+                    "position": 0,
+                    "pull_power": 0.0
+                  },
+                  {
+                    "line": {
+                      "name": "",
+                      "num_points": 4,
+                      "points": [
+                        0.0,
+                        0.5,
+                        0.25,
+                        0.0,
+                        0.75,
+                        1.0,
+                        1.0,
+                        0.5
+                      ],
+                      "powers": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                      ],
+                      "smooth": false
+                    },
+                    "position": 256,
+                    "pull_power": 0.0
+                  }
+                ],
+                "num_points": 4,
+                "type": "Line Source"
+              },
+              {
+                "interpolation_style": 1,
+                "keyframes": [
+                  {
+                    "fold_boost": 1.0,
+                    "position": 0
+                  },
+                  {
+                    "fold_boost": 2.5,
+                    "position": 256
+                  }
+                ],
+                "type": "Wave Folder"
+              }
+            ]
+          }
+        ],
+        "name": "first",
+        "remove_all_dc": true,
+        "version": "1.0.6"
+      },
+      {
+        "author": "synth-a-size test corpus",
+        "full_normalize": true,
+        "groups": [
+          {
+            "components": [
+              {
+                "interpolation_style": 1,
+                "keyframes": [
+                  {
+                    "line": {
+                      "name": "",
+                      "num_points": 4,
+                      "points": [
+                        0.0,
+                        0.0,
+                        0.5,
+                        0.0,
+                        0.5,
+                        1.0,
+                        1.0,
+                        1.0
+                      ],
+                      "powers": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                      ],
+                      "smooth": false
+                    },
+                    "position": 0,
+                    "pull_power": 0.0
+                  },
+                  {
+                    "line": {
+                      "name": "",
+                      "num_points": 4,
+                      "points": [
+                        0.0,
+                        0.5,
+                        0.25,
+                        0.0,
+                        0.75,
+                        1.0,
+                        1.0,
+                        0.5
+                      ],
+                      "powers": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                      ],
+                      "smooth": false
+                    },
+                    "position": 256,
+                    "pull_power": 0.0
+                  }
+                ],
+                "num_points": 4,
+                "type": "Line Source"
+              },
+              {
+                "interpolation_style": 1,
+                "keyframes": [
+                  {
+                    "fold_boost": 1.0,
+                    "position": 0
+                  },
+                  {
+                    "fold_boost": 2.5,
+                    "position": 256
+                  }
+                ],
+                "type": "Wave Folder"
+              }
+            ]
+          }
+        ],
+        "name": "second",
+        "remove_all_dc": true,
+        "version": "1.0.6"
+      }
+    ]
+  },
+  "synth_version": "0.4.9"
+}

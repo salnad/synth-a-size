@@ -1,0 +1,11 @@
+{
+  "description": "Parameter registry, string tables and engine tables the preset loader consults. Exact-match artifact for port/crates/preset.",
+  "module": "preset_registry",
+  "cases": {
+    "engine": {
+      "params": {
+        "seed": 0
+      }
+    }
+  }
+}

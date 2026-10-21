@@ -1,0 +1,84 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "analog_filter_lfo:artifact/roundtrip.json": "7a01fe9b75f03860",
+        "analog_filter_lfo:artifact/state.json": "05d345c5ad4fd16f",
+        "controls_and_metadata:artifact/state.json": "296a417b252da061",
+        "error_control_string:artifact/load_error.txt": "98503272a23b4dbe",
+        "error_missing_sample:artifact/load_error.txt": "98503272a23b4dbe",
+        "error_missing_version:artifact/load_error.txt": "98503272a23b4dbe",
+        "error_newer_version:artifact/load_error.txt": "3483c93678b45c1d",
+        "error_upgrade_missing_key:artifact/load_error.txt": "98503272a23b4dbe",
+        "init:artifact/roundtrip.json": "468e90488b8ab3d0",
+        "init:artifact/state.json": "e7ad8b162cec494e",
+        "init_saw:artifact/roundtrip.json": "6499c3b1ba3fe1a8",
+        "init_saw:artifact/state.json": "eddbfdef3efafde7",
+        "line_wavetable_fold:artifact/roundtrip.json": "1b440c24303911b4",
+        "line_wavetable_fold:artifact/state.json": "f49e8952b9621ce3",
+        "modulation_slots:artifact/state.json": "031e23c0a569d96b",
+        "mono_legato_glide:artifact/roundtrip.json": "07ee7f75850eb929",
+        "mono_legato_glide:artifact/state.json": "7d56b0ba72b93f52",
+        "sub_octave_current:artifact/state.json": "3b01dd9744f0ff59",
+        "unison_pad_fx:artifact/roundtrip.json": "a34bc6869de26af9",
+        "unison_pad_fx:artifact/state.json": "6b3acdfcdd095d42",
+        "upgrade_from_0_1_0:artifact/state.json": "140193686ed8ede3",
+        "upgrade_from_0_4_3_sync:artifact/state.json": "cb64ec1881a29dd9",
+        "upgrade_from_0_4_6_fm:artifact/state.json": "148467ae0f31a098",
+        "upgrade_from_0_4_9_sub:artifact/state.json": "cb153e536e1fac78",
+        "upgrade_from_0_4_9_sub_direct:artifact/state.json": "7f9be11879d22c44",
+        "upgrade_from_0_6_5:artifact/state.json": "e807e87c34659d72",
+        "version_1_0_9:artifact/state.json": "c7b67482beed33a9"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    },
+    {
+      "hashes": {
+        "analog_filter_lfo:artifact/roundtrip.json": "7a01fe9b75f03860",
+        "analog_filter_lfo:artifact/state.json": "05d345c5ad4fd16f",
+        "controls_and_metadata:artifact/state.json": "983980138770a0ae",
+        "error_control_string:artifact/load_error.txt": "98503272a23b4dbe",
+        "error_missing_sample:artifact/load_error.txt": "98503272a23b4dbe",
+        "error_missing_version:artifact/load_error.txt": "98503272a23b4dbe",
+        "error_newer_version:artifact/load_error.txt": "3483c93678b45c1d",
+        "error_upgrade_missing_key:artifact/load_error.txt": "98503272a23b4dbe",
+        "init:artifact/roundtrip.json": "468e90488b8ab3d0",
+        "init:artifact/state.json": "e7ad8b162cec494e",
+        "init_saw:artifact/roundtrip.json": "6499c3b1ba3fe1a8",
+        "init_saw:artifact/state.json": "eddbfdef3efafde7",
+        "line_wavetable_fold:artifact/roundtrip.json": "1b440c24303911b4",
+        "line_wavetable_fold:artifact/state.json": "f49e8952b9621ce3",
+        "modulation_slots:artifact/state.json": "031e23c0a569d96b",
+        "mono_legato_glide:artifact/roundtrip.json": "07ee7f75850eb929",
+        "mono_legato_glide:artifact/state.json": "7d56b0ba72b93f52",
+        "sub_octave_current:artifact/state.json": "3b01dd9744f0ff59",
+        "unison_pad_fx:artifact/roundtrip.json": "a34bc6869de26af9",
+        "unison_pad_fx:artifact/state.json": "6b3acdfcdd095d42",
+        "upgrade_from_0_1_0:artifact/state.json": "c418a9d07745f2ab",
+        "upgrade_from_0_4_3_sync:artifact/state.json": "cb64ec1881a29dd9",
+        "upgrade_from_0_4_6_fm:artifact/state.json": "148467ae0f31a098",
+        "upgrade_from_0_4_9_sub:artifact/state.json": "b7dbcf76441b9451",
+        "upgrade_from_0_4_9_sub_direct:artifact/state.json": "2d4f8abdc916d22d",
+        "upgrade_from_0_6_5:artifact/state.json": "e807e87c34659d72",
+        "version_1_0_9:artifact/state.json": "c7b67482beed33a9"
+      },
+      "identity": {
+        "arch": "aarch64",
+        "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+        "fast_math": true,
+        "glibc": null,
+        "libm_variants": "Apple libm (macOS 15.7.9)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}

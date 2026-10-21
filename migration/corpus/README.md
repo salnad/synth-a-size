@@ -28,6 +28,26 @@ the loader rejects presets without one.
 | `line_wavetable_fold` | Authored Line Source wavetable + Wave Folder modifier; envelope 2 → wave frame; hard-clip distortion |
 | `mono_legato_glide` | Mono legato with portamento, ladder filter, mod wheel → cutoff, velocity → level |
 
+## Preset state tests (`preset_tests/*.vital`)
+
+Also written by `generate.py`; not rendered. They drive the M2 preset
+loader through cases the render corpus does not reach: presets saved by
+old versions (every `updateFromOldVersion` step), out-of-range, boolean
+and non-float control values, unknown and legacy keys, custom LFO
+shapes, line mappings, invalid and duplicate modulations, metadata and
+macro-name fallbacks, a stereo sample, and presets the loader must
+reject.
+
+The reference's saved state for each of them, for every preset in
+`presets/` (plus a second load→save round trip) and for the init preset
+is captured as artifacts (compared under the JSON bound, `wave_data` as
+base64 f32) by the module cases in
+[`modules/preset/state.json`](modules/preset/state.json). The parameter
+registry and engine tables are captured by
+[`modules/preset/registry.json`](modules/preset/registry.json). Every
+preset here needs a case in `state.json`; the `sas-preset` tests check
+that.
+
 ## MIDI (`midi/*.mid`)
 
 Format 0, 480 PPQ, 120 BPM.

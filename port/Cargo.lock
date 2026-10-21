@@ -572,6 +572,11 @@ dependencies = [
 [[package]]
 name = "sas-preset"
 version = "0.0.1"
+dependencies = [
+ "sas-common",
+ "sas-parity",
+ "sas-wavetable",
+]
 
 [[package]]
 name = "sas-simd"
