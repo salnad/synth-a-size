@@ -1173,6 +1173,12 @@ def nofastmath_identity_known(identity):
 
 
 def cmd_hashes(args):
+    if args.missing_ok and not args.check:
+        print("--missing-ok needs --check")
+        return 2
+    if args.only_new and not args.write:
+        print("--only-new needs --write")
+        return 2
     renders, modules = load_renders(), load_modules()
     # Parked cases (this reference only) are neither checked nor written,
     # and their committed hashes are kept, not reported as stale.
@@ -1225,6 +1231,16 @@ def cmd_hashes(args):
             if entry is None:
                 entry = {"identity": identity, "hashes": {}}
                 data["entries"].append(entry)
+            if args.only_new:
+                # Add entries for keys this identity has no hash for; never
+                # overwrite or prune, so a changed output cannot be re-pinned.
+                new = {k: v for k, v in hashes.items() if k not in entry["hashes"]}
+                if not new:
+                    continue
+                entry["hashes"].update(new)
+                write_json(path, data)
+                print("wrote %s (%d new: %s)" % (os.path.relpath(path, REPO), len(new), ", ".join(sorted(new))))
+                continue
             entry["hashes"].update(hashes)
             if path != RENDER_HASHES:
                 live = {c["id"].rsplit("/", 1)[1] for c in modules if module_hash_file(c) == path}
@@ -1248,13 +1264,17 @@ def cmd_hashes(args):
         return 0
 
     checked = 0
+    # --missing-ok: hashes that are missing (a new case or module) or stale (a
+    # removed case) are warnings; a mismatch or a missing render still fails.
+    warnings = []
+    missing = warnings if args.missing_ok else problems
     for path, case_names in sorted(expected_keys(renders, modules).items()):
         rel = os.path.relpath(path, REPO)
         data = read_hash_file(path)
         entry = next((e for e in data["entries"] if e["identity"] == identity), None)
         if entry is None:
-            problems.append("%s has no hashes for the CI build identity: write them from a CI-identity tree "
-                            "(`run_corpus.py hashes <parity-captures> --write`)" % rel)
+            missing.append("%s has no hashes for the CI build identity: write them from a CI-identity tree "
+                           "(`run_corpus.py hashes <parity-captures> --write`)" % rel)
             continue
         got = current.get(path, {})
         expected = entry["hashes"]
@@ -1263,11 +1283,11 @@ def cmd_hashes(args):
             if name in parked_names.get(path, ()):
                 continue
             if case_names is not None and name not in case_names:
-                problems.append("%s: stale hash for removed case %s" % (rel, key))
+                missing.append("%s: stale hash for removed case %s" % (rel, key))
             elif key not in got:
                 problems.append("%s: %s has a stored hash but was not rendered" % (rel, key))
             elif key not in expected:
-                problems.append("%s: no stored hash for %s (run hashes --write)" % (rel, key))
+                missing.append("%s: no stored hash for %s (run hashes --write)" % (rel, key))
             elif expected[key] != got[key]:
                 problems.append("MISMATCH %s %s expected %s got %s" % (rel, key, expected[key], got[key]))
             checked += 1
@@ -1275,9 +1295,14 @@ def cmd_hashes(args):
             for name in sorted(case_names - {k.split(":")[0] for k in got}):
                 problems.append("%s: case %s was not rendered" % (rel, name))
 
+    for warning in warnings:
+        print("warning: " + warning)
+        if os.environ.get("GITHUB_ACTIONS"):
+            print("::warning::" + warning)
     for problem in problems:
         print(problem)
-    print("%d hashes checked, %d problems" % (checked, len(problems)))
+    print("%d hashes checked, %d problems%s" % (checked, len(problems),
+                                               ", %d warnings" % len(warnings) if args.missing_ok else ""))
     return 1 if problems else 0
 
 
@@ -1381,6 +1406,12 @@ def main():
                         help="--check fails (instead of skipping) when the tree's build identity has no hashes")
     hashes.add_argument("--new-identity", action="store_true",
                         help="--write may add hashes for a build identity that has none yet")
+    hashes.add_argument("--missing-ok", action="store_true",
+                        help="--check: missing (new case or module) and stale hashes are warnings; mismatches "
+                             "and missing renders still fail (pull-request jobs; main stays strict)")
+    hashes.add_argument("--only-new", action="store_true",
+                        help="--write: add hashes only for keys this identity has none for; never overwrite or "
+                             "prune existing ones")
     hashes.add_argument("--parked", metavar="FILE",
                         help="park file: listed cases are not checked or written (their committed hashes are "
                              "kept); every listed id must be a loaded case")

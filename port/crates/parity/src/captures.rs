@@ -380,6 +380,25 @@ fn warned_unknown_identity() -> &'static Mutex<bool> {
     WARNED.get_or_init(|| Mutex::new(false))
 }
 
+/// `SAS_PARITY_MISSING_HASHES=warn`: a capture whose case has no committed
+/// hash for a known build identity (a new case or module) is compared with a
+/// warning instead of failing. Only the pull-request macOS job sets it; a
+/// hash that exists and differs always fails.
+fn missing_hashes_warn() -> bool {
+    missing_hashes_policy(std::env::var_os("SAS_PARITY_MISSING_HASHES").as_deref())
+}
+
+fn missing_hashes_policy(value: Option<&std::ffi::OsStr>) -> bool {
+    match value.map(|v| v.to_string_lossy()) {
+        None => false,
+        Some(v) if v.is_empty() || v == "error" => false,
+        Some(v) if v == "warn" => true,
+        Some(v) => {
+            panic!("sas-parity: SAS_PARITY_MISSING_HASHES must be \"warn\" or \"error\", not {v:?}")
+        }
+    }
+}
+
 /// Checks loaded capture data against the committed hash for this build
 /// identity, so a test provably compares against the pinned reference.
 /// `key` is the output name (`audio`, `artifact/saved.json`) for modules and
@@ -416,6 +435,14 @@ pub fn verify_committed_hash(case: &ResolvedCase, key: &str, digest: &str) {
                 case.id,
                 path_display(&hash_file)
             ),
+            None if missing_hashes_warn() => {
+                eprintln!(
+                    "sas-parity: warning: {} has no committed hash for {hash_key:?} \
+                     (SAS_PARITY_MISSING_HASHES=warn)",
+                    path_display(&hash_file)
+                );
+                return;
+            }
             None => panic!(
                 "sas-parity: {} has no committed hash for {hash_key:?}; write it with \
                  `run_corpus.py hashes <CI-identity tree> --write`",
@@ -432,6 +459,13 @@ pub fn verify_committed_hash(case: &ResolvedCase, key: &str, digest: &str) {
     } else {
         known_identities.contains(&identity)
     };
+    if known && missing_hashes_warn() {
+        eprintln!(
+            "sas-parity: warning: {} has no hashes for this build identity (SAS_PARITY_MISSING_HASHES=warn)",
+            path_display(&hash_file)
+        );
+        return;
+    }
     if known {
         let (tree_name, flag) = if nofastmath {
             ("parity-captures-nofastmath", " --reference nofastmath")
@@ -558,5 +592,25 @@ mod tests {
     fn fnv_matches_the_harness_variant() {
         assert_eq!(fnv1a64(b""), "14650fb0739d0383");
         assert_eq!(fnv1a64(b"a"), "44bd8ad473cd9906");
+    }
+}
+
+#[cfg(test)]
+mod missing_hashes_tests {
+    use super::missing_hashes_policy;
+    use std::ffi::OsStr;
+
+    #[test]
+    fn missing_hashes_policy_values() {
+        assert!(!missing_hashes_policy(None));
+        assert!(!missing_hashes_policy(Some(OsStr::new(""))));
+        assert!(!missing_hashes_policy(Some(OsStr::new("error"))));
+        assert!(missing_hashes_policy(Some(OsStr::new("warn"))));
+    }
+
+    #[test]
+    #[should_panic(expected = "SAS_PARITY_MISSING_HASHES")]
+    fn missing_hashes_policy_rejects_other_values() {
+        missing_hashes_policy(Some(OsStr::new("yes")));
     }
 }

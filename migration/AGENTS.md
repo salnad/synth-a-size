@@ -232,47 +232,25 @@ none of them edits a shared list.
      these hashes.
 
      Every hash file also needs the **macOS arm64 identity** (the shipping
-     target; see `decisions/reference-arm.md`). The `Reference ARM`
-     workflow's macOS 15 job renders your PR's cases on Apple Silicon, runs
-     `sas-parity` natively against them and fails on missing entries.
-     Write them from that job's artifact in the same PR:
+     target; see `decisions/reference-arm.md`, "Mac CI policy"). macOS does
+     not gate merges. The advisory `Reference ARM (PR)` job renders your
+     PR's cases on Apple Silicon and runs `sas-parity` natively for the
+     crates you touch:
+     - a changed macOS output fails it;
+     - a new case without a macOS hash only warns, and the job writes the
+       missing entries (new keys only) as the `macos-hashes` artifact.
+
+     Commit them in the same PR:
 
      ```bash
-     gh run download <run-id> -n ref-arm64-macos-15 -D build/arm
-     python3 migration/scripts/run_corpus.py hashes build/arm/build/platform/pinned --write
-     # "reference": "nofastmath" cases also need the macOS no-fast-math entries:
-     python3 migration/scripts/run_corpus.py hashes build/arm/build/platform/proxy --write --reference nofastmath
+     migration/scripts/macos_hashes.sh <run-id>
      ```
 
-     The same job requires the macOS no-fast-math proxy to pass. A case that
-     passes on x86 but misses there is parked and re-enabled under
-     `reference: nofastmath` like any other noisy-reference case.
-
-     *macOS-only parks are temporary.* A park covers a port bug or a
-     macOS-only fix that is still pending. Noise in the macOS reference
-     itself belongs under SAS-35 instead: declare the case `macos` in its
-     no-fast-math allowlist line and keep it live. Never park by moving a
-     case to `pending/`. A park switches off every macOS check for the case
-     on the shipping target, so it needs an owner decision, recorded like a
-     tolerance exception:
-
-     ```json
-     "cases": { "<case id>": { "approved_in": "<dated ledger heading>",
-                               "reason": "<why, and what fix lifts it>" } }
-     ```
-
-     - Both tools enforce that `approved_in` is a dated heading (in an entry
-       file under `migration/ledger/` or the frozen `LEDGER.md`) whose
-       section names the case.
-     - The id must be a loaded case, so a renamed, removed or pending case
-       fails.
-     - A case declared `macos` in the no-fast-math allowlist cannot be
-       parked, because the macOS proxy compare is its justification.
-     - The macOS job skips a parked case in sas-parity (`SAS_PARITY_PARKED`),
-       in the proxy compare and justification, and in the hash checks
-       (`run_corpus.py --parked`), and lists it in its log.
-     - Every other job, including x86, keeps it live, hashed and gated.
-     - Remove the entry when the fix lands.
+     On main, the nightly full suite treats a missing macOS hash as an error
+     and opens the issue "Mac full suite failing on main". A case that
+     passes on x86 but fails the macOS no-fast-math proxy is re-enabled
+     under `reference: nofastmath` with a `macos` allowlist target. The PR
+     job then runs the macOS justification as evidence.
 
 3. **Port faithfully.** Keep upstream's structure where practical,
    including processing order, control-rate vs audio-rate behaviour,
