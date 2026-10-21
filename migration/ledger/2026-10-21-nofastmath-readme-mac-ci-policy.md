@@ -5,9 +5,9 @@ Follow-up to #63 (Mac CI policy), as noted in its review.
 required macOS job.
 
 - **`macos` declarations:** the evidence is the advisory
-  `Reference ARM (PR)` job's `justified on macos` result at the PR head. It
+  `Reference ARM (PR, advisory)` job's `justified on macos` result at the PR head. It
   is in the job's step summary, and the reviewer cites it before merge. If
-  the job didn't run the justification, dispatch it at the PR head. The
+  the job didn't run the justification, the coordinator dispatches it at the PR head (push rights needed). The
   nightly full suite on main re-checks every declaration.
 - **x86 declarations:** `ci.yml` still gates them.
 - **macOS hashes:** expected but not gating on a PR. Commit the job's
