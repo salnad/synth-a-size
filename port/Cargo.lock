@@ -558,6 +558,7 @@ version = "0.0.1"
 name = "sas-simd"
 version = "0.0.1"
 dependencies = [
+ "sas-common",
  "sas-parity",
  "serde_json",
 ]
