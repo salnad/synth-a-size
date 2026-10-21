@@ -163,7 +163,11 @@ impl<E: Engine> BlockProcessor<E> {
                 for control in params.controls() {
                     let name = control.info.name.as_str();
                     let value = control.param.value();
-                    if document.state.value(name) != Some(value) {
+                    let represented = document
+                        .state
+                        .value(name)
+                        .is_some_and(|preset| control.param.matches(preset, value));
+                    if !represented {
                         self.engine.set_control(name, value);
                     }
                 }

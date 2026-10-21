@@ -6,7 +6,7 @@
 use std::collections::HashSet;
 
 use nice_plug::prelude::*;
-use sas_plugin::params::ControlParam;
+use sas_plugin::params::{host_kind, ControlParam, HostKind};
 use sas_plugin::SynthASize;
 use sas_preset::{engine, registry, ValueScale};
 
@@ -81,6 +81,23 @@ fn parameters_carry_registry_names_defaults_and_ranges() {
                 assert_eq!(range.unnormalize(0.0), info.min, "{}", info.name);
                 assert_eq!(range.unnormalize(1.0), info.max, "{}", info.name);
                 assert!(!param.flags().contains(ParamFlags::BYPASS));
+                assert_eq!(param.step_count(), None, "{}", info.name);
+                assert_eq!(host_kind(info), HostKind::Continuous);
+            }
+            ControlParam::Stepped(param) => {
+                assert_eq!(param.name(), info.display_name);
+                assert_eq!(
+                    param.default_plain_value() as f32,
+                    info.default_value,
+                    "{}",
+                    info.name
+                );
+                let range = param.range();
+                assert_eq!(range.unnormalize(0.0) as f32, info.min, "{}", info.name);
+                assert_eq!(range.unnormalize(1.0) as f32, info.max, "{}", info.name);
+                // ValueBridge::getNumSteps is 1 + span; VST3 reports span.
+                assert_eq!(param.step_count(), Some((info.max - info.min) as usize));
+                assert_eq!(host_kind(info), HostKind::Stepped);
             }
             ControlParam::Bypass(param) => {
                 assert_eq!(info.name, "bypass");
@@ -93,18 +110,40 @@ fn parameters_carry_registry_names_defaults_and_ranges() {
 }
 
 #[test]
-fn indexed_parameters_snap_like_the_value_bridge() {
+fn indexed_parameters_are_stepped_like_the_value_bridge() {
     let plugin = plugin();
     let params = plugin.synth_params();
-    let ControlParam::Float(transpose) = &params.control("osc_1_transpose").unwrap().param else {
-        panic!("float parameter");
+    // ValueBridge::isDiscrete: indexed and fewer than 300 steps.
+    for control in params.controls() {
+        let info = control.info;
+        let discrete = info.value_scale == ValueScale::Indexed
+            && (info.max - info.min).round() < 300.0
+            && info.name != "bypass";
+        assert_eq!(
+            matches!(control.param, ControlParam::Stepped(_)),
+            discrete,
+            "{}",
+            info.name
+        );
+    }
+    let ControlParam::Stepped(transpose) = &params.control("osc_1_transpose").unwrap().param else {
+        panic!("stepped parameter");
     };
-    assert_eq!(
-        registry().get("osc_1_transpose").unwrap().value_scale,
-        ValueScale::Indexed
-    );
-    // -48..48: normalized 0.51 is 0.96 semitones, rounded to 1.
-    assert_eq!(transpose.preview_plain(0.51), 1.0);
+    assert_eq!(transpose.step_count(), Some(96));
+    // -48..48: normalized 0.51 is 0.96 semitones, rounded to 1
+    // (ValueBridge::convertToEngineValue).
+    assert_eq!(transpose.preview_plain(0.51), 1);
+    // Indexed with 300 steps or more: continuous for the host, still rounded.
+    let ControlParam::Float(quantize) = &params.control("osc_1_transpose_quantize").unwrap().param
+    else {
+        panic!("continuous parameter");
+    };
+    assert_eq!(quantize.step_count(), None);
+    assert_eq!(quantize.preview_plain(0.5), 4096.0);
+    assert!(matches!(
+        params.control("effect_chain_order").unwrap().param,
+        ControlParam::Float(_)
+    ));
     let ControlParam::Float(cutoff) = &params.control("filter_1_cutoff").unwrap().param else {
         panic!("float parameter");
     };
@@ -116,8 +155,8 @@ fn indexed_parameters_snap_like_the_value_bridge() {
 fn host_text_shows_options_and_display_units() {
     let plugin = plugin();
     let params = plugin.synth_params();
-    let ControlParam::Float(style) = &params.control("delay_style").unwrap().param else {
-        panic!("float parameter");
+    let ControlParam::Stepped(style) = &params.control("delay_style").unwrap().param else {
+        panic!("stepped parameter");
     };
     assert_eq!(
         style.normalized_value_to_string(2.0 / 3.0, true),

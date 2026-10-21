@@ -7,20 +7,24 @@ an engine interface, porting the behaviour of `vital/src/plugin/`
 - *Parameters* (`params.rs`): one host parameter per engine control of the
   `sas-preset` registry, in registry index order, as upstream's `SynthPlugin`
   adds a `ValueBridge` only where `controls_.count(name)` is non-zero. That is
-  771 of the registry's 794 entries; the other 23 are the legacy entries in
+  772 of the registry's 794 entries, `bypass` included; the other 22 are the
+  legacy entries in
   `sas_preset::engine::NON_CONTROL_PARAMETERS` (`sub_*`, the per-filter
   `*_input` switches, `compressor_low_band_unused`), which only exist for the
   preset upgrade chain and can't be loaded or saved. The stable ID is the
   registry name (the preset `settings` key), so IDs never depend on order;
-  the VST3 ID is nice-plug's hash of it. A test checks that the 771 hashes are
+  the VST3 ID is nice-plug's hash of it. A test checks that the 772 hashes are
   unique and clear of nice-plug's MIDI CC parameter range. `bypass` is the
   host bypass parameter (`BoolParam::make_bypass`), as upstream's
-  `getBypassParameter`. Every other control is a `FloatParam` over
-  `[min, max]` holding the engine value itself, with groups per section
-  (Oscillator 1, Filter FX, Modulation 12, ...), host text from
-  `ValueBridge::getText` (option names, display scale, units), and indexed
-  controls snapping host edits to whole numbers like
-  `ValueBridge::convertToEngineValue`.
+  `getBypassParameter`. Indexed controls with fewer than 300 steps
+  (`ValueBridge::isDiscrete`) are stepped `IntParam`s, so hosts see
+  `stepCount = span` as JUCE reports from `getNumSteps`. The other indexed
+  controls (`effect_chain_order`, the `*_transpose_quantize` bitmasks) are
+  continuous for the host, as upstream. Both round host edits like
+  `ValueBridge::convertToEngineValue`. Everything else is a `FloatParam` over
+  `[min, max]`. Parameters hold the engine value itself, with groups per
+  section (Oscillator 1, Filter FX, Modulation 12, ...) and host text from
+  `ValueBridge::getText` (option names, display scale, units).
 - *State* (`state.rs`): the host state is the preset JSON
   (`PresetState::to_json`) plus the `tuning` object, as
   `SynthPlugin::getStateInformation`. Restoring loads it on top of the current
@@ -73,7 +77,7 @@ an engine interface, porting the behaviour of `vital/src/plugin/`
 **Measured.** The Steinberg validator (`validator -e`, VST3 SDK v3.8.0) on
 the Linux dev bundle: 537 tests passed, 0 failed, covering parameter scan,
 units, bus layouts, state, 32- and 64-bit processing and automation. The
-macOS arm64 run is in this PR's `Plugin` workflow. There are 27 Rust tests.
+macOS arm64 run is in this PR's `Plugin` workflow. There are 29 Rust tests.
 Every authored corpus preset (`migration/corpus/presets`, `preset_tests`)
 loads through the host state path with JSON identical to `sas-preset`'s own
 `load_file`, and every `error_*` preset fails with `sas-preset`'s error. A
@@ -83,21 +87,37 @@ out-of-range and between-step values.
 
 **Decisions and upstream behaviour kept.**
 
-- *A preset's −0.0* (`voice_tune` in `controls_and_metadata.vital`) reads back
-  from the parameter as 0.0, because nice-plug ignores a parameter set that
-  compares equal to the current value. While the parameter still equals the
-  restored preset's value, the preset's own value stands, so the saved JSON
-  keeps the sign. After a preset load, the engine only gets `set_control` for
-  parameters that differ from the preset.
+- *The preset's own value stands while the parameter still represents it.*
+  A preset's −0.0 (`voice_tune` in `controls_and_metadata.vital`) reads back
+  from the float parameter as 0.0, because nice-plug ignores a set that
+  compares equal to the current value. A stepped parameter holds the rounded
+  value of a non-integer preset value (e.g. `osc_1_transpose` 0.25 shows
+  step 0), and upstream stores the value as given. While the parameter equals
+  (or, for stepped ones, is the rounding of) the restored preset's value, the
+  preset's value is saved and kept in the engine. After a preset load, the
+  engine only gets `set_control` for parameters the host moved. Tests:
+  `negative_zero_survives_the_host_path` (capture → serde → restore),
+  `host_state_round_trips_exactly` and
+  `a_stepped_parameter_leaves_the_presets_own_value_in_the_engine`.
 - *Every save/load cycle delays the sample by 4 frames*: `Sample::stateToJson`
   encodes the stored buffer including its `kBufferSamples` zero padding, as
   `sas-preset` mirrors. The round-trip test asserts that shift, not equality.
-- *Host text input* also accepts option names and removes `post_offset`;
-  upstream's `getValueForText` ignores it, which makes dB entry for `volume`
-  wrong. This is display only and has no effect on parity.
-- *Indexed controls are continuous host parameters that snap*: upstream
-  reports `getNumSteps` to hosts for spans under 300. A stepped `IntParam`
-  would round preset values that upstream stores as given.
+- *Host text entry departs from upstream; owner decision pending.* Upstream's
+  `ValueBridge::getValueForText` returns `unskew(text / display_multiply)`, an
+  engine-domain value, and JUCE's VST3 wrapper passes that straight to the
+  host as the *normalized* value (`juce_VST3_Wrapper.cpp:529`,
+  `outValueNormalized = param.getValueForText(...)`). `setValue` then maps it
+  with `convertToEngineValue` and never clamps. So typing "72" for Filter 1
+  Cutoff gives normalized 72, which sets the engine cutoff to
+  72 × 128 + 8 = 9224. Typing an option name gives 0, because
+  `getFloatValue` returns 0. nice-plug cannot reproduce this: text input
+  becomes a plain value and then `preview_normalized`, which clamps to
+  [0, 1], so out-of-range engine values are impossible. The closest
+  reproduction would make every typed number above 1 select the maximum.
+  The port instead inverts its own display text: it parses the number,
+  removes `post_offset`, divides by `display_multiply` and unskews, and it
+  also accepts option names. This affects display and text entry only, not
+  parity.
 - *VST3 note expressions* other than pressure have no MIDI equivalent and are
   dropped, as JUCE's wrapper has none. Note events addressed to every
   channel or key (CLAP only) are dropped too.

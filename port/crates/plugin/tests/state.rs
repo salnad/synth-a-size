@@ -56,12 +56,13 @@ fn set(params: &SynthParams, name: &str, value: f32) {
 fn assert_params_match(params: &SynthParams, preset: &PresetState, context: &str) {
     for control in params.controls() {
         let expected = preset.value(&control.info.name).unwrap();
-        // Equal as floats: a preset's -0.0 reads back from the parameter as
-        // 0.0 (the saved JSON keeps the sign; compared separately).
-        assert_eq!(
-            control.param.saved_value(),
-            expected,
-            "{context}: {}",
+        // How the parameter holds the preset value (-0.0 as 0.0, stepped
+        // values rounded); the saved JSON keeps the value itself and is
+        // compared separately.
+        let saved = control.param.saved_value();
+        assert!(
+            control.param.matches(expected, saved),
+            "{context}: {} is {saved}, preset has {expected}",
             control.info.name
         );
     }
@@ -120,12 +121,24 @@ fn host_state_round_trips_exactly() {
     let source = SynthASize::default();
     let params = source.synth_params();
     let path = repo().join("migration/corpus/preset_tests/modulation_slots.vital");
-    params.restore_state(state::plugin_state_from_file(&path).unwrap());
-    // Values no host could set: out of range, and between steps of an
-    // indexed parameter. Upstream stores them as given.
+    let mut preset = PresetState::new(&InitContent { sample_seed: 0 });
+    preset.load_file(&path).unwrap();
+    // Values no host could set: out of range, and between the steps of a
+    // stepped indexed parameter. Upstream stores them as given.
+    preset.set_value("osc_1_transpose", 0.25).unwrap();
+    preset.set_value("polyphony", 40.5).unwrap();
+    params.restore_state(state::plugin_state_from_json(&preset.to_json_string()).unwrap());
     set(params, "filter_1_cutoff", 200.0);
-    set(params, "osc_1_transpose", 0.25);
     set(params, "lfo_2_frequency", -3.125);
+    // The stepped parameter shows the rounded step.
+    assert_eq!(
+        params
+            .control("osc_1_transpose")
+            .unwrap()
+            .param
+            .saved_value(),
+        0.0
+    );
     let saved = host_round_trip(&params.capture_state());
 
     let target = SynthASize::default();
@@ -141,7 +154,50 @@ fn host_state_round_trips_exactly() {
     let restored = target.synth_params().preset_state();
     assert_eq!(restored.value("filter_1_cutoff"), Some(200.0));
     assert_eq!(restored.value("osc_1_transpose"), Some(0.25));
+    assert_eq!(restored.value("polyphony"), Some(40.5));
+    assert_eq!(restored.value("lfo_2_frequency"), Some(-3.125));
     assert!(restored.modulations().iter().any(|slot| !slot.is_free()));
+}
+
+#[test]
+fn negative_zero_survives_the_host_path() {
+    // controls_and_metadata.vital has voice_tune: -0.0; nice-plug's float
+    // parameter reads it back as 0.0.
+    let path = repo().join("migration/corpus/preset_tests/controls_and_metadata.vital");
+    let source = SynthASize::default();
+    source
+        .synth_params()
+        .restore_state(state::plugin_state_from_file(&path).unwrap());
+    let voice_tune = |params: &SynthParams| {
+        let text = params.capture_state().fields[state::PRESET_FIELD].clone();
+        let data = sas_common::json::parse(&text).unwrap();
+        let value = data
+            .get("settings")
+            .unwrap()
+            .get("voice_tune")
+            .unwrap()
+            .dump();
+        (value, params.preset_state().value("voice_tune").unwrap())
+    };
+    let (text, value) = voice_tune(source.synth_params());
+    assert_eq!(text, "-0.0");
+    assert!(value == 0.0 && value.is_sign_negative());
+
+    let saved = host_round_trip(&source.synth_params().capture_state());
+    let target = SynthASize::default();
+    target.synth_params().restore_state(saved);
+    let (text, value) = voice_tune(target.synth_params());
+    assert_eq!(text, "-0.0");
+    assert!(value == 0.0 && value.is_sign_negative());
+    assert_eq!(
+        target
+            .synth_params()
+            .control("voice_tune")
+            .unwrap()
+            .param
+            .saved_value(),
+        0.0
+    );
 }
 
 #[test]

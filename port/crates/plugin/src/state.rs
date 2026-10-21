@@ -20,7 +20,9 @@ use std::path::{Path, PathBuf};
 
 use nice_plug::plugin::{ParamValue, PluginState};
 use sas_common::json::{self, Value};
-use sas_preset::{engine, Error, InitContent, PresetState};
+use sas_preset::{engine, registry, Error, InitContent, PresetState};
+
+use crate::params::host_kind;
 
 /// The persisted field holding the preset JSON.
 pub const PRESET_FIELD: &str = "preset";
@@ -103,12 +105,10 @@ pub fn parameter_values(preset: &PresetState) -> std::collections::BTreeMap<Stri
         .into_iter()
         .map(|name| {
             let value = preset.value(name).expect("every control has a value");
-            let saved = if name == "bypass" {
-                ParamValue::Bool(value != 0.0)
-            } else {
-                ParamValue::F32(value)
-            };
-            (name.to_string(), saved)
+            let info = registry()
+                .get(name)
+                .expect("every control is in the registry");
+            (name.to_string(), host_kind(info).param_value(value))
         })
         .collect()
 }

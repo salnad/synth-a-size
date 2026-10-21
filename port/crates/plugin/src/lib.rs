@@ -14,7 +14,7 @@
 //!   stands in until the M7 sound engine lands.
 //! - [`processor`]: the audio callback, MIDI/MPE in.
 //!
-//! The shipping build is an arm64 macOS VST3 (`scripts/bundle-macos.sh`).
+//! The shipping build is an arm64 macOS VST3 (`scripts/bundle.sh`).
 //! CLAP export is kept because it costs nothing, but it is not tested or
 //! shipped.
 

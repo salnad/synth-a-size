@@ -6,18 +6,22 @@
 //! Ports the parameter side of `vital/src/plugin/synth_plugin.cpp` and
 //! `vital/src/plugin/value_bridge.h`: upstream adds a `ValueBridge` for every
 //! registry entry the engine has a control for, in registry index order, and
-//! uses `bypass` as the host's bypass parameter. The 23 legacy registry
-//! entries without a control (`sas_preset::engine::NON_CONTROL_PARAMETERS`)
-//! are not exposed, as upstream.
+//! uses `bypass` as the host's bypass parameter: 772 of the 794 registry
+//! entries. The 22 legacy entries without a control
+//! (`sas_preset::engine::NON_CONTROL_PARAMETERS`) are not exposed, as
+//! upstream.
 //!
 //! The stable host ID of a parameter is its registry name (the key it has in
 //! a preset's `settings`), so IDs never depend on order and survive registry
 //! additions. The VST3 parameter ID is nice-plug's hash of that name.
 //!
-//! Each parameter stores the engine value itself (the plain value), so preset
-//! values round-trip exactly through host state, out-of-range and non-integer
-//! values included. Host edits of indexed parameters snap to whole numbers
-//! like `ValueBridge::convertToEngineValue`.
+//! Each parameter stores the engine value itself (the plain value). Indexed
+//! controls with fewer than 300 steps are stepped for the host
+//! (`ValueBridge::isDiscrete` / `getNumSteps`); other indexed controls are
+//! continuous and snap host edits to whole numbers. Both round like
+//! `ValueBridge::convertToEngineValue`. A restored preset's own value stands
+//! while the parameter still represents it (see [`ControlParam::matches`]),
+//! so out-of-range, non-integer and -0.0 values round-trip exactly.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -31,9 +35,48 @@ use sas_preset::{engine, registry, ParamInfo, PresetState, ValueScale};
 
 use crate::state::{self, PresetDocument};
 
+/// How a control is presented to the host.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HostKind {
+    Continuous,
+    /// Indexed with fewer than 300 steps (`ValueBridge::isDiscrete`).
+    Stepped,
+    /// `bypass`.
+    Bypass,
+}
+
+/// `ValueBridge::isDiscrete`: indexed, with `round(max - min)` below
+/// `kMaxIndexedSteps`.
+pub fn host_kind(info: &ParamInfo) -> HostKind {
+    const MAX_INDEXED_STEPS: f32 = 300.0;
+    if info.name == "bypass" {
+        HostKind::Bypass
+    } else if info.value_scale == ValueScale::Indexed
+        && (info.max - info.min).round() < MAX_INDEXED_STEPS
+    {
+        HostKind::Stepped
+    } else {
+        HostKind::Continuous
+    }
+}
+
+impl HostKind {
+    /// The saved host value (`PluginState::params`) for engine value `value`.
+    pub fn param_value(self, value: f32) -> ParamValue {
+        match self {
+            HostKind::Continuous => ParamValue::F32(value),
+            HostKind::Stepped => ParamValue::I32(value.round() as i32),
+            HostKind::Bypass => ParamValue::Bool(value != 0.0),
+        }
+    }
+}
+
 /// The host parameter behind one control.
 pub enum ControlParam {
     Float(FloatParam),
+    /// Stepped indexed control; host edits round like
+    /// `ValueBridge::convertToEngineValue`.
+    Stepped(IntParam),
     /// `bypass`, flagged as the host bypass parameter.
     Bypass(BoolParam),
 }
@@ -43,6 +86,7 @@ impl ControlParam {
     pub fn value(&self) -> f32 {
         match self {
             ControlParam::Float(param) => param.modulated_plain_value(),
+            ControlParam::Stepped(param) => param.modulated_plain_value() as f32,
             ControlParam::Bypass(param) => bool_value(param.modulated_plain_value()),
         }
     }
@@ -51,13 +95,37 @@ impl ControlParam {
     pub fn saved_value(&self) -> f32 {
         match self {
             ControlParam::Float(param) => param.unmodulated_plain_value(),
+            ControlParam::Stepped(param) => param.unmodulated_plain_value() as f32,
             ControlParam::Bypass(param) => bool_value(param.unmodulated_plain_value()),
+        }
+    }
+
+    /// Whether host value `current` (a [`value`](Self::value) or
+    /// [`saved_value`](Self::saved_value)) is how this parameter represents
+    /// the preset value `preset`. nice-plug ignores a set that compares equal
+    /// to the current value, so a preset's -0.0 reads back as 0.0; stepped and
+    /// bypass parameters hold `preset` rounded. While this holds, the preset's
+    /// own value stands.
+    pub fn matches(&self, preset: f32, current: f32) -> bool {
+        match self {
+            ControlParam::Float(_) => preset == current,
+            ControlParam::Stepped(_) => preset.round() == current,
+            ControlParam::Bypass(_) => (preset != 0.0) == (current != 0.0),
+        }
+    }
+
+    fn saved_param_value(&self) -> ParamValue {
+        match self {
+            ControlParam::Float(param) => ParamValue::F32(param.unmodulated_plain_value()),
+            ControlParam::Stepped(param) => ParamValue::I32(param.unmodulated_plain_value()),
+            ControlParam::Bypass(param) => ParamValue::Bool(param.unmodulated_plain_value()),
         }
     }
 
     fn as_ptr(&self) -> ParamPtr {
         match self {
             ControlParam::Float(param) => param.as_ptr(),
+            ControlParam::Stepped(param) => param.as_ptr(),
             ControlParam::Bypass(param) => param.as_ptr(),
         }
     }
@@ -208,7 +276,11 @@ impl SynthParams {
     fn write_controls(&self, preset: &mut PresetState) {
         for control in &self.controls {
             let name = control.info.name.as_str();
-            let value = resolve(control.param.saved_value(), preset.value(name));
+            let saved = control.param.saved_value();
+            let value = match preset.value(name) {
+                Some(value) if control.param.matches(value, saved) => value,
+                _ => saved,
+            };
             preset
                 .set_value(name, value)
                 .expect("every exposed parameter is a control");
@@ -230,15 +302,7 @@ impl SynthParams {
         let params = self
             .controls
             .iter()
-            .map(|control| {
-                let value = match &control.param {
-                    ControlParam::Float(param) => ParamValue::F32(param.unmodulated_plain_value()),
-                    ControlParam::Bypass(param) => {
-                        ParamValue::Bool(param.unmodulated_plain_value())
-                    }
-                };
-                (control.info.name.clone(), value)
-            })
+            .map(|control| (control.info.name.clone(), control.param.saved_param_value()))
             .collect();
         PluginState {
             version: env!("CARGO_PKG_VERSION").to_string(),
@@ -264,6 +328,9 @@ impl SynthParams {
                     (ControlParam::Float(param), ParamValue::F32(value)) => {
                         param._internal_set_plain_value(*value);
                     }
+                    (ControlParam::Stepped(param), ParamValue::I32(value)) => {
+                        param._internal_set_plain_value(*value);
+                    }
                     (ControlParam::Bypass(param), ParamValue::Bool(value)) => {
                         param._internal_set_plain_value(*value);
                     }
@@ -281,17 +348,6 @@ impl SynthParams {
         document.load_json_str(text)?;
         self.replace_document(document);
         Ok(())
-    }
-}
-
-/// A control's value given its parameter's value and the value in the last
-/// restored preset. nice-plug ignores a parameter set that compares equal to
-/// the current value, so a preset's -0.0 reads back from the parameter as
-/// 0.0; while the two compare equal, the preset's own value stands.
-pub(crate) fn resolve(parameter: f32, preset: Option<f32>) -> f32 {
-    match preset {
-        Some(preset) if preset == parameter => preset,
-        _ => parameter,
     }
 }
 
@@ -336,15 +392,34 @@ fn group_of(name: &str) -> String {
 }
 
 fn make_param(info: &'static ParamInfo, index: usize, changes: &Arc<ChangeSet>) -> ControlParam {
-    if info.name == "bypass" {
-        let changes = changes.clone();
-        return ControlParam::Bypass(
-            BoolParam::new(info.display_name.clone(), info.default_value != 0.0)
-                .make_bypass()
-                .with_callback(Arc::new(move |_| changes.mark(index))),
-        );
-    }
     let changes = changes.clone();
+    match host_kind(info) {
+        HostKind::Bypass => {
+            return ControlParam::Bypass(
+                BoolParam::new(info.display_name.clone(), info.default_value != 0.0)
+                    .make_bypass()
+                    .with_callback(Arc::new(move |_| changes.mark(index))),
+            );
+        }
+        HostKind::Stepped => {
+            return ControlParam::Stepped(
+                IntParam::new(
+                    info.display_name.clone(),
+                    info.default_value.round() as i32,
+                    IntRange::Linear {
+                        min: info.min.round() as i32,
+                        max: info.max.round() as i32,
+                    },
+                )
+                .with_callback(Arc::new(move |_| changes.mark(index)))
+                .with_value_to_string(Arc::new(move |value| display_text(info, value as f32)))
+                .with_string_to_value(Arc::new(move |text| {
+                    value_from_text(info, text).map(|value| value.round() as i32)
+                })),
+            );
+        }
+        HostKind::Continuous => {}
+    }
     let mut param = FloatParam::new(
         info.display_name.clone(),
         info.default_value,
