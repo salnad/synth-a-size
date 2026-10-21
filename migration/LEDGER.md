@@ -1909,3 +1909,30 @@ model, so moving the file to `modules/filters/` and writing hashes
 re-enables it. Same question for a human as the crossover: compare
 against the no-fast-math reference, or decide otherwise. No tolerance
 exception added.
+
+## 2026-10-21: M5a PR 5, `DiodeFilter`
+
+Core Filters (M5a), stacked on PR 4.
+
+- `diode_filter.rs` ports `diode_filter.{h,cpp}`: a two-pole input
+  high-pass, a `tanh` feedback input with a fixed 20 Hz feedback high-pass,
+  and four one-pole stages (stage 1 saturated with `tanh`, stage 4 clamped).
+  The 12 dB style blends the high-pass in; every other style sweeps the
+  high-pass cutoff ratio. Kept from upstream: `reset` does not reset
+  `high_pass_feedback_`, and `feedback_high_pass_coefficient_` is unused.
+  `high_pass_ratio_` and `high_pass_amount_` are uninitialized upstream
+  until the first `setupFilter`; the port starts them at zero. Every case
+  resets all lanes in its first block, which loads the new values, so the
+  initial value never reaches the output.
+- `create_filter(Diode)` builds it.
+- New case file `filters/diode`, 20 cases under `module_defaults` (no
+  tolerance changes). For 12 dB, 24 dB and dual notch/band: full-range
+  MIDI 0–140 cutoff sweeps with resonance (0.8, 6 dB) and without, blend
+  −0.2–2.2, resonance −0.1–1.1 and drive −4–40 dB. Also style steps 0→9,
+  per-lane retriggers, 4× oversampling at resonance 0.95, 96 kHz and block
+  size 1.
+- Parity, x86_64: 20/20 pass. Worst max_abs_error 4.4e-5
+  (`k12_oversample_4x`), worst residual −92.2 dB (same case). Unlike the
+  ladder, the diode filter stays within tolerance over the full cutoff
+  range: the fast-math reference against the no-fast-math proxy gives the
+  same numbers, and nothing needed parking.
