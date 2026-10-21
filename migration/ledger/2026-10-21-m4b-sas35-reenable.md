@@ -14,43 +14,48 @@ cases renders a wavetable with a Phase Shift component (A11).
 
 Targets come from `compare --justify-nofastmath` on x86 (every case
 declared `x86` prints `justified on x86`) and from the `Reference ARM`
-macOS 15 job for `macos`. The table gives official against no-fast-math,
+macOS 15 job for `macos` (Reference ARM run 39661942644 on d51ac50: 15
+cases print `justified on macos`; the 10 that print `NOT justified on macos`
+are declared `x86` only and stay re-enabled). The table gives official against no-fast-math,
 worst output (max_abs_error / residual):
 
 | Case | Targets | x86 | macOS |
 |---|---|---|---|
-| `oscillators/synth_oscillator/probe_transpose_tune_constant` | x86, macos | 4.8e-03 / -66.5 dB | MACOS_TBD |
-| `oscillators/synth_oscillator/probe_transpose_constant_negative` | x86, macos | 1.6e-03 / -81.5 dB | MACOS_TBD |
-| `oscillators/synth_oscillator/probe_quantize_local_transpose` | x86, macos | 5.4e-03 / -66.0 dB | MACOS_TBD |
-| `oscillators/synth_oscillator/probe_quantize_global_transpose` | x86, macos | 3.4e-03 / -73.6 dB | MACOS_TBD |
-| `oscillators/synth_oscillator/probe_quantize_global_high_note` | x86, macos | 3.5e-03 / -58.4 dB | MACOS_TBD |
-| `oscillators/synth_oscillator/note_ramp` | x86, macos | 1.1e-03 / -72.4 dB | MACOS_TBD |
-| `oscillators/synth_oscillator/transpose_quantize_local` | x86, macos | 7.3e-04 / -80.9 dB | MACOS_TBD |
-| `oscillators/synth_oscillator/transpose_quantize_global` | x86, macos | 2.5e-04 / -93.2 dB | MACOS_TBD |
-| `oscillators/synth_oscillator/transpose_tune_audio` | x86, macos | 5.8e-04 / -82.5 dB | MACOS_TBD |
-| `oscillators/synth_oscillator/distortion_1_spread` | macos | passes (not gated) | 2.2e-3 (#2) |
-| `oscillators/synth_oscillator/distortion_2_spread` | macos | passes (not gated) | 1.5e-3 (#2) |
-| `oscillators/synth_oscillator/distortion_3_spread` | macos | passes (not gated) | 8.8e-4 (#2) |
-| `oscillators/sample_source/noise_transpose_m13` | x86, macos | 2.5e-04 / -82.7 dB | MACOS_TBD |
-| `oscillators/sample_source/noise_transpose_7` | x86, macos | 8.8e-04 / -73.1 dB | MACOS_TBD |
-| `oscillators/sample_source/noise_transpose_19` | x86, macos | 5.6e-04 / -74.4 dB | MACOS_TBD |
-| `oscillators/sample_source/noise_transpose_40` | x86, macos | 7.9e-04 / -61.9 dB | MACOS_TBD |
-| `oscillators/sample_source/noise_keytrack_off` | x86, macos | 5.3e-04 / -76.1 dB | MACOS_TBD |
-| `oscillators/sample_source/saw_random_phase` | x86, macos | 1.6e-04 / -98.5 dB | MACOS_TBD |
-| `oscillators/sample_source/stereo` | x86, macos | 1.2e-04 / -102.6 dB | MACOS_TBD |
-| `oscillators/sample_source/long_96k_at_48k` | x86, macos | 1.1e-03 / -92.3 dB | MACOS_TBD |
-| `oscillators/sample_source/saw_at_96k` | x86, macos | 1.4e-04 / -99.7 dB | MACOS_TBD |
-| `oscillators/sample_source/block_size_17` | x86, macos | 1.3e-04 / -99.8 dB | MACOS_TBD |
-| `oscillators/oscillator_module/transpose_tune` | x86, macos | 2.3e-03 / -72.5 dB | MACOS_TBD |
-| `oscillators/oscillator_module/transpose_tune_unsnapped` | x86, macos | 2.3e-03 / -72.5 dB | MACOS_TBD |
-| `oscillators/oscillator_module/detune_power_range` | x86, macos | 1.0e-03 / -81.5 dB | MACOS_TBD |
+| `oscillators/synth_oscillator/probe_transpose_tune_constant` | x86, macos | 4.8e-03 / -66.5 dB | 6.5e-03 / -64.0 dB |
+| `oscillators/synth_oscillator/probe_transpose_constant_negative` | x86, macos | 1.6e-03 / -81.5 dB | 1.6e-03 / -81.5 dB |
+| `oscillators/synth_oscillator/probe_quantize_local_transpose` | x86, macos | 5.4e-03 / -66.0 dB | 5.4e-03 / -66.0 dB |
+| `oscillators/synth_oscillator/probe_quantize_global_transpose` | x86, macos | 3.4e-03 / -73.6 dB | 4.6e-03 / -71.1 dB |
+| `oscillators/synth_oscillator/probe_quantize_global_high_note` | x86 | 3.5e-03 / -58.4 dB | 1.8e-07 / -145.1 dB (passes) |
+| `oscillators/synth_oscillator/note_ramp` | x86, macos | 1.1e-03 / -72.4 dB | 1.1e-03 / -72.4 dB |
+| `oscillators/synth_oscillator/transpose_quantize_local` | x86, macos | 7.3e-04 / -80.9 dB | 6.8e-04 / -81.3 dB |
+| `oscillators/synth_oscillator/transpose_quantize_global` | x86, macos | 2.5e-04 / -93.2 dB | 3.9e-04 / -86.4 dB |
+| `oscillators/synth_oscillator/transpose_tune_audio` | x86, macos | 5.8e-04 / -82.5 dB | 5.3e-04 / -82.4 dB |
+| `oscillators/synth_oscillator/distortion_1_spread` | macos | passes (not gated) | 2.2e-03 / -86.2 dB |
+| `oscillators/synth_oscillator/distortion_2_spread` | macos | passes (not gated) | 1.5e-03 / -86.2 dB |
+| `oscillators/synth_oscillator/distortion_3_spread` | macos | passes (not gated) | 8.8e-04 / -90.5 dB |
+| `oscillators/sample_source/noise_transpose_m13` | x86 | 2.5e-04 / -82.7 dB | 3.6e-07 / -139.7 dB (passes) |
+| `oscillators/sample_source/noise_transpose_7` | x86 | 8.8e-04 / -73.1 dB | 2.4e-07 / -144.7 dB (passes) |
+| `oscillators/sample_source/noise_transpose_19` | x86 | 5.6e-04 / -74.4 dB | 3.6e-07 / -135.7 dB (passes) |
+| `oscillators/sample_source/noise_transpose_40` | x86, macos | 7.9e-04 / -61.9 dB | 8.3e-04 / -62.0 dB |
+| `oscillators/sample_source/noise_keytrack_off` | x86 | 5.3e-04 / -76.1 dB | 1.2e-07 / -144.6 dB (passes) |
+| `oscillators/sample_source/saw_random_phase` | x86 | 1.6e-04 / -98.5 dB | 2.4e-07 / -144.8 dB (passes) |
+| `oscillators/sample_source/stereo` | x86 | 1.2e-04 / -102.6 dB | 3.6e-07 / -142.2 dB (passes) |
+| `oscillators/sample_source/long_96k_at_48k` | x86 | 1.1e-03 / -92.3 dB | 2.4e-07 / -144.7 dB (passes) |
+| `oscillators/sample_source/saw_at_96k` | x86 | 1.4e-04 / -99.7 dB | 2.4e-07 / -140.3 dB (passes) |
+| `oscillators/sample_source/block_size_17` | x86 | 1.3e-04 / -99.8 dB | 2.4e-07 / -144.1 dB (passes) |
+| `oscillators/oscillator_module/transpose_tune` | x86, macos | 2.3e-03 / -72.5 dB | 2.4e-03 / -72.5 dB |
+| `oscillators/oscillator_module/transpose_tune_unsnapped` | x86, macos | 2.3e-03 / -72.5 dB | 2.4e-03 / -72.5 dB |
+| `oscillators/oscillator_module/detune_power_range` | x86, macos | 1.0e-03 / -81.5 dB | 1.1e-03 / -81.3 dB |
 
 **Port:** bit-exact against the no-fast-math build on all 25 cases on x86
-(every output 0.000e0). MACOS_PORT_TBD
+(every output 0.000e0). On macOS arm64 the parity tests compare every case
+exactly against the macOS no-fast-math captures (see the PR's Reference ARM
+run).
 
 **Hashes:** official and no-fast-math entries for both targets in
 `synth_oscillator`, `sample_source` and `oscillator_module`; the macOS
-entries come from this PR's `ref-arm64-macos-15` artifact.
+entries come from run 39661942644 through `migration/scripts/macos_hashes.sh`
+(new keys only).
 
 ### `sample_source_pitch`
 

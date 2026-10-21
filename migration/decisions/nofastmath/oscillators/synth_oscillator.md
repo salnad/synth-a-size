@@ -10,11 +10,14 @@ the module limit, residual −86 to −91 dB); x86's official reference passes
 them. The pitch itself is
 compared on the official reference in `synth_oscillator_pitch`.
 
+`probe_quantize_global_high_note` passes the limits on macOS arm64 and is
+declared `x86` only (Reference ARM run 39661942644).
+
 - `oscillators/synth_oscillator/probe_transpose_tune_constant` (SAS-35; x86, macos): constant transpose and tune: the phase accumulator integrates the fast-math rounding of the pitch offset
 - `oscillators/synth_oscillator/probe_transpose_constant_negative` (SAS-35; x86, macos): constant negative transpose: the phase accumulator integrates the fast-math rounding of the pitch offset
 - `oscillators/synth_oscillator/probe_quantize_local_transpose` (SAS-35; x86, macos): local transpose snapping with a non-zero transpose: the accumulator integrates the fast-math rounding of the snapped offset
 - `oscillators/synth_oscillator/probe_quantize_global_transpose` (SAS-35; x86, macos): global transpose snapping with a non-zero transpose: the accumulator integrates the fast-math rounding of the snapped offset
-- `oscillators/synth_oscillator/probe_quantize_global_high_note` (SAS-35; x86, macos): global snapping at a high note: the accumulator integrates the fast-math rounding of the snapped offset
+- `oscillators/synth_oscillator/probe_quantize_global_high_note` (SAS-35; x86): global snapping at a high note: the accumulator integrates the fast-math rounding of the snapped offset
 - `oscillators/synth_oscillator/note_ramp` (SAS-35; x86, macos): swept MIDI note: the accumulator integrates the fast-math rounding of every non-integer pitch
 - `oscillators/synth_oscillator/transpose_quantize_local` (SAS-35; x86, macos): swept transpose with local snapping: the accumulator integrates the fast-math rounding of the pitch offset
 - `oscillators/synth_oscillator/transpose_quantize_global` (SAS-35; x86, macos): swept transpose with global snapping: the accumulator integrates the fast-math rounding of the pitch offset
