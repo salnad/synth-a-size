@@ -1,0 +1,219 @@
+{
+  "description": "SampleSource and Sample (vital/src/synthesis/producers/sample_source.cpp): the default seeded white noise and PCM samples loaded through Sample::jsonToState (mono and stereo, 37 to 20000 samples, 22.05/44.1/48/96 kHz), octave-buffer selection across transposes, keytrack, tune, transpose snapping, loop, one-shot, bounce with and without loop, random phase, reset offsets, level/pan, the encoded phase output, sample rates, oversampling and block sizes. Ported in port/crates/oscillators. Parked pending an owner decision on the noisy-reference proposal (SAS-35; not decided; see LEDGER.md, M4b SampleSource): non-unity playback ratios where the official reference fails the module limits against its own no-fast-math build (fast-math turns powf(2, cents / 1200) into a reciprocal multiply; the sample position integrates the ulp). The port equals the no-fast-math reference bit for bit. Not loaded by the harness while under pending/.",
+  "module": "sample_source",
+  "seed": 0,
+  "cases": {
+    "noise_transpose_m13": {
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose": -13.0
+      }
+    },
+    "noise_transpose_7": {
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose": 7.0
+      }
+    },
+    "noise_transpose_19": {
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose": 19.0
+      }
+    },
+    "noise_transpose_40": {
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose": 40.0
+      }
+    },
+    "noise_keytrack_off": {
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "keytrack": 0.0,
+        "midi": 30.0,
+        "tune": 0.37
+      }
+    },
+    "saw_random_phase": {
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "random_phase": 1.0
+      },
+      "params": {
+        "sample": {
+          "length": 3000,
+          "sample_rate": 44100,
+          "recipe": {
+            "shape": "saw",
+            "period": 300,
+            "slope": 0.00390625,
+            "amp": 0.9
+          }
+        }
+      }
+    },
+    "stereo": {
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "pan": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 1.0
+        }
+      },
+      "params": {
+        "sample": {
+          "length": 4096,
+          "sample_rate": 48000,
+          "recipe": {
+            "shape": "saw",
+            "period": 512,
+            "slope": 0.001953125
+          },
+          "recipe_stereo": {
+            "shape": "triangle",
+            "period": 300,
+            "slope": 0.00625,
+            "shift": 50
+          }
+        }
+      }
+    },
+    "long_96k_at_48k": {
+      "num_samples": 12000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose": -5.0
+      },
+      "params": {
+        "sample": {
+          "length": 20000,
+          "sample_rate": 96000,
+          "recipe": {
+            "shape": "saw",
+            "period": 1000,
+            "slope": 0.001953125
+          }
+        }
+      },
+      "sample_rate": 48000
+    },
+    "saw_at_96k": {
+      "num_samples": 12000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      },
+      "params": {
+        "sample": {
+          "length": 3000,
+          "sample_rate": 44100,
+          "recipe": {
+            "shape": "saw",
+            "period": 300,
+            "slope": 0.00390625,
+            "amp": 0.9
+          }
+        }
+      },
+      "sample_rate": 96000
+    },
+    "block_size_17": {
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose": 9.0
+      },
+      "params": {
+        "sample": {
+          "length": 3000,
+          "sample_rate": 44100,
+          "recipe": {
+            "shape": "saw",
+            "period": 300,
+            "slope": 0.00390625,
+            "amp": 0.9
+          }
+        }
+      },
+      "block_size": 17
+    }
+  }
+}
