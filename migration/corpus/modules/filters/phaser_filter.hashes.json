@@ -1,0 +1,26 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "clean_effect_full_range:audio": "b2447b97eb48885b",
+        "clean_effect_lfo_sweep:audio": "9f8ed6eb60236ec7",
+        "clean_oversample2:audio": "921bed1a22ecf673",
+        "dirty_96k_block128:audio": "9c707322f3b8cca3",
+        "dirty_cutoff_sweep:audio": "96612a82b68bf763",
+        "dirty_drive_ramp_hot_input:audio": "781ce50d49750b7b",
+        "dirty_inverted_blend_resonance_ramps:audio": "c98ed0789746a09f",
+        "dirty_out_of_range_controls:audio": "4542e2f08c8b9b53",
+        "dirty_per_lane_controls_and_resets:audio": "f70a8d9c54a8c459"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}

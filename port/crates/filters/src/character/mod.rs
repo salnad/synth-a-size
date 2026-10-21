@@ -7,6 +7,10 @@
 
 use sas_dsp_core::ProcessorRef;
 
+pub mod phaser_filter;
+
+pub use phaser_filter::PhaserFilter;
+
 use crate::synth_filter::FilterModel;
 
 /// The formant and phaser arms of `SynthFilter::createFilter`
@@ -15,7 +19,8 @@ use crate::synth_filter::FilterModel;
 /// handled, as `None`, in `synth_filter::create_filter`).
 pub fn create_filter(model: FilterModel) -> Option<ProcessorRef> {
     match model {
-        FilterModel::Formant | FilterModel::Phase => None,
+        FilterModel::Phase => Some(PhaserFilter::create(false)),
+        FilterModel::Formant => None,
         _ => None,
     }
 }

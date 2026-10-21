@@ -1155,3 +1155,57 @@ Character Filters). There is no defined output to reproduce, so the port's
 filter that could panic or diverge in `process`. Nothing in the engine uses
 that path: `FilterModule` builds its comb through `CombModule`, with full
 memory. No `filter` module case uses `model: comb`.
+
+## 2026-10-21: M5b PR 1, `PhaserFilter` (character filters)
+
+Ports `vital/src/synthesis/filters/phaser_filter.{h,cpp}` to
+`port/crates/filters/src/character/phaser_filter.rs`, stacked on the M5a
+interface branch (`synth_filter.rs`: `FilterState`, `coefficient_lookup`,
+`SynthFilter`). `character::create_filter(Phase)` returns
+`PhaserFilter(false)`, as `SynthFilter::createFilter` does. The kernel is
+also constructible on its own (`PhaserFilter::new(clean)`) for the phaser
+effect, which drives it through `process_with_input`.
+
+- Structure as upstream: the `saturateResonance` / `saturateInput` template
+  pair is a function-pointer pair (clean: `futils::tanh` on the resonance
+  path; dirty: `futils::hardTanh` on the all-pass input); per-block linear
+  ramps of resonance, drive and the three peak amounts; reset masking;
+  `hardReset` zeroes the ramp targets.
+- Per-ISA sites: only the coefficient lookup's `toInt` index (A1c), inside
+  `sas-simd`. No delay read in this filter. No FMA, no estimates.
+- `sas-filters` forwards `aarch64-semantics` to `sas-simd` (in the M5a
+  Cargo.toml).
+
+Reference: new ref-module `phaser_filter` (`params.clean`), file
+`migration/reference/src/modules/filters/phaser_filter.cpp`. Upstream's
+`phaser_filter.h` uses `futils` without including it (the unity build
+includes it earlier), so the harness file includes `futils.h` first.
+
+Cases (`migration/corpus/modules/filters/phaser_filter.json`, 9 cases, all
+under `module_defaults`): both `clean` settings; cutoff sweeps over MIDI
+−40..184 (filter cutoff 8..136 plus modulation, and the phaser effect's
+center 8..136 ± mod depth 48; the filter clamps the frequency ratio at 1.0);
+resonance and blend ramps over 0..1 and 0..2 and beyond (−0.5..1.5,
+−1..3, to hit the clamps); drive 0..20 dB and −10..40 dB (clamped to 0..36
+by `loadSettings`); style 0, 1 and 9 (inversion); per-lane controls with
+per-voice resets; 96 kHz / block 128 and oversample 2. Outputs are audio,
+so no normalization is involved.
+
+| Metric (9 cases) | Port vs reference | No-fast-math proxy vs reference |
+|---|---|---|
+| worst `max_abs_error` | 7.2e-6 (`dirty_out_of_range_controls`) | 7.2e-6 (same case) |
+| worst `residual_db` | −115.9 dB (`dirty_inverted_blend_resonance_ramps`) | −115.9 dB (same case) |
+| best `residual_db` | −129.6 dB (`clean_oversample2`) | |
+
+Margin ≥ 14× on the absolute gate and ≥ 35.9 dB on the residual gate. No
+case is bit-identical to the default (fast-math) reference, but the port is
+bit-identical to the `REF_FAST_MATH=OFF` build on all 9 cases. Tests use
+the shared filter harness (`tests/support`, `check_file`). Hashes:
+x86_64 CI identity (local tree with the identical identity, re-checked
+against the PR's CI `reference-renders` artifact).
+
+**Open / next**
+
+- macOS arm64 hashes for `phaser_filter` once PR #2 merges.
+- M5b PR 2 (comb filter and comb module), PR 3 (formant filter, formant
+  manager, vocal tract, formant module; needs M5a DigitalSvf).

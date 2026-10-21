@@ -1,0 +1,118 @@
+{
+  "description": "PhaserFilter: the filter-section phaser model (clean false, hardTanh on the all-pass input) and the phaser effect's configuration (clean true, tanh on the resonance path). Inputs are at the processor's ports: midi_cutoff in semitones (filter cutoff 8..136 plus modulation and keytrack; phaser effect center 8..136 +/- mod depth 48), drive_gain in dB (filter drive 0..20, clamped to 0..36 by loadSettings), pass_blend 0..2, resonance 0..1, style 0..9 (non-zero inverts).",
+  "module": "phaser_filter",
+  "params": {
+    "clean": false
+  },
+  "cases": {
+    "dirty_cutoff_sweep": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": { "signal": "saw", "freq_hz": 110.0, "amp": 0.5 },
+        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
+        "midi_cutoff": { "signal": "ramp", "from": -40.0, "to": 184.0 },
+        "resonance": 0.8,
+        "pass_blend": 1.0
+      }
+    },
+    "dirty_inverted_blend_resonance_ramps": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": { "signal": "noise", "amp": 0.5, "seed": 3, "stereo": true },
+        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
+        "midi_cutoff": { "signal": "sine", "freq_hz": 1.5, "amp": 40.0, "offset": 80.0 },
+        "resonance": { "signal": "ramp", "from": 0.0, "to": 1.0 },
+        "pass_blend": { "signal": "ramp", "from": 2.0, "to": 0.0 },
+        "style": 1
+      }
+    },
+    "dirty_drive_ramp_hot_input": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": { "signal": "square", "freq_hz": 82.5, "amp": 1.0 },
+        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
+        "midi_cutoff": { "signal": "ramp", "from": 136.0, "to": 8.0 },
+        "resonance": 1.0,
+        "drive_gain": { "signal": "ramp", "from": 0.0, "to": 20.0 },
+        "pass_blend": 0.5,
+        "style": 9
+      }
+    },
+    "dirty_out_of_range_controls": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": { "signal": "saw", "freq_hz": 220.0, "amp": 0.7 },
+        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
+        "midi_cutoff": { "signal": "sine", "freq_hz": 0.75, "amp": 60.0, "offset": 72.0 },
+        "resonance": { "signal": "ramp", "from": -0.5, "to": 1.5 },
+        "drive_gain": { "signal": "ramp", "from": -10.0, "to": 40.0 },
+        "pass_blend": { "signal": "ramp", "from": -1.0, "to": 3.0 }
+      }
+    },
+    "dirty_per_lane_controls_and_resets": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": { "signal": "saw", "freq_hz": 130.81, "amp": 0.5 },
+        "reset": {
+          "trigger": [
+            { "sample": 0, "value": "voice_on" },
+            { "sample": 7000, "value": "voice_on", "voices": "0" },
+            { "sample": 14037, "value": "voice_on", "voices": "1" }
+          ]
+        },
+        "midi_cutoff": { "value": [ 30.0, 64.0, 100.0, 130.0 ] },
+        "resonance": { "value": [ 0.0, 0.33, 0.66, 1.0 ] },
+        "drive_gain": { "value": [ 0.0, 6.0, 12.0, 20.0 ] },
+        "pass_blend": { "value": [ 0.0, 0.7, 1.3, 2.0 ] }
+      }
+    },
+    "clean_effect_lfo_sweep": {
+      "params": { "clean": true },
+      "num_samples": 22050,
+      "inputs": {
+        "audio": { "signal": "noise", "amp": 0.5, "seed": 7, "stereo": true },
+        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
+        "midi_cutoff": { "signal": "sine", "freq_hz": 2.0, "amp": 48.0, "offset": 80.0 },
+        "resonance": 0.5,
+        "pass_blend": 1.0
+      }
+    },
+    "clean_effect_full_range": {
+      "params": { "clean": true },
+      "num_samples": 22050,
+      "inputs": {
+        "audio": { "signal": "saw", "freq_hz": 55.0, "amp": 1.0 },
+        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
+        "midi_cutoff": { "signal": "ramp", "from": 184.0, "to": -40.0 },
+        "resonance": { "signal": "ramp", "from": 1.0, "to": 0.0 },
+        "pass_blend": { "signal": "ramp", "from": 0.0, "to": 2.0 }
+      }
+    },
+    "dirty_96k_block128": {
+      "sample_rate": 96000,
+      "block_size": 128,
+      "num_samples": 48000,
+      "inputs": {
+        "audio": { "signal": "saw", "freq_hz": 110.0, "amp": 0.5 },
+        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
+        "midi_cutoff": { "signal": "ramp", "from": 8.0, "to": 160.0 },
+        "resonance": 0.9,
+        "drive_gain": 6.0,
+        "pass_blend": 1.5
+      }
+    },
+    "clean_oversample2": {
+      "params": { "clean": true },
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 44100,
+      "inputs": {
+        "audio": { "signal": "sine", "freq_hz": 440.0, "amp": 0.8 },
+        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
+        "midi_cutoff": { "signal": "sine", "freq_hz": 1.0, "amp": 48.0, "offset": 100.0 },
+        "resonance": 0.95,
+        "pass_blend": 0.25
+      }
+    }
+  }
+}
