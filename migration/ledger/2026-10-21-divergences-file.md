@@ -15,8 +15,9 @@ difference between the Rust port and upstream in a dedicated file,
     host state restore. The last is merged with #7's failed-load and
     corrupted-input handling (D4).
   - `create_filter(Comb)` (D5).
-  - #24's kbm overrun (D6). #24 is still open; the port panics there, and
-    the entry flags rejecting such a map as a follow-up.
+  - #24's kbm overrun (D6). #24 merged while this PR was in review; the
+    port panics there, and the entry flags rejecting such a map as a
+    follow-up.
   - Line generator `num_points` (D7).
   - Degenerate JSON numbers in `sas-common` (D8).
   - Unsupported `clone()` (D9).

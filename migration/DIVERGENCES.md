@@ -131,20 +131,21 @@ What is **not** listed:
 
 ### D6. A keyboard map that indexes past the scale panics
 
-*Pending: in #24 (tuning files), open.*
+*Merged in #24 (tuning files). Follow-up open: reject such a map at load.*
 
 - **Differs:** a `.kbm` whose mapping names a scale degree beyond the loaded
   scale. An example is degrees 9–11 on a 7-degree Scala scale.
 - **Upstream:** `Tuning::loadScale` reads `scale[note_in_scale]` past the end
   of the scale vector (undefined behaviour; `vital/src/common/tuning.cpp:340`).
 - **Port:** the index is bounds-checked, so loading such a mapping panics
-  (`tuning.rs`, `scale[note_in_scale as usize]`). The authored test inputs
+  (`port/crates/engine/src/tuning.rs`, `scale[note_in_scale as usize]`). The authored test inputs
   that hit it were corrected in #24. These are invalid inputs, not narrowed
   coverage.
 - **Why:** there is no defined output to reproduce.
-- **Approved:** #24. Open follow-up: a panic is not acceptable in a shipped
-  plugin, so the loader should reject such a map with an error instead.
-  Update this entry when that lands.
+- **Approved:** #24 (`migration/ledger/2026-10-21-m7-tuning-files.md`).
+  Open follow-up: a panic is not acceptable in a shipped plugin, so the
+  loader should reject such a map with an error instead. Update this entry
+  when that lands.
 
 ### D7. A line generator with `num_points` outside 1–100 is an error
 
