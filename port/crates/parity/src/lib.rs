@@ -29,6 +29,7 @@
 
 pub mod captures;
 pub mod cases;
+pub mod json_bound;
 
 use std::borrow::Cow;
 use std::fs;
@@ -37,7 +38,7 @@ use std::path::{Path, PathBuf};
 pub use audio_diff::{Audio, Report, Tolerances};
 use serde_json::Value;
 
-use cases::ResolvedCase;
+use cases::{ArtifactMode, Comparison, Reference, ResolvedCase};
 
 /// Asserts that `output` matches the reference capture of case `id` within
 /// the case's tolerances. Panics with the metrics on failure and dumps the
@@ -47,10 +48,12 @@ use cases::ResolvedCase;
 /// per frame, poly lanes voice 0 L, voice 0 R, voice 1 L, voice 1 R),
 /// `Vec<[f32; 2]>` (stereo renders), an interleaved `Vec<f32>` / `&[f32]`
 /// (channel count taken from the reference), or an [`Audio`].
-/// Asserts that `actual` (`&str`, `String`, `&[u8]`, `Vec<u8>`) is
-/// byte-for-byte equal to text artifact `name` of module case `id`, e.g.
-/// `assert_artifact!("wavetable/creator/init", "saved.json", json)`. No
-/// tolerance, no normalisation.
+/// Asserts that `actual` (`&str`, `String`, `&[u8]`, `Vec<u8>`) matches text
+/// artifact `name` of module case `id`, e.g.
+/// `assert_artifact!("wavetable/creator/init", "saved.json", json)`. The
+/// mode comes from the case file only: byte for byte by default, or under
+/// the owner-approved JSON bound if the case declares
+/// `"artifacts": {"<name>": "json"}` (see [`json_bound`]).
 #[macro_export]
 macro_rules! assert_artifact {
     ($id:expr, $name:expr, $actual:expr $(,)?) => {
@@ -273,6 +276,49 @@ fn fail(label: &str, source: &str, test: &Audio, report: &Report) -> ! {
         "  port output: {}\n  report: {}\n",
         captures::path_display(&dumped),
         captures::path_display(&dir.join("report.json"))
+    ));
+    panic!("{text}");
+}
+
+/// Bit-for-bit comparison for `"reference": "nofastmath"` cases.
+#[track_caller]
+fn assert_bit_exact(label: &str, reference: &Audio, test: &Audio) {
+    let same_shape = reference.channels == test.channels && reference.frames == test.frames;
+    let differing: Vec<usize> = reference
+        .data
+        .iter()
+        .zip(&test.data)
+        .enumerate()
+        .filter(|(_, (a, b))| a.to_bits() != b.to_bits())
+        .map(|(i, _)| i)
+        .collect();
+    if same_shape && differing.is_empty() {
+        return;
+    }
+    let dir = captures::failures_dir().join(label.replace(':', "__"));
+    fs::create_dir_all(&dir).ok();
+    let dumped = dir.join("port_output.npy");
+    fs::write(&dumped, audio_diff::audio::to_npy(test)).ok();
+    let mut text = format!(
+        "parity FAILED for {label} (reference \"nofastmath\": bit-exact against the \
+         REF_FAST_MATH=OFF capture)\n  shape: reference {} frames x {} channels / port {} x {}\n",
+        reference.frames, reference.channels, test.frames, test.channels
+    );
+    if let Some(&first) = differing.first() {
+        let (a, b) = (reference.data[first], test.data[first]);
+        text.push_str(&format!(
+            "  {} values differ; first at index {first} (frame {}, channel {}): reference {a:?} \
+             ({:#010x}), port {b:?} ({:#010x})\n",
+            differing.len(),
+            first / reference.channels.max(1),
+            first % reference.channels.max(1),
+            a.to_bits(),
+            b.to_bits()
+        ));
+    }
+    text.push_str(&format!(
+        "  port output: {}",
+        captures::path_display(&dumped)
     ));
     panic!("{text}");
 }
@@ -561,9 +607,17 @@ impl ModuleCase {
             .unwrap_or_else(|_| panic!("sas-parity: {} artifact {name:?} is not UTF-8", self.id()))
     }
 
-    /// Asserts that `actual` is byte-for-byte equal to artifact `name`. There
-    /// is no tolerance and no normalisation (whitespace, key order and number
-    /// formatting all count).
+    /// How this case is compared: reference build, artifact modes, JSON
+    /// bound and base64-f32 keys (read-only, from the case file).
+    pub fn comparison(&self) -> &Comparison {
+        &self.resolved.comparison
+    }
+
+    /// Asserts that `actual` matches artifact `name`. By default the match is
+    /// byte for byte, with no normalisation (whitespace, key order and
+    /// number formatting all count). An artifact the case declares `"json"`
+    /// is compared under the owner-approved JSON bound instead (see
+    /// [`json_bound`]); a `"reference": "nofastmath"` case is always exact.
     #[track_caller]
     pub fn assert_artifact<A: AsRef<[u8]> + ?Sized>(&self, name: &str, actual: &A) {
         let expected = self.artifact_bytes(name);
@@ -571,14 +625,41 @@ impl ModuleCase {
         if expected == actual {
             return;
         }
+        let comparison = self.comparison();
         let label = format!("{}:artifact/{name}", self.id());
         let dir = captures::failures_dir().join(label.replace(':', "__"));
         fs::create_dir_all(&dir).ok();
         let dumped = dir.join(format!("port_{name}"));
         fs::write(&dumped, actual).ok();
         fs::write(dir.join(format!("reference_{name}")), &expected).ok();
+        if comparison.artifact_mode(name) == ArtifactMode::Json {
+            let bound = comparison.json_bound;
+            let problems =
+                json_bound::problems(&expected, actual, &bound, &comparison.base64_f32_keys);
+            if problems.is_empty() {
+                fs::remove_dir_all(&dir).ok();
+                return;
+            }
+            let mut text = format!(
+                "artifact parity FAILED for {label} (JSON bound: {} f32 ulp or {} absolute; \
+                 base64 f32 keys {:?})\n",
+                bound.ulp, bound.abs, comparison.base64_f32_keys
+            );
+            for problem in problems.iter().take(10) {
+                text.push_str(&format!("  {problem}\n"));
+            }
+            if problems.len() > 10 {
+                text.push_str(&format!("  ... {} more\n", problems.len() - 10));
+            }
+            text.push_str(&format!(
+                "  port output: {}",
+                captures::path_display(&dumped)
+            ));
+            panic!("{text}");
+        }
         panic!("{}", describe_mismatch(&label, &expected, actual, &dumped));
     }
+
     /// Debugging only: compares without panicking. Parity tests must use
     /// [`ModuleCase::assert_parity`] / [`assert_parity!`].
     #[doc(hidden)]
@@ -586,15 +667,29 @@ impl ModuleCase {
         let label = format!("{}:{output}", self.id());
         let reference = self.reference_audio(output);
         let test = to_audio(data, &reference, &label);
-        compare_or_panic(&label, &reference, &test, self.tolerances())
+        let exact = Tolerances {
+            max_abs_error: Some(0.0),
+            ..Tolerances::default()
+        };
+        let tolerances = match self.comparison().reference {
+            Reference::Official => self.tolerances(),
+            Reference::NoFastMath => &exact,
+        };
+        compare_or_panic(&label, &reference, &test, tolerances)
     }
 
-    /// Asserts parity of output `output` with the case's tolerances.
+    /// Asserts parity of output `output`: with the case's tolerances, or
+    /// bit for bit against the no-fast-math capture for a
+    /// `"reference": "nofastmath"` case.
     #[track_caller]
     pub fn assert_parity<O: ParityOutput + ?Sized>(&self, output: &str, data: &O) {
         let label = format!("{}:{output}", self.id());
         let reference = self.reference_audio(output);
         let test = to_audio(data, &reference, &label);
+        if self.comparison().reference == Reference::NoFastMath {
+            assert_bit_exact(&label, &reference, &test);
+            return;
+        }
         let report = compare_or_panic(&label, &reference, &test, self.tolerances());
         if !report.pass {
             fail(&label, self.file(), &test, &report);
@@ -704,6 +799,35 @@ impl RenderCase {
         let report = compare_or_panic(self.id(), &reference, &test, self.tolerances());
         if !report.pass {
             fail(self.id(), "migration/corpus/cases.json", &test, &report);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn audio(data: &[f32]) -> Audio {
+        Audio::new(2, None, data.to_vec())
+    }
+
+    #[test]
+    fn nofastmath_comparison_is_bit_exact() {
+        let reference = audio(&[0.5, -0.25, 0.0, 1.0]);
+        assert_bit_exact("t:a", &reference, &audio(&[0.5, -0.25, 0.0, 1.0]));
+        for port in [
+            audio(&[0.5, -0.25, -0.0, 1.0]),
+            audio(&[0.5, -0.25, 0.0, f32::from_bits(1.0f32.to_bits() + 1)]),
+            audio(&[0.5, -0.25]),
+        ] {
+            let message = *std::panic::catch_unwind(|| assert_bit_exact("t:a", &reference, &port))
+                .unwrap_err()
+                .downcast::<String>()
+                .unwrap();
+            assert!(
+                message.contains("bit-exact against the REF_FAST_MATH=OFF capture"),
+                "{message}"
+            );
         }
     }
 }

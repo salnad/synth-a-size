@@ -35,29 +35,55 @@ same way; keep the two in sync):
   cited LEDGER.md section names the case id.
 - JSON NaN/Infinity and unknown keys are rejected.
 
+Comparison rules (owner decisions in
+migration/decisions/owner-decisions-json-and-morphs.md; also mirrored in
+port/crates/parity):
+- Text artifacts are byte-exact unless the case (or its file) declares them
+  "json": "artifacts": {"saved.json": "json"}. A json artifact must match
+  structurally (keys, types, strings, integers, array lengths), and each
+  float must agree within JSON_BOUND (4 f32 ulp, or 1e-6 absolute, whichever
+  is looser); -0.0 equals 0.0. String values under the keys listed in
+  "base64_f32_keys" are decoded as little-endian f32 arrays (same length,
+  each element under the same bound); other strings, including PCM base64,
+  stay exact. "json_bound": {"ulp": n, "abs": x} may tighten the bound,
+  never loosen it.
+- "reference": "nofastmath" (case-level, only for case ids listed in the
+  decision doc's allowlist) compares every array and artifact bit for bit
+  against the REF_FAST_MATH=OFF build's captures (compare
+  --reference-nofastmath DIR; hashes --reference nofastmath). Such a case
+  is only valid while the official reference fails the case's normal limits
+  (the module defaults and its declared artifact modes) against the
+  no-fast-math build: CI's calibration step checks this with
+  `compare <official> <nofastmath> --justify-nofastmath`.
+
 Exit status: 0 all pass, 1 any comparison or hash check failed, 2 usage,
 case-file or tool error. Python 3.8+ standard library only.
 """
 
 import argparse
+import base64
+import binascii
 import glob
 import json
+import math
 import os
 import re
+import struct
 import subprocess
 import sys
 
-REPO = CORPUS = MODULE_CASES = RENDER_HASHES = LEDGER = None
+REPO = CORPUS = MODULE_CASES = RENDER_HASHES = LEDGER = DECISION_DOC = None
 
 
 def set_repo(root):
     """Points every path at a repository root (tests use a scratch copy)."""
-    global REPO, CORPUS, MODULE_CASES, RENDER_HASHES, LEDGER
+    global REPO, CORPUS, MODULE_CASES, RENDER_HASHES, LEDGER, DECISION_DOC
     REPO = os.path.abspath(root)
     CORPUS = os.path.join(REPO, "migration", "corpus")
     MODULE_CASES = os.path.join(CORPUS, "modules")
     RENDER_HASHES = os.path.join(CORPUS, "reference_hashes.json")
     LEDGER = os.path.join(REPO, "migration", "LEDGER.md")
+    DECISION_DOC = os.path.join(REPO, "migration", "decisions", "owner-decisions-json-and-morphs.md")
 
 
 set_repo(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
@@ -71,9 +97,24 @@ METRICS = ("max_abs_error", "rms_diff_db", "residual_db", "lsd_db")
 RENDER_FLOOR = {"residual_db": -50.0, "lsd_db": 0.1, "rms_diff_db": 0.01}
 MODULE_FLOOR = {"max_abs_error": 1e-4, "residual_db": -80.0}
 
+# Owner decision (migration/decisions/owner-decisions-json-and-morphs.md,
+# LEDGER.md 2026-10-21). Mirrored in port/crates/parity/src/cases.rs.
+JSON_BOUND = {"ulp": 4, "abs": 1e-6}
+# The only keys a case may declare as base64 little-endian f32 data. Any
+# other string (e.g. PCM int16 "audio_file") stays exact; extending this set
+# is a code change in both resolvers plus an owner decision.
+BASE64_F32_KEYS = ("wave_data",)
+# The no-fast-math reference build's opt_flags are the CI build's minus this.
+FAST_MATH_FLAGS = " -ffast-math -U__FAST_MATH__"
+ARTIFACT_MODES = ("exact", "json")
+REFERENCES = ("official", "nofastmath")
+ALLOWLIST_HEADING = "No-fast-math exact cases (allowlist)"
+ARTIFACT_NAME = re.compile(r"[A-Za-z0-9_.-]+")
+
 SPEC_KEYS = ("module", "params", "sample_rate", "block_size", "oversample", "num_samples", "seed", "inputs")
-CASE_KEYS = SPEC_KEYS + ("description", "tolerances", "tolerance_exception")
-FILE_KEYS = SPEC_KEYS + ("description", "tolerances", "cases")
+COMPARISON_KEYS = ("artifacts", "base64_f32_keys", "json_bound")
+CASE_KEYS = SPEC_KEYS + COMPARISON_KEYS + ("description", "tolerances", "tolerance_exception", "reference")
+FILE_KEYS = SPEC_KEYS + COMPARISON_KEYS + ("description", "tolerances", "cases")
 MODULE_DEFAULT_KEYS = ("comment", "sample_rate", "block_size", "oversample", "tolerances")
 RENDER_SETTING_KEYS = ("sample_rate", "block_size", "tail", "length", "bpm", "seed")
 RENDER_DEFAULT_KEYS = RENDER_SETTING_KEYS + ("tolerances",)
@@ -234,6 +275,111 @@ def resolve_tolerances(case_id, defaults, file_level, case, ledger_text):
     return tolerances, exception
 
 
+def allowlist_from(text):
+    """Case ids listed as "- `<id>`" under the decision doc's allowlist
+    heading. The doc is the only place the list lives, so extending it is a
+    decision-doc edit. Mirrored in sas-parity (cases.rs allowlist_from)."""
+    ids = []
+    for title, body in ledger_sections(text):
+        if title == ALLOWLIST_HEADING:
+            for line in body.splitlines():
+                match = re.match(r"- `([^`]+)`", line)
+                if match:
+                    ids.append(match.group(1))
+    return ids
+
+
+def read_allowlist():
+    if not os.path.exists(DECISION_DOC):
+        return []
+    with open(DECISION_DOC) as handle:
+        return allowlist_from(handle.read())
+
+
+def resolve_comparison(case_id, file_level, case, allowlist):
+    """Artifact modes, the JSON bound, base64-f32 keys and the reference of a
+    module case. Returns only the keys that differ from the defaults (exact
+    artifacts, official reference), so existing resolutions are unchanged."""
+    modes = {}
+    for where, layer in (("file", file_level), ("case", case)):
+        if "artifacts" not in layer:
+            continue
+        artifacts = layer["artifacts"]
+        if not isinstance(artifacts, dict):
+            raise CaseError("%s (%s level): artifacts must be an object" % (case_id, where))
+        for name, mode in artifacts.items():
+            if not ARTIFACT_NAME.fullmatch(name):
+                raise CaseError("%s: artifact name %r must match [A-Za-z0-9_.-]+" % (case_id, name))
+            if mode not in ARTIFACT_MODES:
+                raise CaseError("%s: artifact %s mode must be one of %s, not %r"
+                                % (case_id, name, list(ARTIFACT_MODES), mode))
+            modes[name] = mode
+
+    keys = None
+    for where, layer in (("file", file_level), ("case", case)):
+        if "base64_f32_keys" not in layer:
+            continue
+        value = layer["base64_f32_keys"]
+        if not isinstance(value, list) or not all(isinstance(k, str) and k for k in value):
+            raise CaseError("%s (%s level): base64_f32_keys must be a list of key names" % (case_id, where))
+        for key in value:
+            if key not in BASE64_F32_KEYS:
+                raise CaseError("%s: %r cannot be declared in base64_f32_keys; only %s hold base64 f32 data "
+                                "(pinned in both resolvers)" % (case_id, key, list(BASE64_F32_KEYS)))
+        keys = sorted(set(value))
+
+    bound = dict(JSON_BOUND)
+    for where, layer in (("file", file_level), ("case", case)):
+        if "json_bound" not in layer:
+            continue
+        value = layer["json_bound"]
+        if not isinstance(value, dict) or not value or set(value) - set(JSON_BOUND):
+            raise CaseError("%s (%s level): json_bound must be {\"ulp\": <int>, \"abs\": <number>}"
+                            % (case_id, where))
+        if "ulp" in value and not (isinstance(value["ulp"], int) and not isinstance(value["ulp"], bool)
+                                   and value["ulp"] >= 0):
+            raise CaseError("%s: json_bound.ulp must be a non-negative integer" % case_id)
+        if "abs" in value and not (is_number(value["abs"]) and value["abs"] >= 0):
+            raise CaseError("%s: json_bound.abs must be a non-negative number" % case_id)
+        for metric, limit in sorted(JSON_BOUND.items()):
+            if metric in value and value[metric] > limit:
+                raise CaseError("%s: json_bound %s = %s is looser than the approved JSON bound %s; the "
+                                "bound is pinned in both resolvers and only tightens"
+                                % (case_id, metric, value[metric], limit))
+        bound.update(value)
+    bound["abs"] = float(bound["abs"])
+
+    reference = case.get("reference", "official")
+    if reference not in REFERENCES:
+        raise CaseError("%s: reference must be one of %s, not %r" % (case_id, list(REFERENCES), reference))
+    extra = {}
+    if reference == "nofastmath":
+        # The JSON bound is part of the normal limits the calibration
+        # justification uses, so it is always the pinned one here.
+        bound = dict(JSON_BOUND)
+        if "json_bound" in case:
+            raise CaseError("%s: a reference \"nofastmath\" case cannot set json_bound" % case_id)
+        if case_id not in allowlist:
+            raise CaseError("%s: reference \"nofastmath\" is only allowed for case ids listed under \"%s\" "
+                            "in %s" % (case_id, ALLOWLIST_HEADING, os.path.relpath(DECISION_DOC, REPO)))
+        for key in ("tolerances", "tolerance_exception"):
+            if key in case:
+                raise CaseError("%s: a reference \"nofastmath\" case cannot set %s: it is compared exactly, "
+                                "and its normal limits (the module defaults) decide in calibration whether "
+                                "it qualifies" % (case_id, key))
+        # Compared bit for bit; the declared artifact modes still define the
+        # normal limits the calibration justification uses.
+        extra["reference"] = "nofastmath"
+
+    if modes:
+        extra["artifacts"] = modes
+    if "json" in modes.values():
+        extra["json_bound"] = bound
+        if keys:
+            extra["base64_f32_keys"] = keys
+    return extra
+
+
 def resolve_renders(cases_json, ledger_text):
     if not isinstance(cases_json, dict):
         raise CaseError("cases.json must be an object")
@@ -267,7 +413,7 @@ def resolve_renders(cases_json, ledger_text):
     return renders
 
 
-def resolve_module_file(area, module, rel, data, module_defaults, ledger_text):
+def resolve_module_file(area, module, rel, data, module_defaults, ledger_text, allowlist=()):
     check_name(rel, "area", area)
     check_name(rel, "module", module)
     if not isinstance(data, dict):
@@ -296,10 +442,17 @@ def resolve_module_file(area, module, rel, data, module_defaults, ledger_text):
             spec.update({k: v for k, v in layer.items() if k in SPEC_KEYS})
         if "module" not in spec:
             raise CaseError("%s: no \"module\" (ref-module registry name)" % case_id)
-        tolerances, exception = resolve_tolerances(case_id, default_tolerances, file_level, case, ledger_text)
+        comparison = resolve_comparison(case_id, file_level, case, allowlist)
+        if comparison.get("reference") == "nofastmath":
+            # Normal limits are the module defaults: file-level tightening
+            # must not make the official reference "fail" on purpose.
+            tolerances, exception = dict(default_tolerances), None
+        else:
+            tolerances, exception = resolve_tolerances(case_id, default_tolerances, file_level, case, ledger_text)
         entry = {"id": case_id, "file": rel, "spec": spec, "tolerances": tolerances}
         if exception:
             entry["tolerance_exception"] = exception
+        entry.update(comparison)
         resolved.append(entry)
     return resolved
 
@@ -337,12 +490,14 @@ def load_modules():
     if unknown:
         raise CaseError("cases.json module_defaults: unknown keys %s" % sorted(unknown))
     ledger_text = read_ledger()
+    allowlist = read_allowlist()
     resolved = []
     for path in module_case_files():
         area = os.path.basename(os.path.dirname(path))
         module = os.path.basename(path)[:-len(".json")]
         rel = os.path.relpath(path, REPO)
-        resolved.extend(resolve_module_file(area, module, rel, read_json_strict(path), module_defaults, ledger_text))
+        resolved.extend(resolve_module_file(area, module, rel, read_json_strict(path), module_defaults,
+                                            ledger_text, allowlist))
     return resolved
 
 
@@ -453,6 +608,205 @@ def module_artifacts(directory):
     return sorted(f for f in os.listdir(directory) if f.startswith("artifact_"))
 
 
+def f32_order(bits):
+    """Maps f32 bits to integers whose difference is the ulp distance
+    (-0.0 and 0.0 both map to 0)."""
+    return -(bits & 0x7FFFFFFF) if bits & 0x80000000 else bits
+
+
+def f32_close(a, b, bits_a, bits_b, bound):
+    if bits_a == bits_b or a == b:
+        return True
+    if not (math.isfinite(a) and math.isfinite(b)):
+        return False
+    return abs(a - b) <= bound["abs"] or abs(f32_order(bits_a) - f32_order(bits_b)) <= bound["ulp"]
+
+
+def f32_bits(value):
+    try:
+        return struct.unpack("<I", struct.pack("<f", value))[0]
+    except OverflowError:
+        return None
+
+
+def number_close(a, b, bound):
+    """JSON floats (parsed as doubles): equal, within bound["abs"], or within
+    bound["ulp"] after rounding both to f32. Mirrored in sas-parity."""
+    if a == b:
+        return True
+    if not (math.isfinite(a) and math.isfinite(b)):
+        return False
+    if abs(a - b) <= bound["abs"]:
+        return True
+    bits_a, bits_b = f32_bits(a), f32_bits(b)
+    if bits_a is None or bits_b is None:
+        return False
+    fa, fb = struct.unpack("<2f", struct.pack("<2I", bits_a, bits_b))
+    if not (math.isfinite(fa) and math.isfinite(fb)):
+        return False
+    return abs(f32_order(bits_a) - f32_order(bits_b)) <= bound["ulp"]
+
+
+def json_kind(value):
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "float"
+    if isinstance(value, str):
+        return "string"
+    return "array" if isinstance(value, list) else "object"
+
+
+def decode_f32(text):
+    try:
+        raw = base64.b64decode(text, validate=True)
+    except (binascii.Error, ValueError):
+        return None
+    if len(raw) % 4:
+        return None
+    count = len(raw) // 4
+    return struct.unpack("<%df" % count, raw), struct.unpack("<%dI" % count, raw)
+
+
+def base64_f32_diff(ref, test, bound, path, problems):
+    decoded_ref, decoded_test = decode_f32(ref), decode_f32(test)
+    if decoded_ref is None or decoded_test is None:
+        which = "reference" if decoded_ref is None else "port"
+        problems.append("%s: %s value is not base64 of little-endian f32" % (path, which))
+        return
+    (ref_values, ref_bits), (test_values, test_bits) = decoded_ref, decoded_test
+    if len(ref_values) != len(test_values):
+        problems.append("%s: %d f32 values in the reference, %d in the port"
+                        % (path, len(ref_values), len(test_values)))
+        return
+    for index, (a, b) in enumerate(zip(ref_values, test_values)):
+        if not f32_close(a, b, ref_bits[index], test_bits[index], bound):
+            problems.append("%s[%d]: reference %r, port %r (%d ulp, abs %.3g)"
+                            % (path, index, a, b, abs(f32_order(ref_bits[index]) - f32_order(test_bits[index])),
+                               abs(a - b) if math.isfinite(a - b) else float("inf")))
+
+
+def json_diff(ref, test, bound, base64_keys, path, problems):
+    kind = json_kind(ref)
+    if kind != json_kind(test):
+        problems.append("%s: reference is %s, port is %s" % (path, kind, json_kind(test)))
+    elif kind == "object":
+        for key in sorted(set(ref) | set(test)):
+            sub = "%s.%s" % (path, key)
+            if key not in test:
+                problems.append("%s: missing in the port" % sub)
+            elif key not in ref:
+                problems.append("%s: not in the reference" % sub)
+            elif key in base64_keys and json_kind(ref[key]) == "string" == json_kind(test[key]):
+                base64_f32_diff(ref[key], test[key], bound, sub, problems)
+            else:
+                json_diff(ref[key], test[key], bound, base64_keys, sub, problems)
+    elif kind == "array":
+        if len(ref) != len(test):
+            problems.append("%s: array length %d in the reference, %d in the port" % (path, len(ref), len(test)))
+        else:
+            for index, (a, b) in enumerate(zip(ref, test)):
+                json_diff(a, b, bound, base64_keys, "%s[%d]" % (path, index), problems)
+    elif kind == "float":
+        if not number_close(ref, test, bound):
+            problems.append("%s: reference %r, port %r" % (path, ref, test))
+    elif ref != test:
+        problems.append("%s: reference %s, port %s" % (path, json.dumps(ref), json.dumps(test)))
+
+
+def json_bound_problems(ref_bytes, test_bytes, bound, base64_keys=()):
+    """Differences between two JSON documents under the owner-approved bound
+    ([] if they match). Mirrored in sas-parity (json_bound.rs)."""
+    documents = []
+    for name, data in (("reference", ref_bytes), ("port", test_bytes)):
+        try:
+            documents.append(json.loads(data.decode("utf-8"), parse_constant=_reject_constant))
+        except ValueError as error:
+            return ["%s is not valid JSON: %s" % (name, error)]
+    problems = []
+    json_diff(documents[0], documents[1], bound, set(base64_keys), "$", problems)
+    return problems
+
+
+def compare_module_case(args, case, ref_dir, test_dir, reports, bit_exact):
+    """[(label, code)] for one module case. bit_exact: every array and
+    artifact must be byte-identical (reference "nofastmath" cases)."""
+    results = []
+    outputs = module_outputs(ref_dir)
+    artifacts = module_artifacts(ref_dir)
+    # A case may emit arrays, text artifacts, or both (artifact-only
+    # modules have no out_*.npy at all).
+    if not outputs and not artifacts:
+        results.append((case["id"] + " (no reference outputs or artifacts)", 2))
+    for output in outputs:
+        label = "%s:%s" % (case["id"], output[len("out_"):-len(".npy")])
+        test_path = os.path.join(test_dir, output)
+        if bit_exact:
+            if not os.path.exists(test_path):
+                results.append((label + " (missing in test tree)", 2))
+                continue
+            with open(os.path.join(ref_dir, output), "rb") as a, open(test_path, "rb") as b:
+                results.append((label + " (nofastmath, bit-exact)", 0 if a.read() == b.read() else 1))
+            continue
+        report = os.path.join(reports, label.replace("/", "__").replace(":", "__") + ".json")
+        results.append((label, diff(args, os.path.join(ref_dir, output), test_path, case["tolerances"], report)))
+    for output in sorted(set(module_outputs(test_dir)) - set(outputs)):
+        label = "%s:%s" % (case["id"], output[len("out_"):-len(".npy")])
+        results.append((label + " (missing in reference tree)", 2))
+    modes = case.get("artifacts", {})
+    if outputs or artifacts:
+        for name in sorted(set(modes) - {a[len("artifact_"):] for a in artifacts}):
+            results.append(("%s:artifact/%s (declared, but not in the reference tree)" % (case["id"], name), 2))
+    for artifact in artifacts:
+        name = artifact[len("artifact_"):]
+        label = "%s:artifact/%s" % (case["id"], name)
+        test_path = os.path.join(test_dir, artifact)
+        if not os.path.exists(test_path):
+            results.append((label + " (missing in test tree)", 2))
+            continue
+        with open(os.path.join(ref_dir, artifact), "rb") as a, open(test_path, "rb") as b:
+            ref_bytes, test_bytes = a.read(), b.read()
+        # Text artifacts are byte-exact unless declared "json"; --exact
+        # (determinism) and nofastmath comparisons are always byte-exact.
+        if modes.get(name) == "json" and not (args.exact or bit_exact):
+            problems = json_bound_problems(ref_bytes, test_bytes, case["json_bound"],
+                                           case.get("base64_f32_keys", ()))
+            for problem in problems[:10]:
+                print("  %s: %s" % (label, problem))
+            if len(problems) > 10:
+                print("  %s: ... %d more" % (label, len(problems) - 10))
+            results.append((label + " (json bound)", 1 if problems else 0))
+        else:
+            kind = "nofastmath, exact" if bit_exact else "exact"
+            results.append((label + " (%s)" % kind, 0 if ref_bytes == test_bytes else 1))
+    for artifact in sorted(set(module_artifacts(test_dir)) - set(artifacts)):
+        label = "%s:artifact/%s" % (case["id"], artifact[len("artifact_"):])
+        results.append((label + " (missing in reference tree)", 2))
+    return results
+
+
+def justify_nofastmath(args, case, nofastmath_dir, reports):
+    """Calibration check for a reference "nofastmath" case (the positional
+    reference is the official tree, the test tree the REF_FAST_MATH=OFF
+    tree): the case is valid only if the official reference fails the
+    case's normal limits against the no-fast-math build."""
+    official_dir = os.path.join(args.reference, "modules", case["id"])
+    normal = compare_module_case(args, case, official_dir, nofastmath_dir, reports, bit_exact=False)
+    errors = [(label, code) for label, code in normal if code not in (0, 1)]
+    if errors:
+        return errors
+    failing = [label for label, code in normal if code == 1]
+    if failing:
+        return [("%s (reference \"nofastmath\" justified: the official reference fails its normal limits "
+                 "against the no-fast-math build in %s)" % (case["id"], ", ".join(failing)), 0)]
+    return [("%s (reference \"nofastmath\" NOT justified: the official reference passes the normal limits "
+             "against the no-fast-math build, so this case must use the official reference)" % case["id"], 2)]
+
+
 def cmd_compare(args):
     renders, modules = load_renders(), load_modules()
     reports = os.path.join(args.test, "reports")
@@ -470,36 +824,17 @@ def cmd_compare(args):
     for case in modules:
         if not selected(case["id"], args.only):
             continue
-        ref_dir = os.path.join(args.reference, "modules", case["id"])
         test_dir = os.path.join(args.test, "modules", case["id"])
-        outputs = module_outputs(ref_dir)
-        artifacts = module_artifacts(ref_dir)
-        # A case may emit arrays, text artifacts, or both (artifact-only
-        # modules have no out_*.npy at all).
-        if not outputs and not artifacts:
-            results.append((case["id"] + " (no reference outputs or artifacts)", 2))
-        for output in outputs:
-            label = "%s:%s" % (case["id"], output[len("out_"):-len(".npy")])
-            report = os.path.join(reports, label.replace("/", "__").replace(":", "__") + ".json")
-            code = diff(args, os.path.join(ref_dir, output), os.path.join(test_dir, output),
-                        case["tolerances"], report)
-            results.append((label, code))
-        for output in sorted(set(module_outputs(test_dir)) - set(outputs)):
-            label = "%s:%s" % (case["id"], output[len("out_"):-len(".npy")])
-            results.append((label + " (missing in reference tree)", 2))
-        for artifact in artifacts:
-            label = "%s:artifact/%s" % (case["id"], artifact[len("artifact_"):])
-            test_path = os.path.join(test_dir, artifact)
-            if not os.path.exists(test_path):
-                results.append((label + " (missing in test tree)", 2))
-                continue
-            # Text artifacts are exact in every comparison (determinism and
-            # calibration alike): no tolerance applies.
-            with open(os.path.join(ref_dir, artifact), "rb") as a, open(test_path, "rb") as b:
-                results.append((label + " (exact)", 0 if a.read() == b.read() else 1))
-        for artifact in sorted(set(module_artifacts(test_dir)) - set(artifacts)):
-            label = "%s:artifact/%s" % (case["id"], artifact[len("artifact_"):])
-            results.append((label + " (missing in reference tree)", 2))
+        if case.get("reference") != "nofastmath":
+            ref_dir = os.path.join(args.reference, "modules", case["id"])
+            results.extend(compare_module_case(args, case, ref_dir, test_dir, reports, bit_exact=False))
+        elif args.justify_nofastmath:
+            results.extend(justify_nofastmath(args, case, test_dir, reports))
+        elif args.reference_nofastmath or args.exact:
+            ref_dir = os.path.join(args.reference_nofastmath or args.reference, "modules", case["id"])
+            results.extend(compare_module_case(args, case, ref_dir, test_dir, reports, bit_exact=True))
+        else:
+            results.append((case["id"] + " (reference \"nofastmath\": pass --reference-nofastmath DIR)", 2))
 
     for label, code in results:
         print({0: "pass ", 1: "FAIL ", 2: "ERROR"}.get(code, "ERROR") + " " + label)
@@ -607,7 +942,7 @@ def tree_hashes(tree, renders, modules):
 
 
 def expected_keys(renders, modules):
-    by_file = {RENDER_HASHES: None}
+    by_file = {RENDER_HASHES: None} if renders else {}
     for case in modules:
         by_file.setdefault(module_hash_file(case), set()).add(case["id"].rsplit("/", 1)[1])
     return by_file
@@ -624,11 +959,42 @@ def known_identities():
     return [entry["identity"] for entry in read_hash_file(RENDER_HASHES)["entries"]]
 
 
+def nofastmath_counterpart(known):
+    """The identity a REF_FAST_MATH=OFF build of CI identity `known` has:
+    fast_math false and opt_flags without FAST_MATH_FLAGS, everything else
+    equal. None if `known` is not a fast-math identity."""
+    flags = known.get("opt_flags")
+    if known.get("fast_math") is not True or not isinstance(flags, str) or FAST_MATH_FLAGS not in flags:
+        return None
+    return dict(known, fast_math=False, opt_flags=flags.replace(FAST_MATH_FLAGS, "", 1))
+
+
+def nofastmath_identity_known(identity):
+    """A no-fast-math identity is known when it is exactly the no-fast-math
+    counterpart of a CI identity. Mirrored in sas-parity (captures.rs)."""
+    return any(nofastmath_counterpart(known) == identity for known in known_identities())
+
+
 def cmd_hashes(args):
     renders, modules = load_renders(), load_modules()
+    if args.reference == "nofastmath":
+        # Only reference "nofastmath" cases are consumed from the no-fast-math
+        # tree, so only they are pinned for its identity.
+        renders = []
+        modules = [c for c in modules if c.get("reference") == "nofastmath"]
+        if not modules:
+            print("no reference \"nofastmath\" cases")
+            return 0
     identity = tree_identity(args.tree, renders, modules)
     current, problems = tree_hashes(args.tree, renders, modules)
-    known = identity in known_identities()
+    if args.reference == "nofastmath":
+        if identity.get("fast_math") is not False:
+            print("%s was not rendered by a REF_FAST_MATH=OFF build (fast_math: %s)"
+                  % (args.tree, identity.get("fast_math")))
+            return 2
+        known = nofastmath_identity_known(identity)
+    else:
+        known = identity in known_identities()
 
     if args.write:
         if problems:
@@ -701,6 +1067,43 @@ def cmd_hashes(args):
     return 1 if problems else 0
 
 
+def unapproved_allowlist_additions(base_doc, head_doc, base_ledger, head_ledger):
+    """Ids added to the no-fast-math allowlist without a LEDGER.md section
+    that is new in this change, has "owner approval" in its heading and
+    names the id. Removals need no approval (the case returns to the
+    official reference)."""
+    before = set(allowlist_from(base_doc))
+    added = [case_id for case_id in allowlist_from(head_doc) if case_id not in before]
+    old_titles = {title for title, _ in ledger_sections(base_ledger)}
+    approvals = [body for title, body in ledger_sections(head_ledger)
+                 if title not in old_titles and "owner approval" in title.lower()]
+    return [case_id for case_id in added if not any(names_case(body, case_id) for body in approvals)]
+
+
+def git_show(rev, path):
+    code, output = run(["git", "-C", REPO, "show", "%s:%s" % (rev, os.path.relpath(path, REPO))])
+    return output if code == 0 else ""
+
+
+def cmd_allowlist_approval(args):
+    if not args.base or set(args.base) == {"0"}:
+        print("no base revision; allowlist approval check skipped")
+        return 0
+    code, output = run(["git", "-C", REPO, "rev-parse", "--verify", args.base + "^{commit}"])
+    if code != 0:
+        print("base revision %s not found: %s" % (args.base, output.strip()))
+        return 2
+    with open(DECISION_DOC) as handle:
+        head_doc = handle.read()
+    missing = unapproved_allowlist_additions(git_show(args.base, DECISION_DOC), head_doc,
+                                             git_show(args.base, LEDGER), read_ledger())
+    for case_id in missing:
+        print("%s was added to the no-fast-math allowlist without a new LEDGER.md section whose heading "
+              "contains \"owner approval\" and which names the case" % case_id)
+    print("%d allowlist additions without a recorded owner approval" % len(missing))
+    return 1 if missing else 0
+
+
 def cmd_list(args):
     data = {"renders": load_renders(), "modules": load_modules()}
     if args.only:
@@ -724,6 +1127,12 @@ def main():
     compare.add_argument("test")
     compare.add_argument("--audio-diff", default=DEFAULT_DIFF)
     compare.add_argument("--exact", action="store_true", help="require bit-identical outputs")
+    compare.add_argument("--reference-nofastmath", metavar="DIR",
+                         help="REF_FAST_MATH=OFF tree; reference \"nofastmath\" cases are compared bit for bit "
+                              "against it")
+    compare.add_argument("--justify-nofastmath", action="store_true",
+                         help="calibration: REFERENCE is the official tree and TEST the REF_FAST_MATH=OFF tree; "
+                              "each reference \"nofastmath\" case must fail its normal limits there")
     compare.add_argument("--only", nargs="*", help="substrings of case ids to run")
 
     hashes = sub.add_parser("hashes", help="write / check output hashes of a render tree")
@@ -735,12 +1144,21 @@ def main():
                         help="--check fails (instead of skipping) when the tree's build identity has no hashes")
     hashes.add_argument("--new-identity", action="store_true",
                         help="--write may add hashes for a build identity that has none yet")
+    hashes.add_argument("--reference", choices=REFERENCES, default="official",
+                        help="nofastmath: TREE is a REF_FAST_MATH=OFF tree; pin only reference \"nofastmath\" cases")
 
     listing = sub.add_parser("list", help="print resolved cases as JSON")
     listing.add_argument("--only", nargs="*", help="substrings of case ids to include")
 
+    approval = sub.add_parser("allowlist-approval",
+                              help="fail if no-fast-math allowlist additions since --base lack an owner approval "
+                                   "entry in LEDGER.md")
+    approval.add_argument("--base", default="", help="git revision to compare against (e.g. origin/main)")
+
     args = parser.parse_args()
     try:
+        if args.command == "allowlist-approval":
+            return cmd_allowlist_approval(args)
         if args.command == "hashes":
             return cmd_hashes(args)
         if args.command == "list":

@@ -22,6 +22,12 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: No-fast-math allowlist additions cite an owner approval in LEDGER.md
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: python3 migration/scripts/run_corpus.py allowlist-approval --base "$BASE"
       - name: vital/ is an unmodified upstream copy
         run: migration/scripts/verify_upstream.sh
       - name: No upstream names in product metadata
@@ -137,8 +143,20 @@ jobs:
           python3 migration/scripts/run_corpus.py render --out build/ref
           python3 migration/scripts/run_corpus.py render --out build/proxy \
             --ref-render build/ref-no-fast-math/ref-render --ref-module build/ref-no-fast-math/ref-module
+      # Also the owner's no-fast-math gate: every "reference": "nofastmath"
+      # case must fail its normal limits here, or it is rejected
+      # (migration/decisions/owner-decisions-json-and-morphs.md).
       - name: Proxy for a faithful port passes the corpus tolerances
-        run: python3 migration/scripts/run_corpus.py compare build/ref build/proxy
+        run: python3 migration/scripts/run_corpus.py compare build/ref build/proxy --justify-nofastmath
+      - name: No-fast-math captures match their committed hashes
+        run: python3 migration/scripts/run_corpus.py hashes build/proxy --check --require-known-identity --reference nofastmath
+      - name: Upload no-fast-math parity captures (consumed by the parity job)
+        uses: actions/upload-artifact@v7
+        with:
+          name: parity-captures-nofastmath
+          path: build/proxy/
+          if-no-files-found: error
+          retention-days: 14
 
   rust:
     name: Rust (port workspace + migration tools)
@@ -169,10 +187,11 @@ jobs:
 
   parity:
     name: Port tests incl. parity (cargo test --workspace against reference captures)
-    needs: reference-harness
+    needs: [reference-harness, tolerance-calibration]
     runs-on: ubuntu-24.04
     env:
       SAS_PARITY_CAPTURES: build/parity
+      SAS_PARITY_CAPTURES_NOFASTMATH: build/parity-nofastmath
       # Captures come from the reference job; never rebuild them here.
       SAS_PARITY_NO_BUILD: "1"
     steps:
@@ -189,6 +208,11 @@ jobs:
         with:
           name: parity-captures
           path: build/parity
+      - name: Download no-fast-math captures
+        uses: actions/download-artifact@v7
+        with:
+          name: parity-captures-nofastmath
+          path: build/parity-nofastmath
       - name: cargo test --workspace
         run: cargo test --workspace --locked --manifest-path port/Cargo.toml
       - name: Upload parity failures

@@ -9,6 +9,11 @@
 //!   it is in CI, where captures come from the reference job's artifact.
 //! - `SAS_PARITY_REFRESH=1` re-renders every case once per process (use it
 //!   after changing C++ module code).
+//! - `"reference": "nofastmath"` cases read the `REF_FAST_MATH=OFF` build's
+//!   tree instead: `SAS_PARITY_CAPTURES_NOFASTMATH` (default
+//!   `<repo>/build/parity-nofastmath`), rendered on demand with a reference
+//!   built into `migration/reference/build-nofastmath`. In CI it comes from
+//!   the calibration job's `parity-captures-nofastmath` artifact.
 
 use std::collections::HashSet;
 use std::fs;
@@ -20,7 +25,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
-use crate::cases::{corpus_dir, module_hash_file, read_json, repo_root, ResolvedCase};
+use crate::cases::{corpus_dir, module_hash_file, read_json, repo_root, Reference, ResolvedCase};
 
 const IDENTITY_KEYS: [&str; 7] = [
     "upstream_sha",
@@ -32,8 +37,18 @@ const IDENTITY_KEYS: [&str; 7] = [
     "libm_variants",
 ];
 
+/// The official reference's capture tree (`SAS_PARITY_CAPTURES`).
 pub fn captures_dir() -> PathBuf {
-    match std::env::var_os("SAS_PARITY_CAPTURES") {
+    captures_dir_for(Reference::Official)
+}
+
+/// The capture tree of one reference build.
+pub fn captures_dir_for(reference: Reference) -> PathBuf {
+    let (variable, default) = match reference {
+        Reference::Official => ("SAS_PARITY_CAPTURES", "build/parity"),
+        Reference::NoFastMath => ("SAS_PARITY_CAPTURES_NOFASTMATH", "build/parity-nofastmath"),
+    };
+    match std::env::var_os(variable) {
         Some(dir) if !dir.is_empty() => {
             let path = PathBuf::from(dir);
             if path.is_absolute() {
@@ -42,23 +57,25 @@ pub fn captures_dir() -> PathBuf {
                 repo_root().join(path)
             }
         }
-        _ => repo_root().join("build/parity"),
+        _ => repo_root().join(default),
     }
 }
 
-/// Directory of one case inside the capture tree.
+fn tree(case: &ResolvedCase) -> PathBuf {
+    captures_dir_for(case.comparison.reference)
+}
+
+/// Directory of one case inside its capture tree.
 pub fn case_dir(case: &ResolvedCase) -> PathBuf {
     match case.id.strip_prefix("render/") {
-        Some(_) => captures_dir().join("renders"),
-        None => captures_dir().join("modules").join(&case.id),
+        Some(_) => tree(case).join("renders"),
+        None => tree(case).join("modules").join(&case.id),
     }
 }
 
 fn case_json_path(case: &ResolvedCase) -> PathBuf {
     match case.id.strip_prefix("render/") {
-        Some(name) => captures_dir()
-            .join("renders")
-            .join(format!("{name}.case.json")),
+        Some(name) => tree(case).join("renders").join(format!("{name}.case.json")),
         None => case_dir(case).join("case.json"),
     }
 }
@@ -66,16 +83,14 @@ fn case_json_path(case: &ResolvedCase) -> PathBuf {
 /// The metadata file the reference wrote next to the data.
 pub fn metadata_path(case: &ResolvedCase) -> PathBuf {
     match case.id.strip_prefix("render/") {
-        Some(name) => captures_dir()
-            .join("renders")
-            .join(format!("{name}.wav.json")),
+        Some(name) => tree(case).join("renders").join(format!("{name}.wav.json")),
         None => case_dir(case).join("capture.json"),
     }
 }
 
 fn data_present(case: &ResolvedCase) -> bool {
     let data = match case.id.strip_prefix("render/") {
-        Some(name) => captures_dir()
+        Some(name) => tree(case)
             .join("renders")
             .join(format!("{name}.wav"))
             .is_file(),
@@ -206,33 +221,57 @@ fn run(command: &mut Command, what: &str) {
 
 fn render(case: &ResolvedCase) {
     let root = repo_root();
-    let build = root.join("migration/reference/build");
+    let reference = case.comparison.reference;
+    let build = match reference {
+        Reference::Official => root.join("migration/reference/build"),
+        Reference::NoFastMath => root.join("migration/reference/build-nofastmath"),
+    };
     if !build.join("ref-render").is_file() || !build.join("ref-module").is_file() {
-        run(
-            &mut Command::new(root.join("migration/scripts/build_reference.sh")),
-            "migration/scripts/build_reference.sh",
-        );
+        let mut command = Command::new(root.join("migration/scripts/build_reference.sh"));
+        if reference == Reference::NoFastMath {
+            command
+                .env("REF_BUILD_DIR", &build)
+                .arg("-DREF_FAST_MATH=OFF");
+        }
+        run(&mut command, "migration/scripts/build_reference.sh");
     }
     run(
         Command::new("python3")
             .arg(root.join("migration/scripts/run_corpus.py"))
             .arg("render")
             .arg("--out")
-            .arg(captures_dir())
+            .arg(tree(case))
+            .arg("--ref-render")
+            .arg(build.join("ref-render"))
+            .arg("--ref-module")
+            .arg(build.join("ref-module"))
             .arg("--only")
             .arg(&case.id),
         &format!("run_corpus.py render --only {}", case.id),
     );
 }
 
-fn instructions() -> String {
-    format!(
-        "build the reference and render captures with:\n  \
-         migration/scripts/build_reference.sh\n  \
-         python3 migration/scripts/run_corpus.py render --out {}\n\
-         (or unset SAS_PARITY_NO_BUILD to let sas-parity do it)",
-        captures_dir().display()
-    )
+fn instructions(case: &ResolvedCase) -> String {
+    match case.comparison.reference {
+        Reference::Official => format!(
+            "build the reference and render captures with:\n  \
+             migration/scripts/build_reference.sh\n  \
+             python3 migration/scripts/run_corpus.py render --out {}\n\
+             (or unset SAS_PARITY_NO_BUILD to let sas-parity do it)",
+            tree(case).display()
+        ),
+        Reference::NoFastMath => format!(
+            "{} is a \"reference\": \"nofastmath\" case; build the REF_FAST_MATH=OFF reference and \
+             render its captures with:\n  \
+             REF_BUILD_DIR=migration/reference/build-nofastmath migration/scripts/build_reference.sh -DREF_FAST_MATH=OFF\n  \
+             python3 migration/scripts/run_corpus.py render --out {} \\\n    \
+             --ref-render migration/reference/build-nofastmath/ref-render \\\n    \
+             --ref-module migration/reference/build-nofastmath/ref-module\n\
+             (CI: the parity-captures-nofastmath artifact; or unset SAS_PARITY_NO_BUILD)",
+            case.id,
+            tree(case).display()
+        ),
+    }
 }
 
 /// Makes sure a fresh capture exists for `case` and returns its directory.
@@ -246,13 +285,13 @@ pub fn ensure(case: &ResolvedCase) -> PathBuf {
             State::Missing => panic!(
                 "sas-parity: no reference capture for {} in {}; {}",
                 case.id,
-                captures_dir().display(),
-                instructions()
+                tree(case).display(),
+                instructions(case)
             ),
             State::Stale(why) => panic!(
                 "sas-parity: reference capture for {} is stale: {why}\n{}",
                 case.id,
-                instructions()
+                instructions(case)
             ),
         }
     }
@@ -260,7 +299,7 @@ pub fn ensure(case: &ResolvedCase) -> PathBuf {
         return case_dir(case);
     }
 
-    let _lock = DirLock::acquire(captures_dir().with_extension("lock"));
+    let _lock = DirLock::acquire(tree(case).with_extension("lock"));
     if needs_refresh || !matches!(state(case), State::Fresh) {
         render(case);
     }
@@ -270,7 +309,7 @@ pub fn ensure(case: &ResolvedCase) -> PathBuf {
         State::Missing => panic!(
             "sas-parity: rendering {} produced no capture in {}",
             case.id,
-            captures_dir().display()
+            tree(case).display()
         ),
         State::Stale(why) => panic!(
             "sas-parity: {} was just rendered but its case.json differs from sas-parity's \
@@ -350,6 +389,16 @@ fn warned_unknown_identity() -> &'static Mutex<bool> {
 pub fn verify_committed_hash(case: &ResolvedCase, key: &str, digest: &str) {
     let identity = build_identity(case);
     let render_hashes = corpus_dir().join("reference_hashes.json");
+    let nofastmath = case.comparison.reference == Reference::NoFastMath;
+    if nofastmath && identity["fast_math"] != Value::Bool(false) {
+        panic!(
+            "sas-parity: {} is a \"reference\": \"nofastmath\" case, but the capture in {} was not \
+             rendered by a REF_FAST_MATH=OFF build (fast_math: {})",
+            case.id,
+            tree(case).display(),
+            identity["fast_math"]
+        );
+    }
     let (hash_file, hash_key) = match case.id.strip_prefix("render/") {
         Some(name) => (render_hashes.clone(), name.to_string()),
         None => (
@@ -374,13 +423,24 @@ pub fn verify_committed_hash(case: &ResolvedCase, key: &str, digest: &str) {
             ),
         }
     }
-    let known = hash_entries(&render_hashes)
+    let known_identities: Vec<Value> = hash_entries(&render_hashes)
         .iter()
-        .any(|e| e["identity"] == identity);
+        .map(|e| e["identity"].clone())
+        .collect();
+    let known = if nofastmath {
+        nofastmath_identity_known(&identity, &known_identities)
+    } else {
+        known_identities.contains(&identity)
+    };
     if known {
+        let (tree_name, flag) = if nofastmath {
+            ("parity-captures-nofastmath", " --reference nofastmath")
+        } else {
+            ("parity-captures", "")
+        };
         panic!(
             "sas-parity: {} has no hashes for the CI build identity; write them from a CI-identity tree \
-             (`run_corpus.py hashes <parity-captures> --write`)",
+             (`run_corpus.py hashes <{tree_name}> --write{flag}`)",
             path_display(&hash_file)
         );
     }
@@ -388,7 +448,7 @@ pub fn verify_committed_hash(case: &ResolvedCase, key: &str, digest: &str) {
         panic!(
             "sas-parity: captures in {} come from a build identity with no committed hashes:\n{}\n\
              CI must run a known build identity.",
-            captures_dir().display(),
+            tree(case).display(),
             serde_json::to_string_pretty(&identity).unwrap()
         );
     }
@@ -402,6 +462,36 @@ pub fn verify_committed_hash(case: &ResolvedCase, key: &str, digest: &str) {
         );
         *warned = true;
     }
+}
+
+/// The no-fast-math reference build's `opt_flags` are the CI build's minus
+/// this. Mirrored in run_corpus.py (`FAST_MATH_FLAGS`).
+const FAST_MATH_FLAGS: &str = " -ffast-math -U__FAST_MATH__";
+
+/// The identity a `REF_FAST_MATH=OFF` build of CI identity `known` has:
+/// `fast_math` false and `opt_flags` without [`FAST_MATH_FLAGS`], everything
+/// else equal. `None` if `known` is not a fast-math identity.
+fn nofastmath_counterpart(known: &Value) -> Option<Value> {
+    let flags = known["opt_flags"].as_str()?;
+    if known["fast_math"] != Value::Bool(true) || !flags.contains(FAST_MATH_FLAGS) {
+        return None;
+    }
+    let mut counterpart = known.as_object()?.clone();
+    counterpart.insert("fast_math".into(), Value::Bool(false));
+    counterpart.insert(
+        "opt_flags".into(),
+        Value::from(flags.replacen(FAST_MATH_FLAGS, "", 1)),
+    );
+    Some(Value::Object(counterpart))
+}
+
+/// A no-fast-math identity is known when it is exactly the no-fast-math
+/// counterpart of a CI identity. Mirrored in run_corpus.py
+/// (`nofastmath_identity_known`).
+pub(crate) fn nofastmath_identity_known(identity: &Value, known: &[Value]) -> bool {
+    known
+        .iter()
+        .any(|k| nofastmath_counterpart(k).as_ref() == Some(identity))
 }
 
 #[cfg(test)]
@@ -435,6 +525,31 @@ mod tests {
         assert!(!lock_is_stale(&dir), "a live owner's lock is not stale");
         drop(lock);
         assert!(!dir.exists());
+    }
+
+    #[test]
+    fn nofastmath_identity_is_the_exact_counterpart_of_a_ci_identity() {
+        let ci = serde_json::json!({ "compiler": "13.3.0", "fast_math": true,
+            "opt_flags": "-O3 -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -ffp-contract=off" });
+        let known = std::slice::from_ref(&ci);
+        let proxy = serde_json::json!({ "compiler": "13.3.0", "fast_math": false,
+            "opt_flags": "-O3 -funroll-loops -march=x86-64 -ffp-contract=off" });
+        assert!(nofastmath_identity_known(&proxy, known));
+        let mut other = proxy.clone();
+        other["compiler"] = "14.2.0".into();
+        assert!(!nofastmath_identity_known(&other, known));
+        assert!(!nofastmath_identity_known(&ci, known));
+        // Reviewer note on #34: any other flag change is a different build.
+        for flags in [
+            "-O3 -funroll-loops -march=x86-64 -ffp-contract=fast",
+            "-O3 -funroll-loops -march=native -ffp-contract=off",
+            "-O3 -funroll-loops -march=x86-64",
+            "-O3 -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -ffp-contract=off",
+        ] {
+            let mut altered = proxy.clone();
+            altered["opt_flags"] = flags.into();
+            assert!(!nofastmath_identity_known(&altered, known), "{flags}");
+        }
     }
 
     // Pinned vectors of the harness hash (see fnv1a64); run_corpus.py's
