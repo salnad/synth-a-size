@@ -1,5 +1,5 @@
 {
-  "description": "Distortion processor (all types via the \"type\" input).",
+  "description": "Distortion processor (all types via the \"type\" input). Cases named interim_* cover the downsample type while the swept-drive cases wait in pending/distortion.json.",
   "module": "distortion",
   "cases": {
     "sin_fold_drive_ramp": {
@@ -18,6 +18,231 @@
           "from": 0.0,
           "to": 24.0
         }
+      }
+    },
+    "soft_clip_drive_sweep": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 220.0,
+          "amp": 0.8
+        },
+        "type": 0,
+        "drive": {
+          "signal": "ramp",
+          "from": -30.0,
+          "to": 30.0
+        }
+      }
+    },
+    "hard_clip_drive_sweep": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.9
+        },
+        "type": 1,
+        "drive": {
+          "signal": "ramp",
+          "from": -30.0,
+          "to": 30.0
+        }
+      }
+    },
+    "linear_fold_drive_sweep": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 330.0,
+          "amp": 0.7
+        },
+        "type": 2,
+        "drive": {
+          "signal": "ramp",
+          "from": -30.0,
+          "to": 30.0
+        }
+      }
+    },
+    "sin_fold_drive_sweep": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.6,
+          "stereo": true,
+          "seed": 2
+        },
+        "type": 3,
+        "drive": {
+          "signal": "ramp",
+          "from": -30.0,
+          "to": 30.0
+        }
+      }
+    },
+    "bit_crush_drive_sweep": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 220.0,
+          "amp": 0.8
+        },
+        "type": 4,
+        "drive": {
+          "signal": "ramp",
+          "from": -30.0,
+          "to": 30.0
+        }
+      }
+    },
+    "down_sample_oversampled_2x": {
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 440.0,
+          "amp": 0.8
+        },
+        "type": 5,
+        "drive": 12.0
+      }
+    },
+    "type_cycle_with_passthrough": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.7,
+          "stereo": true,
+          "seed": 4
+        },
+        "type": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 6.99
+        },
+        "drive": 6.0
+      }
+    },
+    "drive_beyond_range": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 150.0,
+          "amp": 0.9
+        },
+        "type": 2,
+        "drive": {
+          "signal": "ramp",
+          "from": -60.0,
+          "to": 60.0
+        }
+      }
+    },
+    "odd_block_size": {
+      "block_size": 63,
+      "num_samples": 44101,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 97.0,
+          "amp": 0.8
+        },
+        "type": 3,
+        "drive": {
+          "signal": "ramp",
+          "from": -10.0,
+          "to": 20.0
+        }
+      }
+    },
+    "odd_block_bit_crush": {
+      "block_size": 37,
+      "num_samples": 22051,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 97.0,
+          "amp": 0.8
+        },
+        "type": 4,
+        "drive": {
+          "signal": "ramp",
+          "from": -30.0,
+          "to": 30.0
+        }
+      }
+    },
+    "interim_down_sample_48k_constant_drive": {
+      "sample_rate": 48000,
+      "block_size": 128,
+      "num_samples": 24000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.8
+        },
+        "type": 5,
+        "drive": 12.0
+      }
+    },
+    "interim_down_sample_96k_constant_drive": {
+      "sample_rate": 96000,
+      "block_size": 128,
+      "num_samples": 48000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 3
+        },
+        "type": 5,
+        "drive": -10.0
+      }
+    },
+    "interim_down_sample_drive_steps": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.8
+        },
+        "type": 5,
+        "drive": {
+          "signal": "square",
+          "freq_hz": 4.0,
+          "amp": 20.0,
+          "offset": 5.0
+        }
+      }
+    },
+    "down_sample_reentry": {
+      "num_samples": 8820,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.8
+        },
+        "type": {
+          "signal": "square",
+          "freq_hz": 10.0,
+          "amp": 2.5,
+          "offset": 2.5
+        },
+        "drive": 12.0
       }
     }
   }
