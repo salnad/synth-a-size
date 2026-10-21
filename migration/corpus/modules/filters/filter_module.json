@@ -1,0 +1,1089 @@
+{
+  "description": "FilterModule(\"filter_1\") in the control harness: every model, the keytrack, mix and on controls, model switching and the mono controls.",
+  "module": "filter_module",
+  "cases": {
+    "analog_cutoff_blend": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": 60.0,
+        "filter_1_on": 1.0,
+        "filter_1_model": 0.0,
+        "filter_1_style": 0.0,
+        "filter_1_cutoff": {
+          "signal": "ramp",
+          "from": 20.0,
+          "to": 110.0
+        },
+        "filter_1_resonance": 0.6,
+        "filter_1_drive": 6.0,
+        "filter_1_blend": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 2.0
+        },
+        "filter_1_blend_transpose": 42.0,
+        "filter_1_mix": 1.0
+      }
+    },
+    "analog_style1_resonance_drive": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 10,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": 60.0,
+        "filter_1_on": 1.0,
+        "filter_1_model": 0.0,
+        "filter_1_style": 1.0,
+        "filter_1_cutoff": {
+          "signal": "sine",
+          "freq_hz": 2.0,
+          "amp": 30.0,
+          "offset": 70.0
+        },
+        "filter_1_resonance": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "filter_1_drive": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 20.0
+        },
+        "filter_1_blend": 0.7,
+        "filter_1_blend_transpose": 42.0,
+        "filter_1_mix": 1.0
+      }
+    },
+    "dirty_cutoff_blend": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": 60.0,
+        "filter_1_on": 1.0,
+        "filter_1_model": 1.0,
+        "filter_1_style": 0.0,
+        "filter_1_cutoff": {
+          "signal": "ramp",
+          "from": 20.0,
+          "to": 110.0
+        },
+        "filter_1_resonance": 0.6,
+        "filter_1_drive": 6.0,
+        "filter_1_blend": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 2.0
+        },
+        "filter_1_blend_transpose": 42.0,
+        "filter_1_mix": 1.0
+      }
+    },
+    "dirty_style1_resonance_drive": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 11,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": 60.0,
+        "filter_1_on": 1.0,
+        "filter_1_model": 1.0,
+        "filter_1_style": 1.0,
+        "filter_1_cutoff": {
+          "signal": "sine",
+          "freq_hz": 2.0,
+          "amp": 30.0,
+          "offset": 70.0
+        },
+        "filter_1_resonance": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "filter_1_drive": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 20.0
+        },
+        "filter_1_blend": 0.7,
+        "filter_1_blend_transpose": 42.0,
+        "filter_1_mix": 1.0
+      }
+    },
+    "ladder_cutoff_blend": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": 60.0,
+        "filter_1_on": 1.0,
+        "filter_1_model": 2.0,
+        "filter_1_style": 0.0,
+        "filter_1_cutoff": {
+          "signal": "ramp",
+          "from": 20.0,
+          "to": 110.0
+        },
+        "filter_1_resonance": 0.6,
+        "filter_1_drive": 6.0,
+        "filter_1_blend": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 2.0
+        },
+        "filter_1_blend_transpose": 42.0,
+        "filter_1_mix": 1.0
+      }
+    },
+    "ladder_style1_resonance_drive": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 12,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": 60.0,
+        "filter_1_on": 1.0,
+        "filter_1_model": 2.0,
+        "filter_1_style": 1.0,
+        "filter_1_cutoff": {
+          "signal": "sine",
+          "freq_hz": 2.0,
+          "amp": 30.0,
+          "offset": 70.0
+        },
+        "filter_1_resonance": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "filter_1_drive": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 20.0
+        },
+        "filter_1_blend": 0.7,
+        "filter_1_blend_transpose": 42.0,
+        "filter_1_mix": 1.0
+      }
+    },
+    "digital_cutoff_blend": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": 60.0,
+        "filter_1_on": 1.0,
+        "filter_1_model": 3.0,
+        "filter_1_style": 0.0,
+        "filter_1_cutoff": {
+          "signal": "ramp",
+          "from": 20.0,
+          "to": 110.0
+        },
+        "filter_1_resonance": 0.6,
+        "filter_1_drive": 6.0,
+        "filter_1_blend": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 2.0
+        },
+        "filter_1_blend_transpose": 42.0,
+        "filter_1_mix": 1.0
+      }
+    },
+    "digital_style1_resonance_drive": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 13,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": 60.0,
+        "filter_1_on": 1.0,
+        "filter_1_model": 3.0,
+        "filter_1_style": 1.0,
+        "filter_1_cutoff": {
+          "signal": "sine",
+          "freq_hz": 2.0,
+          "amp": 30.0,
+          "offset": 70.0
+        },
+        "filter_1_resonance": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "filter_1_drive": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 20.0
+        },
+        "filter_1_blend": 0.7,
+        "filter_1_blend_transpose": 42.0,
+        "filter_1_mix": 1.0
+      }
+    },
+    "diode_cutoff_blend": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": 60.0,
+        "filter_1_on": 1.0,
+        "filter_1_model": 4.0,
+        "filter_1_style": 0.0,
+        "filter_1_cutoff": {
+          "signal": "ramp",
+          "from": 20.0,
+          "to": 110.0
+        },
+        "filter_1_resonance": 0.6,
+        "filter_1_drive": 6.0,
+        "filter_1_blend": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 2.0
+        },
+        "filter_1_blend_transpose": 42.0,
+        "filter_1_mix": 1.0
+      }
+    },
+    "diode_style1_resonance_drive": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 14,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": 60.0,
+        "filter_1_on": 1.0,
+        "filter_1_model": 4.0,
+        "filter_1_style": 1.0,
+        "filter_1_cutoff": {
+          "signal": "sine",
+          "freq_hz": 2.0,
+          "amp": 30.0,
+          "offset": 70.0
+        },
+        "filter_1_resonance": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "filter_1_drive": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 20.0
+        },
+        "filter_1_blend": 0.7,
+        "filter_1_blend_transpose": 42.0,
+        "filter_1_mix": 1.0
+      }
+    },
+    "formant_cutoff_blend": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": 60.0,
+        "filter_1_on": 1.0,
+        "filter_1_model": 5.0,
+        "filter_1_style": 0.0,
+        "filter_1_cutoff": {
+          "signal": "ramp",
+          "from": 20.0,
+          "to": 110.0
+        },
+        "filter_1_resonance": 0.6,
+        "filter_1_drive": 6.0,
+        "filter_1_blend": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 2.0
+        },
+        "filter_1_blend_transpose": 42.0,
+        "filter_1_mix": 1.0
+      }
+    },
+    "formant_style1_resonance_drive": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 15,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": 60.0,
+        "filter_1_on": 1.0,
+        "filter_1_model": 5.0,
+        "filter_1_style": 1.0,
+        "filter_1_cutoff": {
+          "signal": "sine",
+          "freq_hz": 2.0,
+          "amp": 30.0,
+          "offset": 70.0
+        },
+        "filter_1_resonance": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "filter_1_drive": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 20.0
+        },
+        "filter_1_blend": 0.7,
+        "filter_1_blend_transpose": 42.0,
+        "filter_1_mix": 1.0
+      }
+    },
+    "comb_cutoff_blend": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 7,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": 60.0,
+        "filter_1_on": 1.0,
+        "filter_1_model": 6.0,
+        "filter_1_style": 0.0,
+        "filter_1_cutoff": {
+          "signal": "ramp",
+          "from": 20.0,
+          "to": 110.0
+        },
+        "filter_1_resonance": 0.6,
+        "filter_1_drive": 6.0,
+        "filter_1_blend": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 2.0
+        },
+        "filter_1_blend_transpose": 42.0,
+        "filter_1_mix": 1.0
+      }
+    },
+    "comb_style1_resonance_drive": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 16,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": 60.0,
+        "filter_1_on": 1.0,
+        "filter_1_model": 6.0,
+        "filter_1_style": 1.0,
+        "filter_1_cutoff": {
+          "signal": "sine",
+          "freq_hz": 2.0,
+          "amp": 30.0,
+          "offset": 70.0
+        },
+        "filter_1_resonance": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "filter_1_drive": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 20.0
+        },
+        "filter_1_blend": 0.7,
+        "filter_1_blend_transpose": 42.0,
+        "filter_1_mix": 1.0
+      },
+      "reference": "nofastmath"
+    },
+    "phase_cutoff_blend": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": 60.0,
+        "filter_1_on": 1.0,
+        "filter_1_model": 7.0,
+        "filter_1_style": 0.0,
+        "filter_1_cutoff": {
+          "signal": "ramp",
+          "from": 20.0,
+          "to": 110.0
+        },
+        "filter_1_resonance": 0.6,
+        "filter_1_drive": 6.0,
+        "filter_1_blend": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 2.0
+        },
+        "filter_1_blend_transpose": 42.0,
+        "filter_1_mix": 1.0
+      }
+    },
+    "phase_style1_resonance_drive": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 17,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": 60.0,
+        "filter_1_on": 1.0,
+        "filter_1_model": 7.0,
+        "filter_1_style": 1.0,
+        "filter_1_cutoff": {
+          "signal": "sine",
+          "freq_hz": 2.0,
+          "amp": 30.0,
+          "offset": 70.0
+        },
+        "filter_1_resonance": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "filter_1_drive": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 20.0
+        },
+        "filter_1_blend": 0.7,
+        "filter_1_blend_transpose": 42.0,
+        "filter_1_mix": 1.0
+      }
+    },
+    "digital_keytrack_midi": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": {
+          "signal": "ramp",
+          "from": 24.0,
+          "to": 108.0
+        },
+        "keytrack": {
+          "signal": "ramp",
+          "from": -64.0,
+          "to": 64.0
+        },
+        "filter_1_on": 1.0,
+        "filter_1_model": 3.0,
+        "filter_1_cutoff": 70.0,
+        "filter_1_keytrack": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 1.0
+        },
+        "filter_1_resonance": 0.7,
+        "filter_1_blend": 0.0
+      }
+    },
+    "ladder_mix_ramp": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 220.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "filter_1_on": 1.0,
+        "filter_1_model": 2.0,
+        "filter_1_cutoff": 60.0,
+        "filter_1_resonance": 0.5,
+        "filter_1_mix": {
+          "signal": "ramp",
+          "from": -0.2,
+          "to": 1.2
+        }
+      }
+    },
+    "analog_on_toggle": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "filter_1_on": {
+          "signal": "square",
+          "freq_hz": 4.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "filter_1_model": 0.0,
+        "filter_1_cutoff": 80.0,
+        "filter_1_resonance": 0.5
+      }
+    },
+    "model_steps_0_to_7": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 21,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "filter_1_on": 1.0,
+        "filter_1_model": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 7.49
+        },
+        "filter_1_style": 1.0,
+        "filter_1_cutoff": {
+          "signal": "ramp",
+          "from": 40.0,
+          "to": 100.0
+        },
+        "filter_1_resonance": 0.6,
+        "filter_1_drive": 3.0,
+        "filter_1_blend": 1.0
+      }
+    },
+    "formant_controls": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 130.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "filter_1_on": 1.0,
+        "filter_1_model": 5.0,
+        "filter_1_style": 0.0,
+        "filter_1_blend": 1.0,
+        "filter_1_formant_x": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "filter_1_formant_y": {
+          "signal": "ramp",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "filter_1_formant_transpose": {
+          "signal": "ramp",
+          "from": -12.0,
+          "to": 12.0
+        },
+        "filter_1_formant_resonance": {
+          "signal": "ramp",
+          "from": 0.3,
+          "to": 1.0
+        },
+        "filter_1_formant_spread": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 1.0
+        }
+      }
+    },
+    "formant_vocal_tract": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "filter_1_on": 1.0,
+        "filter_1_model": 5.0,
+        "filter_1_style": 2.0,
+        "filter_1_blend": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 2.0
+        },
+        "filter_1_formant_x": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "filter_1_formant_y": 0.3
+      }
+    },
+    "comb_blend_transpose": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 31,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": {
+          "signal": "ramp",
+          "from": 36.0,
+          "to": 84.0
+        },
+        "filter_1_on": 1.0,
+        "filter_1_model": 6.0,
+        "filter_1_style": 2.0,
+        "filter_1_cutoff": {
+          "signal": "ramp",
+          "from": 40.0,
+          "to": 90.0
+        },
+        "filter_1_resonance": 0.7,
+        "filter_1_blend": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 2.0
+        },
+        "filter_1_blend_transpose": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 84.0
+        }
+      }
+    },
+    "phaser_blend_transpose": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 41,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "filter_1_on": 1.0,
+        "filter_1_model": 7.0,
+        "filter_1_style": 1.0,
+        "filter_1_cutoff": {
+          "signal": "ramp",
+          "from": 30.0,
+          "to": 110.0
+        },
+        "filter_1_resonance": 0.8,
+        "filter_1_drive": 10.0,
+        "filter_1_blend": 1.0,
+        "filter_1_blend_transpose": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 84.0
+        }
+      }
+    },
+    "digital_retrigger_voices": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 51,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            },
+            {
+              "sample": 7000,
+              "value": "voice_on",
+              "voices": "1"
+            },
+            {
+              "sample": 15001,
+              "value": "voice_on",
+              "voices": "0"
+            }
+          ]
+        },
+        "filter_1_on": 1.0,
+        "filter_1_model": 3.0,
+        "filter_1_style": 1.0,
+        "filter_1_cutoff": {
+          "value": [
+            40.0,
+            60.0,
+            90.0,
+            110.0
+          ]
+        },
+        "filter_1_resonance": 0.8,
+        "filter_1_mix": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    },
+    "dirty_oversample_2x": {
+      "num_samples": 44100,
+      "sample_rate": 44100,
+      "oversample": 2,
+      "block_size": 128,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "filter_1_on": 1.0,
+        "filter_1_model": 1.0,
+        "filter_1_style": 0.0,
+        "filter_1_cutoff": {
+          "signal": "ramp",
+          "from": 20.0,
+          "to": 110.0
+        },
+        "filter_1_resonance": 0.7,
+        "filter_1_drive": 6.0,
+        "filter_1_blend": 0.5
+      }
+    },
+    "sallen_key_48k_block_128": {
+      "num_samples": 48000,
+      "sample_rate": 48000,
+      "block_size": 128,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "filter_1_on": 1.0,
+        "filter_1_model": 0.0,
+        "filter_1_style": 3.0,
+        "filter_1_cutoff": {
+          "signal": "ramp",
+          "from": 110.0,
+          "to": 20.0
+        },
+        "filter_1_resonance": 0.7,
+        "filter_1_blend": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 2.0
+        }
+      }
+    },
+    "mono_digital": {
+      "num_samples": 22050,
+      "params": {
+        "mono": true
+      },
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "filter_1_on": 1.0,
+        "filter_1_model": 3.0,
+        "filter_1_cutoff": {
+          "signal": "ramp",
+          "from": 20.0,
+          "to": 110.0
+        },
+        "filter_1_resonance": 0.7,
+        "filter_1_blend": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 2.0
+        }
+      }
+    },
+    "mono_formant": {
+      "num_samples": 22050,
+      "params": {
+        "mono": true
+      },
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "filter_1_on": 1.0,
+        "filter_1_model": 5.0,
+        "filter_1_formant_x": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    }
+  }
+}
