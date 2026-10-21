@@ -230,8 +230,8 @@ fn value_switch_redirects_buffer() {
     assert_eq!(switch.output(ValueSwitch::SWITCH).buffer_size(), 128);
 }
 
-#[test]
-fn synth_module_controls_and_switches() {
+/// The parameter lookup is global; every test installs this same one.
+fn install_parameter_lookup() {
     set_parameter_lookup(|name| match name {
         "level" => ParameterDetails {
             default_value: 0.5,
@@ -240,6 +240,11 @@ fn synth_module_controls_and_switches() {
         },
         _ => ParameterDetails::default(),
     });
+}
+
+#[test]
+fn synth_module_controls_and_switches() {
+    install_parameter_lookup();
 
     let module = SynthModule::create(0, 0, false);
     let level = module.create_poly_mod_control("level", false, false, None, None);
@@ -273,6 +278,7 @@ fn synth_module_controls_and_switches() {
 /// is the separate global router (`voice_handler.h`, `getMonoRouter()`).
 #[test]
 fn voice_handler_hooks_forward_to_the_voice_router() {
+    install_parameter_lookup();
     let handler = SynthModule::create(0, 0, false);
     let voice_router = ProcessorRouter::create(0, 0, false);
     let global_router = ProcessorRouter::create(0, 0, false);
