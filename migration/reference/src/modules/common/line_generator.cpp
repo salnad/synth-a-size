@@ -18,7 +18,7 @@ REGISTER_REF_MODULE(refmod::ModuleDef{
   {},
   [](const refmod::ArtifactContext& context, refmod::ArtifactSink& sink, std::string& error) {
     const nlohmann::json params = context.spec.value("params", nlohmann::json::object());
-    int resolution = params.value("resolution", LineGenerator::kDefaultResolution);
+    int resolution = params.value("resolution", static_cast<int>(LineGenerator::kDefaultResolution));
     LineGenerator generator(resolution);
     try {
       generator.jsonToState(nlohmann::json::parse(params.at("line").get<std::string>()));
