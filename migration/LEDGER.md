@@ -1859,8 +1859,8 @@ edit.
   member channels with ranges; per-channel, global and range all-off; a
   polyphony drop with held voices; oversample 2 (block 128); and block 128.
 
-**Metrics** (x86_64, local tree with the CI build identity; hashes to be
-rewritten from this PR's CI artifact): 20 cases × 6 arrays, all **bit-identical**
+**Metrics** (x86_64; the committed hashes equal those written from CI run
+39522994531's `reference-renders` artifact, with no diff): 20 cases × 6 arrays, all **bit-identical**
 (max abs error 0). A deliberate bug (local pitch bend range 48 → 47) fails
 `mpe_expression:voice_values` with max abs error 1.0 and a residual of −33.6 dB.
 
