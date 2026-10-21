@@ -102,10 +102,13 @@ jobs:
           REF_BUILD_DIR=build/variant-proxy CXX=clang++ migration/scripts/build_reference.sh -DREF_FAST_MATH=OFF
           python3 migration/scripts/run_corpus.py render --out build/platform/proxy \
             --ref-render build/variant-proxy/ref-render --ref-module build/variant-proxy/ref-module
-      # As in ci.yml: every "reference": "nofastmath" case must fail its
-      # normal limits here too.
+      # No "official must fail" justification gate here (owner decision
+      # 2026-10-21): ci.yml applies --justify-nofastmath on x86, and some
+      # x86-noisy cases are clean on macOS. "reference": "nofastmath" cases
+      # resolve to the macOS no-fast-math tree; the arm64 parity tests
+      # compare the port with it exactly.
       - name: Tolerances are achievable on macOS arm64 (proxy must pass)
-        run: python3 migration/scripts/run_corpus.py compare build/platform/pinned build/platform/proxy --justify-nofastmath
+        run: python3 migration/scripts/run_corpus.py compare build/platform/pinned build/platform/proxy --reference-nofastmath build/platform/proxy
       - name: Rust parity tests on arm64 against the macOS arm64 captures (NEON path)
         if: ${{ !cancelled() }}
         env:

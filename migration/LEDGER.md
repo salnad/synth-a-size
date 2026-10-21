@@ -2379,10 +2379,28 @@ is optional (manual dispatch).
 - `effects/stereo_delay` `clamped_dampened_damping_sweep` (max abs 3.8e-4)
   and `unclamped_unfiltered_negative_feedback` (1.3e-4) fail the macOS
   no-fast-math proxy (residuals −92 dB pass). Parked unchanged in
-  `modules/effects/pending/stereo_delay.json`, x86 hash entries removed,
+  `modules/effects/pending/stereo_delay_arm64.json`, x86 hash entries removed,
   per the coordinator's decision. They fail official vs no-fast-math on
   arm64 only, which qualifies them under SAS-35. They and
   `comb_96k_block128` are re-enabled with `reference: nofastmath` after #51.
+- Owner approval (Salil, 2026-10-21) for two more changes:
+  - Parked 4 cases that fail the macOS no-fast-math proxy only, inputs
+    unchanged, no tolerance change, x86 (and macOS) hash entries removed.
+    `filters/dirty/dual_notch_band_cutoff_sweep` (max abs 3.2e-4, residual
+    −81.5 dB) is in `modules/filters/pending/dirty_arm64.json`.
+    `oscillators/synth_oscillator/distortion_{1,2,3}_spread` (2.2e-3,
+    1.5e-3, 8.8e-4; residuals −86 to −91 dB) are in
+    `modules/oscillators/pending/synth_oscillator_arm64.json`. The delay
+    file is renamed `effects/pending/stereo_delay_arm64.json`. They return
+    under the SAS-35 no-fast-math rule once #51 lands.
+  - The macOS proxy step runs without the "official must fail" gate.
+    `wavetable/render` `wave_linear_freq_disjoint_spectra`,
+    `wave_cubic_freq_disjoint_spectra` and `multi_group_disjoint_spectra`
+    are noisy on x86 but pass the normal limits on macOS. x86 keeps
+    `--justify-nofastmath`. On macOS, `reference: nofastmath` cases resolve to
+    the macOS no-fast-math tree, and the arm64 parity tests compare against
+    it exactly. Cross-target justification is to be agreed with Parity
+    Reviewer.
 - `migration/AGENTS.md`: every module PR adds its own macOS arm64 hash
   entries from its `ref-arm64-macos-15` artifact.
 - A10 (`std::complex<float>` division) recorded in

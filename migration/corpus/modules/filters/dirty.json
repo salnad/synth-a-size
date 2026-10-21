@@ -737,33 +737,6 @@
         "pass_blend": 0.5
       }
     },
-    "dual_notch_band_cutoff_sweep": {
-      "num_samples": 22050,
-      "inputs": {
-        "audio": {
-          "signal": "saw",
-          "freq_hz": 110.0,
-          "amp": 0.5
-        },
-        "reset": {
-          "trigger": [
-            {
-              "sample": 0,
-              "value": "voice_on"
-            }
-          ]
-        },
-        "midi_cutoff": {
-          "signal": "ramp",
-          "from": 0.0,
-          "to": 140.0
-        },
-        "resonance": 0.8,
-        "drive_gain": 6.0,
-        "style": 3,
-        "pass_blend": 0.5
-      }
-    },
     "band_peak_notch_cutoff_sweep": {
       "num_samples": 22050,
       "inputs": {
