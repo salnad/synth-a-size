@@ -8,6 +8,23 @@ repository.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[features]
+# Upstream's aarch64 (macOS arm64) semantics on every target, for comparing
+# against macOS arm64 reference renders; forwarded to every dependency with
+# per-target behaviour (migration/decisions/reference-arm.md).
+aarch64-semantics = [
+    "sas-dsp-core/aarch64-semantics",
+    "sas-simd/aarch64-semantics",
+    "sas-common/aarch64-semantics",
+    "sas-wavetable/aarch64-semantics",
+]
+
 [dependencies]
+sas-common.workspace = true
 sas-dsp-core.workspace = true
+sas-simd.workspace = true
 sas-wavetable.workspace = true
+
+[dev-dependencies]
+sas-parity.workspace = true
+serde_json = "1"

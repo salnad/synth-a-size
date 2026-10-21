@@ -2230,3 +2230,136 @@ Uses #34's mechanism (`migration/decisions/owner-decisions-json-and-morphs.md`).
   failed;
 - `cargo test --workspace` with `SAS_PARITY_CAPTURES_NOFASTMATH` set;
 - clippy and fmt.
+## 2026-10-21: M4b `SynthOscillator` (sas-oscillators, PR A of the M4b stack)
+
+**Added**
+
+- `port/crates/oscillators`: `SynthOscillator` and `RandomValues`
+  (`synth_oscillator.{h,cpp}`) with every distortion type (sync, formant,
+  quantize, bend, squeeze, pulse width, FM/RM from oscillator A/B or the
+  sample), unison (voices, detune, power, range, blend, stereo spread,
+  the 11 stack styles, frame/distortion/spectral-morph spread), transpose
+  snapping, random phase, single-voice processing, retrigger, the
+  wave-buffer crossfade and the shepard wrap. `spectral_morph.rs` holds
+  the buffer wrap and the passthrough morph; the other morphs are the
+  next PR of the stack.
+  - Wave buffers mirror upstream's pointers as handles into the same two
+    banks of Fourier buffers (kept for the oscillator's lifetime, so what
+    a morph leaves outside its written region carries over as upstream).
+  - Cloning the kernel draws a new seed, as upstream's `RandomGenerator`
+    copy constructor does. `RandomValues::instance()` takes a seed on its
+    first call per process; `RandomValues::reset_process_state()` lets a
+    test or engine that builds several synths in one process reproduce
+    the reference's one-process-per-capture seed order.
+  - Per-target sites: A1/A1b/A1c through `sas-simd`'s `to_int`, A2 (random
+    phase, `synth_oscillator.cpp:583`) through `float_to_u32`, scalar
+    `(int)` casts through `float_to_i32` (A3). No FMA, no estimates.
+  - `aarch64-semantics` is forwarded to `sas-dsp-core`, `sas-simd`,
+    `sas-common` and `sas-wavetable`.
+- `ref-module` module `synth_oscillator`
+  (`migration/reference/src/modules/oscillators/synth_oscillator.cpp`):
+  the oscillator on a wavetable rendered from `params.wavetable`
+  (`init`, `predefined` or creator JSON with `$wave` recipes), with an
+  extra audio input `modulation` wired as both FM/RM oscillators and the
+  sample. The parity test
+  (`port/crates/oscillators/tests/synth_oscillator_parity.rs`) mirrors it
+  and calls `assert_parity!` on both outputs of every case.
+- `migration/corpus/modules/oscillators/synth_oscillator.json`: 69 cases
+  under `module_defaults` (six of them interim, below), at 44.1/48/96 kHz,
+  oversample 2 and block sizes 17/64/128. Wavetables are init, predefined
+  and well-conditioned time-interpolated creator content only. **Active audio coverage of transpose and tune is limited to the interim
+  constant values below (transpose 7, tune 0.3, both 0); transpose snapping
+  with a non-zero transpose and swept or other non-integer pitch have no
+  active audio case** (see "Parked" below). Their pitch is covered through
+  `synth_oscillator_pitch`.
+- `ref-module` module `synth_oscillator_pitch` (same file) and
+  `migration/corpus/modules/oscillators/synth_oscillator_pitch.json`
+  (15 cases): the same oscillator, capturing the block's per-sample phase
+  increment `phase_inc_buffer_` times 2^-32, i.e. frequency / sample rate,
+  the normalized form the oscillator's phase accumulator consumes (the
+  large-scale rule in `migration/AGENTS.md`). `phase_inc_buffer_` is
+  private upstream; the harness reads it through an explicit template
+  instantiation (exempt from access checks), and the port exposes it as
+  `SynthOscillator::phase_increments()`. The cases are the inputs of all
+  nine parked audio cases plus tune as audio-rate sine, single-voice
+  swap, reset offsets, no MIDI tracking, 96 kHz and oversampling.
+
+**Measured** (x86_64, all within the default module limits, no tolerance
+changes)
+
+- Audio (`raw` and `levelled`, 138 outputs). Worst: `distortion_4`
+  (bend) 3.0e-5 / −113.0 dB, `distortion_4_spread` 1.7e-5 / −116.2 dB,
+  `distortion_3_spread` (quantize) 2.1e-5 / −119.6 dB. Everything else is
+  ≤ 7.3e-6 and ≤ −130 dB, including random phase (A2 on x86: negative
+  draws wrap), wave-frame sweeps (A1b) and every FM/RM variant.
+- Pitch (`phase_inc`, 15 outputs): worst `note_ramp` 1.8e-7 / −128.6 dB;
+  the reviewer's probes ≤ 2.2e-8 and ≤ −129.0 dB. The official reference
+  also passes against its no-fast-math build on every pitch case (the
+  tolerance-calibration comparison).
+- Against the `REF_FAST_MATH=OFF` reference: all audio cases ≤ 3e-7 and
+  ≤ −146 dB (Graph Reviewer: bit-identical on all of them, the parked
+  and probe cases included).
+
+**Parked pending an owner decision (not deleted or narrowed)**
+
+Exact comparison against the no-fast-math reference is an owner decision
+only for the wavetable-morph case ids listed in
+owner-decisions-json-and-morphs.md. For other cases whose official
+reference fails the limits against its own no-fast-math build, it is a
+pending proposal (SAS-35), not decided. Until it is,
+`migration/corpus/modules/oscillators/pending/synth_oscillator.json`
+holds these nine authored audio cases, which the harness does not load
+while they sit under `pending/`:
+
+| Case | Port vs official | Port vs no-fast-math | Official vs no-fast-math |
+|---|---|---|---|
+| `oscillators/synth_oscillator/note_ramp` | 1.1e-3 / −72.4 dB | 2.4e-7 / −151.1 dB | 1.1e-3 / −72.4 dB |
+| `oscillators/synth_oscillator/transpose_quantize_local` | 7.3e-4 / −80.9 dB | 1.2e-7 / −152.4 dB | 7.3e-4 |
+| `oscillators/synth_oscillator/transpose_tune_audio` | 5.8e-4 / −82.5 dB | ≤ 3e-7 / ≤ −146 dB | 5.8e-4 |
+| `oscillators/synth_oscillator/transpose_quantize_global` | 2.5e-4 / −93.2 dB | 1.2e-7 / −152.6 dB | 2.5e-4 |
+
+and, as candidates for the same decision, the Graph Reviewer's constant
+probes on PR #28 (8000 samples, init table; official vs no-fast-math as
+the reviewer measured, port bit-identical to no-fast-math):
+
+| Case (constant inputs) | Official vs no-fast-math |
+|---|---|
+| `oscillators/synth_oscillator/probe_transpose_tune_constant` (transpose 7.3, tune 0.37) | 4.8e-3 / −66.5 dB |
+| `oscillators/synth_oscillator/probe_transpose_constant_negative` (transpose −19.6) | 1.6e-3 / −81.5 dB |
+| `oscillators/synth_oscillator/probe_quantize_local_transpose` (quantize 2741, transpose 5.4) | 5.4e-3 / −66.0 dB |
+| `oscillators/synth_oscillator/probe_quantize_global_transpose` (quantize 6837, transpose −10.7) | 3.4e-3 / −73.6 dB |
+| `oscillators/synth_oscillator/probe_quantize_global_high_note` (quantize 6837, transpose 23.2, note 84) | 3.5e-3 / −58.4 dB |
+
+Mechanism: the base frequency (`midiNoteToFrequency`, a `powf` of a
+quotient) and the per-sample ratio `exp2((midi − base_midi) / 12)` can
+round differently under fast-math when the pitch moves or is a
+non-integer MIDI note, and the 32-bit phase accumulator integrates the
+ulp into a phase drift that grows over the render. Whether a given
+constant pitch rounds the same in both builds depends on the value: the
+probes above differ by up to 5.4e-3, while constant transpose 7 and
+constant tune 0.3 round the same and pass (interim cases below; Graph
+Reviewer measured them at about 1.8e-7 and 2.4e-7 official vs
+no-fast-math too). Earlier text here said constant-pitch cases are
+unaffected; that is wrong in general (the probes).
+
+**Interim cases** (named `interim_*`; stand-ins that stay within the
+limits, the parked cases unchanged):
+
+- `interim_transpose_quantize_local` and `_global`: snapping with
+  transpose 0 at an integer note (2.4e-7 / −139.2 dB, 3.0e-7 / −139.4 dB);
+- `interim_transpose_constant` and `interim_tune_constant`: the
+  audio-rate inputs at transpose 7 and tune 0.3 (1.8e-7 / −143.3 dB,
+  2.4e-7 / −142.6 dB). The review-fix commit dropped them on the wrong
+  assumption that they passed by rounding luck; they are restored;
+- `interim_transpose_tune_zero`: the audio-rate transpose and tune inputs
+  at 0 (2.4e-7 / −143.3 dB);
+- `interim_note_ramp_short`: MIDI 48 → 72 over 1024 samples
+  (3.1e-6 / −130.2 dB).
+
+**Hashes:** `synth_oscillator.hashes.json` and
+`synth_oscillator_pitch.hashes.json` are written from this PR's CI
+`reference-renders` artifact. macOS arm64 hashes follow once PR #2 (macOS
+arm64 CI) merges.
+
+**Next:** the remaining spectral morphs (PR B), then the sample source
+and sample module, then the oscillator and producers modules.
