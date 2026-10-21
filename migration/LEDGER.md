@@ -563,7 +563,11 @@ Harness Builder's `sas-parity` helper.)
     `buffer` and `value_at_phase`, text `saved.json`;
   - `random_generator`: `RandomGenerator` after `seed()`; array `values`;
   - `futils_scalar`: scalar `exp2`/`log2`/`tanh`/`powerScale`/Catmull-Rom
-    over a fixed integer-defined grid;
+    over a fixed integer-defined grid. `exp2(e)` is captured as
+    `exp2(e) · 2^-floor(e)`, an exact power-of-two scaling into [1, 2].
+    Raw values reach ~5.7e3, where one float ulp (~4.9e-4) exceeds the
+    1e-4 absolute gate, so only bit-exact references could pass. Every
+    other array in this crate stays below 100;
   - `json_serializer`: nlohmann `parse` → `dump()`/`dump(2)` of authored
     texts, and `dump()` of 40,000 generated doubles and floats. These are
     upstream's own serialization.
@@ -580,7 +584,7 @@ Harness Builder's `sas-parity` helper.)
 - All pass with the default module tolerances; no tolerance changes.
 - RNG sequences, every JSON text artifact (`saved.json`, `dump.json`,
   `pretty.json`, `floats.json`) and the Catmull-Rom outputs are exact.
-- `exp2`: exact. `tanh`, `log2`: ≤ 2 ulp. `powerScale`: ≤ 1.3e-6
+- `exp2` (scaled): exact. `tanh`, `log2`: ≤ 2 ulp. `powerScale`: ≤ 1.3e-6
   (−138 dB). Line buffers: ≤ 3.0e-7 (≤ −144 dB).
 - `valueAtPhase` on `steps`/`steps_loop` (vertical segments): 8.5e-5 and
   −92 dB. This is the closest to a limit (1.17× under `max_abs_error`).

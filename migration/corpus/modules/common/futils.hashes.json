@@ -3,7 +3,7 @@
     {
       "hashes": {
         "grid:catmull": "10a7518dd8613ab0",
-        "grid:exp2": "2fe34ea8d3705807",
+        "grid:exp2": "c961d945a23fcd43",
         "grid:log2": "4025b1130dde5210",
         "grid:power_scale": "fc11c3521abdb911",
         "grid:tanh": "7cf98873420f72bd"

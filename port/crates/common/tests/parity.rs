@@ -82,7 +82,16 @@ fn futils_grid() -> Vec<f32> {
 fn futils_scalar() {
     let id = "common/futils/grid";
     let xs = futils_grid();
-    let exp2: Vec<f32> = xs.iter().map(|&x| scalar::exp2(x * 0.1)).collect();
+    // Scaled by an exact power of two into about [1, 2): raw values reach
+    // ~6e3, where one float ulp exceeds the absolute module gate.
+    let exp2: Vec<f32> = xs
+        .iter()
+        .map(|&x| {
+            let e = x * 0.1;
+            let k = e.floor() as i32;
+            scalar::exp2(e) * f32::from_bits(((127 - k) as u32) << 23)
+        })
+        .collect();
     let log2: Vec<f32> = xs
         .iter()
         .filter(|&&x| x != 0.0)

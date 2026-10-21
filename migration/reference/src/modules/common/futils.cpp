@@ -10,6 +10,7 @@
 #include "poly_utils.h"
 #include "utils.h"
 
+#include <cmath>
 #include <cstring>
 
 namespace {
@@ -36,7 +37,7 @@ namespace {
 
 REGISTER_REF_MODULE(refmod::ModuleDef{
   "futils_scalar",
-  "Scalar futils/utils over a fixed grid: arrays exp2 (of x * 0.1), log2 (of |x|, x != 0), tanh, "
+  "Scalar futils/utils over a fixed grid: arrays exp2 (of e = x * 0.1, scaled by 2^-floor(e)), log2 (of |x|, x != 0), tanh, "
   "power_scale (101 values x 81 powers), catmull (65 t on a fixed 4-sample buffer)",
   nullptr,
   {},
@@ -45,7 +46,10 @@ REGISTER_REF_MODULE(refmod::ModuleDef{
     std::vector<float> xs = grid();
     std::vector<float> exp2, log2, tanh;
     for (float x : xs) {
-      exp2.push_back(vital::futils::exp2(x * 0.1f));
+      // Scaled by an exact power of two into about [1, 2): raw values reach
+      // ~6e3, where one float ulp exceeds the absolute module gate.
+      float e = x * 0.1f;
+      exp2.push_back(ldexpf(vital::futils::exp2(e), -static_cast<int>(std::floor(e))));
       tanh.push_back(vital::futils::tanh(x));
       if (x != 0.0f)
         log2.push_back(vital::futils::log2(fabsf(x)));
