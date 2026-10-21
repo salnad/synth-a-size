@@ -74,6 +74,9 @@ namespace {
       FN("round", utils::round(a)),
       FN("round_to_int", utils::toFloat(utils::roundToInt(a))),
       FN("floor_to_int", utils::toFloat(utils::floorToInt(a))),
+      // reference-arm.md A7 (signed vs unsigned) and A8 (byte mask vs lane max).
+      FN("int_min", utils::toFloat(poly_int::min(utils::roundToInt(a), utils::roundToInt(b)))),
+      FN("any_mask", poly_float(static_cast<float>(poly_float::lessThan(a, b).anyMask()))),
       FN("mod", utils::mod(a)),
       FN("mod_once", utils::modOnce(a)),
       FN("sqrt", utils::sqrt(a)),
@@ -119,6 +122,9 @@ namespace {
       // poly_utils.h: libm maps
       FN("poly_cents_to_ratio", utils::centsToRatio(a)),
       FN("poly_midi_note_to_frequency", utils::midiNoteToFrequency(a)),
+      // Normalized as the filters consume it, frequency * (1.0f / sample rate)
+      // (digital_svf.cpp:81); b carries the sample rate.
+      FN("poly_midi_note_to_normalized_frequency", utils::midiNoteToFrequency(a) * (1.0f / b[0])),
       FN("poly_frequency_to_midi_note", utils::frequencyToMidiNote(a)),
       FN("poly_db_to_magnitude", utils::dbToMagnitude(a)),
       FN("poly_magnitude_to_db", utils::magnitudeToDb(a)),
@@ -186,6 +192,7 @@ namespace {
       FN("mono_note_offset_to_ratio", lanes<utils::noteOffsetToRatio>(a)),
       FN("mono_ratio_to_midi_transpose", lanes<utils::ratioToMidiTranspose>(a)),
       FN("mono_midi_note_to_frequency", lanes<utils::midiNoteToFrequency>(a)),
+      FN("mono_midi_note_to_normalized_frequency", lanes<utils::midiNoteToFrequency>(a) * (1.0f / b[0])),
       FN("mono_frequency_to_midi_note", lanes<utils::frequencyToMidiNote>(a)),
       FN("mono_utils_db_to_magnitude", lanes<utils::dbToMagnitude>(a)),
       FN("mono_utils_magnitude_to_db", lanes<utils::magnitudeToDb>(a)),

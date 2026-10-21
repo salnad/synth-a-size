@@ -129,6 +129,18 @@ none of them edits a shared list.
      section must name the case id. Every loosened metric must equal its
      approved value, so loosening further needs a new approval. Only a human
      can approve (rule 6).
+   - *Large-scale quantities* (Hz, samples, ms): cover the input's full
+     working range (the upstream parameter ranges that feed it). Never
+     narrow a case's input domain to fit the absolute gate; that is
+     narrowing a test (rule 6). Where the reference's own fast-math noise
+     on the raw value exceeds `max_abs_error`, capture the value in the
+     normalized form its upstream consumer uses, computed the same way in
+     the ref-module and the parity test. For example, a keytrack frequency
+     is captured as SynthLfo's phase increment `frequency * (1.0f /
+     getSampleRate())` (see `op_tempo_chooser_phase_increment`). Keep a raw
+     case over the band that passes, and record the raw full-range numbers
+     in `LEDGER.md`. If no faithful normalized form exists, record it and
+     ask.
    - *Exact-match artifacts* (JSON or text, e.g. a WavetableCreator load →
      save): give the module an artifact hook (the sixth `ModuleDef` field;
      `create` may be `nullptr` for artifact-only modules). Call

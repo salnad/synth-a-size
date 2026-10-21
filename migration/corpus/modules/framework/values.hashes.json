@@ -1,0 +1,29 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "cr_smooth_value_rise:out": "79bfa2330e31db83",
+        "cr_value_set_trigger:out": "afc47267b081ff83",
+        "peak_meter_burst:level": "38cdca20009a19cb",
+        "peak_meter_burst:memory_peak": "141cc04280af9ac3",
+        "peak_meter_noise:level": "0e796f06b5cc187a",
+        "peak_meter_noise:memory_peak": "d4b01b0e50007583",
+        "portamento_slope_basic:out": "109e958c21117d83",
+        "portamento_slope_bypass:out": "e0ebff5c09476b83",
+        "portamento_slope_scaled_power:out": "259a96ade128df83",
+        "smooth_value_fall_48k:out": "28a526e3a82bc9c3",
+        "smooth_value_rise:out": "c85db0fcf2925e6b",
+        "value_set_trigger:out": "afc47267b081ff83"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}

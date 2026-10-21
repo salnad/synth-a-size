@@ -1,0 +1,191 @@
+{
+  "description": "Memory, StereoMemory, OneDimLookup and OnePoleFilter probes. Ports: port/crates/dsp-core.",
+  "num_samples": 4096,
+  "cases": {
+    "memory_ramp_delay": {
+      "module": "memory_probe",
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 1
+        },
+        "delay": {
+          "signal": "ramp",
+          "from": 2.0,
+          "to": 1000.0
+        }
+      },
+      "params": {
+        "size": 1024
+      }
+    },
+    "memory_modulated_delay": {
+      "module": "memory_probe",
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 440,
+          "amp": 0.8
+        },
+        "delay": {
+          "signal": "sine",
+          "freq_hz": 1.5,
+          "amp": 200.0,
+          "offset": 300.0
+        }
+      },
+      "params": {
+        "size": 700
+      }
+    },
+    "stereo_memory_ramp_delay": {
+      "module": "stereo_memory_probe",
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 1
+        },
+        "delay": {
+          "signal": "ramp",
+          "from": 2.0,
+          "to": 1000.0
+        }
+      },
+      "params": {
+        "size": 1024
+      }
+    },
+    "lookup_sin": {
+      "module": "lookup_probe",
+      "inputs": {
+        "in": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 6.2831
+        }
+      },
+      "params": {
+        "scale": 6.2832
+      }
+    },
+    "lookup_sin_noise": {
+      "module": "lookup_probe",
+      "inputs": {
+        "in": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.5,
+          "seed": 1,
+          "offset": 1.6
+        }
+      },
+      "params": {
+        "scale": 3.2
+      }
+    },
+    "one_pole_basic": {
+      "module": "one_pole_probe",
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.5,
+          "seed": 1
+        },
+        "cutoff": {
+          "signal": "ramp",
+          "from": 50.0,
+          "to": 15000.0
+        }
+      },
+      "params": {
+        "mode": 0,
+        "saturate": 0
+      }
+    },
+    "one_pole_tick": {
+      "module": "one_pole_probe",
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.5,
+          "seed": 1
+        },
+        "cutoff": {
+          "signal": "ramp",
+          "from": 50.0,
+          "to": 15000.0
+        }
+      },
+      "params": {
+        "mode": 1,
+        "saturate": 0
+      }
+    },
+    "one_pole_tick_tanh": {
+      "module": "one_pole_probe",
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.5,
+          "seed": 1
+        },
+        "cutoff": {
+          "signal": "ramp",
+          "from": 50.0,
+          "to": 15000.0
+        }
+      },
+      "params": {
+        "mode": 1,
+        "saturate": 1
+      }
+    },
+    "one_pole_derivative": {
+      "module": "one_pole_probe",
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.5,
+          "seed": 1
+        },
+        "cutoff": {
+          "signal": "ramp",
+          "from": 50.0,
+          "to": 15000.0
+        }
+      },
+      "params": {
+        "mode": 2,
+        "saturate": 0
+      }
+    },
+    "one_pole_derivative_tanh": {
+      "module": "one_pole_probe",
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.5,
+          "seed": 1
+        },
+        "cutoff": {
+          "signal": "ramp",
+          "from": 50.0,
+          "to": 15000.0
+        }
+      },
+      "params": {
+        "mode": 2,
+        "saturate": 1
+      }
+    }
+  }
+}

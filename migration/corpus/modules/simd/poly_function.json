@@ -1,5 +1,5 @@
 {
-  "description": "Upstream poly_float / poly_utils / futils / scalar utils functions, one case per function (ports: port/crates/simd, tests/parity.rs). Inputs are stereo noise (L != R) over each function's working range, chosen so outputs stay audio-scale (|out| <~ 16) where the absolute max_abs_error gate is meaningful.",
+  "description": "Upstream poly_float / poly_utils / futils / scalar utils functions, one case per function (ports: port/crates/simd, tests/parity.rs). Inputs are stereo noise (L != R) over each function's full working range (the upstream parameter ranges that feed it). Quantities with a large natural scale (Hz) are also captured in the normalized form their consumer uses (*_normalized_frequency: frequency * (1.0f / sample rate), input b = sample rate); inputs are never narrowed to fit the absolute gate (migration/AGENTS.md).",
   "module": "poly_function",
   "num_samples": 4096,
   "cases": {
@@ -457,6 +457,44 @@
           "stereo": true,
           "amp": 4.0,
           "seed": 2
+        }
+      }
+    },
+    "int_min": {
+      "params": {
+        "function": "int_min"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 31
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 4.0,
+          "seed": 32
+        }
+      }
+    },
+    "any_mask": {
+      "params": {
+        "function": "any_mask"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 33
+        },
+        "b": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 1.0,
+          "seed": 34
         }
       }
     },
@@ -1190,7 +1228,7 @@
         "a": {
           "signal": "noise",
           "stereo": true,
-          "amp": 2400.0,
+          "amp": 4800.0,
           "seed": 10
         },
         "b": {
@@ -1209,9 +1247,9 @@
         "a": {
           "signal": "noise",
           "stereo": true,
-          "amp": 24.0,
+          "amp": 42.0,
           "seed": 10,
-          "offset": -12.0
+          "offset": 6.0
         },
         "b": {
           "signal": "noise",
@@ -1219,6 +1257,21 @@
           "amp": 4.0,
           "seed": 2
         }
+      }
+    },
+    "poly_midi_note_to_normalized_frequency": {
+      "params": {
+        "function": "poly_midi_note_to_normalized_frequency"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 68.0,
+          "seed": 10,
+          "offset": 68.0
+        },
+        "b": 44100.0
       }
     },
     "poly_frequency_to_midi_note": {
@@ -1229,9 +1282,9 @@
         "a": {
           "signal": "noise",
           "stereo": true,
-          "amp": 7.5,
+          "amp": 10496.0,
           "seed": 10,
-          "offset": 8.5
+          "offset": 10504.0
         },
         "b": {
           "signal": "noise",
@@ -1249,7 +1302,7 @@
         "a": {
           "signal": "noise",
           "stereo": true,
-          "amp": 24.0,
+          "amp": 30.0,
           "seed": 10
         },
         "b": {
@@ -1268,9 +1321,9 @@
         "a": {
           "signal": "noise",
           "stereo": true,
-          "amp": 1.9,
+          "amp": 15.7995,
           "seed": 10,
-          "offset": 2.0
+          "offset": 15.8005
         },
         "b": {
           "signal": "noise",
@@ -1541,7 +1594,7 @@
         "a": {
           "signal": "noise",
           "stereo": true,
-          "amp": 24.0,
+          "amp": 48.0,
           "seed": 12
         },
         "b": {
@@ -1560,9 +1613,9 @@
         "a": {
           "signal": "noise",
           "stereo": true,
-          "amp": 24.0,
+          "amp": 68.0,
           "seed": 12,
-          "offset": -12.0
+          "offset": 68.0
         },
         "b": {
           "signal": "noise",
@@ -1580,9 +1633,9 @@
         "a": {
           "signal": "noise",
           "stereo": true,
-          "amp": 1.9,
+          "amp": 15.7995,
           "seed": 12,
-          "offset": 2.0
+          "offset": 15.8005
         },
         "b": {
           "signal": "noise",
@@ -1600,7 +1653,7 @@
         "a": {
           "signal": "noise",
           "stereo": true,
-          "amp": 24.0,
+          "amp": 30.0,
           "seed": 12
         },
         "b": {
@@ -2063,9 +2116,9 @@
         "a": {
           "signal": "noise",
           "stereo": true,
-          "amp": 1.9,
+          "amp": 15.7995,
           "seed": 17,
-          "offset": 2.0
+          "offset": 15.8005
         },
         "b": {
           "signal": "noise",
@@ -2083,7 +2136,7 @@
         "a": {
           "signal": "noise",
           "stereo": true,
-          "amp": 16.0,
+          "amp": 30.0,
           "seed": 17
         },
         "b": {
@@ -2314,7 +2367,7 @@
         "a": {
           "signal": "noise",
           "stereo": true,
-          "amp": 2400.0,
+          "amp": 4800.0,
           "seed": 21
         },
         "b": {
@@ -2333,7 +2386,7 @@
         "a": {
           "signal": "noise",
           "stereo": true,
-          "amp": 24.0,
+          "amp": 48.0,
           "seed": 21
         },
         "b": {
@@ -2372,9 +2425,9 @@
         "a": {
           "signal": "noise",
           "stereo": true,
-          "amp": 24.0,
+          "amp": 42.0,
           "seed": 21,
-          "offset": -12.0
+          "offset": 6.0
         },
         "b": {
           "signal": "noise",
@@ -2382,6 +2435,21 @@
           "amp": 4.0,
           "seed": 2
         }
+      }
+    },
+    "mono_midi_note_to_normalized_frequency": {
+      "params": {
+        "function": "mono_midi_note_to_normalized_frequency"
+      },
+      "inputs": {
+        "a": {
+          "signal": "noise",
+          "stereo": true,
+          "amp": 68.0,
+          "seed": 21,
+          "offset": 68.0
+        },
+        "b": 44100.0
       }
     },
     "mono_frequency_to_midi_note": {
@@ -2392,9 +2460,9 @@
         "a": {
           "signal": "noise",
           "stereo": true,
-          "amp": 7.5,
+          "amp": 10496.0,
           "seed": 21,
-          "offset": 8.5
+          "offset": 10504.0
         },
         "b": {
           "signal": "noise",
@@ -2412,7 +2480,7 @@
         "a": {
           "signal": "noise",
           "stereo": true,
-          "amp": 24.0,
+          "amp": 30.0,
           "seed": 21
         },
         "b": {
@@ -2431,9 +2499,9 @@
         "a": {
           "signal": "noise",
           "stereo": true,
-          "amp": 1.9,
+          "amp": 15.7995,
           "seed": 21,
-          "offset": 2.0
+          "offset": 15.8005
         },
         "b": {
           "signal": "noise",
