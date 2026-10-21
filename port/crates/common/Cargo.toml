@@ -11,8 +11,10 @@ publish.workspace = true
 [features]
 # Use the aarch64 reference's semantics (macOS arm64, libc++) on every
 # target, so x86_64 developers can compare against macOS arm64 reference
-# renders. Same name as sas-simd's switch; crates forward both. No-op on
-# aarch64. See `AARCH64_SEMANTICS` and migration/decisions/reference-arm.md.
+# renders. sas-simd's feature forwards here; a crate that also has sas-simd
+# (or sas-dsp-core) in its graph must forward to that one, and sas-simd
+# refuses to compile otherwise. No-op on aarch64. See `AARCH64_SEMANTICS`
+# and migration/decisions/reference-arm.md.
 aarch64-semantics = []
 
 [dependencies]

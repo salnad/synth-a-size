@@ -224,3 +224,13 @@ jobs:
         run: cargo clippy -p sas-common --all-targets --locked --features aarch64-semantics --manifest-path port/Cargo.toml -- -D warnings
       - name: sas-common tests (libc++ RNG column)
         run: cargo test -p sas-common --locked --features aarch64-semantics --manifest-path port/Cargo.toml --lib
+      - name: sas-dsp-core clippy and tests (aarch64-semantics)
+        run: |
+          cargo clippy -p sas-dsp-core --all-targets --locked --features aarch64-semantics --manifest-path port/Cargo.toml -- -D warnings
+          cargo test -p sas-dsp-core --locked --features aarch64-semantics --manifest-path port/Cargo.toml --lib --test graph
+      - name: sas-simd rejects sas-common's feature without its own
+        run: |
+          if cargo check -p sas-simd --locked --features sas-common/aarch64-semantics --manifest-path port/Cargo.toml 2> check.log; then
+            echo "sas-simd compiled with sas-common on the aarch64 column and itself on SSE2"; exit 1
+          fi
+          grep -q "aarch64-semantics is enabled on sas-common but not on sas-simd" check.log

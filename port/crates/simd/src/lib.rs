@@ -107,6 +107,16 @@ pub mod scalar {
 pub const AARCH64_SEMANTICS: bool =
     cfg!(any(target_arch = "aarch64", feature = "aarch64-semantics"));
 
+// The mono overloads are `sas-common`'s, and this crate's feature forwards to
+// `sas-common/aarch64-semantics`. A build that enables only sas-common's
+// feature would put the mono and poly overloads on different columns.
+const _: () = assert!(
+    AARCH64_SEMANTICS == sas_common::AARCH64_SEMANTICS,
+    "aarch64-semantics is enabled on sas-common but not on sas-simd: a crate that \
+     forwards `sas-common/aarch64-semantics` must also forward `sas-simd/aarch64-semantics` \
+     (or `sas-dsp-core/aarch64-semantics`) when sas-simd is in its dependency graph"
+);
+
 /// Milestone in `migration/PLAN.md` that ports this crate.
 pub const MILESTONE: &str = "M1";
 
