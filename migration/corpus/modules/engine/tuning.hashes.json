@@ -187,6 +187,14 @@
         "scl_reference_frequency:roundtrip_note_percent": "e93321669ca39b82",
         "scl_reference_frequency:scale": "9c6d141b1c9b3656",
         "scl_reference_frequency:state": "2fd7e8a0855f3f69",
+        "scl_reference_frequency_raw:artifact/name.txt": "bc6f357c806d7fbe",
+        "scl_reference_frequency_raw:converted": "c3fb09bace762004",
+        "scl_reference_frequency_raw:converted_note_percent": "e93321669ca39b82",
+        "scl_reference_frequency_raw:reference_midi_note": "3153fba086a1b1c2",
+        "scl_reference_frequency_raw:roundtrip": "c3fb09bace762004",
+        "scl_reference_frequency_raw:roundtrip_note_percent": "e93321669ca39b82",
+        "scl_reference_frequency_raw:scale": "9c6d141b1c9b3656",
+        "scl_reference_frequency_raw:state": "2fd7e8a0855f3f69",
         "scl_reference_ratio:artifact/name.txt": "4734299849d66784",
         "scl_reference_ratio:converted": "7ed336b1ad89edc5",
         "scl_reference_ratio:converted_note_percent": "2080216a83bae0cc",
@@ -232,7 +240,15 @@
         "tun_then_kbm:reference_midi_note": "27e61a9ecee74cb9",
         "tun_then_kbm:roundtrip_note_percent": "acb4e09563a973ba",
         "tun_then_kbm:scale": "65f34435c7d42acf",
-        "tun_then_kbm:state": "2fbcb8a085482621"
+        "tun_then_kbm:state": "2fbcb8a085482621",
+        "tun_then_kbm_raw:artifact/name.txt": "050148574a84a681",
+        "tun_then_kbm_raw:converted": "97d4b1fb2131f725",
+        "tun_then_kbm_raw:converted_note_percent": "acb4e09563a973ba",
+        "tun_then_kbm_raw:reference_midi_note": "27e61a9ecee74cb9",
+        "tun_then_kbm_raw:roundtrip": "97d4b1fb2131f725",
+        "tun_then_kbm_raw:roundtrip_note_percent": "acb4e09563a973ba",
+        "tun_then_kbm_raw:scale": "65f34435c7d42acf",
+        "tun_then_kbm_raw:state": "2fbcb8a085482621"
       },
       "identity": {
         "arch": "aarch64",
@@ -270,6 +286,35 @@
         "glibc": "2.39",
         "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
         "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    },
+    {
+      "hashes": {
+        "scl_reference_frequency_raw:artifact/name.txt": "bc6f357c806d7fbe",
+        "scl_reference_frequency_raw:converted": "1d8ef9415679bcd7",
+        "scl_reference_frequency_raw:converted_note_percent": "cf297c5cc806ec90",
+        "scl_reference_frequency_raw:reference_midi_note": "315446a086a23133",
+        "scl_reference_frequency_raw:roundtrip": "1d8ef9415679bcd7",
+        "scl_reference_frequency_raw:roundtrip_note_percent": "cf297c5cc806ec90",
+        "scl_reference_frequency_raw:scale": "e06f7024be822283",
+        "scl_reference_frequency_raw:state": "2fd7e8a0855f3f69",
+        "tun_then_kbm_raw:artifact/name.txt": "050148574a84a681",
+        "tun_then_kbm_raw:converted": "4df47ace8db54180",
+        "tun_then_kbm_raw:converted_note_percent": "1c38efa16c6c1e52",
+        "tun_then_kbm_raw:reference_midi_note": "27e61a9ecee74cb9",
+        "tun_then_kbm_raw:roundtrip": "4df47ace8db54180",
+        "tun_then_kbm_raw:roundtrip_note_percent": "1c38efa16c6c1e52",
+        "tun_then_kbm_raw:scale": "4d2b8506bc800ec4",
+        "tun_then_kbm_raw:state": "2fbcb8a085482621"
+      },
+      "identity": {
+        "arch": "aarch64",
+        "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+        "fast_math": false,
+        "glibc": null,
+        "libm_variants": "Apple libm (macOS 15.7.9)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
         "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
       }
     }
