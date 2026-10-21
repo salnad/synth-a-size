@@ -1,0 +1,551 @@
+{
+  "description": "ReorderableEffectChain with all nine effects (FilterFxModule included), driven like SoundEngine: order, keytrack and controls set per block (reorderable_effect_chain.cpp ref-module). Cases that run the chorus or flanger at their default modulation depth are compared exactly against the no-fast-math build (\"reference\": \"nofastmath\", SAS-35, migration/decisions/nofastmath/effects/reorderable_effect_chain.md): the LFO drift of the fast-math reference moves their delay reads. interim_* cases keep order changes and enable toggles on the official reference with those two off.",
+  "module": "reorderable_effect_chain",
+  "cases": {
+    "all_on_default_order": {
+      "reference": "nofastmath",
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "chorus_on": 1.0,
+        "compressor_on": 1.0,
+        "delay_on": 1.0,
+        "distortion_on": 1.0,
+        "eq_on": 1.0,
+        "filter_fx_on": 1.0,
+        "flanger_on": 1.0,
+        "phaser_on": 1.0,
+        "reverb_on": 1.0
+      }
+    },
+    "all_on_reversed_order": {
+      "reference": "nofastmath",
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "order": 362879.0,
+        "chorus_on": 1.0,
+        "compressor_on": 1.0,
+        "delay_on": 1.0,
+        "distortion_on": 1.0,
+        "eq_on": 1.0,
+        "filter_fx_on": 1.0,
+        "flanger_on": 1.0,
+        "phaser_on": 1.0,
+        "reverb_on": 1.0
+      }
+    },
+    "all_on_custom_order": {
+      "reference": "nofastmath",
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 1
+        },
+        "order": 306935.0,
+        "chorus_on": 1.0,
+        "compressor_on": 1.0,
+        "delay_on": 1.0,
+        "distortion_on": 1.0,
+        "eq_on": 1.0,
+        "filter_fx_on": 1.0,
+        "flanger_on": 1.0,
+        "phaser_on": 1.0,
+        "reverb_on": 1.0
+      }
+    },
+    "order_sweep_all_on": {
+      "reference": "nofastmath",
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 2
+        },
+        "order": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 362879.0
+        },
+        "chorus_on": 1.0,
+        "compressor_on": 1.0,
+        "delay_on": 1.0,
+        "distortion_on": 1.0,
+        "eq_on": 1.0,
+        "filter_fx_on": 1.0,
+        "flanger_on": 1.0,
+        "phaser_on": 1.0,
+        "reverb_on": 1.0
+      }
+    },
+    "order_toggle_all_on": {
+      "reference": "nofastmath",
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "order": {
+          "signal": "square",
+          "freq_hz": 2.0,
+          "amp": 181439.5,
+          "offset": 181439.5
+        },
+        "chorus_on": 1.0,
+        "compressor_on": 1.0,
+        "delay_on": 1.0,
+        "distortion_on": 1.0,
+        "eq_on": 1.0,
+        "filter_fx_on": 1.0,
+        "flanger_on": 1.0,
+        "phaser_on": 1.0,
+        "reverb_on": 1.0
+      }
+    },
+    "enable_toggles": {
+      "reference": "nofastmath",
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 3
+        },
+        "chorus_on": {
+          "signal": "square",
+          "freq_hz": 0.5,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "compressor_on": {
+          "signal": "square",
+          "freq_hz": 1.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "delay_on": {
+          "signal": "square",
+          "freq_hz": 1.5,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "distortion_on": {
+          "signal": "square",
+          "freq_hz": 2.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "eq_on": {
+          "signal": "square",
+          "freq_hz": 2.5,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "filter_fx_on": {
+          "signal": "square",
+          "freq_hz": 3.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "flanger_on": {
+          "signal": "square",
+          "freq_hz": 3.5,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "phaser_on": {
+          "signal": "square",
+          "freq_hz": 4.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "reverb_on": {
+          "signal": "square",
+          "freq_hz": 4.5,
+          "amp": 0.5,
+          "offset": 0.5
+        }
+      }
+    },
+    "only_chorus": {
+      "reference": "nofastmath",
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "chorus_on": 1.0
+      }
+    },
+    "only_compressor": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "compressor_on": 1.0
+      }
+    },
+    "only_delay": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "delay_on": 1.0
+      }
+    },
+    "only_distortion": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "distortion_on": 1.0
+      }
+    },
+    "only_eq": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "eq_on": 1.0
+      }
+    },
+    "only_filter_fx": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "filter_fx_on": 1.0
+      }
+    },
+    "only_flanger": {
+      "reference": "nofastmath",
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "flanger_on": 1.0
+      }
+    },
+    "only_phaser": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "phaser_on": 1.0
+      }
+    },
+    "only_reverb": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reverb_on": 1.0
+      }
+    },
+    "filter_fx_model_and_cutoff_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "filter_fx_on": 1.0,
+        "filter_fx_model": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 7.49
+        },
+        "filter_fx_cutoff": {
+          "signal": "ramp",
+          "from": 20.0,
+          "to": 130.0
+        },
+        "filter_fx_resonance": 0.7
+      }
+    },
+    "filter_fx_style_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 4
+        },
+        "filter_fx_on": 1.0,
+        "filter_fx_model": 2.0,
+        "filter_fx_style": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 9.49
+        },
+        "filter_fx_drive": 8.0,
+        "filter_fx_blend": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 2.0
+        }
+      }
+    },
+    "filter_fx_keytrack": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "filter_fx_on": 1.0,
+        "filter_fx_model": 3.0,
+        "keytrack": {
+          "signal": "ramp",
+          "from": -24.0,
+          "to": 24.0
+        },
+        "filter_fx_keytrack": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 1.0
+        },
+        "filter_fx_cutoff": 70.0,
+        "filter_fx_resonance": 0.6
+      }
+    },
+    "filter_fx_formant": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "filter_fx_on": 1.0,
+        "filter_fx_model": 5.0,
+        "filter_fx_formant_x": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "filter_fx_formant_y": {
+          "signal": "ramp",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "filter_fx_formant_transpose": {
+          "signal": "ramp",
+          "from": -12.0,
+          "to": 12.0
+        },
+        "filter_fx_formant_resonance": 0.6,
+        "filter_fx_formant_spread": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 1.0
+        }
+      }
+    },
+    "filter_fx_mix_and_blend_transpose": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "filter_fx_on": 1.0,
+        "filter_fx_model": 6.0,
+        "filter_fx_mix": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "filter_fx_blend_transpose": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 84.0
+        },
+        "filter_fx_blend": 1.0
+      }
+    },
+    "filter_fx_enable_toggle": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "filter_fx_on": {
+          "signal": "square",
+          "freq_hz": 4.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "filter_fx_model": 7.0,
+        "filter_fx_cutoff": 90.0
+      }
+    },
+    "all_on_oversampled_2x": {
+      "reference": "nofastmath",
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "chorus_on": 1.0,
+        "compressor_on": 1.0,
+        "delay_on": 1.0,
+        "distortion_on": 1.0,
+        "eq_on": 1.0,
+        "filter_fx_on": 1.0,
+        "flanger_on": 1.0,
+        "phaser_on": 1.0,
+        "reverb_on": 1.0
+      }
+    },
+    "all_on_96k": {
+      "reference": "nofastmath",
+      "sample_rate": 96000,
+      "block_size": 128,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "chorus_on": 1.0,
+        "compressor_on": 1.0,
+        "delay_on": 1.0,
+        "distortion_on": 1.0,
+        "eq_on": 1.0,
+        "filter_fx_on": 1.0,
+        "flanger_on": 1.0,
+        "phaser_on": 1.0,
+        "reverb_on": 1.0
+      }
+    },
+    "interim_seven_on_order_toggle": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "order": {
+          "signal": "square",
+          "freq_hz": 4.0,
+          "amp": 181439.5,
+          "offset": 181439.5
+        },
+        "compressor_on": 1.0,
+        "delay_on": 1.0,
+        "distortion_on": 1.0,
+        "eq_on": 1.0,
+        "filter_fx_on": 1.0,
+        "phaser_on": 1.0,
+        "reverb_on": 1.0
+      }
+    },
+    "interim_seven_enable_toggles": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "compressor_on": {
+          "signal": "square",
+          "freq_hz": 1.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "delay_on": {
+          "signal": "square",
+          "freq_hz": 1.5,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "distortion_on": {
+          "signal": "square",
+          "freq_hz": 2.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "eq_on": {
+          "signal": "square",
+          "freq_hz": 2.5,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "filter_fx_on": {
+          "signal": "square",
+          "freq_hz": 3.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "phaser_on": {
+          "signal": "square",
+          "freq_hz": 3.5,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "reverb_on": {
+          "signal": "square",
+          "freq_hz": 4.0,
+          "amp": 0.5,
+          "offset": 0.5
+        }
+      }
+    }
+  }
+}

@@ -4,7 +4,8 @@
 //! `vital/src/common/synth_parameters.cpp` (min, max, default, post offset,
 //! scale), installed as the parameter lookup that effect modules read when
 //! they create their controls. The registry itself is `sas-preset` (M2); this
-//! table covers only the names the effect captures use.
+//! table covers the names the single-effect captures use, and other names fall
+//! back to the registry.
 
 use std::sync::Once;
 
@@ -106,15 +107,41 @@ pub fn rows() -> &'static [(&'static str, f32, f32, f32, f32, ValueScale)] {
     PARAMETERS
 }
 
+/// `sas-preset`'s registry entry for `name`, for the parameters this table
+/// does not list (the effect chain's `<effect>_on` switches and the
+/// `filter_fx_*` group).
+fn registry_details(name: &str) -> ParameterDetails {
+    use sas_preset::registry::{self, ValueScale as PresetScale};
+    let info = registry::lookup(name).unwrap_or_else(|| {
+        panic!("parameter {name} is not in tests/common/params.rs or the registry")
+    });
+    ParameterDetails {
+        min: info.min,
+        max: info.max,
+        default_value: info.default_value,
+        post_offset: info.post_offset,
+        value_scale: match info.value_scale {
+            PresetScale::Indexed => ValueScale::Indexed,
+            PresetScale::Linear => ValueScale::Linear,
+            PresetScale::Quadratic => ValueScale::Quadratic,
+            PresetScale::Cubic => ValueScale::Cubic,
+            PresetScale::Quartic => ValueScale::Quartic,
+            PresetScale::SquareRoot => ValueScale::SquareRoot,
+            PresetScale::Exponential => ValueScale::Exponential,
+        },
+    }
+}
+
 /// Installs the lookup (once per test binary).
 pub fn install() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
         set_parameter_lookup(|name| {
-            let &(_, min, max, default_value, post_offset, value_scale) = PARAMETERS
-                .iter()
-                .find(|entry| entry.0 == name)
-                .unwrap_or_else(|| panic!("parameter {name} is not in tests/common/params.rs"));
+            let Some(&(_, min, max, default_value, post_offset, value_scale)) =
+                PARAMETERS.iter().find(|entry| entry.0 == name)
+            else {
+                return registry_details(name);
+            };
             ParameterDetails {
                 min,
                 max,

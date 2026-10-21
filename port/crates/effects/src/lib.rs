@@ -28,9 +28,11 @@ pub mod delay_module;
 pub mod distortion;
 pub mod distortion_module;
 pub mod equalizer_module;
+pub mod filter_fx_module;
 pub mod flanger_module;
 pub mod phaser;
 pub mod phaser_module;
+pub mod reorderable_effect_chain;
 pub mod reverb;
 pub mod reverb_module;
 
@@ -42,9 +44,11 @@ pub use delay_module::DelayModule;
 pub use distortion::{Distortion, DistortionType};
 pub use distortion_module::DistortionModule;
 pub use equalizer_module::EqualizerModule;
+pub use filter_fx_module::FilterFxModule;
 pub use flanger_module::FlangerModule;
 pub use phaser::Phaser;
 pub use phaser_module::PhaserModule;
+pub use reorderable_effect_chain::{Effect, ReorderableEffectChain, EFFECT_ORDER, NUM_EFFECTS};
 pub use reverb::Reverb;
 pub use reverb_module::ReverbModule;
 
@@ -79,6 +83,7 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/src/synthesis/modules/chorus_module.cpp",
     "vital/src/synthesis/modules/flanger_module.h",
     "vital/src/synthesis/modules/flanger_module.cpp",
+    "vital/src/synthesis/modules/reorderable_effect_chain.h",
     "vital/src/synthesis/modules/reorderable_effect_chain.cpp",
     "vital/src/synthesis/modules/reverb_module.cpp",
 ];
