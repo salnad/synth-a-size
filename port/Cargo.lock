@@ -539,7 +539,11 @@ dependencies = [
 name = "sas-modulation"
 version = "0.0.1"
 dependencies = [
+ "sas-common",
  "sas-dsp-core",
+ "sas-parity",
+ "sas-simd",
+ "serde_json",
 ]
 
 [[package]]

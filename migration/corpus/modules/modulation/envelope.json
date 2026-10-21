@@ -1,5 +1,5 @@
 {
-  "description": "DAHDSR envelope.",
+  "description": "DAHDSR envelope (vital::Envelope). Times are seconds at the processor input (upstream ranges: delay/hold 0..4 s, attack/decay/release 0..32 s, powers -20..20, sustain 0..1).",
   "module": "envelope",
   "cases": {
     "adsr": {
@@ -27,6 +27,271 @@
       "tolerances": {
         "max_abs_error": 1e-05,
         "residual_db": -100.0
+      }
+    },
+    "adsr_control_rate": {
+      "params": { "control_rate": true },
+      "num_samples": 66150,
+      "inputs": {
+        "attack": 0.3,
+        "decay": 0.6,
+        "sustain": 0.5,
+        "release": 0.6,
+        "trigger": { "trigger": [ { "sample": 441, "value": "voice_on" }, { "sample": 44100, "value": "voice_off" } ] }
+      }
+    },
+    "dahdsr": {
+      "num_samples": 44100,
+      "inputs": {
+        "delay": 0.1,
+        "attack": 0.05,
+        "hold": 0.2,
+        "decay": 0.3,
+        "sustain": 0.4,
+        "release": 0.25,
+        "trigger": { "trigger": [ { "sample": 100, "value": "voice_on" }, { "sample": 30000, "value": "voice_off" } ] }
+      }
+    },
+    "dahdsr_control_rate": {
+      "params": { "control_rate": true },
+      "num_samples": 44100,
+      "inputs": {
+        "delay": 0.1,
+        "attack": 0.05,
+        "hold": 0.2,
+        "decay": 0.3,
+        "sustain": 0.4,
+        "release": 0.25,
+        "trigger": { "trigger": [ { "sample": 100, "value": "voice_on" }, { "sample": 30000, "value": "voice_off" } ] }
+      }
+    },
+    "max_powers_positive": {
+      "num_samples": 33075,
+      "inputs": {
+        "attack": 0.2,
+        "attack_power": 20.0,
+        "decay": 0.2,
+        "decay_power": 20.0,
+        "sustain": 0.25,
+        "release": 0.2,
+        "release_power": 20.0,
+        "trigger": { "trigger": [ { "sample": 0, "value": "voice_on" }, { "sample": 22050, "value": "voice_off" } ] }
+      }
+    },
+    "max_powers_negative": {
+      "num_samples": 33075,
+      "inputs": {
+        "attack": 0.2,
+        "attack_power": -20.0,
+        "decay": 0.2,
+        "decay_power": -20.0,
+        "sustain": 0.25,
+        "release": 0.2,
+        "release_power": -20.0,
+        "trigger": { "trigger": [ { "sample": 0, "value": "voice_on" }, { "sample": 22050, "value": "voice_off" } ] }
+      }
+    },
+    "max_powers_control_rate": {
+      "params": { "control_rate": true },
+      "num_samples": 33075,
+      "inputs": {
+        "attack": 0.2,
+        "attack_power": -20.0,
+        "decay": 0.2,
+        "decay_power": 20.0,
+        "sustain": 0.25,
+        "release": 0.2,
+        "release_power": -20.0,
+        "trigger": { "trigger": [ { "sample": 0, "value": "voice_on" }, { "sample": 22050, "value": "voice_off" } ] }
+      }
+    },
+    "zero_times": {
+      "num_samples": 4096,
+      "inputs": {
+        "attack": 0.0,
+        "decay": 0.0,
+        "sustain": 0.6,
+        "release": 0.0,
+        "trigger": { "trigger": [ { "sample": 10, "value": "voice_on" }, { "sample": 1000, "value": "voice_off" }, { "sample": 2000, "value": "voice_on" }, { "sample": 3001, "value": "voice_off" } ] }
+      }
+    },
+    "zero_times_control_rate": {
+      "params": { "control_rate": true },
+      "num_samples": 4096,
+      "inputs": {
+        "attack": 0.0,
+        "decay": 0.0,
+        "sustain": 0.6,
+        "release": 0.0,
+        "trigger": { "trigger": [ { "sample": 10, "value": "voice_on" }, { "sample": 1000, "value": "voice_off" }, { "sample": 2000, "value": "voice_on" }, { "sample": 3001, "value": "voice_off" } ] }
+      }
+    },
+    "max_times": {
+      "num_samples": 88200,
+      "inputs": {
+        "delay": 4.0,
+        "attack": 32.0,
+        "hold": 4.0,
+        "decay": 32.0,
+        "sustain": 0.5,
+        "release": 32.0,
+        "trigger": { "trigger": [ { "sample": 0, "value": "voice_on", "voices": "0" }, { "sample": 5, "value": "voice_on", "voices": "1" }, { "sample": 70000, "value": "voice_off", "voices": "1" } ] }
+      }
+    },
+    "max_times_no_delay": {
+      "num_samples": 88200,
+      "inputs": {
+        "attack": 32.0,
+        "attack_power": 7.5,
+        "decay": 32.0,
+        "sustain": 0.5,
+        "release": 32.0,
+        "trigger": { "trigger": [ { "sample": 0, "value": "voice_on" }, { "sample": 44100, "value": "voice_off", "voices": "1" } ] }
+      }
+    },
+    "retrigger_and_kill": {
+      "num_samples": 44100,
+      "inputs": {
+        "attack": 0.05,
+        "attack_power": 3.0,
+        "decay": 0.1,
+        "decay_power": -6.0,
+        "sustain": 0.7,
+        "release": 0.4,
+        "release_power": -3.0,
+        "trigger": { "trigger": [
+          { "sample": 0, "value": "voice_on" },
+          { "sample": 6000, "value": "voice_off" },
+          { "sample": 9000, "value": "voice_on" },
+          { "sample": 9500, "value": "voice_on", "voices": "1" },
+          { "sample": 20000, "value": "voice_kill" },
+          { "sample": 24000, "value": "voice_on", "voices": "0" },
+          { "sample": 30000, "value": "voice_kill", "voices": "0" },
+          { "sample": 30001, "value": "voice_off", "voices": "1" }
+        ] }
+      }
+    },
+    "retrigger_and_kill_control_rate": {
+      "params": { "control_rate": true },
+      "num_samples": 44100,
+      "inputs": {
+        "attack": 0.05,
+        "attack_power": 3.0,
+        "decay": 0.1,
+        "decay_power": -6.0,
+        "sustain": 0.7,
+        "release": 0.4,
+        "release_power": -3.0,
+        "trigger": { "trigger": [
+          { "sample": 0, "value": "voice_on" },
+          { "sample": 6000, "value": "voice_off" },
+          { "sample": 9000, "value": "voice_on" },
+          { "sample": 9500, "value": "voice_on", "voices": "1" },
+          { "sample": 20000, "value": "voice_kill" },
+          { "sample": 24000, "value": "voice_on", "voices": "0" },
+          { "sample": 30000, "value": "voice_kill", "voices": "0" },
+          { "sample": 30001, "value": "voice_off", "voices": "1" }
+        ] }
+      }
+    },
+    "modulated_inputs": {
+      "num_samples": 44100,
+      "inputs": {
+        "delay": { "signal": "ramp", "from": 0.0, "to": 0.02, "rate": "control" },
+        "attack": { "signal": "sine", "freq_hz": 3.0, "amp": 0.04, "offset": 0.05 },
+        "attack_power": { "signal": "ramp", "from": -20.0, "to": 20.0 },
+        "hold": { "signal": "ramp", "from": 0.05, "to": 0.0 },
+        "decay": { "signal": "ramp", "from": 0.01, "to": 0.3 },
+        "decay_power": { "signal": "sine", "freq_hz": 2.0, "amp": 20.0 },
+        "sustain": { "signal": "sine", "freq_hz": 5.0, "amp": 0.5, "offset": 0.5 },
+        "release": { "signal": "ramp", "from": 0.3, "to": 0.01 },
+        "release_power": { "signal": "ramp", "from": 20.0, "to": -20.0 },
+        "trigger": { "trigger": [
+          { "sample": 0, "value": "voice_on" },
+          { "sample": 8000, "value": "voice_off", "voices": "0" },
+          { "sample": 12000, "value": "voice_on", "voices": "0" },
+          { "sample": 16000, "value": "voice_off" },
+          { "sample": 28000, "value": "voice_on" },
+          { "sample": 38000, "value": "voice_off" }
+        ] }
+      }
+    },
+    "modulated_inputs_control_rate": {
+      "params": { "control_rate": true },
+      "num_samples": 44100,
+      "inputs": {
+        "delay": { "signal": "ramp", "from": 0.0, "to": 0.02 },
+        "attack": { "signal": "sine", "freq_hz": 3.0, "amp": 0.04, "offset": 0.05 },
+        "attack_power": { "signal": "ramp", "from": -20.0, "to": 20.0 },
+        "hold": { "signal": "ramp", "from": 0.05, "to": 0.0 },
+        "decay": { "signal": "ramp", "from": 0.01, "to": 0.3 },
+        "decay_power": { "signal": "sine", "freq_hz": 2.0, "amp": 20.0 },
+        "sustain": { "signal": "sine", "freq_hz": 5.0, "amp": 0.5, "offset": 0.5 },
+        "release": { "signal": "ramp", "from": 0.3, "to": 0.01 },
+        "release_power": { "signal": "ramp", "from": 20.0, "to": -20.0 },
+        "trigger": { "trigger": [
+          { "sample": 0, "value": "voice_on" },
+          { "sample": 8000, "value": "voice_off", "voices": "0" },
+          { "sample": 12000, "value": "voice_on", "voices": "0" },
+          { "sample": 16000, "value": "voice_off" },
+          { "sample": 28000, "value": "voice_on" },
+          { "sample": 38000, "value": "voice_off" }
+        ] }
+      }
+    },
+    "block_128_48k": {
+      "sample_rate": 48000,
+      "block_size": 128,
+      "num_samples": 48000,
+      "inputs": {
+        "delay": 0.01,
+        "attack": 0.02,
+        "hold": 0.01,
+        "decay": 0.2,
+        "decay_power": -4.0,
+        "sustain": 0.3,
+        "release": 0.1,
+        "trigger": { "trigger": [ { "sample": 3, "value": "voice_on" }, { "sample": 127, "value": "voice_on", "voices": "1" }, { "sample": 24000, "value": "voice_off" } ] }
+      }
+    },
+    "block_37_96k": {
+      "sample_rate": 96000,
+      "block_size": 37,
+      "num_samples": 48000,
+      "inputs": {
+        "attack": 0.01,
+        "decay": 0.05,
+        "sustain": 0.5,
+        "release": 0.05,
+        "trigger": { "trigger": [ { "sample": 36, "value": "voice_on" }, { "sample": 37, "value": "voice_on", "voices": "1" }, { "sample": 20000, "value": "voice_off" }, { "sample": 20036, "value": "voice_on", "voices": "0" } ] }
+      }
+    },
+    "block_1_control_rate": {
+      "params": { "control_rate": true },
+      "block_size": 1,
+      "num_samples": 8000,
+      "inputs": {
+        "attack": 0.02,
+        "decay": 0.05,
+        "sustain": 0.5,
+        "release": 0.05,
+        "trigger": { "trigger": [ { "sample": 0, "value": "voice_on" }, { "sample": 5000, "value": "voice_off" } ] }
+      }
+    },
+    "oversample_2_192k": {
+      "sample_rate": 96000,
+      "oversample": 2,
+      "block_size": 256,
+      "num_samples": 96000,
+      "inputs": {
+        "delay": 0.005,
+        "attack": 0.03,
+        "attack_power": 2.0,
+        "hold": 0.005,
+        "decay": 0.1,
+        "sustain": 0.6,
+        "release": 0.08,
+        "trigger": { "trigger": [ { "sample": 255, "value": "voice_on" }, { "sample": 60000, "value": "voice_off" } ] }
       }
     }
   }
