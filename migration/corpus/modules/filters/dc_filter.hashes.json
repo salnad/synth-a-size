@@ -1,0 +1,24 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "impulse:audio": "911453d54705a04b",
+        "noise_offset_96k:audio": "dbbae772702d8c23",
+        "ramp_block_1:audio": "d036f36bae743b7b",
+        "retrigger_voices:audio": "878c7d3a5b2a8367",
+        "saw_offset:audio": "1a1cc80a0226c783",
+        "saw_oversample_2x:audio": "adc8d186a24b77eb",
+        "square_offset_48k:audio": "345d56033cf5b783"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}

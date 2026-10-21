@@ -1,0 +1,199 @@
+{
+  "description": "LinkwitzRileyFilter(cutoff) crossover, low and high bands (the multiband compressor uses 120 Hz and 2500 Hz).",
+  "module": "linkwitz_riley",
+  "params": {
+    "cutoff": 120.0
+  },
+  "cases": {
+    "noise_120hz": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 23,
+          "stereo": true
+        }
+      }
+    },
+    "impulse_120hz": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "num_samples": 8192,
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 10,
+          "amp": 1.0
+        }
+      }
+    },
+    "noise_2500hz": {
+      "params": {
+        "cutoff": 2500.0
+      },
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 75,
+          "stereo": true
+        }
+      }
+    },
+    "impulse_2500hz": {
+      "params": {
+        "cutoff": 2500.0
+      },
+      "num_samples": 8192,
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 10,
+          "amp": 1.0
+        }
+      }
+    },
+    "noise_10000hz": {
+      "params": {
+        "cutoff": 10000.0
+      },
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 9,
+          "stereo": true
+        }
+      }
+    },
+    "impulse_10000hz": {
+      "params": {
+        "cutoff": 10000.0
+      },
+      "num_samples": 8192,
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 10,
+          "amp": 1.0
+        }
+      }
+    },
+    "noise_20000hz": {
+      "params": {
+        "cutoff": 20000.0
+      },
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 18,
+          "stereo": true
+        }
+      }
+    },
+    "impulse_20000hz": {
+      "params": {
+        "cutoff": 20000.0
+      },
+      "num_samples": 8192,
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 10,
+          "amp": 1.0
+        }
+      }
+    },
+    "saw_120hz_48k_block_128": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 48000,
+      "block_size": 128,
+      "num_samples": 48000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 55.0,
+          "amp": 0.8,
+          "offset": 0.0
+        }
+      }
+    },
+    "saw_2500hz_96k": {
+      "params": {
+        "cutoff": 2500.0
+      },
+      "sample_rate": 96000,
+      "block_size": 128,
+      "num_samples": 48000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 440.0,
+          "amp": 0.8,
+          "offset": 0.0
+        }
+      }
+    },
+    "noise_2500hz_oversample_2x": {
+      "params": {
+        "cutoff": 2500.0
+      },
+      "sample_rate": 44100,
+      "oversample": 2,
+      "block_size": 256,
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 3,
+          "stereo": true
+        }
+      }
+    },
+    "noise_120hz_48k_block_1": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 48000,
+      "block_size": 1,
+      "num_samples": 9600,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 4,
+          "stereo": true
+        }
+      }
+    },
+    "saw_2500hz_192k_oversample_2x": {
+      "params": {
+        "cutoff": 2500.0
+      },
+      "sample_rate": 192000,
+      "oversample": 2,
+      "block_size": 256,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 55.0,
+          "amp": 0.8,
+          "offset": 0.0
+        }
+      }
+    }
+  }
+}

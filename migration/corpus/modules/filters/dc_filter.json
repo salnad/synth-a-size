@@ -1,0 +1,161 @@
+{
+  "description": "DcFilter (one-pole DC blocker), including upstream's reset (past_out_ loaded from past_in_).",
+  "module": "dc_filter",
+  "cases": {
+    "saw_offset": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5,
+          "offset": 0.3
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "square_offset_48k": {
+      "sample_rate": 48000,
+      "block_size": 128,
+      "num_samples": 48000,
+      "inputs": {
+        "audio": {
+          "signal": "square",
+          "freq_hz": 50.0,
+          "amp": 0.5,
+          "offset": -0.4
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "noise_offset_96k": {
+      "sample_rate": 96000,
+      "num_samples": 48000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "offset": 0.25,
+          "seed": 5,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "impulse": {
+      "num_samples": 8192,
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 3,
+          "amp": 1.0
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "retrigger_voices": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "value": [
+            0.5,
+            -0.25,
+            0.75,
+            0.1
+          ]
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            },
+            {
+              "sample": 4000,
+              "value": "voice_on",
+              "voices": "1"
+            },
+            {
+              "sample": 9001,
+              "value": "voice_on",
+              "voices": "0"
+            },
+            {
+              "sample": 15000,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "saw_oversample_2x": {
+      "sample_rate": 44100,
+      "oversample": 2,
+      "block_size": 256,
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 220.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "ramp_block_1": {
+      "block_size": 1,
+      "num_samples": 4000,
+      "inputs": {
+        "audio": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 1.0
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
