@@ -134,9 +134,7 @@ jobs:
       # in parked_arm64.json are skipped (and listed) here and in the hash
       # checks below; x86 keeps them live.
       - name: Tolerances are achievable on macOS arm64 (proxy must pass; macOS no-fast-math justification)
-        run: >
-          python3 migration/scripts/run_corpus.py compare build/platform/pinned build/platform/proxy
-          --justify-nofastmath --parked migration/corpus/parked_arm64.json
+        run: migration/scripts/justify_nofastmath_summary.sh build/platform/pinned build/platform/proxy
       - name: arm64 parity tests on the whole workspace (NEON path)
         if: ${{ !cancelled() }}
         env:

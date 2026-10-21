@@ -264,8 +264,12 @@ waiting for hosted macOS runners. There is no self-hosted Apple Silicon.
     PR commits it with `scripts/macos_hashes.sh <run-id>`. Nothing is
     pushed automatically;
   - runs the macOS no-fast-math justification (`compare --justify-nofastmath
-    --parked`) when the PR adds or edits a `macos` allowlist line, because
-    that run is the evidence for the declaration.
+    --parked`) whenever it builds the no-fast-math tree. That is always the
+    case when the PR adds or edits a `macos` allowlist line, because that run
+    is the evidence for the declaration. A corpus or reference change that
+    un-justifies an existing `macos` case is also caught on the PR. The
+    result goes to the step summary (`scripts/justify_nofastmath_summary.sh`)
+    so reviewers can cite it.
 - **Main (`reference-arm-main.yml`, the full suite):**
   - runs nightly, on manual dispatch, and on a push to main once 6 merges
     have landed since the last full run (`scripts/mac_full_suite_gate.py`);

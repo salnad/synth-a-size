@@ -17,8 +17,12 @@ waiting for hosted macOS runners. There is no self-hosted Apple Silicon.
   - It checks the macOS hashes. A changed output fails; a missing or stale
     hash is a warning (`run_corpus.py hashes --check --missing-ok`,
     `SAS_PARITY_MISSING_HASHES=warn`).
-  - It runs the macOS no-fast-math justification when the PR adds or edits a
-    `macos` allowlist line.
+  - It runs the macOS no-fast-math justification whenever it builds the
+    no-fast-math tree. That is always the case when the PR adds or edits a
+    `macos` allowlist line, so a change that un-justifies a case is caught on
+    the PR. The result goes to the step summary for reviewers to cite
+    (Parity Reviewer's review items).
+    (`migration/scripts/justify_nofastmath_summary.sh`).
 - **Auto-written macOS hashes:** the PR job writes the missing entries
   (`hashes --write --only-new`: new keys only, never overwriting or
   pruning, so drift is not masked) as the `macos-hashes` patch artifact.

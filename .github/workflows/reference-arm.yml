@@ -12,8 +12,9 @@ name: Reference ARM (PR, advisory)
 #   (reference-arm-main.yml);
 # - writes the missing macOS hash entries, new keys only, as the
 #   `macos-hashes` patch artifact (apply: migration/scripts/macos_hashes.sh);
-# - runs the macOS no-fast-math justification when the PR adds or edits a
-#   `macos` allowlist line.
+# - runs the macOS no-fast-math justification whenever the no-fast-math
+#   tree is built (always when the PR adds or edits a `macos` allowlist line),
+#   with its result in the step summary.
 # The full suite (build variants, macOS 14 drift, cross-platform report) runs
 # on main: reference-arm-main.yml.
 
@@ -71,13 +72,14 @@ jobs:
           REF_BUILD_DIR=build/variant-proxy CXX=clang++ migration/scripts/build_reference.sh -DREF_FAST_MATH=OFF
           python3 migration/scripts/run_corpus.py render --out build/platform/proxy \
             --ref-render build/variant-proxy/ref-render --ref-module build/variant-proxy/ref-module
-      # Evidence for a `macos` allowlist declaration (SAS-35): the official
-      # macOS reference must fail its normal limits against no-fast-math.
-      - name: macOS no-fast-math justification (the PR adds or edits a macos allowlist line)
-        if: steps.scope.outputs.justify == 'true'
-        run: >
-          python3 migration/scripts/run_corpus.py compare build/platform/pinned build/platform/proxy
-          --justify-nofastmath --parked migration/corpus/parked_arm64.json
+      # Evidence for `macos` allowlist declarations (SAS-35): each declared
+      # case's official macOS reference must fail its normal limits against
+      # no-fast-math. Runs whenever the no-fast-math tree is built, so a
+      # corpus or reference change that un-justifies a case fails here too.
+      # The result goes to the step summary for reviewers to cite.
+      - name: macOS no-fast-math justification
+        if: steps.scope.outputs.proxy == 'true'
+        run: migration/scripts/justify_nofastmath_summary.sh build/platform/pinned build/platform/proxy
       - name: arm64 parity tests (${{ steps.scope.outputs.cargo_args || 'none' }})
         if: ${{ !cancelled() && steps.scope.outputs.cargo_args != '' }}
         env:
