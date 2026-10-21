@@ -8,6 +8,12 @@ repository.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[features]
+# Upstream's aarch64 semantics on every target (migration/decisions/
+# reference-arm.md). Forwards to sas-simd, which forwards to sas-common, so
+# all three crates use the same column.
+aarch64-semantics = ["sas-simd/aarch64-semantics"]
+
 [dependencies]
 sas-simd.workspace = true
 

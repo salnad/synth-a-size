@@ -1525,3 +1525,33 @@ wording) and enforced identically by `run_corpus.py` and sas-parity.
     and which names the id. This entry approves the 5 initial ids.
   - Each fix has tests in both suites (the guard is Python-only, since it
     runs in CI).
+
+---
+
+## 2026-10-21: `aarch64-semantics` forwarding: dsp-core feature, compile-time guard
+
+Graph Reviewer's follow-up on #22. sas-simd's feature forwards to
+sas-common, but not the other way round. A crate that forwards only
+`sas-common/aarch64-semantics` (today `sas-wavetable`) could therefore put
+sas-common on the NEON column while sas-simd stays on SSE2 in any build that
+also contains sas-simd. The mono overloads (sas-common's) and the poly ones
+would then use different columns.
+
+**Changed**
+
+- `sas-dsp-core` gains `aarch64-semantics = ["sas-simd/aarch64-semantics"]`,
+  which reaches sas-common through sas-simd.
+- `sas-simd` refuses to compile when its column differs from sas-common's.
+  A const assertion on `AARCH64_SEMANTICS == sas_common::AARCH64_SEMANTICS`
+  names the fix in its message. Real aarch64 builds are unaffected, because
+  both crates report true there.
+- CI's aarch64-semantics job now runs dsp-core's clippy, lib and graph
+  tests under the feature. It also checks that
+  `cargo check -p sas-simd --features sas-common/aarch64-semantics` fails
+  with the guard's message.
+
+**Rule for crates with the feature:** forward `aarch64-semantics` to
+`sas-dsp-core/aarch64-semantics`, or to `sas-simd/aarch64-semantics` if you
+don't depend on dsp-core. Also forward to every other direct dependency
+that has the feature (e.g. `sas-wavetable`). Never forward to `sas-common`
+alone if sas-simd is anywhere in your dependency graph.
