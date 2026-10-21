@@ -15,7 +15,7 @@
 //!
 //! The upstream per-ISA sites (`migration/decisions/reference-arm.md`) are
 //! reached only through `sas-simd`; the `aarch64-semantics` feature forwards
-//! to it.
+//! to every direct dependency that has it.
 
 pub use sas_dsp_core;
 pub use sas_effects;
