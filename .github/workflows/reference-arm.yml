@@ -131,6 +131,7 @@ jobs:
             migration/reference/build/ref-module
             migration/reference/build/ref-fp-probe
             migration/reference/build/ref-rng-probe
+            migration/reference/build/ref-complex-probe
           if-no-files-found: error
           retention-days: 14
 

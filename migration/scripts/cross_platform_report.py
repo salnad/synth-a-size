@@ -72,7 +72,7 @@ def main():
     parser.add_argument("--gate", action="append", default=[], help="label of a pair that must pass")
     parser.add_argument("--audio-diff")
     parser.add_argument("--probe-pair", action="append", default=[],
-                        help="LABEL=DIAG_DIR_A:DIAG_DIR_B; compares fp_probe.json and rng_probe.json")
+                        help="LABEL=DIAG_DIR_A:DIAG_DIR_B; compares fp_probe.json, rng_probe.json and complex_probe.json")
     args = parser.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
@@ -121,7 +121,7 @@ def main():
         dir_a, dir_b = dirs.split(":", 1)
         lines.append("### Probes: %s\n" % label)
         lines.append("| Probe file | Keys equal | Keys different | Different keys |\n|---|---|---|---|")
-        for probe in ("fp_probe.json", "rng_probe.json"):
+        for probe in ("fp_probe.json", "rng_probe.json", "complex_probe.json"):
             path_a, path_b = os.path.join(dir_a, probe), os.path.join(dir_b, probe)
             if not (os.path.exists(path_a) and os.path.exists(path_b)):
                 lines.append("| %s | missing | | |" % probe)

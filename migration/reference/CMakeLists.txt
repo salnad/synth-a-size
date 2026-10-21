@@ -232,6 +232,18 @@ target_link_libraries(ref-module PRIVATE harness_common)
 add_executable(ref-rng-probe src/rng_probe.cpp)
 target_link_libraries(ref-rng-probe PRIVATE harness_common)
 
+# Diagnostic: std::complex<float> division (A10). complex_ops_fast.cpp gets the
+# engine flags; the strict files are the same on every machine.
+add_executable(ref-complex-probe
+  src/complex_probe/complex_probe.cpp
+  src/complex_probe/complex_algos.cpp
+  src/complex_probe/complex_ops_fast.cpp
+  src/complex_probe/complex_ops_strict.cpp)
+set_source_files_properties(src/complex_probe/complex_algos.cpp src/complex_probe/complex_ops_strict.cpp
+  PROPERTIES COMPILE_OPTIONS "-fno-fast-math;-ffp-contract=off")
+target_include_directories(ref-complex-probe PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(ref-complex-probe PRIVATE harness_common)
+
 # Diagnostic: hashes libm and rcpps/rsqrtps results so two machines can be
 # compared directly (see migration/decisions/reference-determinism.md).
 add_executable(ref-fp-probe src/fp_probe.cpp)

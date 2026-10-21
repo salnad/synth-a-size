@@ -4,8 +4,9 @@
 # x86 libm variants) or the macOS version (which identifies Apple's libm),
 # whether libm has CPU-dispatched (IFUNC) entry points, library and compiler
 # versions, and hashes of the reference binaries. Also runs ref-fp-probe
-# (libm, approximate-instruction, contraction and toInt result hashes) and
-# ref-rng-probe (upstream RandomGenerator stream hashes).
+# (libm, approximate-instruction, contraction and toInt result hashes),
+# ref-rng-probe (upstream RandomGenerator stream hashes) and ref-complex-probe
+# (std::complex<float> division).
 # Linux x86_64, Linux aarch64 and macOS. Writes into OUT_DIR (default build/diag).
 set -euo pipefail
 
@@ -73,7 +74,7 @@ text_section_hash() {
   echo "## compiler"
   if [[ "$os" == "Darwin" ]]; then "${CXX:-c++}" --version | head -1; else "${CXX:-g++}" --version | head -1; fi
   echo "## binaries"
-  for bin in ref-render ref-module ref-fp-probe ref-rng-probe; do
+  for bin in ref-render ref-module ref-fp-probe ref-rng-probe ref-complex-probe; do
     if [[ -x "$build/$bin" ]]; then
       echo "$bin sha256 $(sha256 < "$build/$bin")"
       echo "$bin text sha256 $(text_section_hash "$build/$bin")"
@@ -83,6 +84,10 @@ text_section_hash() {
 
 if [[ -x "$build/ref-rng-probe" ]]; then
   "$build/ref-rng-probe" > "$out/rng_probe.json"
+fi
+
+if [[ -x "$build/ref-complex-probe" ]]; then
+  "$build/ref-complex-probe" > "$out/complex_probe.json"
 fi
 
 if [[ -x "$build/ref-fp-probe" ]]; then
