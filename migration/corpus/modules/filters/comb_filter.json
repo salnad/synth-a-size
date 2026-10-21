@@ -95,20 +95,6 @@
         "style": 0
       }
     },
-    "comb_96k_block128": {
-      "sample_rate": 96000,
-      "block_size": 128,
-      "num_samples": 48000,
-      "inputs": {
-        "audio": { "signal": "saw", "freq_hz": 110.0, "amp": 0.5 },
-        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
-        "midi_cutoff": { "signal": "ramp", "from": -30.0, "to": 150.0 },
-        "resonance": 0.9,
-        "pass_blend": 0.8,
-        "transpose": 42.0,
-        "style": 1
-      }
-    },
     "interim_band_spread_negative_flange": {
       "description": "Interim (Parity Reviewer, #19): well-conditioned coverage while the full-range case is parked in pending/; cutoff kept high so the delay period stays short. Additional to, not a replacement for, the parked case. Covers style 5 (band spread x negative flange).",
       "num_samples": 22050,

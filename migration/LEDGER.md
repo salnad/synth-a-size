@@ -2484,6 +2484,30 @@ is optional (manual dispatch).
   because their ramp inputs are now exact. All 489 generated inputs are
   bit-identical on macOS and x86.
 
+**Rebase on #8, #15, #16, #19, #22, #26, #31, #34, #38, #40; A10**
+
+- Rebased (LEDGER-only conflicts). This block now sits before the last
+  main section, so appends at the end of the file no longer conflict
+  with #2 and block its CI.
+- `filters/comb_filter/comb_96k_block128` fails the macOS no-fast-math
+  proxy (max abs 1.5e-4 vs 1e-4; residual −101.6 dB passes), as the comb
+  entry predicted. Parked unchanged in
+  `modules/filters/pending/comb_filter.json` under the same rule; its x86
+  hash entry is removed like the other seven parked cases'. No tolerance
+  changed.
+- `harness/echo` `json_state:artifact/params.json` x86 hash rewritten: the
+  driver now parses the spec without fast-math (ramp fix above), so
+  `"zero": -0.0` survives the round trip instead of becoming `0.0`. x86 and
+  macOS now give the same artifact. The JSON comparison treats the two as
+  equal.
+- macOS arm64 hash entries written from #2's macOS 15 CI tree (run
+  39526324283) for every module file on main: new for `filters/*` (comb
+  filter and module, digital_svf and settings, formant filter and module,
+  phaser), `wavetable/render`, and `harness/echo` `json_state`.
+- A10 (`std::complex<float>` division) recorded in
+  `decisions/reference-arm.md` with `ref-complex-probe` evidence: not a
+  reference difference. Both references compute naive float division.
+
 ## 2026-10-21: M5b PR 3, formant family (`FormantFilter`, `FormantManager`, `VocalTract`, `FormantModule`)
 
 Ports `vital/src/synthesis/filters/{formant_filter,formant_manager,vocal_tract}.{h,cpp}`

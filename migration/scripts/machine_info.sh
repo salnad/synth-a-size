@@ -108,6 +108,11 @@ if [[ "$os" == "Darwin" ]]; then
       objdump -d --no-show-raw-insn --disassemble-symbols="$render_symbol" "$build/ref-module" > "$out/phase_modifier_render.s"
       echo "## render: $(grep -cE '\sf(n)?m(add|sub|la|ls)\s' "$out/phase_modifier_render.s") fused, $(grep -cE '\sfdiv\s' "$out/phase_modifier_render.s") fdiv, $(grep -cE '\sbl\s' "$out/phase_modifier_render.s") calls: $(grep -oE '\sbl\s.*' "$out/phase_modifier_render.s" | sort | uniq -c | tr '\n' ';')"
     fi
+    # The probe's direct __divsc3 call links compiler-rt's builtin statically.
+    if [[ -x "$build/ref-complex-probe" ]]; then
+      objdump -d --no-show-raw-insn --disassemble-symbols=___divsc3 "$build/ref-complex-probe" > "$out/divsc3.s"
+      echo "## ___divsc3 defined in ref-complex-probe: $(nm "$build/ref-complex-probe" | grep -c ' T ___divsc3'), $(grep -cE '\sf(n)?m(add|sub)\s' "$out/divsc3.s") fused, $(grep -cE '\sfdiv\s' "$out/divsc3.s") fdiv"
+    fi
   } >> "$out/libcxx_complex_division.txt" 2>&1
 fi
 
