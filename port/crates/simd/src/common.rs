@@ -9,7 +9,7 @@
 /// `mono_float`.
 pub type MonoFloat = f32;
 
-pub const PI: f32 = 3.141_592_653_589_793_238_462_643_383_279_5_f32;
+pub use sas_common::scalar::PI;
 pub const SQRT2: f32 = 1.414_213_562_373_095_048_801_688_724_209_698_f32;
 pub const EPSILON: f32 = 1e-16;
 /// Largest engine sub-block, in samples at the base rate.

@@ -6,27 +6,29 @@
 //! (Copyright 2013-2019 Matt Tytel, GPL-3.0-or-later).
 //!
 //! Upstream evaluates these in lane 0 of a `poly_float`, so the operation
-//! order here follows the SSE2 code (`mulAdd(a, b, c)` is `a + b * c`, no
-//! FMA). The SIMD crate's lane-wise versions must agree with these bit for
-//! bit.
+//! order here follows the SIMD code (`mulAdd(a, b, c)` is `a + b * c`, no
+//! FMA). This is the only copy: `sas-simd` re-exports these as its mono
+//! overloads, and its `tests/common_scalar.rs` checks them bit for bit
+//! against every lane of its poly versions.
 
 /// `vital::kPi`.
 pub const PI: f32 = std::f32::consts::PI;
 
 // `utils::toInt`/`truncToInt` are ISA-dependent upstream (A1 in
-// `migration/decisions/reference-arm.md`): `_mm_cvtps_epi32` rounds to
-// nearest even and gives `i32::MIN` for NaN, `vcvtq_s32_f32` truncates and
-// gives 0. These two helpers implement only the SSE2 column, so they stay
-// crate-private. Their callers (`poly_floor`, `round_to_int`, and through
-// them `exp2`) give the same result on both ISAs for non-NaN |value| < 2^31:
-// `poly_floor` corrects the conversion by comparing it with the input, which
-// yields floor() whether the conversion rounded or truncated, and
-// `round_to_int` converts that floor, which is already an integer.
+// `migration/decisions/reference-arm.md`), and both columns are ported:
+// `_mm_cvtps_epi32` rounds to nearest even and gives `i32::MIN` for NaN and
+// out-of-range values; `vcvtq_s32_f32` truncates, saturates and gives 0 for
+// NaN. [`to_int`] picks the column from [`crate::AARCH64_SEMANTICS`]. For
+// non-NaN |value| < 2^31 the public callers (`poly_floor`, `round_to_int`,
+// and through them `exp2`) give the same result on both columns:
+// `poly_floor` compares the conversion with the input, which yields floor()
+// whether the conversion rounded or truncated.
 
-/// `_mm_cvtps_epi32`: round to nearest even; NaN and out-of-range values give
-/// `i32::MIN` (the "integer indefinite" value).
+/// `_mm_cvtps_epi32` (SSE2 column of `utils::toInt`): round to nearest even;
+/// NaN and out-of-range values give `i32::MIN` (the "integer indefinite"
+/// value).
 #[inline]
-pub(crate) fn round_to_i32_sse(value: f32) -> i32 {
+pub fn to_int_sse2(value: f32) -> i32 {
     if value.is_nan() || value >= 2_147_483_648.0 || value < -2_147_483_648.0 {
         i32::MIN
     } else {
@@ -34,14 +36,33 @@ pub(crate) fn round_to_i32_sse(value: f32) -> i32 {
     }
 }
 
-/// `utils::trunc` for one lane, SSE2 column: upstream's `truncToInt` is
-/// `_mm_cvtps_epi32` there, so this rounds to nearest even despite the name.
+/// `vcvtq_s32_f32` (NEON column of `utils::toInt`): truncate toward zero,
+/// saturate out-of-range values, NaN gives 0. This is Rust's `as i32`.
 #[inline]
-pub(crate) fn poly_trunc(value: f32) -> f32 {
-    round_to_i32_sse(value) as f32
+pub fn to_int_neon(value: f32) -> i32 {
+    value as i32
 }
 
-/// `utils::floor` for one lane. ISA-independent for non-NaN |value| < 2^31.
+/// `utils::toInt` for one lane, on this build's column (A1).
+#[inline]
+pub fn to_int(value: f32) -> i32 {
+    if crate::AARCH64_SEMANTICS {
+        to_int_neon(value)
+    } else {
+        to_int_sse2(value)
+    }
+}
+
+/// `utils::trunc` for one lane. Upstream's `truncToInt` is `toInt`'s
+/// conversion, so on the SSE2 column this rounds to nearest even despite the
+/// name.
+#[inline]
+pub fn poly_trunc(value: f32) -> f32 {
+    to_int(value) as f32
+}
+
+/// `utils::floor` for one lane. Both columns agree for non-NaN
+/// |value| < 2^31.
 #[inline]
 pub fn poly_floor(value: f32) -> f32 {
     let truncated = poly_trunc(value);
@@ -52,11 +73,11 @@ pub fn poly_floor(value: f32) -> f32 {
     }
 }
 
-/// `utils::roundToInt` for one lane: `floor(value + 0.5)`. ISA-independent
-/// for non-NaN |value| < 2^31.
+/// `utils::roundToInt` for one lane: `floor(value + 0.5)`. Both columns
+/// agree for non-NaN |value| < 2^31.
 #[inline]
 pub fn round_to_int(value: f32) -> i32 {
-    round_to_i32_sse(poly_floor(value + 0.5))
+    to_int(poly_floor(value + 0.5))
 }
 
 /// `utils::pow2ToFloat`.
@@ -250,12 +271,88 @@ pub fn pcm_to_float(pcm_data: &[i16]) -> Vec<f32> {
 mod tests {
     use super::*;
 
+    const TWO_POW_31: f32 = 2_147_483_648.0;
+
     #[test]
-    fn rounding_matches_sse() {
-        assert_eq!(round_to_i32_sse(2.5), 2);
-        assert_eq!(round_to_i32_sse(3.5), 4);
-        assert_eq!(round_to_i32_sse(-2.5), -2);
-        assert_eq!(round_to_i32_sse(f32::NAN), i32::MIN);
+    fn to_int_sse2_column() {
+        assert_eq!(to_int_sse2(2.5), 2);
+        assert_eq!(to_int_sse2(3.5), 4);
+        assert_eq!(to_int_sse2(-2.5), -2);
+        assert_eq!(to_int_sse2(-2.7), -3);
+        assert_eq!(to_int_sse2(2_147_483_520.0), 2_147_483_520);
+        assert_eq!(to_int_sse2(-TWO_POW_31), i32::MIN);
+        for indefinite in [
+            f32::NAN,
+            -f32::NAN,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            TWO_POW_31,
+            3.0e9,
+            -3.0e9,
+        ] {
+            assert_eq!(to_int_sse2(indefinite), i32::MIN, "{indefinite}");
+        }
+    }
+
+    #[test]
+    fn to_int_neon_column() {
+        assert_eq!(to_int_neon(2.5), 2);
+        assert_eq!(to_int_neon(3.5), 3);
+        assert_eq!(to_int_neon(-2.5), -2);
+        assert_eq!(to_int_neon(-2.7), -2);
+        assert_eq!(to_int_neon(2_147_483_520.0), 2_147_483_520);
+        assert_eq!(to_int_neon(-TWO_POW_31), i32::MIN);
+        assert_eq!(to_int_neon(f32::NAN), 0);
+        assert_eq!(to_int_neon(-f32::NAN), 0);
+        for high in [f32::INFINITY, TWO_POW_31, 3.0e9] {
+            assert_eq!(to_int_neon(high), i32::MAX, "{high}");
+        }
+        for low in [f32::NEG_INFINITY, -3.0e9] {
+            assert_eq!(to_int_neon(low), i32::MIN, "{low}");
+        }
+    }
+
+    /// NaN and out-of-range inputs through the public helpers, on this
+    /// build's column.
+    #[test]
+    fn selected_column_out_of_range() {
+        let neon = crate::AARCH64_SEMANTICS;
+        for value in [
+            2.5,
+            -2.5,
+            f32::NAN,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            TWO_POW_31,
+            -3.0e9,
+        ] {
+            let expected = if neon {
+                to_int_neon(value)
+            } else {
+                to_int_sse2(value)
+            };
+            assert_eq!(to_int(value), expected, "{value}");
+        }
+        if neon {
+            assert_eq!(poly_floor(f32::NAN).to_bits(), 0.0f32.to_bits());
+            assert_eq!(round_to_int(f32::NAN), 0);
+            assert_eq!(poly_floor(3.0e9), TWO_POW_31);
+            assert_eq!(poly_floor(-3.0e9), -TWO_POW_31);
+            assert_eq!(round_to_int(3.0e9), i32::MAX);
+            assert_eq!(exp2(TWO_POW_31), 0.5);
+        } else {
+            assert_eq!(poly_floor(f32::NAN), -TWO_POW_31);
+            assert_eq!(round_to_int(f32::NAN), i32::MIN);
+            assert_eq!(poly_floor(3.0e9), -TWO_POW_31);
+            assert_eq!(poly_floor(-3.0e9), -TWO_POW_31);
+            assert_eq!(round_to_int(3.0e9), i32::MIN);
+            assert_eq!(exp2(TWO_POW_31), f32::INFINITY);
+        }
+        assert!(exp2(f32::NAN).is_nan());
+    }
+
+    #[test]
+    fn rounding_examples() {
         assert_eq!(round_to_int(2.5), 3);
         assert_eq!(round_to_int(-2.5), -2);
         assert_eq!(round_to_int(-2.6), -3);
@@ -263,19 +360,20 @@ mod tests {
         assert_eq!(poly_floor(2.0), 2.0);
     }
 
-    /// The public callers of the SSE2-only conversion give the NEON column's
-    /// results (truncating `vcvtq_s32_f32`) for in-range values.
+    /// The two columns give the same floor and `roundToInt` for in-range
+    /// values.
     #[test]
-    fn public_rounding_is_isa_independent_in_range() {
-        let neon_floor = |value: f32| {
-            let truncated = value as i32 as f32;
+    fn columns_agree_in_range() {
+        let floor_with = |convert: fn(f32) -> i32, value: f32| {
+            let truncated = convert(value) as f32;
             if truncated > value {
                 truncated + -1.0
             } else {
                 truncated + 0.0
             }
         };
-        let neon_round_to_int = |value: f32| neon_floor(value + 0.5) as i32;
+        let round_with =
+            |convert: fn(f32) -> i32, value: f32| convert(floor_with(convert, value + 0.5));
         let mut values: Vec<f32> = (-40_000..=40_000).map(|i| i as f32 * 0.025).collect();
         values.extend([
             -0.5,
@@ -286,7 +384,7 @@ mod tests {
             8_388_607.5,
             -8_388_607.5,
             2_147_483_520.0,
-            -2_147_483_648.0,
+            -TWO_POW_31,
         ]);
         let mut state = 0x1234_5678u32;
         for _ in 0..100_000 {
@@ -297,12 +395,16 @@ mod tests {
             }
         }
         for value in values {
+            let floor = floor_with(to_int_sse2, value);
             assert_eq!(
-                poly_floor(value).to_bits(),
-                neon_floor(value).to_bits(),
+                floor.to_bits(),
+                floor_with(to_int_neon, value).to_bits(),
                 "{value}"
             );
-            assert_eq!(round_to_int(value), neon_round_to_int(value), "{value}");
+            assert_eq!(floor.to_bits(), poly_floor(value).to_bits(), "{value}");
+            let round = round_with(to_int_sse2, value);
+            assert_eq!(round, round_with(to_int_neon, value), "{value}");
+            assert_eq!(round, round_to_int(value), "{value}");
         }
     }
 

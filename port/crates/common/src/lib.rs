@@ -29,7 +29,8 @@ pub use random::RandomGenerator;
 /// Whether this build follows the aarch64 reference (macOS arm64, libc++)
 /// where it differs from the x86_64 one: true on aarch64, and on other
 /// targets with the `aarch64-semantics` feature (the same switch as
-/// `sas-simd`). The only such site here is [`random::canonical_from_draw`].
+/// `sas-simd`, whose feature forwards to this one). The sites here are
+/// [`random::canonical_from_draw`] and [`scalar::to_int`].
 pub const AARCH64_SEMANTICS: bool =
     cfg!(any(target_arch = "aarch64", feature = "aarch64-semantics"));
 

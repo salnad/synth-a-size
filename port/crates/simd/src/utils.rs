@@ -7,12 +7,18 @@
 //! `utils.cpp`. The poly overloads live in [`poly_utils`](crate::poly_utils).
 //! `RandomGenerator`'s engine and the PCM conversions are in `sas-common`.
 //!
+//! The helpers `sas-common` already ports (`min`, `max`, `clamp`, `iclamp`,
+//! `ilog2`, `interpolate`, `interpolate_f64`) are re-exported from
+//! [`sas_common::scalar`] rather than duplicated.
+//!
 //! libm calls (`powf`, `logf`, `log10f`, ...) go through Rust's `f32` methods,
 //! which call the platform libm, as the reference does.
 
 use crate::common::{
     CENTS_PER_NOTE, CENTS_PER_OCTAVE, EPSILON, MIDI_0_FREQUENCY, NOTES_PER_OCTAVE,
 };
+
+pub use sas_common::scalar::{clamp, iclamp, ilog2, interpolate, interpolate_f64, max, min};
 
 /// Scalar dB factor (`20 * log10`). `futils` uses a different one.
 pub const DB_GAIN_CONVERSION_MULT: f32 = 20.0;
@@ -40,24 +46,6 @@ pub fn float_to_int_bits(f: f32) -> i32 {
     f.to_bits() as i32
 }
 
-/// `fmin`.
-#[inline(always)]
-pub fn min(one: f32, two: f32) -> f32 {
-    one.min(two)
-}
-
-/// `fmax`.
-#[inline(always)]
-pub fn max(one: f32, two: f32) -> f32 {
-    one.max(two)
-}
-
-/// `fmin(max, fmax(value, min))`.
-#[inline(always)]
-pub fn clamp(value: f32, min: f32, max: f32) -> f32 {
-    max.min(value.max(min))
-}
-
 #[inline(always)]
 pub fn imax(one: i32, two: i32) -> i32 {
     if one > two {
@@ -76,18 +64,6 @@ pub fn imin(one: i32, two: i32) -> i32 {
     }
 }
 
-/// `t * (to - from) + from` in `double`.
-#[inline(always)]
-pub fn interpolate_f64(from: f64, to: f64, t: f64) -> f64 {
-    t * (to - from) + from
-}
-
-/// `from + t * (to - from)`.
-#[inline(always)]
-pub fn interpolate(from: f32, to: f32, t: f32) -> f32 {
-    from + t * (to - from)
-}
-
 /// `modff`: returns the fractional part and stores the integral part.
 #[inline(always)]
 pub fn modf(value: f32, integral: &mut f32) -> f32 {
@@ -98,23 +74,6 @@ pub fn modf(value: f32, integral: &mut f32) -> f32 {
     } else {
         value - whole
     }
-}
-
-#[inline(always)]
-pub fn iclamp(value: i32, min: i32, max: i32) -> i32 {
-    if value > max {
-        max
-    } else if value < min {
-        min
-    } else {
-        value
-    }
-}
-
-/// Floor of log2, with values below 1 treated as 1.
-#[inline(always)]
-pub fn ilog2(value: i32) -> i32 {
-    31 - (value.max(1) as u32).leading_zeros() as i32
 }
 
 #[inline(always)]

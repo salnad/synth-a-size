@@ -1025,3 +1025,53 @@ is pinned by an `upstream_differs_*` test:
   follow A1 per target (sas-common already has `AARCH64_SEMANTICS`). The
   single copy would then match upstream's arm64 lane-0 result out of range
   too. Until then, this test keeps the two copies in step.
+
+---
+
+## 2026-10-21: scalar helpers consolidated into `sas-common`; `toInt` per target
+
+Approved by the coordinator after the cross-check above. Core Framework
+owns both sides.
+
+**Changed**
+
+- `sas-common` ports both columns of `utils::toInt` (reference-arm.md A1):
+  - `scalar::to_int_sse2` (`_mm_cvtps_epi32`: round to nearest even;
+    `i32::MIN` for NaN and out-of-range);
+  - `scalar::to_int_neon` (`vcvtq_s32_f32`: truncate and saturate; 0 for
+    NaN);
+  - `scalar::to_int`, which picks the column from `AARCH64_SEMANTICS`.
+
+  `poly_trunc`, `poly_floor` and `round_to_int` (and through them `exp2`,
+  `exp`, `pow` and `power_scale`) now match upstream on both targets for
+  NaN and `|x| >= 2^31` too, e.g. `poly_floor(NaN)` is 0 and `exp2(2^31)`
+  is 0.5 on arm64. In-range results are unchanged. Unit tests cover NaN,
+  ±inf, ±2^31 and ±3e9 on each column, the selected column through the
+  public helpers, and in-range agreement of the columns. `sas-common`
+  stays dependency-free.
+- `sas-simd` depends on `sas-common`, and its `aarch64-semantics` feature
+  forwards to `sas-common/aarch64-semantics`. The duplicated scalar helpers
+  are now re-exports:
+  - `utils::{min, max, clamp, iclamp, ilog2, interpolate, interpolate_f64}`;
+  - `futils::{exp2, log2, exp, log, pow, power_scale, tanh}_mono`;
+  - `common::PI`.
+
+  The poly versions stay in `sas-simd`, and the public paths are
+  unchanged.
+- `tests/common_scalar.rs` now checks `sas-common`'s helpers against every
+  lane of the poly versions on about 480k inputs, with no range filter
+  (NaN, infinities and huge values included), on both columns. The helpers
+  are `to_int`, `trunc`, `floor`, `round_to_int`, `pow2_to_float`, `exp2`,
+  `log2`, `exp`, `log`, `pow`, `interpolate` and the Catmull weights and
+  interpolation. The upstream-differs pairs stay pinned: `tanh` and
+  `power_scale` mono vs poly, and `fmin`/`fmax` vs `poly_float::min`/`max`.
+  A new test checks that both crates select the same column.
+
+**Parity**
+
+No reference output changes on x86_64: the SSE2 column is what both
+crates already did. The `simd/poly_function` mono cases now run through
+`sas-common`, with unchanged metrics. `mono_exp`, `mono_exp2`, `mono_log`
+and `mono_log2` are bit-identical. `mono_power_scale` (1.0e-6) and
+`mono_tanh` (1.8e-7) differ from the fast-math reference by the same
+amounts as before.
