@@ -478,6 +478,9 @@ with the coordinator.
   are rejected at load in both `run_corpus.py` (`check_name`) and
   `sas-parity` (`cases::check_name`). Both test suites test this.
 - All existing case files comply: 6 module cases and 8 render cases.
+
+---
+
 ## 2026-10-20: M4a `sas-common` (shared exact helpers)
 
 New dependency-free crate `port/crates/common` (`sas-common`), owned by the
