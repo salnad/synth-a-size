@@ -45,6 +45,22 @@ integrates the resulting ulp of frequency. **This affects full patches
 too** (Voice Engine): any oscillator with a transpose or tune set will
 drift against the official reference the same way, while matching the no-fast-math reference.
 
+**Normalized pitch coverage:** `ref-module` module
+`oscillator_module_pitch` (same file as `oscillator_module`, with the
+same private-member accessor as `synth_oscillator_pitch`) and
+`migration/corpus/modules/oscillators/oscillator_module_pitch.json`
+(9 cases) capture the module's oscillator's phase increment × 2^-32
+(frequency / sample rate). That gives the `osc_1_transpose`, `osc_1_tune`,
+`osc_1_transpose_quantize` and `osc_1_midi_track` controls active
+coverage through the registry scaling and the audio-rate modulation
+sums. The cases are the three parked cases' inputs plus negative,
+maximal and global-snapped transposes, no MIDI tracking, single voice and
+48 kHz. Measured: worst `transpose_max_tune_max` 1.3e-7 / −123.5 dB; the
+official reference passes against no-fast-math on all nine. Unison
+detune is a separate per-voice multiplier, not part of this capture: the
+large scaled detune of `detune_power_range` stays covered only by
+`interim_detune_power_range` (detune 0.5).
+
 **Interim cases** (named `interim_*`; the parked cases stay unchanged):
 `interim_transpose_quantize` (the snapping control at transpose 0,
 2.4e-7 / −142.5 dB) and `interim_detune_power_range` (detune power −2.5

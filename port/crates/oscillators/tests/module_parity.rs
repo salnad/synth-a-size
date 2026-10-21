@@ -9,6 +9,8 @@
 //! the seed counter is set, initialized, then given its wavetables, sample
 //! and control values. Controls take their details from the parameter
 //! registry (`sas-preset`), as the reference's `Parameters::getDetails`.
+//! `oscillator_module_pitch` cases capture the module's oscillator's phase
+//! increments times `2^-32` (frequency / sample rate) instead of the audio.
 //! Every case runs in one test because the seed counter is process-global.
 
 mod support;
@@ -18,10 +20,10 @@ use std::sync::Mutex;
 use sas_common::json::{self, Value};
 use sas_dsp_core::synth_module::{set_parameter_lookup, ParameterDetails, ValueScale};
 use sas_dsp_core::testing::{run_module, DriverInput, DriverSettings, InputRate, TriggerEvent};
-use sas_dsp_core::ProcessorRef;
+use sas_dsp_core::{Processor, ProcessorImpl, ProcessorRef, SynthModule};
 use sas_oscillators::oscillator_module::{self, OscillatorModule};
 use sas_oscillators::producers_module::{self, ProducersModule};
-use sas_oscillators::{RandomValues, SharedSample, SharedWavetable};
+use sas_oscillators::{RandomValues, SharedSample, SharedWavetable, SynthOscillator};
 use sas_parity::{assert_parity, ModuleCase};
 use sas_preset::registry;
 use sas_wavetable::creator::WavetableCreator;
@@ -46,6 +48,43 @@ const OSCILLATOR_MODULE: ModuleDef = ModuleDef {
         ("levelled", oscillator_module::LEVELLED),
     ],
 };
+
+const OSCILLATOR_MODULE_PITCH: ModuleDef = ModuleDef {
+    inputs: OSCILLATOR_MODULE.inputs,
+    outputs: &[("phase_inc", PHASE_INC)],
+};
+
+const PHASE_INC: usize = oscillator_module::NUM_OUTPUTS;
+
+/// `OscillatorModulePitchProbe`: the module, with its oscillator's phase
+/// increments copied to output `phase_inc` after each block.
+#[derive(Clone)]
+struct OscillatorModulePitchProbe {
+    module: OscillatorModule,
+}
+
+impl ProcessorImpl for OscillatorModulePitchProbe {
+    sas_dsp_core::processor_boilerplate!();
+
+    fn init(&mut self, this: &Processor) {
+        self.module.init(this);
+    }
+
+    fn process(&mut self, this: &Processor, num_samples: usize) {
+        self.module.process(this, num_samples);
+        let oscillator = self.module.oscillator().expect("initialized").clone();
+        let phase_inc = this.output_buffer(PHASE_INC);
+        oscillator.with::<SynthOscillator, _>(|oscillator, _| {
+            for (dest, &increment) in phase_inc
+                .iter()
+                .zip(oscillator.phase_increments())
+                .take(num_samples)
+            {
+                dest.set(increment * (1.0 / 4_294_967_296.0));
+            }
+        });
+    }
+}
 
 const PRODUCERS_MODULE: ModuleDef = ModuleDef {
     inputs: &[
@@ -160,6 +199,22 @@ fn create(case: &ModuleCase) -> ProcessorRef {
             set_controls(&module, params.get("controls").unwrap_or(&empty));
             module
         }
+        "oscillator_module_pitch" => {
+            let module = SynthModule::create_with(
+                OscillatorModulePitchProbe {
+                    module: OscillatorModule::new("osc_1"),
+                },
+                oscillator_module::NUM_INPUTS,
+                oscillator_module::NUM_OUTPUTS + 1,
+                false,
+            );
+            module.init();
+            let wavetable =
+                module.with::<OscillatorModulePitchProbe, _>(|m, _| m.module.wavetable().clone());
+            render_wavetable(&wavetable, params.get("wavetable").unwrap_or(&empty));
+            set_controls(&module, params.get("controls").unwrap_or(&empty));
+            module
+        }
         "producers_module" => {
             let module = ProducersModule::create();
             module.init();
@@ -184,6 +239,7 @@ fn create(case: &ModuleCase) -> ProcessorRef {
 fn definition(case: &ModuleCase) -> &'static ModuleDef {
     match case.module() {
         "oscillator_module" => &OSCILLATOR_MODULE,
+        "oscillator_module_pitch" => &OSCILLATOR_MODULE_PITCH,
         _ => &PRODUCERS_MODULE,
     }
 }
@@ -260,7 +316,7 @@ fn oscillator_modules_match_reference() {
         .filter(|id| {
             matches!(
                 ModuleCase::load(id).module(),
-                "oscillator_module" | "producers_module"
+                "oscillator_module" | "oscillator_module_pitch" | "producers_module"
             )
         })
         .collect();
