@@ -1758,6 +1758,8 @@ ARM Reference records the evidence):**
   or FMA contraction.
 - CI's `aarch64-semantics` job now also runs `sas-wavetable`'s clippy and
   lib tests with the feature.
+- Chain Reviewer checked `div_libcxx` against real libc++ 18 on 220,736
+  divisions, with 0 differences.
 - **To confirm on the arm64 reference (ARM Reference's probe):**
   - that its libc++ uses this algorithm;
   - whether Apple clang's default `-ffp-contract=on` fuses
