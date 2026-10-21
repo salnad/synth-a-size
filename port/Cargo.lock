@@ -541,8 +541,12 @@ dependencies = [
 name = "sas-oscillators"
 version = "0.0.1"
 dependencies = [
+ "sas-common",
  "sas-dsp-core",
+ "sas-parity",
+ "sas-simd",
  "sas-wavetable",
+ "serde_json",
 ]
 
 [[package]]

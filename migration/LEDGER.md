@@ -1993,3 +1993,93 @@ Core Filters (M5a), stacked on PR 4.
   ladder, the diode filter stays within tolerance over the full cutoff
   range: the fast-math reference against the no-fast-math proxy gives the
   same numbers, and nothing needed parking.
+## 2026-10-21: M4b `SynthOscillator` (sas-oscillators, PR A of the M4b stack)
+
+**Added**
+
+- `port/crates/oscillators`: `SynthOscillator` and `RandomValues`
+  (`synth_oscillator.{h,cpp}`) with every distortion type (sync, formant,
+  quantize, bend, squeeze, pulse width, FM/RM from oscillator A/B or the
+  sample), unison (voices, detune, power, range, blend, stereo spread,
+  the 11 stack styles, frame/distortion/spectral-morph spread), transpose
+  snapping, random phase, single-voice processing, retrigger, the
+  wave-buffer crossfade and the shepard wrap. `spectral_morph.rs` holds
+  the buffer wrap and the passthrough morph; the other morphs are the
+  next PR of the stack.
+  - Wave buffers mirror upstream's pointers as handles into the same two
+    banks of Fourier buffers (kept for the oscillator's lifetime, so what
+    a morph leaves outside its written region carries over as upstream).
+  - Cloning the kernel draws a new seed, as upstream's `RandomGenerator`
+    copy constructor does. `RandomValues::instance()` takes a seed on its
+    first call per process; `RandomValues::reset_process_state()` lets a
+    test or engine that builds several synths in one process reproduce
+    the reference's one-process-per-capture seed order.
+  - Per-target sites: A1/A1b/A1c through `sas-simd`'s `to_int`, A2 (random
+    phase, `synth_oscillator.cpp:583`) through `float_to_u32`, scalar
+    `(int)` casts through `float_to_i32` (A3). No FMA, no estimates.
+  - `aarch64-semantics` is forwarded to `sas-dsp-core`, `sas-simd`,
+    `sas-common` and `sas-wavetable`.
+- `ref-module` module `synth_oscillator`
+  (`migration/reference/src/modules/oscillators/synth_oscillator.cpp`):
+  the oscillator on a wavetable rendered from `params.wavetable`
+  (`init`, `predefined` or creator JSON with `$wave` recipes), with an
+  extra audio input `modulation` wired as both FM/RM oscillators and the
+  sample. The parity test
+  (`port/crates/oscillators/tests/synth_oscillator_parity.rs`) mirrors it
+  and calls `assert_parity!` on both outputs of every case.
+- `migration/corpus/modules/oscillators/synth_oscillator.json`: 69 cases
+  under `module_defaults`, covering the features above at 44.1/48/96 kHz,
+  oversample 2 and block sizes 17/64/128. Wavetables are init, predefined
+  and well-conditioned time-interpolated creator content only.
+
+**Measured** (x86_64, `raw` and `levelled`, 138 outputs, all within the
+default module limits, no tolerance changes)
+
+- Worst: `distortion_4` (bend) 3.0e-5 / −113.0 dB, `distortion_4_spread`
+  1.7e-5 / −116.2 dB, `distortion_3_spread` (quantize) 2.1e-5 /
+  −119.6 dB. Everything else is ≤ 7.3e-6 and ≤ −130 dB, including random
+  phase (A2 on x86: negative draws wrap), wave-frame sweeps (A1b) and
+  every FM/RM variant.
+- Against the `REF_FAST_MATH=OFF` reference: all cases ≤ 3e-7 and
+  ≤ −146 dB.
+
+**Pitch sweeps parked pending a decision (not deleted or narrowed)**
+
+`migration/corpus/modules/oscillators/pending/synth_oscillator.json`
+holds four authored cases that the harness does not load while they sit
+under `pending/`:
+
+| Case | Port vs official | Port vs no-fast-math | Official vs no-fast-math |
+|---|---|---|---|
+| `oscillators/synth_oscillator/note_ramp` | 1.1e-3 / −72.4 dB | 2.4e-7 / −151.1 dB | 1.1e-3 / −72.4 dB |
+| `oscillators/synth_oscillator/transpose_quantize_local` | 7.3e-4 / −80.9 dB | 1.2e-7 / −152.4 dB | 7.3e-4 |
+| `oscillators/synth_oscillator/transpose_tune_audio` | 5.8e-4 / −82.5 dB | ≤ 3e-7 / ≤ −146 dB | 5.8e-4 |
+| `oscillators/synth_oscillator/transpose_quantize_global` | 2.5e-4 / −93.2 dB | 1.2e-7 / −152.6 dB | 2.5e-4 |
+
+The official reference fails the limits against its own no-fast-math
+build on these cases, so CI's tolerance-calibration job would fail on
+them independently of the port. When pitch moves, the per-sample ratio
+`exp2((midi − base_midi) / 12)` is no longer exactly 1, fast-math moves it
+by an ulp, and the 32-bit phase accumulator integrates the difference.
+Constant-pitch cases are unaffected. Coordinator's pending proposal (2026-10-21; not yet an owner decision):
+compare such cases exactly against the no-fast-math reference through an
+allowlist. They stay parked until it is decided and the mechanism exists.
+
+**Interim cases** (named `interim_*`; well-conditioned stand-ins for the
+features the parked cases covered, which stay unchanged), all within the
+default limits:
+
+- `interim_transpose_quantize_local` and `_global`: snapping with
+  transpose 0 (2.4e-7 / −139.2 dB, 3.0e-7 / −139.4 dB);
+- `interim_transpose_constant`, `interim_tune_constant`,
+  `interim_transpose_tune_zero`: the audio-rate transpose and tune inputs
+  at constant values (≤ 2.4e-7, ≤ −142.6 dB);
+- `interim_note_ramp_short`: MIDI 48 → 72 over 1024 samples
+  (3.1e-6 / −130.2 dB).
+
+**Hashes:** `synth_oscillator.hashes.json` is written from this PR's CI
+`reference-renders` artifact. macOS arm64 hashes follow once PR #2 (macOS
+arm64 CI) merges.
+
+**Next:** the remaining spectral morphs (PR B), then the sample source
+and sample module, then the oscillator and producers modules.
