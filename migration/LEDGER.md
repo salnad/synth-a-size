@@ -1025,3 +1025,42 @@ is pinned by an `upstream_differs_*` test:
   follow A1 per target (sas-common already has `AARCH64_SEMANTICS`). The
   single copy would then match upstream's arm64 lane-0 result out of range
   too. Until then, this test keeps the two copies in step.
+
+## 2026-10-21: M5a PR 1, `SynthFilter` interface and `DigitalSvf`
+
+Core Filters (M5a), first PR of the `sas-filters` stack.
+
+- `synth_filter.rs` ports `synth_filter.{h,cpp}`: input indices, styles,
+  `FilterModel`, `FilterState` with `load_settings`, the static
+  `CoefficientLookup` (`OneDimLookup<computeOnePoleFilterCoefficient, 2048>`),
+  the `SynthFilter` trait (`setup_filter(&mut self, this, &FilterState)`) and
+  `create_filter`. The comb/formant/phaser arms go to
+  `character::create_filter`, owned by Character Filters (M5b), whose models
+  live under `src/character/`.
+- `digital_svf.rs` ports `digital_svf.{h,cpp}`: all styles (12 dB, 24 dB,
+  notch/pass swap, dual notch/band, band/peak/notch, shelving), basic mode,
+  drive compensation, resonance bounds and the SVF coefficient lookup.
+  `processBasic24` has no upstream caller; `tickBasic24` is kept.
+- `aarch64-semantics` forwards to `sas-simd`. The only per-ISA site reached
+  is `toInt` in `cubicLookup` (A1c) through `sas-dsp-core`.
+- New ref-module `digital_svf` (`setBasic`, `setDriveCompensation`,
+  `setResonanceBounds` as the equalizer and formant manager use them).
+- Cases, all under `module_defaults` (no tolerance changes):
+  `filters/digital_svf` grows from 1 to 32 cases: every style with cutoff
+  sweeps over MIDI 0–140 (past the 8–136 parameter range), blend −0.2–2.2,
+  resonance −0.1–1.1 and drive −4–40 dB (past both clamps), plus
+  shelving gain −20–20 dB, a cutoff that dips below 0 (the `max(…, 0)` in
+  `process12`), per-lane settings with voice-1 and voice-0 retriggers,
+  2× and 4× oversampling, 96 kHz and block sizes 1/64/128/256/512.
+  `filters/digital_svf_settings` (8 cases) covers the equalizer's basic
+  high-/low-pass, notch and shelves, basic 24 dB, no drive compensation and
+  the formant bounds (4–30).
+- Parity (`tests/digital_svf.rs`, shared driver in `tests/support/`), x86_64:
+  40/40 pass. Worst max_abs_error 5.5e-5 (`digital_svf_settings/eq_highpass`,
+  1.8× under), next 2.7e-5 (`formant_bounds`) and 1.7e-5
+  (`band_peak_notch_cutoff_sweep`); worst residual −100.2 dB
+  (`eq_highpass`). `shelving_drive_sweep` is bit-identical.
+- Hashes: x86 identity from this PR's CI `reference-renders`; macOS entries
+  follow once PR #2 merges.
+
+Open: macOS arm64 hashes after PR #2.

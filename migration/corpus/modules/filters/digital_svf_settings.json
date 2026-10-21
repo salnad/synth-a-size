@@ -1,0 +1,264 @@
+{
+  "description": "DigitalSvf with the per-instance settings of the equalizer (setBasic, setDriveCompensation) and the formant manager (setResonanceBounds).",
+  "module": "digital_svf",
+  "params": {},
+  "cases": {
+    "eq_highpass": {
+      "num_samples": 22050,
+      "params": {
+        "basic": true,
+        "drive_compensation": false
+      },
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 2,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi_cutoff": {
+          "signal": "ramp",
+          "from": 8.0,
+          "to": 136.0
+        },
+        "resonance": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "style": 0,
+        "pass_blend": 2.0
+      }
+    },
+    "eq_lowpass": {
+      "num_samples": 22050,
+      "params": {
+        "basic": true,
+        "drive_compensation": false
+      },
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi_cutoff": {
+          "signal": "ramp",
+          "from": 136.0,
+          "to": 8.0
+        },
+        "resonance": 0.3163,
+        "style": 0,
+        "pass_blend": 0.0
+      }
+    },
+    "eq_notch": {
+      "num_samples": 22050,
+      "params": {
+        "basic": true,
+        "drive_compensation": false
+      },
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 3,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi_cutoff": {
+          "signal": "sine",
+          "freq_hz": 1.0,
+          "amp": 50.0,
+          "offset": 80.0
+        },
+        "resonance": 0.4473,
+        "style": 2,
+        "pass_blend": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 2.0
+        }
+      }
+    },
+    "eq_band_shelf": {
+      "num_samples": 22050,
+      "params": {},
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 4,
+          "stereo": true
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi_cutoff": 80.0,
+        "resonance": 0.4473,
+        "style": 5,
+        "pass_blend": 1.0,
+        "gain": {
+          "signal": "ramp",
+          "from": -15.0,
+          "to": 15.0
+        }
+      }
+    },
+    "eq_low_shelf": {
+      "num_samples": 22050,
+      "params": {},
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi_cutoff": {
+          "signal": "ramp",
+          "from": 8.0,
+          "to": 136.0
+        },
+        "resonance": 0.3163,
+        "style": 5,
+        "pass_blend": 0.0,
+        "gain": 12.0
+      }
+    },
+    "basic_24db": {
+      "num_samples": 22050,
+      "params": {
+        "basic": true
+      },
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi_cutoff": {
+          "signal": "ramp",
+          "from": 20.0,
+          "to": 120.0
+        },
+        "resonance": 0.9,
+        "drive_gain": 12.0,
+        "style": 1,
+        "pass_blend": 0.5
+      }
+    },
+    "no_drive_compensation_k24": {
+      "num_samples": 22050,
+      "params": {
+        "drive_compensation": false
+      },
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi_cutoff": 70.0,
+        "resonance": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "drive_gain": 18.0,
+        "style": 1,
+        "pass_blend": 0.0
+      }
+    },
+    "formant_bounds": {
+      "num_samples": 22050,
+      "params": {
+        "min_resonance": 4.0,
+        "max_resonance": 30.0
+      },
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 130.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi_cutoff": {
+          "signal": "ramp",
+          "from": 50.0,
+          "to": 100.0
+        },
+        "resonance": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "gain": {
+          "signal": "ramp",
+          "from": -15.0,
+          "to": 15.0
+        },
+        "style": 0,
+        "pass_blend": 1.0
+      }
+    }
+  }
+}
