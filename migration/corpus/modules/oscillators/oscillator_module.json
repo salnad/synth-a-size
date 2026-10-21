@@ -1,0 +1,304 @@
+{
+  "description": "OscillatorModule (vital/src/synthesis/modules/oscillator_module.cpp): the osc_1 controls (parameter values as a preset sets them, scaled through the registry details) driving SynthOscillator, the on switch, reset/retrigger, single-voice, sample rate and block size. Constant pitch only (see the pending pitch sweeps in LEDGER.md). Ported in port/crates/oscillators. Cases named interim_* are interim well-conditioned stand-ins for features whose cases are parked under pending/ (see LEDGER.md); the parked cases are unchanged.",
+  "module": "oscillator_module",
+  "seed": 0,
+  "cases": {
+    "defaults": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        },
+        "controls": {}
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "off": {
+      "params": {
+        "wavetable": {
+          "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+        },
+        "controls": {
+          "osc_1_on": 0.0
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "unison_frame_spread": {
+      "params": {
+        "wavetable": {
+          "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+        },
+        "controls": {
+          "osc_1_unison_voices": 5.0,
+          "osc_1_unison_detune": 3.0,
+          "osc_1_wave_frame": 64.0,
+          "osc_1_frame_spread": 40.0,
+          "osc_1_unison_blend": 0.6,
+          "osc_1_stereo_spread": 0.5,
+          "osc_1_stack_style": 3.0
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "level_pan_phase": {
+      "params": {
+        "wavetable": {
+          "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+        },
+        "controls": {
+          "osc_1_level": 0.45,
+          "osc_1_pan": -0.35,
+          "osc_1_phase": 0.2,
+          "osc_1_random_phase": 0.0
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "interim_transpose_quantize": {
+      "params": {
+        "wavetable": {
+          "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+        },
+        "controls": {
+          "osc_1_transpose_quantize": 2741.0,
+          "osc_1_unison_voices": 2.0
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "interim_detune_power_range": {
+      "params": {
+        "wavetable": {
+          "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+        },
+        "controls": {
+          "osc_1_unison_voices": 8.0,
+          "osc_1_unison_detune": 0.5,
+          "osc_1_detune_power": -2.5,
+          "osc_1_detune_range": 24.0,
+          "osc_1_distortion_spread": 0.3,
+          "osc_1_spectral_morph_spread": 0.2,
+          "osc_1_spectral_unison": 0.0
+        }
+      },
+      "num_samples": 3000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "distortion_morph": {
+      "params": {
+        "wavetable": {
+          "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+        },
+        "controls": {
+          "osc_1_distortion_type": 4.0,
+          "osc_1_distortion_amount": 0.6,
+          "osc_1_distortion_phase": 0.3,
+          "osc_1_spectral_morph_type": 7.0,
+          "osc_1_spectral_morph_amount": 0.4,
+          "osc_1_unison_voices": 3.0
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "no_midi_track": {
+      "params": {
+        "wavetable": {
+          "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+        },
+        "controls": {
+          "osc_1_midi_track": 0.0,
+          "osc_1_unison_voices": 2.0
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi": 84.0
+      }
+    },
+    "voice_1_only": {
+      "params": {
+        "wavetable": {
+          "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+        },
+        "controls": {
+          "osc_1_unison_voices": 3.0
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "active_voices": {
+          "value": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        }
+      }
+    },
+    "retrigger": {
+      "params": {
+        "wavetable": {
+          "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+        },
+        "controls": {
+          "osc_1_unison_voices": 4.0,
+          "osc_1_unison_detune": 2.0
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            },
+            {
+              "sample": 3001,
+              "value": "voice_on",
+              "voices": "1"
+            }
+          ]
+        },
+        "retrigger": {
+          "trigger": [
+            {
+              "sample": 1500,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "sample_rate_48000": {
+      "params": {
+        "wavetable": {
+          "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+        },
+        "controls": {
+          "osc_1_unison_voices": 3.0
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      },
+      "sample_rate": 48000
+    },
+    "block_size_128": {
+      "params": {
+        "wavetable": {
+          "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+        },
+        "controls": {
+          "osc_1_unison_voices": 3.0
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      },
+      "block_size": 128
+    }
+  }
+}

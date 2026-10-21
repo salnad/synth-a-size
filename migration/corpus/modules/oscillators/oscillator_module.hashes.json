@@ -1,0 +1,41 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "block_size_128:levelled": "44d60121f50960eb",
+        "block_size_128:raw": "1928e5ad7975136b",
+        "defaults:levelled": "d071d7c5da8a52cf",
+        "defaults:raw": "995628ae781c1303",
+        "distortion_morph:levelled": "bc432cfccdb013b8",
+        "distortion_morph:raw": "4c357f1ad3988902",
+        "interim_detune_power_range:levelled": "4cf056c03185f836",
+        "interim_detune_power_range:raw": "ac88bdff4382d4d0",
+        "interim_transpose_quantize:levelled": "42d84ee8f0f97663",
+        "interim_transpose_quantize:raw": "e712c20a5f6e87e3",
+        "level_pan_phase:levelled": "2fafb8f69b272bfb",
+        "level_pan_phase:raw": "3fd271efe34c44a3",
+        "no_midi_track:levelled": "0e255661fd0f08d4",
+        "no_midi_track:raw": "81941a145c999d20",
+        "off:levelled": "266b3312cb1d9783",
+        "off:raw": "266b3312cb1d9783",
+        "retrigger:levelled": "5e646f377f29f859",
+        "retrigger:raw": "059803968392fb82",
+        "sample_rate_48000:levelled": "6285837f36c284cd",
+        "sample_rate_48000:raw": "891e0165f5657d2b",
+        "unison_frame_spread:levelled": "0ba1a0c488b83fc6",
+        "unison_frame_spread:raw": "71dad0b570039f5f",
+        "voice_1_only:levelled": "78bd05ba7209bcdb",
+        "voice_1_only:raw": "686af7468b54c7fb"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}

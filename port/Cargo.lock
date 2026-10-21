@@ -547,6 +547,7 @@ dependencies = [
  "sas-common",
  "sas-dsp-core",
  "sas-parity",
+ "sas-preset",
  "sas-simd",
  "sas-wavetable",
  "serde_json",
