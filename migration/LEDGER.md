@@ -2732,7 +2732,6 @@ lands.
 no-fast-math trees, and re-enable `audio_fade_3_phase_0` on arm64 if #2
 parked it.
 
-
 ---
 
 ## 2026-10-20: M2 parameter registry and preset load/save (`sas-preset`)

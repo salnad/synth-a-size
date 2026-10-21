@@ -60,9 +60,72 @@ fn state_cases() -> Vec<(ModuleCase, Option<String>)> {
         .collect()
 }
 
+/// The fields of each parameter in the registry capture, all compared by
+/// `registry_matches_reference`.
+const PARAMETER_FIELDS: [&str; 13] = [
+    "default_value",
+    "display_invert",
+    "display_multiply",
+    "display_name",
+    "display_units",
+    "local_description",
+    "max",
+    "min",
+    "name",
+    "post_offset",
+    "string_table",
+    "value_scale",
+    "version_added",
+];
+
+/// The keys of a JSON object, sorted.
+fn keys(value: &Value) -> Vec<String> {
+    let Value::Object(object) = value else {
+        panic!("not an object: {}", value.dump())
+    };
+    object.keys().cloned().collect()
+}
+
 #[test]
 fn registry_matches_reference() {
     let reference = reference_registry();
+    // Every field of the capture is checked by these tests, except
+    // poly_modulation_destinations: the preset loader only consults mono
+    // destinations (getMonoModulationDestination), so the port has no poly
+    // table. A field added to the capture later fails here until it is
+    // checked too.
+    assert_eq!(
+        keys(&reference),
+        [
+            "controls",
+            "init",
+            "modulation_sources",
+            "mono_modulation_destinations",
+            "num_parameters",
+            "parameters",
+            "poly_modulation_destinations",
+            "slot_self_destinations",
+            "string_tables",
+            "synth_version",
+        ]
+    );
+    assert_eq!(
+        keys(reference.get("init").unwrap()),
+        ["random_generators_constructed", "sample_seed", "seed"]
+    );
+    // The capture is taken with the seed counter at 0 (preset/registry.json);
+    // sample_seed and random_generators_constructed are checked by the
+    // init-state and engine-table tests.
+    assert_eq!(
+        reference
+            .get("init")
+            .unwrap()
+            .get("seed")
+            .unwrap()
+            .to_i32()
+            .unwrap(),
+        0
+    );
     let parameters = reference.get("parameters").unwrap();
     let registry = registry();
     assert_eq!(
@@ -72,6 +135,7 @@ fn registry_matches_reference() {
     assert_eq!(parameters.size(), registry.len());
 
     for (index, expected) in parameters.iter_values().enumerate() {
+        assert_eq!(keys(expected), PARAMETER_FIELDS, "parameter {index} fields");
         let actual = registry.get_index(index).unwrap();
         let name = expected.get("name").unwrap().to_str().unwrap();
         assert_eq!(actual.name, name, "parameter {index}");
@@ -140,7 +204,14 @@ fn string_tables_match_reference() {
     let Value::Object(tables) = tables else {
         panic!("string_tables is not an object")
     };
-    assert_eq!(tables.len(), StringTable::ALL.len());
+    let mut expected_names: Vec<&str> = StringTable::ALL
+        .iter()
+        .map(|table| table.upstream_name())
+        .collect();
+    expected_names.sort_unstable();
+    let mut names: Vec<&str> = tables.keys().map(String::as_str).collect();
+    names.sort_unstable();
+    assert_eq!(names, expected_names);
     for table in StringTable::ALL {
         let expected: Vec<&str> = tables[table.upstream_name()]
             .iter_values()
