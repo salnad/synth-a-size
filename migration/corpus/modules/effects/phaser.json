@@ -1,0 +1,165 @@
+{
+  "description": "Phaser processor; inputs take the values PhaserModule's controls produce.",
+  "module": "phaser",
+  "cases": {
+    "defaults_saw": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        }
+      }
+    },
+    "rate_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 1
+        },
+        "rate": {
+          "signal": "ramp",
+          "from": 0.03125,
+          "to": 4.0
+        }
+      }
+    },
+    "fast_rate": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 220.0,
+          "amp": 0.4
+        },
+        "rate": 80.0
+      }
+    },
+    "center_sweep_audio_rate": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "center": {
+          "signal": "ramp",
+          "from": 8.0,
+          "to": 136.0,
+          "rate": "audio"
+        }
+      }
+    },
+    "feedback_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 2
+        },
+        "feedback_gain": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    },
+    "depth_and_offset_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 165.0,
+          "amp": 0.4
+        },
+        "mod_depth": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 48.0
+        },
+        "phase_offset": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    },
+    "blend_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 3
+        },
+        "blend": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 2.0
+        }
+      }
+    },
+    "mix_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "mix": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    },
+    "rate_48k": {
+      "sample_rate": 48000,
+      "block_size": 128,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "rate": 0.5
+      }
+    },
+    "rate_96k": {
+      "sample_rate": 96000,
+      "block_size": 128,
+      "num_samples": 192000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "rate": 0.5
+      }
+    },
+    "oversampled_2x": {
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "rate": 0.5
+      }
+    }
+  }
+}
