@@ -2782,6 +2782,11 @@ its hashes from this PR's next CI run). Every comparison passes under
 `module_defaults`: 88 numeric comparisons (13 cases, `state` and `scale`
 included), 43 bit-identical, and 13 exact `name.txt` artifacts:
 
+macOS arm64 identity: `engine/tuning` (all 13 cases) and the voice handler's
+`scala_tuning` entries were written from Reference ARM run 39622565746's
+`ref-arm64-macos-15` artifact (`build/platform/pinned`). No case here uses
+`reference: nofastmath`, so no proxy entries are needed.
+
 | Output | Worst max abs error | Worst residual |
 |---|---|---|
 | `*_note_percent` | 9.5e-7 (`tun_then_kbm`) | −138.4 dB |
