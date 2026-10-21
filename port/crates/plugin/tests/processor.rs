@@ -200,6 +200,27 @@ fn a_stepped_parameter_leaves_the_presets_own_value_in_the_engine() {
 }
 
 #[test]
+fn a_control_moved_away_and_back_before_the_reload_reaches_the_engine() {
+    let mut harness = Harness::new();
+    harness.run(16, Transport::default(), vec![]);
+    let mut preset = PresetState::new(&sas_preset::InitContent { sample_seed: 0 });
+    preset.set_value("osc_1_transpose", 0.25).unwrap();
+    let state = state::plugin_state_from_json(&preset.to_json_string()).unwrap();
+    harness.params().restore_state(state);
+    let params = harness.params();
+    let ControlParam::Stepped(transpose) = &params.control("osc_1_transpose").unwrap().param else {
+        panic!("stepped parameter");
+    };
+    unsafe {
+        transpose._internal_set_plain_value(1);
+        transpose._internal_set_plain_value(0);
+    }
+    let (calls, ..) = harness.run(16, Transport::default(), vec![]);
+    assert_eq!(calls[0], Call::LoadPreset(String::new()));
+    assert_eq!(controls(&calls), [("osc_1_transpose", 0.0)]);
+}
+
+#[test]
 fn renders_in_chunks_of_at_most_128_with_midi_offsets_inside_each() {
     let mut harness = Harness::new();
     harness.run(16, Transport::default(), vec![]);

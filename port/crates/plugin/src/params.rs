@@ -20,8 +20,9 @@
 //! (`ValueBridge::isDiscrete` / `getNumSteps`); other indexed controls are
 //! continuous and snap host edits to whole numbers. Both round like
 //! `ValueBridge::convertToEngineValue`. A restored preset's own value stands
-//! while the parameter still represents it (see [`ControlParam::matches`]),
-//! so out-of-range, non-integer and -0.0 values round-trip exactly.
+//! until the control is set, while the parameter still represents it (see
+//! [`ControlParam::matches`]), so out-of-range, non-integer and -0.0 values
+//! round-trip exactly.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -104,8 +105,8 @@ impl ControlParam {
     /// [`saved_value`](Self::saved_value)) is how this parameter represents
     /// the preset value `preset`. nice-plug ignores a set that compares equal
     /// to the current value, so a preset's -0.0 reads back as 0.0; stepped and
-    /// bypass parameters hold `preset` rounded. While this holds, the preset's
-    /// own value stands.
+    /// bypass parameters hold `preset` rounded. While this holds and the
+    /// control is untouched since the restore, the preset's own value stands.
     pub fn matches(&self, preset: f32, current: f32) -> bool {
         match self {
             ControlParam::Float(_) => preset == current,
@@ -163,6 +164,16 @@ impl ChangeSet {
         self.words[index / 64].fetch_or(1 << (index % 64), Ordering::AcqRel);
     }
 
+    fn is_marked(&self, index: usize) -> bool {
+        self.words[index / 64].load(Ordering::Acquire) & (1 << (index % 64)) != 0
+    }
+
+    fn clear(&self) {
+        for word in self.words.iter() {
+            word.store(0, Ordering::Release);
+        }
+    }
+
     /// Calls `f` with every marked index (ascending) and clears them.
     pub(crate) fn drain(&self, mut f: impl FnMut(usize)) {
         for (word_index, word) in self.words.iter().enumerate() {
@@ -183,6 +194,9 @@ pub struct SynthParams {
     by_name: HashMap<&'static str, usize>,
     bypass: usize,
     pub(crate) changes: Arc<ChangeSet>,
+    /// Controls set since the document was last replaced (by the host, or by
+    /// the wrapper applying a state without a preset).
+    touched: Arc<ChangeSet>,
     /// Control values in here are stale; the parameters hold the live ones.
     document: Mutex<PresetDocument>,
     /// Bumped whenever `document` is replaced, so the audio thread reloads it.
@@ -200,6 +214,7 @@ impl SynthParams {
             .filter(|name| engine::is_control(name))
             .collect();
         let changes = Arc::new(ChangeSet::new(names.len()));
+        let touched = Arc::new(ChangeSet::new(names.len()));
         let controls: Vec<Control> = names
             .iter()
             .enumerate()
@@ -208,7 +223,7 @@ impl SynthParams {
                 Control {
                     info,
                     group: group_of(name),
-                    param: make_param(info, index, &changes),
+                    param: make_param(info, index, &changes, &touched),
                 }
             })
             .collect();
@@ -226,6 +241,7 @@ impl SynthParams {
             by_name,
             bypass,
             changes,
+            touched,
             document: Mutex::new(document),
             document_generation: AtomicU64::new(1),
         }
@@ -273,12 +289,21 @@ impl SynthParams {
         self.preset_document().state
     }
 
+    /// Whether the restored preset's own value `preset` still stands for
+    /// control `index`, whose parameter reads `current`: the control has not
+    /// been set since the restore, and its parameter represents the value
+    /// ([`ControlParam::matches`]). A control moved away and back no longer
+    /// stands for the preset's value.
+    pub(crate) fn preset_value_stands(&self, index: usize, preset: f32, current: f32) -> bool {
+        !self.touched.is_marked(index) && self.controls[index].param.matches(preset, current)
+    }
+
     fn write_controls(&self, preset: &mut PresetState) {
-        for control in &self.controls {
+        for (index, control) in self.controls.iter().enumerate() {
             let name = control.info.name.as_str();
             let saved = control.param.saved_value();
             let value = match preset.value(name) {
-                Some(value) if control.param.matches(value, saved) => value,
+                Some(value) if self.preset_value_stands(index, value, saved) => value,
                 _ => saved,
             };
             preset
@@ -292,6 +317,8 @@ impl SynthParams {
     fn replace_document(&self, document: PresetDocument) {
         let mut current = self.document();
         *current = document;
+        // The wrapper set the parameters from this preset just before.
+        self.touched.clear();
         // Bumped under the lock, so a reader holding it sees a matching pair.
         self.document_generation.fetch_add(1, Ordering::AcqRel);
     }
@@ -391,14 +418,26 @@ fn group_of(name: &str) -> String {
     String::new()
 }
 
-fn make_param(info: &'static ParamInfo, index: usize, changes: &Arc<ChangeSet>) -> ControlParam {
-    let changes = changes.clone();
+fn make_param(
+    info: &'static ParamInfo,
+    index: usize,
+    changes: &Arc<ChangeSet>,
+    touched: &Arc<ChangeSet>,
+) -> ControlParam {
+    let mark = {
+        let changes = changes.clone();
+        let touched = touched.clone();
+        Arc::new(move || {
+            touched.mark(index);
+            changes.mark(index);
+        })
+    };
     match host_kind(info) {
         HostKind::Bypass => {
             return ControlParam::Bypass(
                 BoolParam::new(info.display_name.clone(), info.default_value != 0.0)
                     .make_bypass()
-                    .with_callback(Arc::new(move |_| changes.mark(index))),
+                    .with_callback(Arc::new(move |_| mark())),
             );
         }
         HostKind::Stepped => {
@@ -411,7 +450,7 @@ fn make_param(info: &'static ParamInfo, index: usize, changes: &Arc<ChangeSet>) 
                         max: info.max.round() as i32,
                     },
                 )
-                .with_callback(Arc::new(move |_| changes.mark(index)))
+                .with_callback(Arc::new(move |_| mark()))
                 .with_value_to_string(Arc::new(move |value| display_text(info, value as f32)))
                 .with_string_to_value(Arc::new(move |text| {
                     value_from_text(info, text).map(|value| value.round() as i32)
@@ -428,7 +467,7 @@ fn make_param(info: &'static ParamInfo, index: usize, changes: &Arc<ChangeSet>) 
             max: info.max,
         },
     )
-    .with_callback(Arc::new(move |_| changes.mark(index)))
+    .with_callback(Arc::new(move |_| mark()))
     .with_value_to_string(Arc::new(move |value| display_text(info, value)))
     .with_string_to_value(Arc::new(move |text| value_from_text(info, text)));
     if info.value_scale == ValueScale::Indexed {

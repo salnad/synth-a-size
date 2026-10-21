@@ -77,7 +77,7 @@ an engine interface, porting the behaviour of `vital/src/plugin/`
 **Measured.** The Steinberg validator (`validator -e`, VST3 SDK v3.8.0) on
 the Linux dev bundle: 537 tests passed, 0 failed, covering parameter scan,
 units, bus layouts, state, 32- and 64-bit processing and automation. The
-macOS arm64 run is in this PR's `Plugin` workflow. There are 29 Rust tests.
+macOS arm64 run is in this PR's `Plugin` workflow. There are 31 Rust tests.
 Every authored corpus preset (`migration/corpus/presets`, `preset_tests`)
 loads through the host state path with JSON identical to `sas-preset`'s own
 `load_file`, and every `error_*` preset fails with `sas-preset`'s error. A
@@ -92,13 +92,19 @@ out-of-range and between-step values.
   from the float parameter as 0.0, because nice-plug ignores a set that
   compares equal to the current value. A stepped parameter holds the rounded
   value of a non-integer preset value (e.g. `osc_1_transpose` 0.25 shows
-  step 0), and upstream stores the value as given. While the parameter equals
-  (or, for stepped ones, is the rounding of) the restored preset's value, the
-  preset's value is saved and kept in the engine. After a preset load, the
-  engine only gets `set_control` for parameters the host moved. Tests:
+  step 0), and upstream stores the value as given. The preset's value is
+  saved and kept in the engine while two things hold: the control hasn't been
+  set since the restore (a per-control "touched" bit, set by every parameter
+  callback and cleared when a preset is restored), and the parameter equals
+  the preset's value (for stepped ones, its rounding). A control moved away
+  and back therefore saves and plays the parameter's value, as upstream
+  would. After a preset load, the engine only gets `set_control` for
+  controls that no longer stand for the preset. Tests:
   `negative_zero_survives_the_host_path` (capture → serde → restore),
-  `host_state_round_trips_exactly` and
-  `a_stepped_parameter_leaves_the_presets_own_value_in_the_engine`.
+  `host_state_round_trips_exactly`,
+  `a_stepped_parameter_leaves_the_presets_own_value_in_the_engine` and the
+  two `a_control_moved_away_and_back_*` tests (from Chain Reviewer's delta
+  review).
 - *Every save/load cycle delays the sample by 4 frames*: `Sample::stateToJson`
   encodes the stored buffer including its `kBufferSamples` zero padding, as
   `sas-preset` mirrors. The round-trip test asserts that shift, not equality.

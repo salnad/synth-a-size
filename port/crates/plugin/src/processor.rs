@@ -160,13 +160,13 @@ impl<E: Engine> BlockProcessor<E> {
                 self.engine.load_preset(&document.state);
                 params.changes.drain(|_| {});
                 // Parameters the host changed after the restore.
-                for control in params.controls() {
+                for (index, control) in params.controls().iter().enumerate() {
                     let name = control.info.name.as_str();
                     let value = control.param.value();
                     let represented = document
                         .state
                         .value(name)
-                        .is_some_and(|preset| control.param.matches(preset, value));
+                        .is_some_and(|preset| params.preset_value_stands(index, preset, value));
                     if !represented {
                         self.engine.set_control(name, value);
                     }

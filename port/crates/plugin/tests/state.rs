@@ -201,6 +201,36 @@ fn negative_zero_survives_the_host_path() {
 }
 
 #[test]
+fn a_control_moved_away_and_back_saves_the_parameter_value() {
+    let mut preset = PresetState::new(&InitContent { sample_seed: 0 });
+    preset.set_value("osc_1_transpose", 0.25).unwrap();
+    preset.set_value("voice_tune", -0.0).unwrap();
+    let plugin = SynthASize::default();
+    let params = plugin.synth_params();
+    params.restore_state(state::plugin_state_from_json(&preset.to_json_string()).unwrap());
+    let saved = |name: &str| params.preset_state().value(name).unwrap();
+    assert_eq!(saved("osc_1_transpose"), 0.25);
+    assert!(saved("voice_tune").is_sign_negative());
+
+    let ControlParam::Stepped(transpose) = &params.control("osc_1_transpose").unwrap().param else {
+        panic!("stepped parameter");
+    };
+    unsafe {
+        transpose._internal_set_plain_value(1);
+        transpose._internal_set_plain_value(0);
+    }
+    set(params, "voice_tune", 0.5);
+    set(params, "voice_tune", 0.0);
+    // What plays is the parameter's value now, and that is what is saved.
+    assert_eq!(saved("osc_1_transpose"), 0.0);
+    assert!(saved("voice_tune") == 0.0 && saved("voice_tune").is_sign_positive());
+
+    // A new restore makes the preset's values stand again.
+    params.restore_state(state::plugin_state_from_json(&preset.to_json_string()).unwrap());
+    assert_eq!(saved("osc_1_transpose"), 0.25);
+}
+
+#[test]
 fn the_preset_json_wins_over_saved_parameter_values() {
     let mut preset = PresetState::new(&InitContent { sample_seed: 0 });
     preset.set_value("filter_1_cutoff", 72.0).unwrap();
