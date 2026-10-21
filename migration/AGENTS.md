@@ -303,11 +303,16 @@ none of them edits a shared list.
   macOS, so its parity is checked against the macOS arm64 reference.
   Mirror those sites per target, exactly as listed in
   `decisions/reference-arm.md`, and keep everything else ISA-independent.
-- Engine randomness is a `std::mt19937` stream through libstdc++'s
+- Engine randomness is a `std::mt19937` stream through the C++ library's
   `uniform_real_distribution<float>`, seeded from a global counter in
-  construction order. Exact parity for random features needs an exact
-  replica. Otherwise compare those cases only with phase-blind metrics
-  (`rms_diff_db`, `lsd_db`), and record that choice in the ledger.
+  construction order. That library is libstdc++ in the x86 reference and
+  libc++ in the macOS arm64 reference. The two agree except at the
+  `generate_canonical` round-to-1.0 edge, about 3e-8 per draw, where
+  libc++ returns exactly `max` (A9 in `decisions/reference-arm.md`,
+  mirrored per target in `sas-common`). Exact parity for random features
+  needs an exact replica, including A9. Otherwise compare those cases only
+  with phase-blind metrics (`rms_diff_db`, `lsd_db`), and record that
+  choice in the ledger.
 - Presets missing controls load parameter defaults. Presets missing
   `wavetables` or `lfos` keep the init state. Presets missing `sample`
   fail to load. The port's loader must match (M2).

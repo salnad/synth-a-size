@@ -39,17 +39,21 @@ PR #2. The tools are `scripts/cross_platform_report.py`,
 | A1a | delay lines: `Memory::get` / `StereoMemory::get` (`memory.h`) | Catmull-Rom parameter t ∈ [0.5, 1.5] | t ∈ (0, 1] | `stereo_delay_impulse` module: −13.3 dB residual, LSD 1.36 dB. Attribution: `unison_pad_fx` with random phase off still fails (−46 dB) and passes once chorus/delay are off (−65.7 dB). |
 | A1b | wave-frame index: `wave_index = toInt(frame)` (`synth_oscillator.cpp`) | nearest frame | lower frame | `line_wavetable_fold` −43 dB (LSD 0.39). With wave-frame modulation off: −137.5 dB (pass). |
 | A1c | `cubicLookup` index (`lookup_table.h`), oscillator phase accumulators `phase += toInt(...)` | rounding | truncation | Filter and phase cases pass at −85 to −127 dB, so this is below the tolerances on the corpus. |
-| A2 | random phase: `uint32_t p = random(-1..1) * amount * INT_MAX` (`synth_oscillator.cpp:583`). Negative float → unsigned is undefined behaviour. | wraps modulo 2^32 (64-bit `cvttss2si`) | `FCVTZU` saturates to 0: every voice with a negative draw starts at phase 0 | Probe: `float_to_uint32_negative` differs. `init_saw` (random phase on by default) +4.7 dB residual; with random phase off: −135.4 dB (pass). |
+| A2 | random phase: `uint32_t p = random(-1..1) * amount * INT_MAX` (`synth_oscillator.cpp:583`). Negative float → unsigned is undefined behaviour. | wraps modulo 2^32 (64-bit `cvttss2si`) | `FCVTZU` saturates to 0: every voice with a negative draw starts at phase 0 | Probe: `float_to_uint32_negative` differs. `init_saw` (random phase on by default) +4.7 dB residual; with random phase off: −135.4 dB (pass). The random stream itself is not the cause: `ref-rng-probe` gives identical upstream `RandomGenerator` streams on x86 (libstdc++) and macOS (libc++) except at the A9 edge, and `init_saw`'s phase draws hit no edge. |
 | A3 | out-of-range float → `int32_t` | 0x80000000 | saturates | Probe: `float_to_int32_overflow` differs. No corpus case isolates it. |
 | A4 | `poly_float::sum()` (`poly_values.h`) horizontal add order | `(v0+v2)+(v1+v3)` (shuffle + add) | `(v0+v1)+(v2+v3)` (`vpadd_f32`) | Reverb feedback matrix (`reverb.cpp:265, 326`) is the main user; its `toInt` only sees floored, exact integers, so A1 does not apply there. Attribution: see below. `poly_int::sum` is integer and order-independent. |
 | A5 | `poly_float::max`/`min`: `_mm_max_ps`/`_mm_min_ps` vs `vmaxq_f32`/`vminq_f32` | returns the second operand when either is NaN, or for a ±0 tie | FMAX/FMIN propagate NaN; ±0 ordered (`max(-0, +0) = +0`) | Only observable with NaN or signed-zero ties. The corpus renders are finite; not isolable. Bounded by the passing cases (≤ −85 dB). |
 | A6 | `poly_float::notEqual`: `_mm_cmpneq_ps` vs `greaterThan \| lessThan` | unordered: NaN → true | ordered: NaN → false | Call sites (`synth_oscillator.cpp:1298` midi-track flag, `modulation_connection_processor.cpp:75` power check) compare finite parameters with 0. No effect without NaN. |
 | A7 | `poly_int::min` (`poly_values.h`) | signed (`_mm_cmpgt_epi32` directly) | unsigned (`vminq_u32`) | `poly_int::max` goes through `greaterThan`, which is unsigned on both (SSE2 XORs the sign bit), so only `min` differs. Through `utils::clamp(v, lo, hi) = max(min(v, hi), lo)`, a *negative* index stays negative on x86, an out-of-bounds read one element before the table, but clamps to `hi` on arm64. This matters only for lookup inputs below about −0.5/scale (`lookup_table.h:40`, `synth_lfo.h:83`, `line_map.cpp:33`, `modulation_connection_processor.cpp:188/229/258`). Not reached by the corpus. |
 | A8 | `anyMask()`: `_mm_movemask_epi8` vs `vpmax_u32` | 16-bit byte mask | maximum lane value | Every call site uses it as a boolean on a comparison mask (`if (reset_mask.anyMask())`, `== 0` asserts, `bool x = ...anyMask()`), where both are non-zero exactly when any lane is set. No behavioural effect in upstream; the numeric value differs. |
+| A9 | `vital::utils::RandomGenerator` → `std::uniform_real_distribution<float>` / `generate_canonical` (implementation-defined): one 32-bit mt19937 draw u, then u / 2^32 in float | libstdc++ (x86 Linux): when u ≥ 2^32 − 128 the quotient rounds to 1.0f and is clamped to 1 − 2^-24, so the result is max − (max − min)·2^-24 | libc++ (macOS): returns exactly 1.0, so the result is exactly max | Source comparison by Wavetable Creator (libc++ 17 vs libstdc++ 13): identical except this edge, about 3e-8 per draw. `ref-rng-probe`: 21 upstream `RandomGenerator` streams (every engine range, distinct seeds, plus `polyVoiceNext`), 2.05e8 draws. The 14 streams with no edge input are bit-identical between x86 and macOS. The 7 with exactly one edge input each differ, and macOS hits exactly max once in each, which x86 never does (CI run 39518725978). No corpus case is known to hit it. |
 
 A4–A8 were identified by Core Framework from `poly_values.h`. Like A1–A3,
 they are mirrored per target in `sas-simd` and switched by its
-`aarch64-semantics` feature.
+`aarch64-semantics` feature. A9 is a C++ standard-library difference (x86
+reference: libstdc++; macOS reference: libc++), not an ISA one. It is
+mirrored per target in `sas-common` (Wavetable Creator, PR #4) and
+follows the same feature.
 
 Attribution in the corpus (`scripts/arm_attribution.py`, macOS 15 arm64
 vs x86, run 39515281713):
@@ -109,6 +113,7 @@ arm64.
 | macOS no-fast-math proxy vs pinned | 15/15 | −62.9 dB | 0.036 dB | 2.0e-5 dB |
 | macOS contraction on vs off | 15/15 | −91.2 dB | 0.0019 dB | 3.5e-6 dB |
 | macOS vDSP FFT vs fallback | 15/15 | −127.5 dB | 0.00015 dB | 4.2e-7 dB |
+| `simd/poly_function` (Core Framework, 127 cases), macOS vs x86 | 124/127 (95 bit-exact) | fails: `to_int`, `trunc`, `encode_phase_and_voice` (all A1) | | |
 
 The six macOS-vs-x86 failures are `init_saw` × 3 (A2), `unison_pad_fx`
 (A2 + A1a), `line_wavetable_fold` (A1b) and the `stereo_delay_impulse`
@@ -132,7 +137,7 @@ achievable on arm64.
 
 ## Consequences for the Rust port
 
-1. **Per-target upstream semantics at the enumerated sites only (A1–A8).**
+1. **Per-target upstream semantics at the enumerated sites only (A1–A9).**
    They live in one place in `sas-simd`:
    - `to_int` (rounding vs truncation);
    - float→u32 (wrap vs saturate) and float→i32 overflow;
@@ -140,7 +145,8 @@ achievable on arm64.
    - float `max`/`min` NaN and ±0 handling;
    - `not_equal` ordering;
    - signed vs unsigned `poly_int` `min`;
-   - the `any_mask` value.
+   - the `any_mask` value;
+   - the `uniform_real_distribution` canonical edge (A9, in `sas-common`).
 
    The x86_64 variants are the default on x86_64. The aarch64 variants are
    used on aarch64, and on x86_64 when the `aarch64-semantics` feature is

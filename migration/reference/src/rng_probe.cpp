@@ -75,8 +75,13 @@ int main() {
   // polyVoiceNext / polyNext as used by the oscillator and random LFO.
   vital::utils::RandomGenerator::next_seed_ = 3;
   vital::utils::RandomGenerator poly_generator(-1.0f, 1.0f);
+  std::mt19937 poly_raw(3);
+  long long poly_round_to_one = 0;
   uint64_t poly_hash = 1469598103934665603ULL;
   for (int i = 0; i < kDrawsPerStream / 4; ++i) {
+    // polyVoiceNext draws twice (lanes 0 and 2; 1 and 3 copy them).
+    poly_round_to_one += poly_raw() >= 0xFFFFFF80u;
+    poly_round_to_one += poly_raw() >= 0xFFFFFF80u;
     vital::poly_float value = poly_generator.polyVoiceNext();
     for (int lane = 0; lane < vital::poly_float::kSize; ++lane) {
       float lane_value = value[lane];
@@ -85,6 +90,7 @@ int main() {
   }
   total += kDrawsPerStream / 4 * 2;
   result["hashes"]["poly_voice_next_m1_1_seed3"] = harness::hex64(poly_hash);
+  result["canonical_round_to_one_inputs"]["poly_voice_next_m1_1_seed3"] = poly_round_to_one;
   result["total_draws"] = total;
   result["build"] = harness::buildInfo();
 

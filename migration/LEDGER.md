@@ -2442,3 +2442,19 @@ is optional (manual dispatch).
   corpus.
 - macOS vs x86 on the 16-output corpus: 10/16 pass (the same six fail).
   Every macOS-only comparison passes 16/16.
+
+**Parity Reviewer's blocking item (libc++ vs libstdc++)**
+
+- New `ref-rng-probe`, linked against the engine with the reference flags.
+  It hashes upstream `RandomGenerator` streams: 21 streams (every engine
+  range with distinct seeds, plus `polyVoiceNext`), 2.05e8 draws.
+- x86 (libstdc++) vs macOS (libc++): the 14 streams with no
+  `generate_canonical` round-to-1.0 input are bit-identical. The 7 with
+  one edge input each differ, and macOS returns exactly `max` there.
+- Recorded as A9, mirrored per target in `sas-common` (PR #4). A2 stays
+  attributed to the cast.
+- AGENTS.md randomness line updated.
+- Added the macOS arm64 entries for `simd/poly_function.hashes.json` (127),
+  written from #2's own macOS 15 CI tree.
+- poly_function macOS vs x86: 124/127 pass (95 bit-exact). `to_int`,
+  `trunc` and `encode_phase_and_voice` fail, all A1.
