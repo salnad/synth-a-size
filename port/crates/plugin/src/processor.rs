@@ -1,0 +1,183 @@
+// Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//! The audio callback: ports `SynthPlugin::processBlock`
+//! (`vital/src/plugin/synth_plugin.cpp`).
+//!
+//! Per host block (nice-plug already splits blocks at parameter changes, so
+//! automation is sample accurate): output silence and drop MIDI if bypassed;
+//! hand any newly restored preset and changed parameters to the engine; read
+//! the tempo and song position; then render in chunks of at most
+//! `MAX_BUFFER_SIZE` samples, each preceded by `correctToTime` and the MIDI
+//! messages that fall inside it.
+
+use std::sync::atomic::Ordering;
+
+use nice_plug::midi::MidiResult;
+use nice_plug::prelude::{NoteEvent, SysExMessage};
+use sas_engine::sas_dsp_core::sas_simd::common::MAX_BUFFER_SIZE;
+
+use crate::engine::Engine;
+use crate::params::SynthParams;
+
+/// The parts of the host transport the engine uses.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Transport {
+    pub tempo: Option<f64>,
+    pub playing: bool,
+    /// Song position at the start of the block, in quarter notes.
+    pub pos_beats: Option<f64>,
+}
+
+/// The short MIDI message of `event`, as upstream's `MidiManager` receives it
+/// from JUCE (velocity, pressure and CC values at 7 bits, pitch bend at 14).
+/// Note expressions with no MIDI equivalent are dropped, and so are note
+/// events addressed to every channel or key (CLAP only; VST3 always names
+/// both).
+pub fn midi_message<S: SysExMessage>(event: &NoteEvent<S>) -> Option<[u8; 3]> {
+    let addressed = match event {
+        NoteEvent::NoteOn { channel, key, .. }
+        | NoteEvent::NoteOff { channel, key, .. }
+        | NoteEvent::PolyPressure { channel, key, .. } => {
+            channel.number().is_some() && key.number().is_some()
+        }
+        _ => true,
+    };
+    match event.as_midi() {
+        Some(MidiResult::Basic(message)) if addressed => Some(message),
+        _ => None,
+    }
+}
+
+/// Drives an [`Engine`] from host blocks.
+pub struct BlockProcessor<E: Engine> {
+    engine: E,
+    sample_rate: f32,
+    /// `SynthPlugin::last_seconds_time_`.
+    last_seconds_time: f64,
+    /// The `SynthParams::document_generation` last loaded into the engine.
+    document_generation: u64,
+}
+
+impl<E: Engine> BlockProcessor<E> {
+    pub fn new(engine: E) -> BlockProcessor<E> {
+        BlockProcessor {
+            engine,
+            sample_rate: 44_100.0,
+            last_seconds_time: 0.0,
+            document_generation: 0,
+        }
+    }
+
+    pub fn engine(&self) -> &E {
+        &self.engine
+    }
+
+    pub fn engine_mut(&mut self) -> &mut E {
+        &mut self.engine
+    }
+
+    /// `SynthPlugin::prepareToPlay`.
+    pub fn set_sample_rate(&mut self, sample_rate: f32) {
+        self.sample_rate = sample_rate;
+        self.engine.set_sample_rate(sample_rate);
+    }
+
+    pub fn reset(&mut self) {
+        self.engine.reset();
+    }
+
+    /// Renders one host block into `left` / `right` (same length), taking
+    /// MIDI from `next_event` (in time order, timings relative to the block).
+    pub fn process<S: SysExMessage>(
+        &mut self,
+        params: &SynthParams,
+        left: &mut [f32],
+        right: &mut [f32],
+        transport: &Transport,
+        mut next_event: impl FnMut() -> Option<NoteEvent<S>>,
+    ) {
+        const SECONDS_PER_MINUTE: f64 = 60.0;
+
+        if params.bypassed() {
+            // AudioProcessor::processBlockBypassed with no inputs.
+            left.fill(0.0);
+            right.fill(0.0);
+            while next_event().is_some() {}
+            return;
+        }
+
+        self.sync_parameters(params);
+
+        if let Some(bpm) = transport.tempo.filter(|bpm| *bpm > 0.0) {
+            self.engine.set_bpm(bpm);
+            if transport.playing {
+                if let Some(beats) = transport.pos_beats {
+                    let bps = bpm / SECONDS_PER_MINUTE;
+                    self.last_seconds_time = beats / bps;
+                }
+            }
+        }
+
+        let total_samples = left.len().min(right.len());
+        let sample_time = 1.0 / self.sample_rate as f64;
+        let mut pending = next_event();
+        let mut offset = 0;
+        while offset < total_samples {
+            let num_samples = (total_samples - offset).min(MAX_BUFFER_SIZE);
+            let end = offset + num_samples;
+            let last_chunk = end == total_samples;
+
+            self.engine.correct_to_time(self.last_seconds_time);
+            while let Some(event) = pending.take() {
+                let timing = event.timing() as usize;
+                if timing >= end && !last_chunk {
+                    pending = Some(event);
+                    break;
+                }
+                let sample_offset = timing.saturating_sub(offset).min(num_samples - 1);
+                if let Some(message) = midi_message(&event) {
+                    self.engine.process_midi(message, sample_offset);
+                }
+                pending = next_event();
+            }
+            self.engine
+                .process(&mut left[offset..end], &mut right[offset..end]);
+
+            self.last_seconds_time += num_samples as f64 * sample_time;
+            offset = end;
+        }
+        while next_event().is_some() {}
+    }
+
+    /// Loads a newly restored preset, then pushes changed parameters.
+    fn sync_parameters(&mut self, params: &SynthParams) {
+        if params.document_generation.load(Ordering::Acquire) != self.document_generation {
+            // The main thread holds the lock only while saving or restoring;
+            // if it is busy, the preset is picked up next block.
+            if let Some(document) = params.try_document() {
+                self.document_generation = params.document_generation.load(Ordering::Acquire);
+                self.engine.load_preset(&document.state);
+                params.changes.drain(|_| {});
+                // Parameters the host changed after the restore.
+                for (index, control) in params.controls().iter().enumerate() {
+                    let name = control.info.name.as_str();
+                    let value = control.param.value();
+                    let represented = document
+                        .state
+                        .value(name)
+                        .is_some_and(|preset| params.preset_value_stands(index, preset, value));
+                    if !represented {
+                        self.engine.set_control(name, value);
+                    }
+                }
+                return;
+            }
+        }
+        params.changes.drain(|index| {
+            let control = &params.controls()[index];
+            self.engine
+                .set_control(control.info.name.as_str(), control.param.value());
+        });
+    }
+}

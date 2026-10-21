@@ -565,8 +565,10 @@ name = "sas-plugin"
 version = "0.0.1"
 dependencies = [
  "nice-plug",
+ "sas-common",
  "sas-engine",
  "sas-preset",
+ "serde_json",
 ]
 
 [[package]]
