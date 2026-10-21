@@ -102,18 +102,23 @@ jobs:
           REF_BUILD_DIR=build/variant-proxy CXX=clang++ migration/scripts/build_reference.sh -DREF_FAST_MATH=OFF
           python3 migration/scripts/run_corpus.py render --out build/platform/proxy \
             --ref-render build/variant-proxy/ref-render --ref-module build/variant-proxy/ref-module
+      # As in ci.yml: every "reference": "nofastmath" case must fail its
+      # normal limits here too.
       - name: Tolerances are achievable on macOS arm64 (proxy must pass)
-        run: python3 migration/scripts/run_corpus.py compare build/platform/pinned build/platform/proxy
+        run: python3 migration/scripts/run_corpus.py compare build/platform/pinned build/platform/proxy --justify-nofastmath
       - name: Rust parity tests on arm64 against the macOS arm64 captures (NEON path)
         if: ${{ !cancelled() }}
         env:
           SAS_PARITY_CAPTURES: build/platform/pinned
+          SAS_PARITY_CAPTURES_NOFASTMATH: build/platform/proxy
           SAS_PARITY_NO_BUILD: "1"
           SAS_PARITY_FAILURES: build/parity-failures
         run: cargo test --workspace --locked --no-fail-fast --manifest-path port/Cargo.toml
       - name: Hashes match the committed macOS arm64 identity
         if: ${{ !cancelled() }}
-        run: python3 migration/scripts/run_corpus.py hashes build/platform/pinned --check --require-known-identity
+        run: |
+          python3 migration/scripts/run_corpus.py hashes build/platform/pinned --check --require-known-identity
+          python3 migration/scripts/run_corpus.py hashes build/platform/proxy --check --require-known-identity --reference nofastmath
       - name: Upload parity failures
         if: failure()
         uses: actions/upload-artifact@v7

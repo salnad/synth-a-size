@@ -23,6 +23,7 @@ using harness::json;
 
 namespace refsig {
   float ramp(float from, float to, long long frame, long long total_frames);
+  float periodic(int kind, long long frame, int sample_rate, double freq, double phase);
 }
 
 namespace {
@@ -179,16 +180,13 @@ class Signal {
         return;
       }
 
-      double t = static_cast<double>(frame) / sample_rate_;
-      double cycle = freq_ * t + phase_;
-      double fractional = cycle - std::floor(cycle);
       float value = 0.0f;
       if (type_ == "sine")
-        value = static_cast<float>(std::sin(2.0 * M_PI * cycle));
+        value = refsig::periodic(0, frame, sample_rate_, freq_, phase_);
       else if (type_ == "saw")
-        value = static_cast<float>(2.0 * fractional - 1.0);
+        value = refsig::periodic(1, frame, sample_rate_, freq_, phase_);
       else if (type_ == "square")
-        value = fractional < 0.5 ? 1.0f : -1.0f;
+        value = refsig::periodic(2, frame, sample_rate_, freq_, phase_);
       else if (type_ == "impulse")
         value = frame == impulse_at_ ? 1.0f : 0.0f;
       else if (type_ == "ramp")

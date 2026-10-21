@@ -218,6 +218,8 @@ none of them edits a shared list.
      ```bash
      gh run download <run-id> -n ref-arm64-macos-15 -D build/arm
      python3 migration/scripts/run_corpus.py hashes build/arm/build/platform/pinned --write
+     # "reference": "nofastmath" cases also need the macOS no-fast-math entries:
+     python3 migration/scripts/run_corpus.py hashes build/arm/build/platform/proxy --write --reference nofastmath
      ```
 
      The same job requires the macOS no-fast-math proxy to pass. A case that

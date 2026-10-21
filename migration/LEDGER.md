@@ -2335,7 +2335,8 @@ is optional (manual dispatch).
   harness driver, not Vital: Clang `-ffast-math` turns the ramp
   generator's division into a reciprocal multiply, moving the delay inputs by
   1 ulp, which white-noise audio amplifies through Catmull-Rom. Fixed by
-  moving the ramp formula into `src/signal_ramp.cpp`, built with
+  moving the input generators (ramp, sine, saw, square) into
+  `src/signal_gen.cpp`, built with
   `-fno-fast-math -ffp-contract=off`. GCC already emitted the exact
   division, so x86 hashes are unchanged. Recorded in
   `decisions/reference-arm.md` B.
@@ -2369,8 +2370,8 @@ is optional (manual dispatch).
   same inline nlohmann-json code, and the linker kept the strict copy, so
   `-0.0` dumps changed in `harness/echo` `json_state`, `common/json`
   `negative_zero` and three `line_generator_edit` flip cases. The strict
-  file now holds only the ramp function and includes no shared headers. All
-  1253 x86 hashes match main unchanged.
+  file now holds only the generators and includes no headers. All 1253 x86
+  hashes match main unchanged.
 - macOS arm64 hash entries written from #2's macOS 15 CI tree (run
   39526324283) for every module file on main: new for `filters/*` (comb
   filter and module, digital_svf and settings, formant filter and module,
