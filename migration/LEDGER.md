@@ -2773,7 +2773,7 @@ Stacked on M7 PR 1.
   spacing, an out-of-range note and a stray section; `.tun` + kbm; reference
   ratio with a start note; reference frequency.
 
-**Metrics** (x86_64, local tree with the CI identity). Every comparison
+**Metrics** (x86_64; the committed hashes equal those written from CI run 39522994531's artifact). Every comparison
 passes under `module_defaults`, and 26 of 57 are bit-identical:
 
 | Output | Worst max abs error | Worst residual |
