@@ -1,0 +1,262 @@
+{
+  "description": "MultibandCompressor (120 Hz and 2500 Hz Linkwitz-Riley crossovers, one Compressor per band pair). The full multiband path waits in pending/multiband_compressor.json; interim_* cases are the ones that pass both references.",
+  "module": "multiband_compressor",
+  "cases": {
+    "low_band_noise": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 2
+        },
+        "enabled_bands": 1
+      }
+    },
+    "high_band_noise": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 3
+        },
+        "enabled_bands": 2
+      }
+    },
+    "single_band_noise": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 4
+        },
+        "enabled_bands": 3
+      }
+    },
+    "oversampled_2x_single_band": {
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 14
+        },
+        "enabled_bands": 3
+      }
+    },
+    "interim_single_band_upper_threshold_sweeps": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 6
+        },
+        "low_upper_threshold": {
+          "signal": "ramp",
+          "from": -80.0,
+          "to": 0.0
+        },
+        "band_upper_threshold": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": -80.0
+        },
+        "high_upper_threshold": {
+          "signal": "ramp",
+          "from": -80.0,
+          "to": 0.0
+        },
+        "enabled_bands": 3
+      }
+    },
+    "interim_single_band_lower_threshold_sweeps": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.2,
+          "stereo": true,
+          "seed": 7
+        },
+        "low_lower_threshold": {
+          "signal": "ramp",
+          "from": -80.0,
+          "to": 0.0
+        },
+        "band_lower_threshold": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": -80.0
+        },
+        "high_lower_threshold": {
+          "signal": "ramp",
+          "from": -80.0,
+          "to": 0.0
+        },
+        "enabled_bands": 3
+      }
+    },
+    "interim_single_band_ratio_sweeps": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 8
+        },
+        "low_upper_ratio": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "band_upper_ratio": {
+          "signal": "ramp",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "high_upper_ratio": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "low_lower_ratio": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 1.0
+        },
+        "band_lower_ratio": {
+          "signal": "ramp",
+          "from": 1.0,
+          "to": -1.0
+        },
+        "high_lower_ratio": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 1.0
+        },
+        "enabled_bands": 3
+      }
+    },
+    "interim_single_band_gain_sweeps": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.3,
+          "stereo": true,
+          "seed": 9
+        },
+        "low_output_gain": {
+          "signal": "ramp",
+          "from": -30.0,
+          "to": 30.0
+        },
+        "band_output_gain": {
+          "signal": "ramp",
+          "from": 30.0,
+          "to": -30.0
+        },
+        "high_output_gain": {
+          "signal": "ramp",
+          "from": -30.0,
+          "to": 30.0
+        },
+        "enabled_bands": 3
+      }
+    },
+    "interim_single_band_attack_release_sweeps": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "square",
+          "freq_hz": 3.0,
+          "amp": 0.7
+        },
+        "attack": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "release": {
+          "signal": "ramp",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "enabled_bands": 3
+      }
+    },
+    "interim_single_band_mix_sweep": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.7
+        },
+        "mix": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "enabled_bands": 3
+      }
+    },
+    "interim_single_band_quiet_expansion": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.01,
+          "stereo": true,
+          "seed": 5
+        },
+        "low_lower_ratio": -1.0,
+        "band_lower_ratio": 1.0,
+        "high_lower_ratio": 0.5,
+        "enabled_bands": 3
+      }
+    },
+    "interim_band_switching_from_1": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 10
+        },
+        "enabled_bands": {
+          "signal": "ramp",
+          "from": 1.0,
+          "to": 3.99
+        }
+      }
+    },
+    "interim_single_band_negative_lower_ratio": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.01,
+          "stereo": true,
+          "seed": 15
+        },
+        "enabled_bands": 3,
+        "low_lower_ratio": -1.0,
+        "band_lower_ratio": -1.0,
+        "high_lower_ratio": -1.0
+      }
+    }
+  }
+}

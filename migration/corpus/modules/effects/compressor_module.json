@@ -1,0 +1,69 @@
+{
+  "description": "CompressorModule through effect_module_harness.h (controls set once per block; 'on' toggles enable()). The full multiband path waits in pending/compressor_module.json; interim_* cases are the ones that pass both references.",
+  "module": "compressor_module",
+  "cases": {
+    "defaults_saw": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.8
+        }
+      }
+    },
+    "enabled_bands_1": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 2
+        },
+        "compressor_enabled_bands": 1
+      }
+    },
+    "enabled_bands_2": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 3
+        },
+        "compressor_enabled_bands": 2
+      }
+    },
+    "enabled_bands_3": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 4
+        },
+        "compressor_enabled_bands": 3
+      }
+    },
+    "interim_enable_toggle_short": {
+      "num_samples": 8820,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 28
+        },
+        "on": {
+          "signal": "square",
+          "freq_hz": 10.0,
+          "amp": 0.5,
+          "offset": 0.5
+        }
+      }
+    }
+  }
+}

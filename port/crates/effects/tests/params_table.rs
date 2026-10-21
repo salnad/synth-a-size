@@ -23,6 +23,7 @@ fn upstream(source: &str, name: &str) -> (f32, f32, f32, f32, String) {
             "Distortion::kMaxDrive" => 30.0,
             "DigitalSvf::kMinGain" => -15.0,
             "DigitalSvf::kMaxGain" => 15.0,
+            "vital::MultibandCompressor::kNumBandOptions - 1" => 3.0,
             other => other
                 .trim_end_matches('f')
                 .parse()

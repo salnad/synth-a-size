@@ -21,6 +21,8 @@ pub use sas_dsp_core;
 pub use sas_filters;
 
 pub mod chorus_module;
+pub mod compressor;
+pub mod compressor_module;
 pub mod delay;
 pub mod delay_module;
 pub mod distortion;
@@ -33,6 +35,8 @@ pub mod reverb;
 pub mod reverb_module;
 
 pub use chorus_module::ChorusModule;
+pub use compressor::{Compressor, MultibandCompressor};
+pub use compressor_module::CompressorModule;
 pub use delay::{Delay, MultiDelay, StereoDelay};
 pub use delay_module::DelayModule;
 pub use distortion::{Distortion, DistortionType};
@@ -54,6 +58,10 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/src/synthesis/effects/delay.cpp",
     "vital/src/synthesis/modules/delay_module.h",
     "vital/src/synthesis/modules/delay_module.cpp",
+    "vital/src/synthesis/effects/compressor.h",
+    "vital/src/synthesis/effects/compressor.cpp",
+    "vital/src/synthesis/modules/compressor_module.h",
+    "vital/src/synthesis/modules/compressor_module.cpp",
     "vital/src/synthesis/effects/distortion.h",
     "vital/src/synthesis/effects/distortion.cpp",
     "vital/src/synthesis/modules/distortion_module.h",
