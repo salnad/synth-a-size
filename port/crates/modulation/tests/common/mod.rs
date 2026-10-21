@@ -268,3 +268,76 @@ pub fn check_module(module: &ModuleDef) {
         assert_parity!(label, data);
     }
 }
+
+type CorrectToTime = dyn Fn(&ProcessorRef, f64);
+
+/// Kernel of a test wrapper that mirrors the C++ `Clocked*` subclasses:
+/// before each block it calls `correct_to_time(start + frames / rate)` on
+/// the wrapped processor, as the engine does every block. The wrapper uses
+/// the wrapped processor's input and output objects, so `run_module`
+/// drives it unchanged.
+#[derive(Clone)]
+struct Clocked {
+    inner: ProcessorRef,
+    correct_to_time: Rc<CorrectToTime>,
+    start: f64,
+    frames: u64,
+}
+
+impl sas_dsp_core::ProcessorImpl for Clocked {
+    sas_dsp_core::processor_boilerplate!();
+
+    fn process(&mut self, _this: &sas_dsp_core::Processor, num_samples: usize) {
+        let seconds = self.start + self.frames as f64 / self.inner.sample_rate() as f64;
+        (self.correct_to_time)(&self.inner, seconds);
+        self.inner.process(num_samples);
+        self.frames += num_samples as u64;
+    }
+
+    fn set_sample_rate(&mut self, this: &sas_dsp_core::Processor, sample_rate: i32) {
+        this.processor_set_sample_rate(sample_rate);
+        self.inner.set_sample_rate(sample_rate);
+    }
+
+    fn set_oversample_amount(&mut self, this: &sas_dsp_core::Processor, oversample: i32) {
+        this.processor_set_oversample_amount(oversample);
+        self.inner.set_oversample_amount(oversample);
+    }
+
+    fn reset(&mut self, _this: &sas_dsp_core::Processor, reset_mask: sas_simd::PolyMask) {
+        self.inner.reset(reset_mask);
+    }
+
+    fn hard_reset(&mut self, _this: &sas_dsp_core::Processor) {
+        self.inner.hard_reset();
+    }
+}
+
+/// Wraps `inner` in a [`Clocked`] driver starting at `start` seconds.
+pub fn clocked(
+    inner: ProcessorRef,
+    start: f64,
+    correct_to_time: impl Fn(&ProcessorRef, f64) + 'static,
+) -> ProcessorRef {
+    let num_inputs = inner.num_inputs();
+    let num_outputs = inner.num_outputs();
+    let wrapper = sas_dsp_core::Processor::new(
+        Clocked {
+            inner: inner.clone(),
+            correct_to_time: Rc::new(correct_to_time),
+            start,
+            frames: 0,
+        },
+        0,
+        0,
+        inner.is_control_rate(),
+        1,
+    );
+    for i in 0..num_inputs {
+        wrapper.register_input(inner.input(i));
+    }
+    for i in 0..num_outputs {
+        wrapper.register_output(inner.output(i));
+    }
+    wrapper
+}

@@ -1,0 +1,965 @@
+{
+ "description": "RandomLfo, every style at both rates, mono and stereo, free and tempo-synced (correctToTime per block). Frequencies in Hz (upstream free range 2^-7..2^9). Each case sets the RandomGenerator seed counter, so the mt19937 stream is compared exactly.",
+ "module": "random_lfo",
+ "cases": {
+  "perlin_mono_audio": {
+   "seed": 101,
+   "params": {
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 37.0,
+    "style": 0,
+    "stereo": 0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "perlin_mono_control": {
+   "seed": 102,
+   "params": {
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 37.0,
+    "style": 0,
+    "stereo": 0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "perlin_stereo_audio": {
+   "seed": 103,
+   "params": {
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 37.0,
+    "style": 0,
+    "stereo": 1,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "perlin_stereo_control": {
+   "seed": 104,
+   "params": {
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 37.0,
+    "style": 0,
+    "stereo": 1,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "sample_and_hold_mono_audio": {
+   "seed": 105,
+   "params": {
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 37.0,
+    "style": 1,
+    "stereo": 0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "sample_and_hold_mono_control": {
+   "seed": 106,
+   "params": {
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 37.0,
+    "style": 1,
+    "stereo": 0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "sample_and_hold_stereo_audio": {
+   "seed": 107,
+   "params": {
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 37.0,
+    "style": 1,
+    "stereo": 1,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "sample_and_hold_stereo_control": {
+   "seed": 108,
+   "params": {
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 37.0,
+    "style": 1,
+    "stereo": 1,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "sin_mono_audio": {
+   "seed": 109,
+   "params": {
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 37.0,
+    "style": 2,
+    "stereo": 0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "sin_mono_control": {
+   "seed": 110,
+   "params": {
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 37.0,
+    "style": 2,
+    "stereo": 0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "sin_stereo_audio": {
+   "seed": 111,
+   "params": {
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 37.0,
+    "style": 2,
+    "stereo": 1,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "sin_stereo_control": {
+   "seed": 112,
+   "params": {
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 37.0,
+    "style": 2,
+    "stereo": 1,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "perlin_frequency_sweep": {
+   "seed": 117,
+   "num_samples": 88200,
+   "inputs": {
+    "frequency": {
+     "signal": "ramp",
+     "from": 0.0078125,
+     "to": 512.0
+    },
+    "style": 0,
+    "stereo": 1,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 5,
+       "value": "voice_on"
+      },
+      {
+       "sample": 40000,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "perlin_max_frequency": {
+   "seed": 118,
+   "num_samples": 22050,
+   "inputs": {
+    "frequency": 512.0,
+    "style": 0,
+    "stereo": 0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 64,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "perlin_tempo_sync": {
+   "seed": 119,
+   "params": {
+    "clock_start_seconds": 0.731
+   },
+   "num_samples": 66150,
+   "inputs": {
+    "frequency": 3.0,
+    "style": 0,
+    "stereo": 1,
+    "sync": 1.0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "sample_and_hold_frequency_sweep": {
+   "seed": 120,
+   "num_samples": 88200,
+   "inputs": {
+    "frequency": {
+     "signal": "ramp",
+     "from": 0.0078125,
+     "to": 512.0
+    },
+    "style": 1,
+    "stereo": 1,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 5,
+       "value": "voice_on"
+      },
+      {
+       "sample": 40000,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "sample_and_hold_max_frequency": {
+   "seed": 121,
+   "num_samples": 22050,
+   "inputs": {
+    "frequency": 512.0,
+    "style": 1,
+    "stereo": 0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 64,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "sample_and_hold_tempo_sync": {
+   "seed": 122,
+   "params": {
+    "clock_start_seconds": 0.731
+   },
+   "num_samples": 66150,
+   "inputs": {
+    "frequency": 3.0,
+    "style": 1,
+    "stereo": 1,
+    "sync": 1.0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "sin_frequency_sweep": {
+   "seed": 123,
+   "num_samples": 88200,
+   "inputs": {
+    "frequency": {
+     "signal": "ramp",
+     "from": 0.0078125,
+     "to": 512.0
+    },
+    "style": 2,
+    "stereo": 1,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 5,
+       "value": "voice_on"
+      },
+      {
+       "sample": 40000,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "sin_max_frequency": {
+   "seed": 124,
+   "num_samples": 22050,
+   "inputs": {
+    "frequency": 512.0,
+    "style": 2,
+    "stereo": 0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 64,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "sin_tempo_sync": {
+   "seed": 125,
+   "params": {
+    "clock_start_seconds": 0.731
+   },
+   "num_samples": 66150,
+   "inputs": {
+    "frequency": 3.0,
+    "style": 2,
+    "stereo": 1,
+    "sync": 1.0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "lorenz_tempo_sync": {
+   "seed": 128,
+   "params": {
+    "clock_start_seconds": 0.731
+   },
+   "num_samples": 66150,
+   "inputs": {
+    "frequency": 3.0,
+    "style": 3,
+    "stereo": 1,
+    "sync": 1.0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "style_rounding_and_clamp": {
+   "seed": 129,
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 20.0,
+    "stereo": 1,
+    "style": {
+     "signal": "ramp",
+     "from": -1.0,
+     "to": 4.6
+    },
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 22050,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "clone_takes_new_seed": {
+   "seed": 130,
+   "params": {
+    "use_clone": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "frequency": 15.0,
+    "style": 0,
+    "stereo": 1,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 11000,
+       "value": "voice_on",
+       "voices": "0"
+      }
+     ]
+    }
+   }
+  },
+  "block_37_96k": {
+   "seed": 131,
+   "sample_rate": 96000,
+   "block_size": 37,
+   "num_samples": 48000,
+   "inputs": {
+    "frequency": 55.0,
+    "style": 1,
+    "stereo": 1,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 36,
+       "value": "voice_on"
+      },
+      {
+       "sample": 37,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 20000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "block_128_48k": {
+   "seed": 132,
+   "sample_rate": 48000,
+   "block_size": 128,
+   "num_samples": 48000,
+   "inputs": {
+    "frequency": 9.0,
+    "style": 2,
+    "stereo": 0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 127,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "oversample_2": {
+   "seed": 133,
+   "sample_rate": 48000,
+   "oversample": 2,
+   "block_size": 256,
+   "num_samples": 96000,
+   "inputs": {
+    "frequency": 13.0,
+    "style": 0,
+    "stereo": 1,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 255,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "lorenz_low_frequency_mono_audio": {
+   "seed": 301,
+   "params": {
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 0.0078125,
+    "style": 3,
+    "stereo": 0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "lorenz_low_frequency_mono_control": {
+   "seed": 302,
+   "params": {
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 0.0078125,
+    "style": 3,
+    "stereo": 0,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "lorenz_low_frequency_stereo_audio": {
+   "seed": 303,
+   "params": {
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 0.0078125,
+    "style": 3,
+    "stereo": 1,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "lorenz_low_frequency_stereo_control": {
+   "seed": 304,
+   "params": {
+    "control_rate": true
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "frequency": 0.0078125,
+    "style": 3,
+    "stereo": 1,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  }
+ }
+}
