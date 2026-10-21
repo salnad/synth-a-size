@@ -2405,6 +2405,22 @@ lands.
   bit-exactness on macOS still needs a macOS run (#2's job). This column
   follows the target OS's libm, so `aarch64-semantics` on x86 cannot
   emulate it.
+- **Refined by ARM Reference's macOS run of #2 + #52** (#53, run
+  39541999044):
+  - `audio_fade_3_phase_0:phase_coefficients` still differed in the same
+    6,190 values: cos-only and sin-only differences, no shared phase
+    error.
+  - Every `wave` and `coefficients` value of the five no-fast-math cases
+    matched, both before #52 (Rust already merged `Complex::polar`'s pair)
+    and with #52's explicit merge. So upstream's `polar` sites and the
+    twiddles behave as above in the no-fast-math build.
+  - The pair that differs is the capture's own `cosf`/`sinf` in
+    `render.cpp`, which the no-fast-math macOS build evaluates as separate
+    calls (ARM Reference is confirming with otool).
+  - The render test therefore computes that pair with
+    `sas_common::scalar::sin_cos_unmerged`: two calls, each in its own
+    non-inlined function. In the `aarch64-apple-darwin` release assembly
+    these tail-call `_sinf` and `_cosf`, so no compiler can merge them.
 
 **A10, complex division without fast-math on macOS:**
 - Apple compiler-rt's `__divsc3`, which the macOS no-fast-math build

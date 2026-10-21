@@ -66,7 +66,9 @@ fn render(case: &ModuleCase) -> Rendered {
                 amplitude * normalized[2 * h],
                 amplitude * normalized[2 * h + 1],
             ]);
-            let (sin, cos) = sas_common::scalar::sin_cos(phases[2 * h]);
+            // The capture's own cosf/sinf pair (render.cpp), which the
+            // no-fast-math reference evaluates as separate calls.
+            let (sin, cos) = sas_common::scalar::sin_cos_unmerged(phases[2 * h]);
             rendered
                 .phase_coefficients
                 .extend([amplitude * cos, amplitude * sin]);

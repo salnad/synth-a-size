@@ -183,6 +183,25 @@ pub fn sin_cos(angle: f32) -> (f32, f32) {
     }
 }
 
+/// `(sinf(angle), cosf(angle))` as two separate library calls that no
+/// compiler can merge into a `sincos` (each lives in its own non-inlined
+/// function). This is for code whose reference evaluates the pair
+/// separately; on Apple targets the merged form can differ by 1 ulp.
+#[inline]
+pub fn sin_cos_unmerged(angle: f32) -> (f32, f32) {
+    (sin_unmerged(angle), cos_unmerged(angle))
+}
+
+#[inline(never)]
+fn sin_unmerged(angle: f32) -> f32 {
+    angle.sin()
+}
+
+#[inline(never)]
+fn cos_unmerged(angle: f32) -> f32 {
+    angle.cos()
+}
+
 #[cfg(target_vendor = "apple")]
 mod apple {
     #[repr(C)]
