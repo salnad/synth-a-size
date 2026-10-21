@@ -1,5 +1,5 @@
 {
-  "description": "Distortion processor (all types via the \"type\" input). Cases named interim_* cover the downsample type while the swept-drive cases wait in pending/distortion.json.",
+  "description": "Distortion processor (all types via the \"type\" input). The full-range cases that the fast-math reference amplifies are compared exactly against the no-fast-math build (\"reference\": \"nofastmath\", SAS-35, migration/decisions/nofastmath/effects/distortion.md); cases named interim_* are well-conditioned versions that pass the official reference.",
   "module": "distortion",
   "cases": {
     "sin_fold_drive_ramp": {
@@ -243,6 +243,64 @@
           "offset": 2.5
         },
         "drive": 12.0
+      }
+    },
+    "down_sample_drive_sweep_48k": {
+      "reference": "nofastmath",
+      "sample_rate": 48000,
+      "block_size": 128,
+      "num_samples": 48000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.8
+        },
+        "type": 5,
+        "drive": {
+          "signal": "ramp",
+          "from": -30.0,
+          "to": 30.0
+        }
+      }
+    },
+    "down_sample_96k": {
+      "reference": "nofastmath",
+      "sample_rate": 96000,
+      "block_size": 128,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 3
+        },
+        "type": 5,
+        "drive": {
+          "signal": "ramp",
+          "from": -30.0,
+          "to": 30.0
+        }
+      }
+    },
+    "interim_down_sample_drive_sweep_short": {
+      "reference": "nofastmath",
+      "sample_rate": 48000,
+      "block_size": 128,
+      "num_samples": 4800,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.8
+        },
+        "type": 5,
+        "drive": {
+          "signal": "ramp",
+          "from": -30.0,
+          "to": 30.0
+        }
       }
     }
   }

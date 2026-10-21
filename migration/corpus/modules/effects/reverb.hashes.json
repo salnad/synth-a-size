@@ -2,6 +2,10 @@
   "entries": [
     {
       "hashes": {
+        "chorus_sweep_sine:audio": "73bcc5f1b4894910",
+        "decay_sweep_saw:audio": "1dcf038bb59d7589",
+        "filter_sweeps:audio": "e715e564273d1751",
+        "impulse_long_tail:audio": "1ed38b8d285e0f52",
         "interim_192k_short:audio": "c2c894932eda42cc",
         "interim_48k_short:audio": "68f9d4734bd1f888",
         "interim_chorus_sweep_short:audio": "6ad9432f3b01453c",
@@ -10,8 +14,14 @@
         "interim_impulse_short_tail:audio": "8080996fd8b0994c",
         "interim_pre_delay_sweep_short:audio": "82929159ec1aaae6",
         "interim_size_sweep_short:audio": "3c88c44a3792fa4d",
+        "max_decay_full_size_tail:audio": "26638c0f576969d4",
         "oversampled_2x:audio": "8efe2278f79f219b",
         "pre_delay_clamped:audio": "f8a3721d51030fd6",
+        "pre_delay_sweep:audio": "714ed9776910998e",
+        "rate_192k:audio": "222f86fef637f408",
+        "rate_48k:audio": "df88c48bd602328f",
+        "rate_96k:audio": "abe8016501a4902f",
+        "size_sweep_noise:audio": "ec859a08ebd10844",
         "wet_sweep:audio": "135e11023aecbbf3"
       },
       "identity": {
@@ -45,6 +55,29 @@
         "glibc": null,
         "libm_variants": "Apple libm (macOS 15.7.9)",
         "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    },
+    {
+      "hashes": {
+        "chorus_sweep_sine:audio": "29e9ad5fbce1127b",
+        "decay_sweep_saw:audio": "84752514d05d7ed8",
+        "filter_sweeps:audio": "8dc1022920ac8117",
+        "impulse_long_tail:audio": "7e0dd9ade0497010",
+        "max_decay_full_size_tail:audio": "621eb80a445cb97a",
+        "pre_delay_sweep:audio": "0b9dd562f4f949d6",
+        "rate_192k:audio": "b4cce7b7a526cc5b",
+        "rate_48k:audio": "f3e44b363db0f3ca",
+        "rate_96k:audio": "0a9a6201c980878f",
+        "size_sweep_noise:audio": "6585a0fdb9420426"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": false,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
         "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
       }
     }

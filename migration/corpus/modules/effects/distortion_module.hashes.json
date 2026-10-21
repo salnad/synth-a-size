@@ -7,6 +7,7 @@
         "down_sample_constant_drive:audio": "2f9ce9570403907b",
         "enable_toggle:audio": "2127b8e87d76e7d7",
         "filter_after:audio": "f000cab7d737a537",
+        "filter_before:audio": "e1c561f5f3b9b407",
         "hard_clip_drive_sweep:audio": "52ea75df7f073293",
         "interim_filter_before_constant:audio": "19a0551f0f4e970c",
         "interim_filter_before_sin_fold:audio": "8c91025f8496ec37",
@@ -53,6 +54,20 @@
         "glibc": null,
         "libm_variants": "Apple libm (macOS 15.7.9)",
         "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    },
+    {
+      "hashes": {
+        "filter_before:audio": "53e22a543865ac42"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": false,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
         "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
       }
     }

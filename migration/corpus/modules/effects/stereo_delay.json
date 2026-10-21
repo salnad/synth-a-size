@@ -225,6 +225,41 @@
         "feedback": 0.95,
         "wet": 0.5
       }
+    },
+    "clamped_dampened_damping_sweep": {
+      "reference": "nofastmath",
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 55.0,
+          "amp": 0.8
+        },
+        "style": 5,
+        "frequency": 9.0,
+        "feedback": 0.95,
+        "wet": 0.5,
+        "damping": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    },
+    "unclamped_unfiltered_negative_feedback": {
+      "reference": "nofastmath",
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 440.0,
+          "amp": 0.3
+        },
+        "style": 7,
+        "frequency": 30.0,
+        "feedback": -0.9,
+        "wet": 0.5
+      }
     }
   }
 }

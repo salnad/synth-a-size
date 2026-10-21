@@ -2,12 +2,27 @@
   "entries": [
     {
       "hashes": {
+        "center_sweep:audio": "0483927dddb87fba",
+        "defaults_saw:audio": "7919940a2e3c8d36",
+        "depth_and_phase_offset_sweep:audio": "7040873c3245fab3",
+        "dotted_and_triplet:audio": "6f1ac02e30568b3a",
+        "enable_toggle:audio": "d1dfc0043e161616",
+        "feedback_sweep:audio": "4b22e2fdc73679cc",
+        "free_frequency_sweep:audio": "c339cb097590ab0b",
+        "interim_full_feedback_short_tail:audio": "bc02eaa8659780e7",
         "interim_no_depth_center_high:audio": "1e6ad4438cdc2057",
         "interim_no_depth_center_low:audio": "dad6557075790a33",
+        "interim_no_depth_enable_toggle:audio": "dc7c4575ccf4fa3f",
         "interim_no_depth_feedback_sweep:audio": "9ac3cb46b1e080eb",
+        "interim_no_depth_phase_offset:audio": "02d0e1fb630db7ea",
         "interim_small_depth_dotted_triplet:audio": "8f29d2b719d10891",
+        "interim_small_depth_free_frequency:audio": "2f747898e51f0b47",
+        "long_tail_full_feedback:audio": "1838000a76eb5e74",
+        "oversampled_2x:audio": "8b5c47133b1c532e",
         "rate_48k:audio": "2f4b53c34a875e14",
-        "rate_96k:audio": "0452909517ffc944"
+        "rate_96k:audio": "0452909517ffc944",
+        "tempo_sweep:audio": "147937497b63062e",
+        "wet_sweep:audio": "4c6794000f515087"
       },
       "identity": {
         "arch": "x86_64",
@@ -35,6 +50,34 @@
         "glibc": null,
         "libm_variants": "Apple libm (macOS 15.7.9)",
         "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    },
+    {
+      "hashes": {
+        "center_sweep:audio": "668a059674a3631e",
+        "defaults_saw:audio": "6daed2dbed081e8b",
+        "depth_and_phase_offset_sweep:audio": "172c98ba64aa22e7",
+        "dotted_and_triplet:audio": "06a9b1d9cad565d2",
+        "enable_toggle:audio": "39fa57dcbd108edd",
+        "feedback_sweep:audio": "54c9b5cb8083bcb3",
+        "free_frequency_sweep:audio": "9ac3e046f924fa46",
+        "interim_full_feedback_short_tail:audio": "8c698a43ab2117bf",
+        "interim_no_depth_enable_toggle:audio": "2cf412e0e7f43e0f",
+        "interim_no_depth_phase_offset:audio": "40086a11240c437f",
+        "interim_small_depth_free_frequency:audio": "d58c8187abc37193",
+        "long_tail_full_feedback:audio": "aed6db2652230715",
+        "oversampled_2x:audio": "9eddef8ebd516a68",
+        "tempo_sweep:audio": "ba0e74cb0085ed0a",
+        "wet_sweep:audio": "c5fb3806589a5bf7"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": false,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
         "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
       }
     }
