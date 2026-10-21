@@ -40,7 +40,7 @@ pub const TAPS_25: [[f32; 2]; NUM_TAPS_25] = [
 ];
 
 /// `vital::IirHalfbandDecimator`.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct IirHalfbandDecimator {
     sharp_cutoff: bool,
     in_memory: [PolyFloat; NUM_TAPS_25],
@@ -84,7 +84,19 @@ impl IirHalfbandDecimator {
 }
 
 impl ProcessorImpl for IirHalfbandDecimator {
-    sas_dsp_core::processor_boilerplate!();
+    /// Upstream's `clone()` is `VITAL_ASSERT(false); return nullptr;`: this
+    /// processor only lives in the mono engine path and is never cloned.
+    fn clone_box(&self) -> Box<dyn ProcessorImpl> {
+        panic!("IirHalfbandDecimator cannot be cloned (upstream asserts in clone())")
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 
     /// Writes `num_samples` outputs from `2 * num_samples` inputs.
     fn process(&mut self, this: &Processor, num_samples: usize) {

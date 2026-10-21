@@ -16,7 +16,7 @@ pub const AUDIO: usize = 0;
 pub const NUM_INPUTS: usize = 1;
 
 /// `vital::Upsampler`.
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub struct Upsampler;
 
 impl Upsampler {
@@ -41,7 +41,19 @@ impl Upsampler {
 }
 
 impl ProcessorImpl for Upsampler {
-    sas_dsp_core::processor_boilerplate!();
+    /// Upstream's `clone()` is `VITAL_ASSERT(false); return nullptr;`: this
+    /// processor only lives in the mono engine path and is never cloned.
+    fn clone_box(&self) -> Box<dyn ProcessorImpl> {
+        panic!("Upsampler cannot be cloned (upstream asserts in clone())")
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 
     fn process(&mut self, this: &Processor, num_samples: usize) {
         let audio_in = this.input_buffer(AUDIO);

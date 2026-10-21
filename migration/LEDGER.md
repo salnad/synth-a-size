@@ -1837,6 +1837,9 @@ Core Filters (M5a), stacked on PR 2.
   1, block size 4 at 4×, and 96 kHz × 2. `filters/fir_halfband_decimator`
   has 4 cases: noise, saw, a 20 kHz sine at the minimum block size 34, and
   an impulse.
+- `Upsampler`, `IirHalfbandDecimator` and `Decimator` panic in
+  `clone_box`, mirroring upstream's asserting `clone()` (Filter Reviewer note:
+  a cloned `Decimator` kernel would point at the original's stages).
 - Parity, x86_64: 18/18 pass. All 14 round-trip cases and the FIR impulse
   are bit-identical to the reference; the other FIR cases have max_abs_error
   ≤ 1.2e-7, residual ≤ −140.1 dB.

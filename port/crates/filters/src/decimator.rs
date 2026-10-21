@@ -18,7 +18,6 @@ pub const AUDIO: usize = 0;
 pub const NUM_INPUTS: usize = 1;
 
 /// `vital::Decimator` (a `ProcessorRouter`).
-#[derive(Clone)]
 pub struct Decimator {
     num_stages: i32,
     max_stages: i32,
@@ -52,7 +51,19 @@ impl Decimator {
 }
 
 impl ProcessorImpl for Decimator {
-    sas_dsp_core::processor_boilerplate!();
+    /// Upstream's `clone()` is `VITAL_ASSERT(false); return nullptr;`: this
+    /// processor only lives in the mono engine path and is never cloned.
+    fn clone_box(&self) -> Box<dyn ProcessorImpl> {
+        panic!("Decimator cannot be cloned (upstream asserts in clone())")
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 
     /// Upstream's `init` wires the stages and does not call
     /// `ProcessorRouter::init`.
