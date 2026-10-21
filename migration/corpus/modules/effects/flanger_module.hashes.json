@@ -2,6 +2,14 @@
   "entries": [
     {
       "hashes": {
+        "interim_full_feedback_short_tail:audio": "bc02eaa8659780e7",
+        "interim_no_depth_center_high:audio": "1e6ad4438cdc2057",
+        "interim_no_depth_center_low:audio": "dad6557075790a33",
+        "interim_no_depth_enable_toggle:audio": "dc7c4575ccf4fa3f",
+        "interim_no_depth_feedback_sweep:audio": "9ac3cb46b1e080eb",
+        "interim_no_depth_phase_offset:audio": "02d0e1fb630db7ea",
+        "interim_small_depth_dotted_triplet:audio": "8f29d2b719d10891",
+        "interim_small_depth_free_frequency:audio": "2f747898e51f0b47",
         "oversampled_2x:audio": "8b5c47133b1c532e",
         "rate_48k:audio": "2f4b53c34a875e14",
         "rate_96k:audio": "0452909517ffc944",

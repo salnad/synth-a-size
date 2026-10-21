@@ -59,9 +59,10 @@ fn modules() -> BTreeMap<&'static str, ModuleDef> {
     m
 }
 
-/// Every chorus case needs the no-fast-math reference (LEDGER.md, M6 PR 4)
-/// and is parked in `migration/corpus/modules/effects/pending/`.
-const PARKED: &[&str] = &["chorus_module"];
+/// No module is fully parked: the full-range chorus and flanger cases are in
+/// `migration/corpus/modules/effects/pending/` and the loaded chorus cases are
+/// interim (LEDGER.md, M6 PR 4).
+const PARKED: &[&str] = &[];
 
 #[test]
 fn chorus_and_flanger_match_reference() {

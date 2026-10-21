@@ -1,5 +1,5 @@
 {
-  "description": "FlangerModule through effect_module_harness.h (controls set once per block; 'on' toggles enable()). Cases that need the no-fast-math reference are in pending/flanger_module.json.",
+  "description": "FlangerModule through effect_module_harness.h (controls set once per block; 'on' toggles enable()). Cases named interim_* are well-conditioned (zero or small modulation depth, short renders) so LFO phase drift in the fast-math reference cannot move delay reads; the full-range cases that need the no-fast-math reference are in pending/flanger_module.json.",
   "module": "flanger_module",
   "cases": {
     "tempo_sweep": {
@@ -71,6 +71,127 @@
           "amp": 0.5
         },
         "flanger_feedback": 0.7
+      }
+    },
+    "interim_no_depth_center_low": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "flanger_mod_depth": 0.0,
+        "flanger_center": 8.0
+      }
+    },
+    "interim_no_depth_center_high": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "flanger_mod_depth": 0.0,
+        "flanger_center": 136.0
+      }
+    },
+    "interim_no_depth_feedback_sweep": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 82.0,
+          "amp": 0.6
+        },
+        "flanger_mod_depth": 0.0,
+        "flanger_feedback": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 1.0
+        }
+      }
+    },
+    "interim_no_depth_enable_toggle": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "on": {
+          "signal": "square",
+          "freq_hz": 4.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "flanger_mod_depth": 0.0,
+        "flanger_feedback": 0.8
+      }
+    },
+    "interim_no_depth_phase_offset": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 4
+        },
+        "flanger_mod_depth": 0.0,
+        "flanger_phase_offset": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    },
+    "interim_small_depth_free_frequency": {
+      "num_samples": 4410,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "flanger_mod_depth": 0.05,
+        "flanger_sync": 0,
+        "flanger_frequency": {
+          "signal": "ramp",
+          "from": -5.0,
+          "to": 2.0
+        }
+      }
+    },
+    "interim_small_depth_dotted_triplet": {
+      "num_samples": 4410,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "beats_per_second": 1.75,
+        "flanger_mod_depth": 0.05,
+        "flanger_sync": {
+          "signal": "ramp",
+          "from": 2.0,
+          "to": 3.99
+        },
+        "flanger_tempo": 7
+      }
+    },
+    "interim_full_feedback_short_tail": {
+      "num_samples": 8820,
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 200
+        },
+        "flanger_mod_depth": 0.0,
+        "flanger_feedback": 1.0
       }
     }
   }

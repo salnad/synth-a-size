@@ -1,0 +1,28 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "interim_no_depth_48k:audio": "f6d9c3f2e0d6fb67",
+        "interim_no_depth_delay_times:audio": "858fb74fc6bdcd78",
+        "interim_no_depth_enable_toggle:audio": "5fb45f1a9adedca3",
+        "interim_no_depth_feedback_filter_wet:audio": "504437f1fde0d6bf",
+        "interim_no_depth_oversampled_2x:audio": "bc47762f35309c0b",
+        "interim_no_depth_voices_1:audio": "2c5a9cde8aa3719b",
+        "interim_no_depth_voices_2:audio": "e697d708e239fdeb",
+        "interim_no_depth_voices_3:audio": "8fe33f2f158892f7",
+        "interim_no_depth_voices_4:audio": "20aa9e7ce739c313",
+        "interim_small_depth_short:audio": "3c1f5af879a2357f",
+        "interim_small_depth_tempo_sync:audio": "40bd01c93601b8fc"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}
