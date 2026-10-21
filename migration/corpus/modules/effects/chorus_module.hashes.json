@@ -23,6 +23,30 @@
         "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
         "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
       }
+    },
+    {
+      "hashes": {
+        "interim_no_depth_48k:audio": "87d9bf20e052a7d7",
+        "interim_no_depth_delay_times:audio": "a9164405f577fc7b",
+        "interim_no_depth_enable_toggle:audio": "9d503b21ef6aca17",
+        "interim_no_depth_feedback_filter_wet:audio": "002a38c85786c2d7",
+        "interim_no_depth_oversampled_2x:audio": "55a5c35f668cb5df",
+        "interim_no_depth_voices_1:audio": "1630d00cd40bbae3",
+        "interim_no_depth_voices_2:audio": "82764bf706940773",
+        "interim_no_depth_voices_3:audio": "67b1f85c771dbefb",
+        "interim_no_depth_voices_4:audio": "8d89a54c98504d83",
+        "interim_small_depth_short:audio": "3dd2bb8e8071b0e3",
+        "interim_small_depth_tempo_sync:audio": "a28cffc48e97e6fa"
+      },
+      "identity": {
+        "arch": "aarch64",
+        "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+        "fast_math": true,
+        "glibc": null,
+        "libm_variants": "Apple libm (macOS 15.7.9)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
     }
   ]
 }
