@@ -43,8 +43,10 @@ def entry_files(repo):
     return sorted(name for name in os.listdir(directory) if name.endswith(".md") and name != "README.md")
 
 
-def read_text(repo):
-    """The whole ledger as one markdown text: LEDGER.md, then every entry."""
+def read_files(repo):
+    """The text of every ledger file: LEDGER.md, then each entry in date
+    order. Approval lookups parse each file on its own, so no section can
+    span a file boundary."""
     parts = []
     frozen = os.path.join(repo, FROZEN)
     if os.path.exists(frozen):
@@ -53,7 +55,12 @@ def read_text(repo):
     for name in entry_files(repo):
         with open(os.path.join(repo, ENTRIES, name)) as handle:
             parts.append(handle.read())
-    return "\n\n".join(part.rstrip("\n") for part in parts) + "\n"
+    return parts
+
+
+def read_text(repo):
+    """The whole ledger as one markdown text, for reading."""
+    return "\n\n".join(part.rstrip("\n") for part in read_files(repo)) + "\n"
 
 
 def problems(repo):

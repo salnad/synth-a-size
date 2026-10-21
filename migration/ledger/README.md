@@ -24,13 +24,16 @@ blocked (migration/AGENTS.md).
 
 The resolvers treat `LEDGER.md` plus every entry file as one ledger.
 
+Only **dated** headings (`YYYY-MM-DD: ...`) count as approvals, and each
+file is parsed on its own, so a section never runs into the next file.
+
 - **Tolerance exceptions:** a `tolerance_exception`'s `approved_in` must be
-  the exact text of a heading in the ledger, and that section must name the
-  case id. The heading can be in `LEDGER.md` or in an entry file.
+  the exact text of a dated heading in the ledger, and that section must
+  name the case id. The heading can be in `LEDGER.md` or in an entry file.
 - **No-fast-math allowlist:** adding an id to the allowlist in
   `decisions/owner-decisions-json-and-morphs.md` requires a new entry file
-  in the same change. Its heading must contain "owner approval", and its
-  section must name the id. CI checks this with
+  in the same change. A dated heading in it must contain "owner approval",
+  and that section must name the id. CI checks this with
   `run_corpus.py allowlist-approval`.
 
 Only a human can approve (migration/AGENTS.md, rule 6).

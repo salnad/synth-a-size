@@ -149,8 +149,24 @@ def read_json_strict(path):
 
 
 def read_ledger():
-    """LEDGER.md (frozen) followed by every migration/ledger/ entry."""
-    return ledger.read_text(REPO)
+    """The ledger files' texts: LEDGER.md (frozen), then every
+    migration/ledger/ entry, each parsed on its own."""
+    return ledger.read_files(REPO)
+
+
+DATED_HEADING = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}: ")
+
+
+def approval_sections(ledger_files):
+    """(heading, body) of every dated heading ("YYYY-MM-DD: ...") in the
+    ledger, parsed per file so no section crosses a file boundary. Undated
+    headings (e.g. the "# Ledger" title, whose section spans its whole file)
+    never count as approvals. `ledger_files` is a list of file texts (a
+    single string is one file). Mirrored in sas-parity (cases.rs)."""
+    if isinstance(ledger_files, str):
+        ledger_files = [ledger_files]
+    return [(title, body) for text in ledger_files for title, body in ledger_sections(text)
+            if DATED_HEADING.match(title)]
 
 
 def ledger_sections(text):
@@ -270,7 +286,10 @@ def resolve_tolerances(case_id, defaults, file_level, case, ledger_text):
     unapproved = [k for k in looser if k not in approved]
     if unapproved:
         raise CaseError("%s: %s loosened without approval in tolerance_exception" % (case_id, unapproved))
-    bodies = [body for title, body in ledger_sections(ledger_text) if title == approved_in.strip()]
+    if not DATED_HEADING.match(approved_in.strip()):
+        raise CaseError("%s: tolerance_exception.approved_in must cite a dated ledger heading "
+                        "(\"YYYY-MM-DD: ...\"), not %r" % (case_id, approved_in))
+    bodies = [body for title, body in approval_sections(ledger_text) if title == approved_in.strip()]
     if not bodies:
         raise CaseError("%s: tolerance_exception cites ledger heading %r, which does not exist "
                         "(migration/LEDGER.md or migration/ledger/)" % (case_id, approved_in))
@@ -1078,8 +1097,7 @@ def unapproved_allowlist_additions(base_doc, head_doc, new_entries):
     no approval (the case returns to the official reference)."""
     before = set(allowlist_from(base_doc))
     added = [case_id for case_id in allowlist_from(head_doc) if case_id not in before]
-    approvals = [body for text in new_entries for title, body in ledger_sections(text)
-                 if "owner approval" in title.lower()]
+    approvals = [body for title, body in approval_sections(new_entries) if "owner approval" in title.lower()]
     return [case_id for case_id in added if not any(names_case(body, case_id) for body in approvals)]
 
 
@@ -1099,7 +1117,10 @@ def cmd_allowlist_approval(args):
     with open(DECISION_DOC) as handle:
         head_doc = handle.read()
     code, listing = run(["git", "-C", REPO, "ls-tree", "--name-only", args.base, ledger.ENTRIES + "/"])
-    existing = {os.path.basename(line) for line in listing.splitlines()} if code == 0 else set()
+    if code != 0:
+        print("cannot list %s at %s: %s" % (ledger.ENTRIES, args.base, listing.strip()))
+        return 2
+    existing = {os.path.basename(line) for line in listing.splitlines()}
     new_entries = []
     for name in ledger.entry_files(REPO):
         if name not in existing:
@@ -1108,7 +1129,8 @@ def cmd_allowlist_approval(args):
     missing = unapproved_allowlist_additions(git_show(args.base, DECISION_DOC), head_doc, new_entries)
     for case_id in missing:
         print("%s was added to the no-fast-math allowlist without a new file under migration/ledger/ "
-              "whose heading contains \"owner approval\" and which names the case" % case_id)
+              "with a dated heading (\"YYYY-MM-DD: ...\") that contains \"owner approval\" and whose "
+              "section names the case" % case_id)
     print("%d allowlist additions without a recorded owner approval" % len(missing))
     return 1 if missing else 0
 

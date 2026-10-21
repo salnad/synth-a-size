@@ -126,7 +126,8 @@ none of them edits a shared list.
      }
      ```
 
-     `approved_in` must be the exact text of a ledger heading (in an entry
+     `approved_in` must be the exact text of a dated ledger heading
+     (`YYYY-MM-DD: ...`, in an entry
      file under `migration/ledger/`, or the frozen `LEDGER.md`), and that
      section must name the case id. Every loosened metric must equal its
      approved value, so loosening further needs a new approval. Only a human

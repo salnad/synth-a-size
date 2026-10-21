@@ -21,6 +21,14 @@ rebased. With 20+ open PRs this was the biggest source of churn.
   contains "owner approval" and names the id. An approval appended to
   `LEDGER.md` no longer counts, and neither does an edit to an existing
   entry.
+- **Approvals use dated headings, parsed per file** (Parity Reviewer on
+  #50). Only `YYYY-MM-DD: ...` headings count, for `approved_in` and for
+  the allowlist check. Sections are built per file, so none crosses a file
+  boundary. Before this, `"approved_in": "Ledger"` was accepted: the
+  `# Ledger` section spans the whole file, so any mention of the case id
+  counted, including a worker's own progress note. The hole was already on
+  main; joining entry files would have widened it. The allowlist check
+  also fails closed if `git ls-tree` errors.
 - **Reading and checks:** `python3 migration/scripts/ledger.py` prints
   everything in date order, `--list` lists the entry files, and `--check`
   validates names and headings (run in CI).
@@ -31,5 +39,9 @@ rebased. With 20+ open PRs this was the biggest source of churn.
     old entry).
   - Rust: ledger assembly order, and an exception resolved from an entry
     file.
+  - Both suites: the reviewer's `"approved_in": "Ledger"` repro (on test
+    files and on the repository ledger), an undated heading in an entry, and
+    a dated level-1 heading that must not reach into the next file are all
+    rejected.
 - Docs updated: AGENTS.md, migration/AGENTS.md, READMEs, PLAN.md,
   UPSTREAM.md and the decision doc.

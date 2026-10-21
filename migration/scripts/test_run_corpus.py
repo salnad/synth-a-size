@@ -186,6 +186,29 @@ class ToleranceRules(unittest.TestCase):
         self.assertCaseError("NaN is not allowed", rc.loads_strict, '{"residual_db": NaN}', "x")
         self.assertCaseError("Infinity is not allowed", rc.loads_strict, '{"residual_db": Infinity}', "x")
 
+    # Parity Reviewer on #50: "approved_in": "Ledger" was accepted, because the
+    # "# Ledger" section spans the whole file (and then every entry file).
+    def test_approved_in_must_be_a_dated_heading_within_one_file(self):
+        def case(heading):
+            return {"num_samples": 1, "tolerances": {"residual_db": -60},
+                    "tolerance_exception": {"approved_in": heading, "tolerances": {"residual_db": -60}}}
+
+        defaults = MODULE_DEFAULTS["tolerances"]
+        frozen = "# Ledger\n\nIntro.\n\n## 2026-10-20: old\n\nHistory.\n"
+        progress = "## 2026-10-22: comb filter work\n\nfilters/test/a measured -60 dB.\n"
+        resolve = lambda heading, files: rc.resolve_tolerances("filters/test/a", defaults, {}, case(heading), files)  # noqa: E731
+        self.assertCaseError("must cite a dated ledger heading", resolve, "Ledger", [frozen, progress])
+        self.assertCaseError("must cite a dated ledger heading", resolve, "Ledger", rc.read_ledger())
+        undated = "## Approval for filters/test/a\n\nfilters/test/a approved.\n"
+        self.assertCaseError("must cite a dated ledger heading", resolve, "Approval for filters/test/a",
+                             [frozen, undated])
+        # A dated level-1 heading cannot reach into the next file.
+        notes = "# 2026-10-22: notes\n\nNothing approved.\n"
+        self.assertCaseError("does not name the case", resolve, "2026-10-22: notes", [frozen, notes, progress])
+        approval = "## 2026-10-23: approve looser filters/test/a\n\nOwner approved filters/test/a.\n"
+        tolerances, _ = resolve("2026-10-23: approve looser filters/test/a", [frozen, approval])
+        self.assertEqual(tolerances["residual_db"], -60.0)
+
     def test_ledger_sections_ignore_fences(self):
         sections = rc.ledger_sections("## A\nx\n```\n## not a heading\n```\n### B\ny\n## C\nz\n")
         self.assertEqual([t for t, _ in sections], ["A", "B", "C"])
@@ -324,6 +347,9 @@ class ComparisonRules(unittest.TestCase):
         self.assertEqual(check(head_doc, base_doc, []), [])
         self.assertEqual(check("", base_doc, ["## 2026-10-21: owner approval — x\n\n%s\n" % ALLOWED]), [])
         self.assertEqual(check("", base_doc, []), [ALLOWED])
+        # Only dated headings count (reviewer note on #50).
+        self.assertEqual(check(base_doc, head_doc, ["## Owner approval: comb\n\nfilters/test/comb\n"]),
+                         ["filters/test/comb"])
 
     def test_allowlist_comes_from_its_decision_doc_section(self):
         self.assertEqual(rc.allowlist_from(DECISION), [ALLOWED])
