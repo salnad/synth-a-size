@@ -2473,12 +2473,9 @@ is optional (manual dispatch).
   are unchanged (224/224 locally). Recorded in `decisions/reference-arm.md` B.
 - Rebased again for #4 + #12 (CI does not run while the PR conflicts, and
   the macOS hashes must cover `common/*`).
-- #4's `common/line_generator*` harness modules failed to link on macOS:
-  `nlohmann::json::value` takes its default by `const&`, which ODR-uses
-  `LineGenerator::kDefaultResolution` (in-class `constexpr`, no out-of-line
-  definition in C++14). GCC folds it at -O3; Apple clang does not. Fixed by
-  passing `static_cast<int>(...)`. GCC -O0 reproduces it (1 undefined
-  reference per object before, 0 after); x86 hashes unchanged (411/411).
+- #4's `common/line_generator*` harness modules failed to link on macOS
+  (ODR-use of `LineGenerator::kDefaultResolution` under C++14). #2 carried
+  the fix until #38 landed the same change on main.
 - Rebased again for #6, #13, #14.
 - macOS arm64 identity entries written from #2's own macOS 15 CI tree (run
   39522321209) for every module file: `framework/*` (new), `common/*`
