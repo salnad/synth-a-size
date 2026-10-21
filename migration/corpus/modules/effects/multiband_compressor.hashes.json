@@ -40,6 +40,47 @@
         "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
         "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
       }
+    },
+    {
+      "hashes": {
+        "high_band_noise:audio": "6c7b6f6d404ec1b7",
+        "high_band_noise:band_input_ms": "8122dbd1574e48c6",
+        "high_band_noise:band_output_ms": "e3f9b9d4a0211265",
+        "high_band_noise:high_input_ms": "b018871e8b29c2b2",
+        "high_band_noise:high_output_ms": "ccbf51183ffaaaad",
+        "high_band_noise:low_input_ms": "aa5b1d63823bf683",
+        "high_band_noise:low_output_ms": "aa5b1d63823bf683",
+        "low_band_noise:audio": "cec692caa32f66df",
+        "low_band_noise:band_input_ms": "68e551d9c6dc9f0c",
+        "low_band_noise:band_output_ms": "6c38cae583387398",
+        "low_band_noise:high_input_ms": "aa5b1d63823bf683",
+        "low_band_noise:high_output_ms": "aa5b1d63823bf683",
+        "low_band_noise:low_input_ms": "ef258596236f3bc0",
+        "low_band_noise:low_output_ms": "910a8fea4fb564fc",
+        "oversampled_2x_single_band:audio": "d18c1269615c0385",
+        "oversampled_2x_single_band:band_input_ms": "ff9e3f7df583bbbf",
+        "oversampled_2x_single_band:band_output_ms": "4b944113afa774f5",
+        "oversampled_2x_single_band:high_input_ms": "ff9e3f7df583bbbf",
+        "oversampled_2x_single_band:high_output_ms": "adb6cda3287cb035",
+        "oversampled_2x_single_band:low_input_ms": "0a9db68ce63de983",
+        "oversampled_2x_single_band:low_output_ms": "0a9db68ce63de983",
+        "single_band_noise:audio": "7fea756c847ee353",
+        "single_band_noise:band_input_ms": "57042e05e353e287",
+        "single_band_noise:band_output_ms": "792d5d3bba59871f",
+        "single_band_noise:high_input_ms": "57042e05e353e287",
+        "single_band_noise:high_output_ms": "48a157ea5fb8485f",
+        "single_band_noise:low_input_ms": "aa5b1d63823bf683",
+        "single_band_noise:low_output_ms": "aa5b1d63823bf683"
+      },
+      "identity": {
+        "arch": "aarch64",
+        "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+        "fast_math": true,
+        "glibc": null,
+        "libm_variants": "Apple libm (macOS 15.7.9)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
     }
   ]
 }
