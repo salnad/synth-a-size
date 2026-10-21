@@ -12,11 +12,13 @@ import io
 import json
 import os
 import struct
+import subprocess
 import sys
 import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import ledger  # noqa: E402
 import run_corpus as rc  # noqa: E402
 
 LEDGER = """# Ledger
@@ -184,6 +186,29 @@ class ToleranceRules(unittest.TestCase):
         self.assertCaseError("NaN is not allowed", rc.loads_strict, '{"residual_db": NaN}', "x")
         self.assertCaseError("Infinity is not allowed", rc.loads_strict, '{"residual_db": Infinity}', "x")
 
+    # Parity Reviewer on #50: "approved_in": "Ledger" was accepted, because the
+    # "# Ledger" section spans the whole file (and then every entry file).
+    def test_approved_in_must_be_a_dated_heading_within_one_file(self):
+        def case(heading):
+            return {"num_samples": 1, "tolerances": {"residual_db": -60},
+                    "tolerance_exception": {"approved_in": heading, "tolerances": {"residual_db": -60}}}
+
+        defaults = MODULE_DEFAULTS["tolerances"]
+        frozen = "# Ledger\n\nIntro.\n\n## 2026-10-20: old\n\nHistory.\n"
+        progress = "## 2026-10-22: comb filter work\n\nfilters/test/a measured -60 dB.\n"
+        resolve = lambda heading, files: rc.resolve_tolerances("filters/test/a", defaults, {}, case(heading), files)  # noqa: E731
+        self.assertCaseError("must cite a dated ledger heading", resolve, "Ledger", [frozen, progress])
+        self.assertCaseError("must cite a dated ledger heading", resolve, "Ledger", rc.read_ledger())
+        undated = "## Approval for filters/test/a\n\nfilters/test/a approved.\n"
+        self.assertCaseError("must cite a dated ledger heading", resolve, "Approval for filters/test/a",
+                             [frozen, undated])
+        # A dated level-1 heading cannot reach into the next file.
+        notes = "# 2026-10-22: notes\n\nNothing approved.\n"
+        self.assertCaseError("does not name the case", resolve, "2026-10-22: notes", [frozen, notes, progress])
+        approval = "## 2026-10-23: approve looser filters/test/a\n\nOwner approved filters/test/a.\n"
+        tolerances, _ = resolve("2026-10-23: approve looser filters/test/a", [frozen, approval])
+        self.assertEqual(tolerances["residual_db"], -60.0)
+
     def test_ledger_sections_ignore_fences(self):
         sections = rc.ledger_sections("## A\nx\n```\n## not a heading\n```\n### B\ny\n## C\nz\n")
         self.assertEqual([t for t, _ in sections], ["A", "B", "C"])
@@ -306,26 +331,25 @@ class ComparisonRules(unittest.TestCase):
         self.assertCaseError("cannot set json_bound", self.resolve, {"reference": "nofastmath",
                              "json_bound": {"ulp": 0}}, {"artifacts": {"saved.json": "json"}}, allowlist=[ALLOWED])
 
-    def test_allowlist_additions_need_a_new_owner_approval_section(self):
+    def test_allowlist_additions_need_a_new_owner_approval_entry(self):
         base_doc = DECISION
         head_doc = DECISION.replace("- `%s` (test)" % ALLOWED, "- `%s` (test)\n- `filters/test/comb`" % ALLOWED)
-        base_ledger = LEDGER + "\n## 2026-10-21: owner approval — earlier\n\nfilters/test/morph\n"
         check = rc.unapproved_allowlist_additions
-        self.assertEqual(check(base_doc, head_doc, base_ledger, base_ledger), ["filters/test/comb"])
-        approved = base_ledger + "\n## 2026-10-23: owner approval — comb filter\n\nfilters/test/comb\n"
-        self.assertEqual(check(base_doc, head_doc, base_ledger, approved), [])
-        # The new section must say "owner approval" and name the case.
-        unlabelled = base_ledger + "\n## 2026-10-23: comb filter\n\nfilters/test/comb\n"
-        self.assertEqual(check(base_doc, head_doc, base_ledger, unlabelled), ["filters/test/comb"])
-        other = base_ledger + "\n## 2026-10-23: owner approval — comb\n\nfilters/test/comb_2\n"
-        self.assertEqual(check(base_doc, head_doc, base_ledger, other), ["filters/test/comb"])
-        # Editing an existing approval section does not count.
-        edited = base_ledger.replace("filters/test/morph\n", "filters/test/morph filters/test/comb\n")
-        self.assertEqual(check(base_doc, head_doc, base_ledger, edited), ["filters/test/comb"])
+        self.assertEqual(check(base_doc, head_doc, []), ["filters/test/comb"])
+        approved = "## 2026-10-23: owner approval — comb filter\n\nfilters/test/comb\n"
+        self.assertEqual(check(base_doc, head_doc, [approved]), [])
+        # The new entry must say "owner approval" and name the case.
+        self.assertEqual(check(base_doc, head_doc, ["## 2026-10-23: comb filter\n\nfilters/test/comb\n"]),
+                         ["filters/test/comb"])
+        self.assertEqual(check(base_doc, head_doc, ["## 2026-10-23: owner approval — comb\n\nfilters/test/comb_2\n"]),
+                         ["filters/test/comb"])
         # Removals and a first doc with its approval are fine.
-        self.assertEqual(check(head_doc, base_doc, base_ledger, base_ledger), [])
-        self.assertEqual(check("", base_doc, LEDGER, base_ledger), [])
-        self.assertEqual(check("", base_doc, LEDGER, LEDGER), [ALLOWED])
+        self.assertEqual(check(head_doc, base_doc, []), [])
+        self.assertEqual(check("", base_doc, ["## 2026-10-21: owner approval — x\n\n%s\n" % ALLOWED]), [])
+        self.assertEqual(check("", base_doc, []), [ALLOWED])
+        # Only dated headings count (reviewer note on #50).
+        self.assertEqual(check(base_doc, head_doc, ["## Owner approval: comb\n\nfilters/test/comb\n"]),
+                         ["filters/test/comb"])
 
     def test_allowlist_comes_from_its_decision_doc_section(self):
         self.assertEqual(rc.allowlist_from(DECISION), [ALLOWED])
@@ -392,6 +416,54 @@ class ComparisonRules(unittest.TestCase):
         problems = json_problems(ref, test, ["wave_data"])
         self.assertEqual(len(problems), 1)
         self.assertIn("$.audio_file", problems[0])
+
+
+class LedgerFiles(unittest.TestCase):
+    """migration/LEDGER.md (frozen) plus one file per entry in migration/ledger/."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = self.tmp.name
+        os.makedirs(os.path.join(self.root, "migration", "ledger"))
+        with open(os.path.join(self.root, "migration", "LEDGER.md"), "w") as handle:
+            handle.write("# Ledger\n\n## 2026-10-20: old\n\nHistory.\n")
+
+    def entry(self, name, text):
+        with open(os.path.join(self.root, "migration", "ledger", name), "w") as handle:
+            handle.write(text)
+
+    def test_entries_follow_the_frozen_ledger_in_date_order(self):
+        self.entry("2026-10-22-b.md", "## 2026-10-22: b\n\nSecond.\n")
+        self.entry("2026-10-21-a.md", "## 2026-10-21: a\n\nFirst.\n")
+        self.entry("README.md", "# How to add an entry\n")
+        self.assertEqual(ledger.entry_files(self.root), ["2026-10-21-a.md", "2026-10-22-b.md"])
+        titles = [title for title, _ in rc.ledger_sections(ledger.read_text(self.root))]
+        self.assertEqual(titles, ["Ledger", "2026-10-20: old", "2026-10-21: a", "2026-10-22: b"])
+        self.assertEqual(ledger.problems(self.root), [])
+
+    def test_entry_names_and_headings_are_checked(self):
+        self.entry("2026-10-21-Bad_Name.md", "## 2026-10-21: x\n")
+        self.entry("2026-10-22-wrong-date.md", "## 2026-10-21: x\n")
+        self.entry("2026-10-23-no-heading.md", "Some text\n")
+        found = ledger.problems(self.root)
+        self.assertEqual(len(found), 3, found)
+        self.assertIn("YYYY-MM-DD-<slug>.md", found[0])
+        self.assertIn("must start with \"## 2026-10-22: <title>\"", found[1])
+
+    def test_frozen_ledger_rejects_any_change_once_the_base_is_frozen(self):
+        frozen = "# Ledger\n\n%s Do not edit.\n\n## 2026-10-20: old\n" % ledger.FROZEN_MARKER
+        self.assertIs(ledger.frozen_violation(frozen, frozen), False)
+        self.assertIs(ledger.frozen_violation(frozen, frozen + "\n## 2026-10-22: appended\n"), True)
+        # The change that introduces the freeze header is allowed.
+        self.assertIsNone(ledger.frozen_violation("# Ledger\n\n## 2026-10-20: old\n", frozen))
+
+    def test_repository_ledger_carries_the_freeze_marker(self):
+        with open(os.path.join(rc.REPO, "migration", "LEDGER.md")) as handle:
+            self.assertIn(ledger.FROZEN_MARKER, handle.read())
+
+    def test_repository_ledger_is_valid(self):
+        self.assertEqual(ledger.problems(rc.REPO), [])
 
 
 class Selection(unittest.TestCase):
@@ -816,6 +888,61 @@ class ScratchRepo(unittest.TestCase):
             self.assertIn("not a known CI identity", output)
         self.assertEqual(rc.nofastmath_counterpart(IDENTITY), nofastmath)
         self.assertIsNone(rc.nofastmath_counterpart(dict(IDENTITY, opt_flags="-O3")))
+
+    def test_tolerance_exception_approved_in_a_ledger_entry_file(self):
+        case = {"num_samples": 4, "tolerances": {"residual_db": -70},
+                "tolerance_exception": {"approved_in": "2026-10-23: approve looser filters/test/b",
+                                        "tolerances": {"residual_db": -70}}}
+        rc.write_json(os.path.join(rc.MODULE_CASES, "filters", "test.json"), {"module": "filter", "cases": {"b": case}})
+        with self.assertRaises(rc.CaseError) as raised:
+            rc.load_modules()
+        self.assertIn("does not exist (migration/LEDGER.md or migration/ledger/)", str(raised.exception))
+        os.makedirs(os.path.join(self.tmp.name, "migration", "ledger"))
+        with open(os.path.join(self.tmp.name, "migration", "ledger", "2026-10-23-approve-b.md"), "w") as handle:
+            handle.write("## 2026-10-23: approve looser filters/test/b\n\nOwner approved filters/test/b.\n")
+        self.assertEqual(rc.load_modules()[0]["tolerances"]["residual_db"], -70.0)
+
+    def git(self, *argv):
+        result = subprocess.run(["git", "-C", self.tmp.name] + list(argv), stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout)
+
+    def test_allowlist_approval_needs_a_new_entry_file(self):
+        os.makedirs(os.path.dirname(rc.DECISION_DOC), exist_ok=True)
+        with open(rc.DECISION_DOC, "w") as handle:
+            handle.write(DECISION)
+        self.git("init", "-q")
+        self.git("add", "-A")
+        self.git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base")
+        with open(rc.DECISION_DOC, "w") as handle:
+            handle.write(DECISION.replace("- `%s` (test)" % ALLOWED, "- `%s` (test)\n- `filters/test/comb`" % ALLOWED))
+
+        code, output = self.run_main("allowlist-approval", "--base", "HEAD")
+        self.assertEqual(code, 1, output)
+        self.assertIn("filters/test/comb was added", output)
+        # An approval appended to the frozen LEDGER.md does not count.
+        with open(rc.LEDGER, "a") as handle:
+            handle.write("\n## 2026-10-23: owner approval — comb\n\nfilters/test/comb\n")
+        code, output = self.run_main("allowlist-approval", "--base", "HEAD")
+        self.assertEqual(code, 1, output)
+
+        os.makedirs(os.path.join(self.tmp.name, "migration", "ledger"))
+        with open(os.path.join(self.tmp.name, "migration", "ledger", "2026-10-23-comb.md"), "w") as handle:
+            handle.write("## 2026-10-23: owner approval — comb filter\n\nfilters/test/comb\n")
+        code, output = self.run_main("allowlist-approval", "--base", "HEAD")
+        self.assertEqual(code, 0, output)
+        # An entry that already existed at the base does not count.
+        self.git("add", "-A")
+        self.git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "approve")
+        with open(rc.DECISION_DOC) as handle:
+            doc = handle.read()
+        with open(rc.DECISION_DOC, "w") as handle:
+            handle.write(doc.replace("- `filters/test/comb`", "- `filters/test/comb`\n- `filters/test/comb_2`"))
+        with open(os.path.join(self.tmp.name, "migration", "ledger", "2026-10-23-comb.md"), "a") as handle:
+            handle.write("filters/test/comb_2\n")
+        code, output = self.run_main("allowlist-approval", "--base", "HEAD")
+        self.assertEqual(code, 1, output)
+        self.assertIn("filters/test/comb_2 was added", output)
 
     # B3: a failed render left stale data plus a new case.json.
     def test_failed_render_leaves_no_stale_capture(self):

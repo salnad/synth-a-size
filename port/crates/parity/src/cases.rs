@@ -268,6 +268,30 @@ pub fn ledger_sections(text: &str) -> Vec<(String, String)> {
     sections
 }
 
+/// True for a dated ledger heading, `"YYYY-MM-DD: ..."`.
+pub fn is_dated_heading(title: &str) -> bool {
+    let bytes = title.as_bytes();
+    bytes.len() >= 12
+        && bytes[..10].iter().enumerate().all(|(i, b)| match i {
+            4 | 7 => *b == b'-',
+            _ => b.is_ascii_digit(),
+        })
+        && &bytes[10..12] == b": "
+}
+
+/// `(heading, body)` of every dated heading (`"YYYY-MM-DD: ..."`) in the
+/// ledger, parsed per file so no section crosses a file boundary. Undated
+/// headings (e.g. the `# Ledger` title, whose section spans its whole file)
+/// never count as approvals. Mirrored in run_corpus.py
+/// (`approval_sections`).
+pub fn approval_sections(ledger_files: &[&str]) -> Vec<(String, String)> {
+    ledger_files
+        .iter()
+        .flat_map(|text| ledger_sections(text))
+        .filter(|(title, _)| is_dated_heading(title))
+        .collect()
+}
+
 /// Area, module, case and render names are `[A-Za-z0-9_-]+`, so a case id
 /// can never extend another id across a token boundary (e.g. `a.b` or `a:x`
 /// containing an approval for `a`). Mirrored in run_corpus.py (`check_name`).
@@ -308,7 +332,7 @@ pub fn resolve_tolerances(
     defaults: &Map<String, Value>,
     file_level: &Map<String, Value>,
     case: &Map<String, Value>,
-    ledger: &str,
+    ledger: &[&str],
 ) -> Result<(Map<String, Value>, Option<Value>), String> {
     if file_level.contains_key("tolerance_exception") {
         return Err(format!(
@@ -331,14 +355,14 @@ pub fn resolve_tolerances(
         if !looser.is_empty() {
             return Err(format!(
                 "{case_id}: tolerances {looser:?} are looser than the defaults; that needs a case-level \
-                 tolerance_exception approved in LEDGER.md (migration/AGENTS.md rule 6)"
+                 tolerance_exception approved in the ledger (migration/AGENTS.md rule 6)"
             ));
         }
         return Ok((tolerances, None));
     };
 
     let shape = || {
-        format!("{case_id}: tolerance_exception must be {{\"approved_in\": \"<LEDGER.md heading>\", \"tolerances\": {{...}}}}")
+        format!("{case_id}: tolerance_exception must be {{\"approved_in\": \"<ledger heading>\", \"tolerances\": {{...}}}}")
     };
     let object = exception.as_object().ok_or_else(shape)?;
     if object.len() != 2
@@ -352,7 +376,7 @@ pub fn resolve_tolerances(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| {
-            format!("{case_id}: tolerance_exception.approved_in must name a LEDGER.md heading")
+            format!("{case_id}: tolerance_exception.approved_in must name a ledger heading")
         })?;
     let approved = tolerance_map(
         &object["tolerances"],
@@ -386,7 +410,13 @@ pub fn resolve_tolerances(
             "{case_id}: {unapproved:?} loosened without approval in tolerance_exception"
         ));
     }
-    let sections = ledger_sections(ledger);
+    if !is_dated_heading(approved_in) {
+        return Err(format!(
+            "{case_id}: tolerance_exception.approved_in must cite a dated ledger heading \
+             (\"YYYY-MM-DD: ...\"), not {approved_in:?}"
+        ));
+    }
+    let sections = approval_sections(ledger);
     let bodies: Vec<&String> = sections
         .iter()
         .filter(|(title, _)| title == approved_in)
@@ -394,12 +424,13 @@ pub fn resolve_tolerances(
         .collect();
     if bodies.is_empty() {
         return Err(format!(
-            "{case_id}: tolerance_exception cites LEDGER.md heading {approved_in:?}, which does not exist"
+            "{case_id}: tolerance_exception cites ledger heading {approved_in:?}, which does not exist \
+             (migration/LEDGER.md or migration/ledger/)"
         ));
     }
     if !bodies.iter().any(|body| names_case(body, case_id)) {
         return Err(format!(
-            "{case_id}: LEDGER.md section {approved_in:?} does not name the case"
+            "{case_id}: ledger section {approved_in:?} does not name the case"
         ));
     }
     Ok((tolerances, Some(exception.clone())))
@@ -640,7 +671,7 @@ fn check_cases_json(cases_json: &Value) -> Result<&Map<String, Value>, String> {
 }
 
 /// Resolves all render cases from `cases.json`.
-pub fn render_cases_from(cases_json: &Value, ledger: &str) -> Result<Vec<ResolvedCase>, String> {
+pub fn render_cases_from(cases_json: &Value, ledger: &[&str]) -> Result<Vec<ResolvedCase>, String> {
     let root = check_cases_json(cases_json)?;
     let defaults = as_object(
         root.get("defaults").ok_or("cases.json: missing defaults")?,
@@ -714,7 +745,7 @@ pub fn module_cases_from(
     relative_file: &str,
     file: &Value,
     module_defaults: &Map<String, Value>,
-    ledger: &str,
+    ledger: &[&str],
     allowlist: &[String],
 ) -> Result<Vec<ResolvedCase>, String> {
     check_name(relative_file, "area", area)?;
@@ -789,16 +820,42 @@ pub fn module_cases_from(
     Ok(resolved)
 }
 
-fn read_ledger() -> Result<String, String> {
-    let path = ledger_path();
-    fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))
+fn read_ledger() -> Result<Vec<String>, String> {
+    read_ledger_at(&repo_root())
+}
+
+/// The text of every ledger file: `migration/LEDGER.md` (frozen), then each
+/// entry file in `migration/ledger/` in file-name (date) order, skipping
+/// `README.md`. Each is parsed on its own. Mirrored in
+/// migration/scripts/ledger.py (`read_files`).
+pub fn read_ledger_at(root: &Path) -> Result<Vec<String>, String> {
+    let read =
+        |path: &Path| fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()));
+    let mut parts = Vec::new();
+    let frozen = root.join("migration/LEDGER.md");
+    if frozen.is_file() {
+        parts.push(read(&frozen)?);
+    }
+    let entries = root.join("migration/ledger");
+    if entries.is_dir() {
+        let mut names: Vec<String> = fs::read_dir(&entries)
+            .map_err(|e| format!("{}: {e}", entries.display()))?
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.ends_with(".md") && n != "README.md")
+            .collect();
+        names.sort();
+        for name in names {
+            parts.push(read(&entries.join(name))?);
+        }
+    }
+    Ok(parts)
 }
 
 pub fn load_render_cases() -> Result<Vec<ResolvedCase>, String> {
-    render_cases_from(
-        &read_json(&corpus_dir().join("cases.json"))?,
-        &read_ledger()?,
-    )
+    let ledger = read_ledger()?;
+    let ledger: Vec<&str> = ledger.iter().map(String::as_str).collect();
+    render_cases_from(&read_json(&corpus_dir().join("cases.json"))?, &ledger)
 }
 
 /// Path of a module case file's hash file (`<module>.hashes.json`).
@@ -816,6 +873,7 @@ pub fn load_module_cases() -> Result<Vec<ResolvedCase>, String> {
         .ok_or("cases.json: missing module_defaults")?
         .clone();
     let ledger = read_ledger()?;
+    let ledger: Vec<&str> = ledger.iter().map(String::as_str).collect();
     let allowlist = read_allowlist()?;
 
     let modules_dir = corpus_dir().join("modules");
@@ -869,8 +927,9 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    const LEDGER: &str = "# Ledger\n\n## 2026-10-21: approve looser filters/test/a\n\n\
+    const LEDGER_TEXT: &str = "# Ledger\n\n## 2026-10-21: approve looser filters/test/a\n\n\
         Owner approved residual_db -70 for filters/test/a.\n\n## 2026-10-22: unrelated\n\nNothing.\n";
+    const LEDGER: &[&str] = &[LEDGER_TEXT];
 
     fn defaults() -> Map<String, Value> {
         json!({
@@ -1051,7 +1110,7 @@ mod tests {
                 "tolerance_exception": { "approved_in": "2026-10-23: approve",
                                          "tolerances": { "residual_db": -70 } } } } }),
             &defaults(),
-            ledger,
+            &[ledger],
             &[],
         )
         .unwrap_err();
@@ -1432,6 +1491,124 @@ mod tests {
         assert!(
             repository.contains(&"wavetable/render/wave_linear_freq_disjoint_spectra".to_string())
         );
+    }
+
+    #[test]
+    fn ledger_is_the_frozen_file_then_entry_files_in_date_order() {
+        let root = std::env::temp_dir().join(format!("sas-parity-ledger-{}", std::process::id()));
+        fs::remove_dir_all(&root).ok();
+        fs::create_dir_all(root.join("migration/ledger")).unwrap();
+        fs::write(
+            root.join("migration/LEDGER.md"),
+            "# Ledger\n\n## 2026-10-20: old\n\nHistory.\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("migration/ledger/2026-10-23-approve-b.md"),
+            "## 2026-10-23: approve looser filters/test/b\n\nOwner approved filters/test/b.\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("migration/ledger/2026-10-21-a.md"),
+            "## 2026-10-21: a\n\nFirst.\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("migration/ledger/README.md"),
+            "# How to add an entry\n",
+        )
+        .unwrap();
+        let files = read_ledger_at(&root).unwrap();
+        fs::remove_dir_all(&root).ok();
+        let files: Vec<&str> = files.iter().map(String::as_str).collect();
+        let titles: Vec<String> = files
+            .iter()
+            .flat_map(|text| ledger_sections(text))
+            .map(|(t, _)| t)
+            .collect();
+        assert_eq!(
+            titles,
+            [
+                "Ledger",
+                "2026-10-20: old",
+                "2026-10-21: a",
+                "2026-10-23: approve looser filters/test/b"
+            ]
+        );
+
+        // A tolerance_exception approved in an entry file resolves.
+        let file = json!({ "module": "filter", "cases": { "b": { "num_samples": 10,
+            "tolerances": { "residual_db": -70 },
+            "tolerance_exception": { "approved_in": "2026-10-23: approve looser filters/test/b",
+                                     "tolerances": { "residual_db": -70 } } } } });
+        let cases = module_cases_from("filters", "test", "x.json", &file, &defaults(), &files, &[])
+            .unwrap();
+        assert_eq!(cases[0].tolerances.residual_db, Some(-70.0));
+        let err = module_cases_from("filters", "test", "x.json", &file, &defaults(), LEDGER, &[])
+            .unwrap_err();
+        assert!(
+            err.contains("migration/LEDGER.md or migration/ledger/"),
+            "{err}"
+        );
+    }
+
+    // Parity Reviewer on #50: "approved_in": "Ledger" was accepted, because
+    // the "# Ledger" section spans the whole file (and then every entry).
+    #[test]
+    fn approved_in_must_be_a_dated_heading_within_one_file() {
+        let case = |heading: &str| {
+            json!({ "module": "filter", "cases": { "a": { "num_samples": 1,
+                "tolerances": { "residual_db": -60 },
+                "tolerance_exception": { "approved_in": heading, "tolerances": { "residual_db": -60 } } } } })
+        };
+        let resolve = |heading: &str, files: &[&str]| {
+            module_cases_from(
+                "filters",
+                "test",
+                "x.json",
+                &case(heading),
+                &defaults(),
+                files,
+                &[],
+            )
+        };
+        let frozen = "# Ledger\n\nIntro.\n\n## 2026-10-20: old\n\nHistory.\n";
+        let progress = "## 2026-10-22: comb filter work\n\nfilters/test/a measured -60 dB.\n";
+        let err = resolve("Ledger", &[frozen, progress]).unwrap_err();
+        assert!(err.contains("must cite a dated ledger heading"), "{err}");
+        let repository = read_ledger().unwrap();
+        let repository: Vec<&str> = repository.iter().map(String::as_str).collect();
+        let err = resolve("Ledger", &repository).unwrap_err();
+        assert!(err.contains("must cite a dated ledger heading"), "{err}");
+
+        let undated = "## Approval for filters/test/a\n\nfilters/test/a approved.\n";
+        let err = resolve("Approval for filters/test/a", &[frozen, undated]).unwrap_err();
+        assert!(err.contains("must cite a dated ledger heading"), "{err}");
+
+        // A dated level-1 heading cannot reach into the next file.
+        let notes = "# 2026-10-22: notes\n\nNothing approved.\n";
+        let err = resolve("2026-10-22: notes", &[frozen, notes, progress]).unwrap_err();
+        assert!(err.contains("does not name the case"), "{err}");
+
+        let approval =
+            "## 2026-10-23: approve looser filters/test/a\n\nOwner approved filters/test/a.\n";
+        let cases = resolve(
+            "2026-10-23: approve looser filters/test/a",
+            &[frozen, approval],
+        )
+        .unwrap();
+        assert_eq!(cases[0].tolerances.residual_db, Some(-60.0));
+
+        assert!(is_dated_heading("2026-10-21: x"));
+        for title in [
+            "Ledger",
+            "2026-10-21 x",
+            "2026-1-21: x",
+            "x 2026-10-21: y",
+            "2026-10-21:x",
+        ] {
+            assert!(!is_dated_heading(title), "{title}");
+        }
     }
 
     #[test]

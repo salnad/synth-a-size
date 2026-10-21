@@ -7,7 +7,8 @@ to Rust (`/port`) and to prove the port sounds the same.
 |---|---|
 | [AGENTS.md](AGENTS.md) | Rules for anyone (human or agent) working on the port. **Read first.** |
 | [PLAN.md](PLAN.md) | Milestones M0 to M11 and their exit criteria |
-| [LEDGER.md](LEDGER.md) | Append-only work log |
+| [ledger/](ledger/README.md) | Work log, one file per entry (`ledger/YYYY-MM-DD-<slug>.md`); read it all with `scripts/ledger.py` |
+| [LEDGER.md](LEDGER.md) | Work log history up to 2026-10-21 (frozen) |
 | [UPSTREAM.md](UPSTREAM.md), [UPSTREAM_SHA](UPSTREAM_SHA) | Pinned upstream commit, exclusions, verification |
 | [decisions/](decisions/) | Decision records: [plugin framework](decisions/plugin-framework.md), [reference determinism and tolerance calibration](decisions/reference-determinism.md), [Apple Silicon reference and arm64 parity](decisions/reference-arm.md) |
 | [reference/](reference/) | C++ reference harness: `ref-render` (preset + MIDI → WAV) and `ref-module` (single processor → NPY) |

@@ -43,4 +43,4 @@ some upstream files from `git add`, so the copy was added with
   sources belong under `/migration/reference/`.
 - To move to a newer upstream commit, re-vendor the whole tree, update
   `UPSTREAM_SHA` and this file, re-run the corpus, and record the change
-  and its audio impact in `LEDGER.md`. Do this in its own PR.
+  and its audio impact in a new `migration/ledger/` entry. Do this in its own PR.

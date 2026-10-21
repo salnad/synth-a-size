@@ -9,7 +9,8 @@ stop and ask a human.
 synth-a-size is a Rust port of the open-source upstream wavetable synth
 vendored in `/vital`, shipped as a nice-plug VST3/CLAP plugin. After the
 port it gains an LLM control layer. The plan is in [PLAN.md](PLAN.md),
-the work log in [LEDGER.md](LEDGER.md), and the upstream pin in
+the work log in [ledger/](ledger/README.md) (one file per entry; history
+before 2026-10-21 in the frozen [LEDGER.md](LEDGER.md)), and the upstream pin in
 [UPSTREAM.md](UPSTREAM.md).
 
 ```
@@ -53,7 +54,7 @@ the work log in [LEDGER.md](LEDGER.md), and the upstream pin in
    or a port test; do not delete, skip, `#[ignore]` or narrow a test; do
    not shorten a render; do not change a reference to match the port. A
    failing parity test means the port is wrong until shown otherwise. If
-   you believe a tolerance is wrong, write the evidence in `LEDGER.md` and
+   you believe a tolerance is wrong, write the evidence in a ledger entry and
    ask a human. A tolerance may only be loosened in a commit that cites
    the human approval recorded in the ledger. Tightening is always
    allowed.
@@ -125,7 +126,9 @@ none of them edits a shared list.
      }
      ```
 
-     `approved_in` must be the exact text of a `LEDGER.md` heading, and that
+     `approved_in` must be the exact text of a dated ledger heading
+     (`YYYY-MM-DD: ...`, in an entry
+     file under `migration/ledger/`, or the frozen `LEDGER.md`), and that
      section must name the case id. Every loosened metric must equal its
      approved value, so loosening further needs a new approval. Only a human
      can approve (rule 6).
@@ -139,7 +142,7 @@ none of them edits a shared list.
      is captured as SynthLfo's phase increment `frequency * (1.0f /
      getSampleRate())` (see `op_tempo_chooser_phase_increment`). Keep a raw
      case over the band that passes, and record the raw full-range numbers
-     in `LEDGER.md`. If no faithful normalized form exists, record it and
+     in your ledger entry. If no faithful normalized form exists, record it and
      ask.
    - *Exact-match artifacts* (JSON or text, e.g. a WavetableCreator load →
      save): give the module an artifact hook (the sixth `ModuleDef` field;
@@ -292,7 +295,10 @@ none of them edits a shared list.
    as it exists. No CI edits are needed.
 
 7. **Record** what you did, the measured metrics (see the report) and any
-   open discrepancy in an appended `LEDGER.md` entry.
+   open discrepancy in a new ledger entry,
+   `migration/ledger/YYYY-MM-DD-<slug>.md` (format in
+   `migration/ledger/README.md`). Never edit `LEDGER.md`: it is frozen, and
+   CI rejects changes to it.
 
 ## Reference-specific facts that affect parity
 
@@ -351,8 +357,10 @@ none of them edits a shared list.
 - Crates live in `port/crates/<name>` and are published as `sas-<name>`.
   Keep `UPSTREAM_SOURCES` in each crate's `lib.rs` up to date; a test
   checks that every listed path exists.
-- Add a dated entry to the end of `LEDGER.md` for every work session:
-  what changed, the metrics measured, the decisions made, and what is
-  blocked.
+- Add a file under `migration/ledger/` (`YYYY-MM-DD-<slug>.md`) for every
+  PR or work session: what changed, the metrics measured, the decisions
+  made, and what is blocked. One file per entry means concurrent PRs never
+  conflict. `python3 migration/scripts/ledger.py` prints the whole log in
+  date order.
 - Do not open issues or PRs in upstream projects (the synth, JUCE,
   nice-plug) without a human.
