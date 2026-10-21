@@ -2,8 +2,28 @@
   "entries": [
     {
       "hashes": {
+        "bit_crush_drive_sweep:audio": "48fa82fce554322b",
+        "bit_crush_drive_sweep:drive": "b2a7e9fec84e9ecb",
+        "down_sample_oversampled_2x:audio": "b77c334a67c720d3",
+        "down_sample_oversampled_2x:drive": "1c1df414469f3683",
+        "drive_beyond_range:audio": "44cf4283ea2530d3",
+        "drive_beyond_range:drive": "3c055ffca6fe8a5b",
+        "hard_clip_drive_sweep:audio": "1f1ce23dbb9c11b3",
+        "hard_clip_drive_sweep:drive": "b2a7e9fec84e9ecb",
+        "linear_fold_drive_sweep:audio": "70b22f06988288c3",
+        "linear_fold_drive_sweep:drive": "b2a7e9fec84e9ecb",
+        "odd_block_bit_crush:audio": "1c97d78dced39983",
+        "odd_block_bit_crush:drive": "4ae00d60d835dd03",
+        "odd_block_size:audio": "01e34f3d3bc8cc33",
+        "odd_block_size:drive": "001e44efb0f54edf",
         "sin_fold_drive_ramp:audio": "d1856cbfb2033ae3",
-        "sin_fold_drive_ramp:drive": "e34f621e3ff60d43"
+        "sin_fold_drive_ramp:drive": "e34f621e3ff60d43",
+        "sin_fold_drive_sweep:audio": "824be0cfdb457e6b",
+        "sin_fold_drive_sweep:drive": "b2a7e9fec84e9ecb",
+        "soft_clip_drive_sweep:audio": "7b9219759e0e24fb",
+        "soft_clip_drive_sweep:drive": "b2a7e9fec84e9ecb",
+        "type_cycle_with_passthrough:audio": "c988e2e3bf453433",
+        "type_cycle_with_passthrough:drive": "095a76984d4d7683"
       },
       "identity": {
         "arch": "x86_64",
