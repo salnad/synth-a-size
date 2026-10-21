@@ -6,7 +6,9 @@
 //! - [`synth_oscillator`]: `SynthOscillator` and `RandomValues`
 //!   (`vital/src/synthesis/producers/synth_oscillator.{h,cpp}`);
 //! - [`spectral_morph`]: the spectral morph functions
-//!   (`vital/src/synthesis/producers/spectral_morph.h`).
+//!   (`vital/src/synthesis/producers/spectral_morph.h`);
+//! - [`sample_source`]: `Sample` and the `SampleSource` player
+//!   (`vital/src/synthesis/producers/sample_source.{h,cpp}`).
 //!
 //! Numerics follow `migration/AGENTS.md`: the straightforward translation of
 //! upstream's source formulas, with the per-target sites of
@@ -15,14 +17,16 @@
 
 // Upstream literals are kept digit for digit so they can be checked against
 // the C++ source.
-#![allow(clippy::excessive_precision)]
+#![allow(clippy::excessive_precision, clippy::approx_constant)]
 
 pub use sas_dsp_core;
 pub use sas_wavetable;
 
+pub mod sample_source;
 pub mod spectral_morph;
 pub mod synth_oscillator;
 
+pub use sample_source::{Sample, SampleSource, SharedSample};
 pub use synth_oscillator::{RandomValues, SharedWavetable, SynthOscillator};
 
 /// Milestone in `migration/PLAN.md` that ports this crate.
@@ -33,6 +37,8 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/src/synthesis/producers/synth_oscillator.h",
     "vital/src/synthesis/producers/synth_oscillator.cpp",
     "vital/src/synthesis/producers/spectral_morph.h",
+    "vital/src/synthesis/producers/sample_source.h",
+    "vital/src/synthesis/producers/sample_source.cpp",
 ];
 
 #[cfg(test)]
