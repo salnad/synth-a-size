@@ -17,6 +17,7 @@ use sas_dsp_core::{Output, Processor, ProcessorImpl, ProcessorRef, Value};
 use sas_engine::voice_handler::{
     self, with_voice_handler, NoteHandler, VoiceHandler, MAX_POLYPHONY,
 };
+use sas_engine::Tuning;
 use sas_parity::{all_case_ids, ModuleCase};
 use sas_simd::common::{VoiceEvent, MIDI_SIZE};
 use sas_simd::PolyFloat;
@@ -171,11 +172,6 @@ fn run_case(case: &ModuleCase) -> Captured {
     let block_size = case.block_size() as i64;
     let num_samples = params["num_samples"].as_i64().expect("params.num_samples");
 
-    assert!(
-        params.get("tuning_scala").is_none(),
-        "{}: tuning files are not ported yet",
-        case.id()
-    );
     let node = VoiceHandler::create(0, MAX_POLYPHONY, false);
     let inputs = [
         Value::create_control_rate(num(params, "polyphony", 8.0)),
@@ -252,6 +248,15 @@ fn run_case(case: &ModuleCase) -> Captured {
                 .and_then(Json::as_bool)
                 .unwrap_or(false),
         );
+        if let Some(lines) = params.get("tuning_scala").and_then(Json::as_array) {
+            let lines: Vec<String> = lines
+                .iter()
+                .map(|l| l.as_str().unwrap().to_string())
+                .collect();
+            let mut tuning = Tuning::new();
+            tuning.load_scala_lines(&lines);
+            vh.set_tuning(Some(Rc::new(tuning)));
+        }
     });
 
     node.init();
