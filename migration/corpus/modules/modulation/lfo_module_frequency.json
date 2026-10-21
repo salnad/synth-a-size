@@ -1,5 +1,5 @@
 {
- "description": "LfoModule osc_frequency only, captured as the phase increment frequency / sample rate (the consumer form). Covers full-range keytrack pitch: the inputs of the parked audio cases in pending/lfo_module.json (MIDI 0..127, transpose +36, tune +1), whose LFO audio drifts in the official reference while this output does not, plus the active keytrack cases.",
+ "description": "LfoModule osc_frequency only, captured as the phase increment frequency / sample rate (the consumer form), on the official reference. Covers full-range keytrack pitch: the inputs of lfo_module's keytrack_audio, keytrack_range_audio and keytrack_range_control (MIDI 0..127, transpose +36, tune +1), whose LFO audio is compared exactly against the no-fast-math build there, plus the other keytrack cases.",
  "module": "lfo_module_frequency",
  "cases": {
   "keytrack_audio": {

@@ -747,6 +747,131 @@
      ]
     }
    }
+  },
+  "keytrack_audio": {
+   "params": {
+    "prefix": "lfo_3",
+    "shape": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.2,
+       0.1
+      ],
+      [
+       0.45,
+       0.9
+      ],
+      [
+       0.7,
+       0.0
+      ],
+      [
+       1.0,
+       1.0
+      ]
+     ],
+     "powers": [
+      3.0,
+      -6.0,
+      0.0,
+      12.0,
+      0.0
+     ],
+     "smooth": false
+    },
+    "controls": {
+     "lfo_3_sync": 4.0,
+     "lfo_3_keytrack_transpose": 12.0,
+     "lfo_3_keytrack_tune": 0.37,
+     "lfo_3_sync_type": 4.0,
+     "lfo_3_phase": 0.5
+    },
+    "control_rate": false
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "midi": {
+     "value": [
+      48.0,
+      48.0,
+      84.0,
+      84.0
+     ]
+    },
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   },
+   "reference": "nofastmath"
+  },
+  "keytrack_range_audio": {
+   "params": {
+    "prefix": "lfo_3",
+    "shape": "sin",
+    "controls": {
+     "lfo_3_sync": 4.0,
+     "lfo_3_keytrack_transpose": 36.0,
+     "lfo_3_keytrack_tune": 1.0,
+     "lfo_3_smooth_mode": 0.0
+    },
+    "control_rate": false
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "midi": {
+     "signal": "ramp",
+     "from": 0.0,
+     "to": 127.0
+    },
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   },
+   "reference": "nofastmath"
+  },
+  "keytrack_range_control": {
+   "params": {
+    "prefix": "lfo_3",
+    "shape": "sin",
+    "controls": {
+     "lfo_3_sync": 4.0,
+     "lfo_3_keytrack_transpose": 36.0,
+     "lfo_3_keytrack_tune": 1.0,
+     "lfo_3_smooth_mode": 0.0
+    },
+    "control_rate": true
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "midi": {
+     "signal": "ramp",
+     "from": 0.0,
+     "to": 127.0
+    },
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   },
+   "reference": "nofastmath"
   }
  }
 }

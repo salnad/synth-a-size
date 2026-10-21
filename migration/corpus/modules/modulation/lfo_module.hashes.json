@@ -32,6 +32,9 @@
         "frequency_min_control:osc_frequency": "101bd593c461af83",
         "frequency_min_control:osc_phase": "0cca321dc230c5fb",
         "frequency_min_control:value": "e01d03740c6c04c3",
+        "keytrack_audio:osc_frequency": "e90eeb0f3695544b",
+        "keytrack_audio:osc_phase": "3189731511dea4c7",
+        "keytrack_audio:value": "22e08d47fb91288f",
         "keytrack_control:osc_frequency": "e90eeb0f3695544b",
         "keytrack_control:osc_phase": "3189731511dea4c7",
         "keytrack_control:value": "8840e33b39b2574f",
@@ -41,6 +44,12 @@
         "keytrack_low_band_control:osc_frequency": "dd513fb1eaafe463",
         "keytrack_low_band_control:osc_phase": "de53af950b1821b7",
         "keytrack_low_band_control:value": "7b6d85946e7ce44b",
+        "keytrack_range_audio:osc_frequency": "830046cc43e1fecb",
+        "keytrack_range_audio:osc_phase": "a8c556272afdbc6b",
+        "keytrack_range_audio:value": "b9a7ed89eb11e603",
+        "keytrack_range_control:osc_frequency": "830046cc43e1fecb",
+        "keytrack_range_control:osc_phase": "a8c556272afdbc6b",
+        "keytrack_range_control:value": "7c18cf843f9bf223",
         "smooth_time_audio:osc_frequency": "97ac97c049584c03",
         "smooth_time_audio:osc_phase": "9e0a34f14a8ee36b",
         "smooth_time_audio:value": "ea0f2436cd88274b",
@@ -149,6 +158,28 @@
         "glibc": null,
         "libm_variants": "Apple libm (macOS 15.7.9)",
         "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    },
+    {
+      "hashes": {
+        "keytrack_audio:osc_frequency": "2199be16388a823f",
+        "keytrack_audio:osc_phase": "3189731511dea4c7",
+        "keytrack_audio:value": "0cbfb8c959cd900f",
+        "keytrack_range_audio:osc_frequency": "69bb71c908951c03",
+        "keytrack_range_audio:osc_phase": "860c382eff873dc3",
+        "keytrack_range_audio:value": "36ed32900a23fe43",
+        "keytrack_range_control:osc_frequency": "69bb71c908951c03",
+        "keytrack_range_control:osc_phase": "860c382eff873dc3",
+        "keytrack_range_control:value": "0fcdaf569c89c43b"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": false,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
         "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
       }
     }
