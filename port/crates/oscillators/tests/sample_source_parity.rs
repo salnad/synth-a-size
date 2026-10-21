@@ -8,8 +8,10 @@
 //! the player is constructed after the seed counter is set (it takes two
 //! seeds: its generator and the default noise sample), `params.sample`
 //! loads a PCM recipe through `Sample::json_to_state`, and the extra
-//! control-rate output `phase` is the player's phase output. Every case runs
-//! in one test because the seed counter is process-global.
+//! control-rate output `phase` is the player's phase output. Cases of the
+//! `sample_source_pitch` module capture the block's playback increment
+//! divided by the sample's active length instead. Every case runs in one
+//! test because the seed counter is process-global.
 
 mod support;
 
@@ -46,12 +48,22 @@ const OUTPUTS: &[(&str, usize)] = &[
     ("levelled", src::LEVELLED),
     ("phase", PHASE),
 ];
+const PITCH_OUTPUTS: &[(&str, usize)] = &[("phase_inc", PHASE)];
 
-/// `SampleSourceProbe`: the player with its phase output copied to an
-/// extra processor output after each block.
+fn outputs(case: &ModuleCase) -> &'static [(&'static str, usize)] {
+    match case.module() {
+        "sample_source_pitch" => PITCH_OUTPUTS,
+        _ => OUTPUTS,
+    }
+}
+
+/// `SampleSourceProbe` / `SampleSourcePitchProbe`: the player with its phase
+/// output, or its playback increment / upsampled length, copied to an extra
+/// processor output after each block.
 #[derive(Clone)]
 struct SampleSourceProbe {
     source: SampleSource,
+    pitch: bool,
 }
 
 impl ProcessorImpl for SampleSourceProbe {
@@ -59,8 +71,13 @@ impl ProcessorImpl for SampleSourceProbe {
 
     fn process(&mut self, this: &Processor, num_samples: usize) {
         self.source.process(this, num_samples);
-        this.output(PHASE)
-            .set_at(0, self.source.phase_output().at(0));
+        let value = if self.pitch {
+            let length = self.source.sample().borrow().upsample_length();
+            self.source.phase_inc() * (1.0 / length as f32)
+        } else {
+            self.source.phase_output().at(0)
+        };
+        this.output(PHASE).set_at(0, value);
     }
 }
 
@@ -107,7 +124,10 @@ fn create(case: &ModuleCase) -> ProcessorRef {
             .expect("sample loads");
     }
     let processor = Processor::new(
-        SampleSourceProbe { source },
+        SampleSourceProbe {
+            source,
+            pitch: case.module() == "sample_source_pitch",
+        },
         src::NUM_INPUTS,
         src::NUM_OUTPUTS,
         false,
@@ -154,8 +174,8 @@ fn run_case(case: &ModuleCase) -> Vec<Vec<[f32; 4]>> {
         block_size: case.block_size(),
         num_samples: case.num_samples(),
     };
-    let outputs: Vec<usize> = OUTPUTS.iter().map(|&(_, index)| index).collect();
-    run_module(&processor, &inputs, &settings, &outputs)
+    let indices: Vec<usize> = outputs(case).iter().map(|&(_, index)| index).collect();
+    run_module(&processor, &inputs, &settings, &indices)
 }
 
 /// Captures must come from a reference of the ISA whose semantics this build
@@ -183,7 +203,12 @@ fn sample_source_matches_reference() {
     let ids: Vec<String> = sas_parity::all_case_ids()
         .into_iter()
         .filter(|id| id.starts_with("oscillators/"))
-        .filter(|id| ModuleCase::load(id).module() == "sample_source")
+        .filter(|id| {
+            matches!(
+                ModuleCase::load(id).module(),
+                "sample_source" | "sample_source_pitch"
+            )
+        })
         .collect();
     assert!(!ids.is_empty());
 
@@ -195,8 +220,8 @@ fn sample_source_matches_reference() {
     for id in &ids {
         let case = ModuleCase::load(id);
         assert_capture_matches_semantics(id);
-        let outputs = run_case(&case);
-        for (&(name, _), data) in OUTPUTS.iter().zip(&outputs) {
+        let results = run_case(&case);
+        for (&(name, _), data) in outputs(&case).iter().zip(&results) {
             let label = format!("{id}:{name}");
             let report = case.report(name, data);
             println!(
@@ -213,7 +238,7 @@ fn sample_source_matches_reference() {
                 failures.push(label.clone());
             }
         }
-        checked.push((id.clone(), outputs));
+        checked.push((id.clone(), results));
     }
     println!(
         "{} cases; worst max_abs_error {:.3e} ({}), worst residual {:.1} dB ({})",
@@ -227,8 +252,9 @@ fn sample_source_matches_reference() {
     if !failures.is_empty() {
         eprintln!("failing outputs: {failures:?}");
     }
-    for (id, outputs) in &checked {
-        for (&(name, _), data) in OUTPUTS.iter().zip(outputs) {
+    for (id, results) in &checked {
+        let case = ModuleCase::load(id);
+        for (&(name, _), data) in outputs(&case).iter().zip(results) {
             assert_parity!(&format!("{id}:{name}"), data);
         }
     }

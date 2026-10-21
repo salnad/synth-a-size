@@ -618,6 +618,12 @@ impl SampleSource {
         &self.phase_output
     }
 
+    /// `phase_inc_`: the playback increment of the last processed block, in
+    /// upsampled sample positions per output sample.
+    pub fn phase_inc(&self) -> PolyFloat {
+        self.phase_inc
+    }
+
     fn snap_transpose(
         &mut self,
         input_midi: PolyFloat,
