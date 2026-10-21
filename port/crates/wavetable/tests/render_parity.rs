@@ -108,17 +108,35 @@ fn check_no_phase_modifier_in_nofastmath_case(case: &ModuleCase) {
 
 #[test]
 fn wavetable_render() {
+    // Test only (#53): record every case and output instead of stopping at
+    // the first failure.
+    let mut failures = Vec::new();
+    let mut checked = 0;
     for id in support::case_ids("wavetable/render/") {
         let case = ModuleCase::load(&id);
         check_no_phase_modifier_in_nofastmath_case(&case);
         let rendered = render(&case);
-        assert_parity!(&format!("{id}:info"), rendered.info);
-        assert_parity!(&format!("{id}:lanes"), rendered.lanes);
-        assert_parity!(&format!("{id}:wave"), rendered.wave);
-        assert_parity!(&format!("{id}:coefficients"), rendered.coefficients);
-        assert_parity!(
-            &format!("{id}:phase_coefficients"),
-            rendered.phase_coefficients
-        );
+        let outputs: [(&str, &[f32]); 5] = [
+            ("info", &rendered.info),
+            ("lanes", &rendered.lanes),
+            ("wave", &rendered.wave),
+            ("coefficients", &rendered.coefficients),
+            ("phase_coefficients", &rendered.phase_coefficients),
+        ];
+        for (name, data) in outputs {
+            checked += 1;
+            let label = format!("{id}:{name}");
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                assert_parity!(&label, data);
+            }));
+            if result.is_err() {
+                failures.push(label);
+            }
+        }
     }
+    eprintln!("wavetable_render: {} of {checked} outputs failed", failures.len());
+    for label in &failures {
+        eprintln!("  FAILED {label}");
+    }
+    assert!(failures.is_empty(), "{} wavetable/render outputs failed", failures.len());
 }
