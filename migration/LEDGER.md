@@ -726,8 +726,9 @@ Harness Builder's `sas-parity` helper.)
   The cause is fast-math reassociation of the phase-to-index arithmetic,
   so one interpolation lands on the other side of a breakpoint. It is 0
   against the no-fast-math build.
-- **Pending owner decision: byte-exact vs bounded JSON. Fast-math mirror
-  site: `json/dtoa.rs` `write_f64`.**
+- **Decided 2026-10-21 (source semantics, ULP-bounded JSON); `write_f64`
+  now tests `is_sign_negative()` (#8).** Formerly a fast-math mirror site,
+  `json/dtoa.rs` `write_f64`:
   - Upstream's source tests `std::signbit(value)`
     (`vital/third_party/json/json.h:8205`). The fast-math build folds that
     to `value < 0`, so `-0.0` prints as `0.0`; the no-fast-math build
@@ -738,8 +739,9 @@ Harness Builder's `sas-parity` helper.)
     `migration/corpus/modules/common/pending/json.json` (not loaded by the
     harness), because no exact artifact can pass the calibration job. To
     re-enable it, move the case into `common/json.json` and write hashes.
-  - If the owner picks the source formula instead, the mirror becomes
-    `value.is_sign_negative()`.
+  - The case is re-enabled as a JSON-bounded artifact once the harness
+    compares JSON with `-0.0` equal to `0.0` (see the creator JSON entry's
+    decision table).
 - Expected hashes come from CI run 39514821022's `reference-renders`
   artifact. Local hashes are identical for `futils`, `line_generator` and
   `random`. `json` was re-written locally after the `-0.0` change, and the
@@ -817,13 +819,14 @@ Harness Builder's `sas-parity` helper.)
   - `line_generator_edit` is within 3.9e-7, at or below −135 dB;
   - every text artifact is byte-identical;
   - the no-fast-math proxy passes all 205 `common` comparisons.
-- **Pending owner decision: byte-exact vs bounded JSON.**
+- **Formerly pending, decided 2026-10-21 (ULP-bounded JSON):**
   - `flipHorizontal` negates zero powers, so three edit cases save `-0.0`.
-    That hits the same `write_f64` mirror site as `negative_zero` above.
+    That hits the same `write_f64` site as `negative_zero` above.
   - Their numeric arrays stay live, with `saved_json: false` in
     `line_generator_edit.json`.
   - Their `saved.json` variants are authored in
-    `migration/corpus/modules/common/pending/line_generator_edit.json`.
+    `migration/corpus/modules/common/pending/line_generator_edit.json`,
+    and are re-enabled as JSON-bounded artifacts with the harness support.
 - **Nothing left unchecked.** All of the reviewer's list is now captured.
   `Value::get`/`at` on non-objects and `to_str` errors are covered by unit
   tests only; upstream throws there, and the port returns the error.
@@ -850,7 +853,8 @@ dependency was dropped), so `sas-preset` can use it for exact wavetable JSON.
   (`abs` = `cabsf`/`hypotf`, `arg` = `atan2f`, textbook products). The
   fast-math reference expands `abs` to `sqrt(re² + im²)`; that differs by
   ≤ 1 ulp (812/5,000 probe values), which the tolerances absorb, so the
-  source semantics are kept.
+  source semantics are kept. Division became libgcc's `__divsc3` in #8,
+  see the rendering entry.
 - `wave_frame`: `WaveFrame` and `PredefinedWaveFrames`.
 - `creator`: the `WavetableCreator`/group/component/keyframe state for all
   10 component types, with `stateToJson`/`jsonToState`. That covers
@@ -861,8 +865,12 @@ dependency was dropped), so `sas-preset` can use it for exact wavetable JSON.
   and `initPredefinedWaves`. Enum-valued settings are stored as the raw
   integers so they round-trip exactly.
 
-**Measured** (scratch probe linked against the reference engine library;
-the committed parity captures wait for `sas-parity`, PR #3)
+**Measured** (scratch probe linked against the reference engine library).
+Committed reference coverage:
+- the creator JSON captures (next entry);
+- the FFT and `WaveFrame`, through #8's `wavetable_render` captures. Every
+  rendered frame and harmonic passes through both, and those cases are
+  bit-identical to the no-fast-math build.
 
 - Creator JSON load→save against the **official fast-math reference**:
   byte-identical for all 12 authored inputs. The inputs cover every
@@ -871,20 +879,18 @@ the committed parity captures wait for `sas-parity`, PR #3)
   0.7.6 upgrade chains and the line-shape path. `updateJson` output, the
   `init()` creator and `initPredefinedWaves()` (all six frames' base64
   `wave_data`) are also identical.
-- Fast-math codegen mirrored (kept to the minimum: only where the output
-  is saved JSON, which is compared byte for byte with no tolerance):
+- Fast-math codegen mirrored when this landed. Both mirrors were removed
+  in #8 after the owner chose source semantics with ULP-bounded JSON (see
+  the rendering entry); kept here for the record:
 
   | Port location | Upstream expression | What GCC emits in the x86 reference | Why mirrored |
   |---|---|---|---|
   | `wave_frame.rs` `tanh_as_reference_loop` | `futils::tanh` in `PredefinedWaveFrames::createSaturatedSin` (`vital/src/synthesis/lookups/wave_frame.cpp:120`) | `x·((C·|x| + B)·x² + (|x| + 1)·A) / (|x·E·|x| + x|·(x² + D) + D)`, read from the disassembly | The frame is saved as base64 by `initPredefinedWaves()` (and Preset's 0.5.0 "Sub" upgrade). The source order differs in 372/2048 samples (≤ 1.8e-7) |
   | `group.rs` `load_default_group` | `float t = i / (kWaveformSize - 1.0f)` (`vital/src/common/wavetable/wavetable_group.cpp:95`) | `i * (1.0f / 2047.0f)` (`-freciprocal-math`) | The default saw is saved in every init wavetable's JSON. Division differs in 4 samples by 1 ulp |
 
-  Both must be re-checked against the arm64 (Apple clang) reference once
-  ARM Reference lands it, because clang's fast-math codegen differs. If
-  the two references disagree, the JSON comparison needs a per-reference
-  decision. `sas_common::scalar::tanh` keeps the source order, since
-  fast-math codegen differs per call site: the mirrored form still
-  differs in 71/18,580 inputs at a scalar call site.
+  `sas_common::scalar::tanh` always kept the source order, since fast-math
+  codegen differs per call site: the mirrored form still differs in
+  71/18,580 inputs at a scalar call site.
 - FFT against the no-fast-math reference: bit-identical (6 forward and 6
   inverse transforms, 2048 points). Against the fast-math reference it
   differs by ≤ 1.2e-7 relative (max 7.8e-3 abs on bins of magnitude
@@ -908,18 +914,13 @@ the committed parity captures wait for `sas-parity`, PR #3)
 
 **Open / next**
 
-- Wavetable rendering (`render`, every source and modifier, normalisation,
-  DC removal, `Wavetable` data and `postProcess`), then reference captures.
-- Capture plan for `sas-parity`: a `ref-module` wrapper processor whose
-  outputs stream the rendered frames and the poly-layout
-  `frequency_amplitudes`/`normalized_frequencies`. Exact-JSON captures
-  need a text output, which the buffer-only registry lacks; I'll raise
-  this with Harness Builder.
-- Spectra have magnitudes up to about 1e3. The module default
-  `max_abs_error` of 1e-4 is about 1e-7 relative there, close to the
-  fast-math FFT noise (1.2e-7 relative). I'll measure the proxy and
-  official-reference metrics on captures before choosing a representation,
-  and ask a human rather than change limits.
+- Done since: rendering (#8), and reference captures through `sas-parity`
+  with text artifacts (`sink.text`, PR #3).
+- Spectra are captured as amplitude/1024 × phasor, inside the existing
+  limits; see #8's capture entry.
+- After ARM Reference's #2 lands: re-check the `libm` FFT twiddles (and
+  so the FFT) against the arm64 reference. They are bit-identical to the
+  x86 no-fast-math build.
 
 - `sas-wavetable` forwards the `aarch64-semantics` feature to
   `sas-common`, for the RNG's libc++ column (A9). The Audio File Source's
@@ -964,16 +965,23 @@ byte-identical. `keyframe_waves` is exact for both presets; against the
 no-fast-math build, predefined differs by ≤ 1.8e-7, within the default
 limits.
 
-**Pending owner decision: byte-exact vs bounded JSON.** The authored
-inputs are in the repo but not loaded; re-enable each by moving its case
-into the live file and writing hashes:
+**Owner decisions (2026-10-21)** settle the formerly pending cases:
+- JSON is compared ULP-bounded rather than byte-exact: numbers within
+  4 f32 ULP or 1e-6, `-0.0` equals `0.0`, and base64 f32 data decoded
+  under the same bound.
+- Ill-conditioned content is compared exactly against the no-fast-math
+  reference.
+- The port uses source semantics (no fast-math mirrors).
 
-| Case | Where | Why it is pending |
+Each parked case is re-enabled once Harness Builder's support lands:
+
+| Case | Where it waits | Re-enabled as |
 |---|---|---|
-| `wavetable/creator_json/preset_init_saved_json` | `modules/wavetable/pending/creator_json.json` | The saw keyframe is computed with a reciprocal under fast-math (mirrored in the port); the no-fast-math build saves different `wave_data` bits, so calibration cannot pass |
-| `wavetable/creator_json/preset_predefined_saved_json` | same | The saturated-sine `tanh` order (mirrored); same calibration conflict |
-| `common/json/negative_zero` | `modules/common/pending/json.json` | `-0.0` prints as `0.0` in the shipped build and as `-0.0` in the no-fast-math build |
-| Ill-conditioned render morphs (frequency interpolation between disjoint spectra, folding at ±1, frequency-interpolated audio fades) | not authored yet; measurements in the M4a rendering entry | Depend on FFT rounding noise; −27 to −62 dB against the official build |
+| `wavetable/creator_json/preset_init_saved_json` | `modules/wavetable/pending/creator_json.json` | JSON-bounded artifact, `wave_data` decoded as f32 |
+| `wavetable/creator_json/preset_predefined_saved_json` | same | same |
+| `common/json/negative_zero` | `modules/common/pending/json.json` | JSON-bounded artifact |
+| `common/line_generator_edit/*_saved_json` (3 cases) | `modules/common/pending/line_generator_edit.json` | JSON-bounded artifact |
+| 5 ill-conditioned render cases | `modules/wavetable/pending/render.json` | `reference: nofastmath`, exact (see the rendering entry) |
 
 - A missing `random_seed` is drawn from the global seed counter, so the
   0.3.6 case sets one explicitly. The counter behaviour stays covered by
@@ -1025,6 +1033,9 @@ is pinned by an `upstream_differs_*` test:
   follow A1 per target (sas-common already has `AARCH64_SEMANTICS`). The
   single copy would then match upstream's arm64 lane-0 result out of range
   too. Until then, this test keeps the two copies in step.
+
+---
+
 ## 2026-10-20: M4a wavetable rendering and `Wavetable` lookup data
 
 **Added** (`sas-wavetable`)
@@ -1077,10 +1088,47 @@ proposal are in the Project store: `internal/wavetable-render-parity-measurement
 
 **Open / next**
 
-- Committed parity captures and tests once `sas-parity` (#3) merges,
-  using the representation above.
-- Owner decisions: the ill-conditioned content, and JSON byte-exactness
-  vs ULP bounds.
+- Done: committed captures (next subsection) and the owner's decisions
+  (below).
+
+### Source semantics, owner decisions and the remaining cases (2026-10-21)
+
+- **No fast-math mirrors left; the port follows the source:**
+  - `PredefinedWaveFrames::createSaturatedSin` uses `futils::tanh` in
+    source order;
+  - the default saw divides by 2047 (`wavetable_group.cpp:95`);
+  - the JSON dump tests `signbit`;
+  - `std::complex<float>` division is libgcc's `__divsc3`. With GCC 13
+    and double hardware, that is the textbook formula in double, rounded
+    to float, plus libgcc's infinity recovery. Checked against GCC on 2M
+    random divisions, 0 mismatches; unit tests pin 4 cases and 1/0.
+- **Result:** every array and text artifact of `sas-common` and
+  `sas-wavetable` is bit-identical to the no-fast-math reference. That
+  covers all live cases, the 5 ill-conditioned cases (including
+  `phase_coefficients` through glibc `cosf`/`sinf`) and the parked JSON
+  cases.
+- **Against the official reference**, the live cases are unchanged:
+  - render: `wave` ≤ 2.8e-5, `coefficients` ≤ −105.8 dB,
+    `phase_coefficients` ≤ 7.7e-7;
+  - all 24 creator JSON artifacts are byte-identical;
+  - `keyframe_waves` is now 1.2e-7 (init) and 1.8e-7 (predefined) instead
+    of exact.
+- **Audio fade 3** (frequency interpolation) with cleared or vocoded
+  phases is well-conditioned (≤ 2.7e-7, −134 dB), so
+  `audio_fade_3_phase_1` and `audio_fade_3_phase_2` are ordinary cases.
+  `render.json` now has 46.
+- **The 5 ill-conditioned cases** for `reference: nofastmath` are authored
+  in `modules/wavetable/pending/render.json` until the harness supports
+  the field:
+  - `wave_linear_freq_disjoint_spectra`, `wave_cubic_freq_disjoint_spectra`
+    and `multi_group_disjoint_spectra`: saw → sine → triangle → saw. The
+    sine is a literal float32 base64 keyframe, because the recipe shapes'
+    exactly-zero bins are computed identically by both FFT builds and are
+    not ill-conditioned (≈ −120 dB). Measured −36 to −39 dB against the
+    official build.
+  - `wave_folder_at_clamp`: folding after a frequency-interpolated source
+    that peaks at ±1; 2.8e-3 / −98 dB.
+  - `audio_fade_3_phase_0`: 5.1e-4 / −73 dB.
 
 ### Rendering parity captures
 
