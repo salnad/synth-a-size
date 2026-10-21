@@ -2039,3 +2039,36 @@ ARM Reference records the evidence):**
     column needs `mul_add` at the same sites.
   - The 7 test vectors in `port/crates/wavetable/src/complex.rs` are ready
     to compare.
+
+## 2026-10-21: M5a PR 6, `SallenKeyFilter`
+
+Core Filters (M5a), stacked on PR 5.
+
+- `sallen_key_filter.rs` ports `sallen_key_filter.{h,cpp}` (model
+  "analog"): a two-pole stage with a `tanh` input, with the second two-pole
+  pre-stage for 24 dB and the other styles. `processDual` neither smooths
+  nor uses the band amount and mixes differently. `process12` recomputes
+  `coefficient * coefficient` for the feedback multiplier (the same value
+  as `coefficient_squared`). The clamped `cutoff_` in `setupFilter` is
+  unused upstream and not computed here.
+- `create_filter(Analog)` builds it.
+- New case file `filters/analog`, 30 cases under `module_defaults` (no
+  tolerance changes), for every style 0–4: full-range MIDI 0–140 cutoff
+  sweeps with resonance (0.8, 6 dB) and without, blend −0.2–2.2,
+  resonance −0.1–1.1 and drive −4–40 dB. Also style steps 0→9, per-lane
+  retriggers, 4× oversampling (MIDI 130→8 at resonance 0.8), 96 kHz and
+  block size 1.
+- Parity, x86_64: 31/31 pass. Worst max_abs_error 1.5e-5
+  (`band_peak_notch_cutoff_sweep`), worst residual −99.9 dB
+  (`k24_cutoff_sweep`).
+- Parked: `migration/corpus/modules/filters/pending/analog_full_range.json`
+  holds 1 case, `k12_oversample_4x_resonance_0_95`. The fast-math
+  reference against the no-fast-math proxy (identical to the port) gives
+  max_abs_error 1.002e-4 against the 1e-4 gate (residual −84.5 dB passes).
+  Same open question as the crossover and the ladder.
+- `aarch64-semantics` (PR #40 rule): the crate forwards to both
+  `sas-dsp-core` and `sas-simd` (added on PR 2 after #40 merged).
+- Added after review: `k12_oversample_4x_resonance_0_95_from_110`, the same
+  shape as the parked case with the cutoff ramp starting at MIDI 110, which
+  Filter Reviewer measured as well-conditioned. 1.3e-5 / −100.0 dB. 31
+  cases in all.

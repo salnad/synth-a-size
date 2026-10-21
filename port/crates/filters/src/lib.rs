@@ -35,6 +35,7 @@ pub mod fir_halfband_decimator;
 pub mod iir_halfband_decimator;
 pub mod ladder_filter;
 pub mod linkwitz_riley_filter;
+pub mod sallen_key_filter;
 pub mod synth_filter;
 pub mod upsampler;
 
@@ -46,6 +47,7 @@ pub use fir_halfband_decimator::FirHalfbandDecimator;
 pub use iir_halfband_decimator::IirHalfbandDecimator;
 pub use ladder_filter::LadderFilter;
 pub use linkwitz_riley_filter::LinkwitzRileyFilter;
+pub use sallen_key_filter::SallenKeyFilter;
 pub use synth_filter::{
     coefficient_lookup, create_filter, CoefficientLookup, FilterModel, FilterState, SynthFilter,
 };
@@ -69,6 +71,8 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/src/synthesis/filters/diode_filter.cpp",
     "vital/src/synthesis/filters/ladder_filter.h",
     "vital/src/synthesis/filters/ladder_filter.cpp",
+    "vital/src/synthesis/filters/sallen_key_filter.h",
+    "vital/src/synthesis/filters/sallen_key_filter.cpp",
     "vital/src/synthesis/filters/upsampler.h",
     "vital/src/synthesis/filters/upsampler.cpp",
     "vital/src/synthesis/filters/decimator.h",

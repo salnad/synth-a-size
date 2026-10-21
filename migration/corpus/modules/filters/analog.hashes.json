@@ -1,0 +1,48 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "band_peak_notch_blend_sweep:audio": "1e14e7a23de32fcf",
+        "band_peak_notch_cutoff_sweep:audio": "1f111b1d6123ca93",
+        "band_peak_notch_cutoff_sweep_no_resonance:audio": "5fc91f61acc3b6ab",
+        "band_peak_notch_drive_sweep:audio": "fac98a1c652847fb",
+        "band_peak_notch_resonance_sweep:audio": "ac50fa57322a0173",
+        "dual_notch_band_blend_sweep:audio": "7f89799a27beecf3",
+        "dual_notch_band_cutoff_sweep:audio": "40a01a4029749893",
+        "dual_notch_band_cutoff_sweep_no_resonance:audio": "f4dfc8452bedfb73",
+        "dual_notch_band_drive_sweep:audio": "64eb44c683f76b1b",
+        "dual_notch_band_resonance_sweep:audio": "8f8aeaf01259d2a3",
+        "k12_blend_sweep:audio": "508d08c5fc13cb1b",
+        "k12_block_1:audio": "15a5f557d7d8deeb",
+        "k12_cutoff_sweep:audio": "e884cb3b1453b85b",
+        "k12_cutoff_sweep_no_resonance:audio": "b32d5f08b959ccb3",
+        "k12_drive_sweep:audio": "0ed59bce5463798b",
+        "k12_oversample_4x:audio": "fea39ccfe4444b7b",
+        "k12_oversample_4x_resonance_0_95_from_110:audio": "f5debad6ca8f3ee3",
+        "k12_resonance_sweep:audio": "142b08e7145a8173",
+        "k24_96k_block_128:audio": "9a3bdb8e5fdacf73",
+        "k24_blend_sweep:audio": "f0c8d4d63adf3aeb",
+        "k24_cutoff_sweep:audio": "9ca977487df1efc3",
+        "k24_cutoff_sweep_no_resonance:audio": "b7583e34ae5f07fb",
+        "k24_drive_sweep:audio": "5a5bdd03b761115b",
+        "k24_resonance_sweep:audio": "fc4b26926e3397b3",
+        "k24_retrigger_voices:audio": "676c391de417564b",
+        "notch_pass_swap_blend_sweep:audio": "a5ec422aa91f9443",
+        "notch_pass_swap_cutoff_sweep:audio": "39b877bd2be1ce8b",
+        "notch_pass_swap_cutoff_sweep_no_resonance:audio": "2a07f169bfb0182b",
+        "notch_pass_swap_drive_sweep:audio": "fa526891964ea45b",
+        "notch_pass_swap_resonance_sweep:audio": "410362917a0469ab",
+        "style_steps_0_to_9:audio": "5461fc3e35e37def"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}
