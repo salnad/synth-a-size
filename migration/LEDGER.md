@@ -1075,9 +1075,26 @@ owns both sides.
      returns the second operand; on NEON, +0 for max and −0 for min. The
      mono side isn't pinned, because neither C's `fmax` nor Rust's
      `f32::max` specifies the sign of a zero tie.
-  3. Resolved by the per-target `to_int`: `sas-common`'s callers outside
-     processors now follow upstream on arm64 for NaN and out-of-range
-     values too.
+  3. Callers of `sas-common`'s rounding and conversion paths, and their
+     bounds:
+     - `power_scale`, through `exp`'s `round_to_int`, is called by
+       `LineGenerator` (`line_generator.rs:162`, `:301`) and the wavetable
+       Line Source keyframe (`creator/keyframes.rs:348`). `t` is in
+       [0, 1], but the power comes from preset JSON and is not bounded by
+       the code. It only leaves the range where the columns agree for NaN
+       or |power| > ~1.5e9, and with the per-target `to_int` those inputs
+       now follow upstream on each target too.
+     - `float_to_pcm` (`load_save.rs:67`, `creator/component.rs:504`)
+       clamps to ±32767 before its `as i32` cast (A2/A3). NaN clamps to
+       −32767, so the cast is always in range.
+     - `LineGenerator::value_at_phase` (`line_generator.rs:268`) clamps
+       the phase to [0, 1] before its `as usize` index (NaN gives 0).
+     - `interpolate`, `pcm_to_float` and the Catmull helpers don't round.
+
+     What remains is outside A1: the sign of zero when `fmin`/`fmax`
+     (`min`, `max`, `clamp`) tie at ±0. C leaves it unspecified, Rust's
+     `f32::min`/`max` documents it as non-deterministic, and the reference
+     is built with `-fno-signed-zeros`. No caller depends on it.
 
 **Parity**
 
