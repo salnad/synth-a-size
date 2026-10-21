@@ -52,3 +52,20 @@ Loaded: 11 chorus and 12 flanger cases. The 5 full-range flanger cases
 both the reference and the proxy, worst 9.5e-5 / −104.9 dB. Alternatives, as
 for the reverb: per-case exceptions at proxy noise plus 6 dB, or render-style
 gates.
+
+**macOS arm64 (after #2):** 7 flanger cases miss the macOS no-fast-math
+proxy although they pass on x86: `tempo_sweep`, `wet_sweep`,
+`oversampled_2x`, `interim_no_depth_enable_toggle`,
+`interim_no_depth_phase_offset`, `interim_small_depth_free_frequency` and
+`interim_full_feedback_short_tail`. Max abs is at most 1.6e-4, with
+residuals from −74.6 to −104.8 dB. Apple clang's fast-math reassociation in the
+feedback delay is the noise source. Per `migration/AGENTS.md` they are parked
+with their inputs unchanged in
+`migration/corpus/modules/effects/pending/flanger_module_arm64.json`, their
+x86 hash entries are removed, and no tolerance changes. They return under
+SAS-35 (`reference: nofastmath`). The flanger keeps 6 loaded cases
+(`rate_48k`, `rate_96k`, `interim_no_depth_center_low`,
+`interim_no_depth_center_high`, `interim_no_depth_feedback_sweep`,
+`interim_small_depth_dotted_triplet`). All 11 chorus cases pass the macOS
+proxy (Reference ARM run 39622362623), and the macOS arm64 hashes come from
+that run's `ref-arm64-macos-15` artifact.

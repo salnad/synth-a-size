@@ -1,0 +1,114 @@
+{
+  "description": "FlangerModule. Parked cases (macOS arm64 no-fast-math proxy misses: max abs up to 1.6e-4, residuals -75 to -105 dB; they pass on x86), inputs unchanged, pending SAS-35 nofastmath re-enable. Not loaded by the harness (only modules/<area>/*.json is).",
+  "module": "flanger_module",
+  "cases": {
+    "tempo_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 165.0,
+          "amp": 0.4
+        },
+        "beats_per_second": 2.5,
+        "flanger_sync": 1,
+        "flanger_tempo": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 10.0
+        }
+      }
+    },
+    "wet_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 220.0,
+          "amp": 0.4
+        },
+        "flanger_dry_wet": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 0.5
+        }
+      }
+    },
+    "oversampled_2x": {
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "flanger_feedback": 0.7
+      }
+    },
+    "interim_no_depth_enable_toggle": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "on": {
+          "signal": "square",
+          "freq_hz": 4.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "flanger_mod_depth": 0.0,
+        "flanger_feedback": 0.8
+      }
+    },
+    "interim_no_depth_phase_offset": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 4
+        },
+        "flanger_mod_depth": 0.0,
+        "flanger_phase_offset": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    },
+    "interim_small_depth_free_frequency": {
+      "num_samples": 4410,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "flanger_mod_depth": 0.05,
+        "flanger_sync": 0,
+        "flanger_frequency": {
+          "signal": "ramp",
+          "from": -5.0,
+          "to": 2.0
+        }
+      }
+    },
+    "interim_full_feedback_short_tail": {
+      "num_samples": 8820,
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 200
+        },
+        "flanger_mod_depth": 0.0,
+        "flanger_feedback": 1.0
+      }
+    }
+  }
+}
