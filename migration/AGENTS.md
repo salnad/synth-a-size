@@ -10,8 +10,9 @@ synth-a-size is a Rust port of the open-source upstream wavetable synth
 vendored in `/vital`, shipped as a nice-plug VST3/CLAP plugin. After the
 port it gains an LLM control layer. The plan is in [PLAN.md](PLAN.md),
 the work log in [ledger/](ledger/README.md) (one file per entry; history
-before 2026-10-21 in the frozen [LEDGER.md](LEDGER.md)), and the upstream pin in
-[UPSTREAM.md](UPSTREAM.md).
+before 2026-10-21 in the frozen [LEDGER.md](LEDGER.md)), every intentional
+behavioural difference from upstream in [DIVERGENCES.md](DIVERGENCES.md), and
+the upstream pin in [UPSTREAM.md](UPSTREAM.md).
 
 ```
 /vital/       upstream source, read-only reference
@@ -49,6 +50,17 @@ before 2026-10-21 in the frozen [LEDGER.md](LEDGER.md)), and the upstream pin in
    reordered arithmetic or "cleanups" that change numerics unless parity
    tests prove they do not. Performance work starts at M11, and only
    against a passing parity suite.
+   - **Intentional divergences are recorded.** Sometimes the port behaves
+     differently from upstream on purpose, for example where upstream is
+     undefined behaviour, where it has an out-of-range bug, or where the
+     host framework forces it.
+   - Any PR that introduces such a divergence adds an entry to
+     [DIVERGENCES.md](DIVERGENCES.md) giving what differs, upstream's
+     behaviour, the port's behaviour, why, and the approving decision or
+     PR. Reviewers check for it.
+   - Per-target emulation that matches upstream on each target is not a
+     divergence. Harness comparison policies go under its "Verification
+     exceptions".
 6. **Never loosen tests or tolerances to make them pass.** Do not raise
    a limit in `migration/corpus/cases.json`, an `audio-diff` invocation
    or a port test; do not delete, skip, `#[ignore]` or narrow a test; do
