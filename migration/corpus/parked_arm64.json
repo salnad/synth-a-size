@@ -1,6 +1,4 @@
 {
   "description": "Cases parked on the macOS arm64 reference only (owner decision 2026-10-21; LEDGER 'ARM Reference'). The macOS job's sas-parity run skips them through SAS_PARITY_PARKED; every other job, including x86, keeps them active. Inputs and tolerances are unchanged. Remove an entry when its fix lands.",
-  "cases": {
-    "wavetable/render/audio_fade_3_phase_0": "phase_coefficients is 1 ulp off the macOS no-fast-math capture in 6,190 of 526,850 values: Apple's merged sin/cos (A11 in decisions/reference-arm.md). Fix: #52 (Wavetable Creator)."
-  }
+  "cases": {}
 }

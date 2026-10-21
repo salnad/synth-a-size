@@ -2421,6 +2421,23 @@ is optional (manual dispatch).
   libc++ and the double `exp` under libstdc++, which explains all four
   `warp_*:wave` macOS misses. The `otool` call-site pattern in
   `machine_info.sh` now matches `symbol stub for:` lines.
+- Owner approval (Salil, 2026-10-21): #52 (Wavetable Creator; A10 fused
+  compiler-rt `__divsc3`, A11 merged sin/cos, A12 `expf` overload,
+  platform libm for double exp/cos/sin) is folded into #2 at 5a192bb.
+  Parity Reviewer reconfirmed that head. With it, nothing is parked on
+  macOS: the `audio_fade_3_phase_0` arm64 park is removed, and
+  `parked_arm64.json` stays as the empty mechanism. #53 (#2 + #52, nothing
+  parked) was green on macOS 15 (run 39550768412, 219 parity tests). The
+  earlier macOS-only parks of noisy-reference cases (delay, comb, dirty
+  sweep, `distortion_*_spread`) stay. `decisions/reference-arm.md`
+  consequence 1: A9, A10 and A12 follow `aarch64-semantics`; A11 is
+  Apple-only (`target_vendor = "apple"`) and cannot be emulated on x86.
+- Owner approval: the macOS 14 vs 15 same-binary check stays exact, except
+  the committed known-drift list `migration/corpus/macos_libm_drift.json`.
+  It holds `simd/poly_function/poly_pow:out` (Apple `powf`, max 4.8e-7,
+  residual −161 dB), reported with its metrics and not gated. Implemented
+  by `migration/scripts/compare_known_drift.py`, checked locally on run
+  39550768412's trees: exit 0 with the list, exit 1 without it.
 - `migration/AGENTS.md`: every module PR adds its own macOS arm64 hash
   entries from its `ref-arm64-macos-15` artifact.
 - A10 (`std::complex<float>` division) recorded in

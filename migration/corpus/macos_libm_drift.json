@@ -1,0 +1,6 @@
+{
+  "description": "Known Apple libm drift between macOS versions for the same reference binary (owner decision 2026-10-21). The macOS 14 job's exact comparison against macOS 15 reports these with their metrics instead of failing; any other difference still fails. The reference identity is pinned to macOS 15 (decisions/reference-arm.md, section B).",
+  "cases": {
+    "simd/poly_function/poly_pow:out": "Apple powf returns different bits on macOS 14 and 15 (fp-probe; first seen in run 39550768412: max_abs_error 4.8e-7, residual -161 dB)"
+  }
+}

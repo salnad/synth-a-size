@@ -177,10 +177,14 @@ jobs:
             --ref-render $bin/ref-render --ref-module $bin/ref-module
       - name: Build audio-diff
         run: cargo build --release --locked --manifest-path migration/tools/audio-diff/Cargo.toml
+      # Exact, except the committed list of known Apple libm drift cases
+      # (migration/corpus/macos_libm_drift.json), which are reported with
+      # their metrics. Any other difference fails.
       - name: Same binary on macOS 14 vs macOS 15 is bit-identical (OS / Apple libm drift)
         run: |
-          python3 migration/scripts/run_corpus.py compare \
-            build/from-macos-15/build/platform/pinned build/platform/same-binary --exact
+          python3 migration/scripts/compare_known_drift.py \
+            build/from-macos-15/build/platform/pinned build/platform/same-binary \
+            migration/corpus/macos_libm_drift.json
       - name: Does Apple clang 15 honour -ffp-contract=off?
         run: CXX=clang++ migration/scripts/fp_contract_flags_probe.sh
       - uses: actions/upload-artifact@v7
