@@ -109,8 +109,9 @@ jobs:
           SAS_PARITY_CAPTURES: build/platform/pinned
           SAS_PARITY_NO_BUILD: "1"
           SAS_PARITY_FAILURES: build/parity-failures
-        run: cargo test --workspace --locked --manifest-path port/Cargo.toml
+        run: cargo test --workspace --locked --no-fail-fast --manifest-path port/Cargo.toml
       - name: Hashes match the committed macOS arm64 identity
+        if: ${{ !cancelled() }}
         run: python3 migration/scripts/run_corpus.py hashes build/platform/pinned --check --require-known-identity
       - name: Upload parity failures
         if: failure()
