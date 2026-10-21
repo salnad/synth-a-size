@@ -32,6 +32,10 @@ struct ModuleDef {
     create: Factory,
     inputs: Vec<(&'static str, usize, InputRate)>,
     outputs: Vec<(&'static str, usize)>,
+    /// Outputs are captured as SynthLfo's per-sample phase increment,
+    /// `frequency * tick_time` with `tick_time = 1.0f / getSampleRate()`
+    /// (`synth_lfo.cpp:411-413`), like the reference's `PhaseIncrementOf`.
+    phase_increment: bool,
 }
 
 fn p(params: &Json, name: &str, fallback: f32) -> f32 {
@@ -50,6 +54,14 @@ fn def(
         create: Box::new(create),
         inputs: inputs.to_vec(),
         outputs: outputs.to_vec(),
+        phase_increment: false,
+    }
+}
+
+fn phase_increment(module: ModuleDef) -> ModuleDef {
+    ModuleDef {
+        phase_increment: true,
+        ..module
     }
 }
 
@@ -372,6 +384,22 @@ fn modules() -> BTreeMap<&'static str, ModuleDef> {
         ),
     );
     m.insert(
+        "op_tempo_chooser_phase_increment",
+        phase_increment(def(
+            |_| operators::TempoChooser::create(),
+            &[
+                ("frequency", 0, Control),
+                ("tempo_index", 1, Control),
+                ("beats_per_second", 2, Control),
+                ("sync", 3, Control),
+                ("midi", 4, Control),
+                ("keytrack_transpose", 5, Control),
+                ("keytrack_tune", 6, Control),
+            ],
+            OUT,
+        )),
+    );
+    m.insert(
         "op_cr_clamp",
         def(
             |p_| cr::Clamp::create(p(p_, "min", -1.0), p(p_, "max", 1.0)),
@@ -444,6 +472,10 @@ fn modules() -> BTreeMap<&'static str, ModuleDef> {
     m.insert(
         "op_cr_midi_scale",
         def(|_| cr::MidiScale::create(), &cr_in, OUT),
+    );
+    m.insert(
+        "op_cr_midi_scale_phase_increment",
+        phase_increment(def(|_| cr::MidiScale::create(), &cr_in, OUT)),
     );
     m.insert("op_cr_add", def(|_| cr::Add::create(), &cr_ab, OUT));
     m.insert(
@@ -681,7 +713,14 @@ fn run_case(case: &ModuleCase, module: &ModuleDef) -> Vec<Vec<[f32; 4]>> {
         num_samples: case.num_samples(),
     };
     let outputs: Vec<usize> = module.outputs.iter().map(|&(_, index)| index).collect();
-    run_module(&processor, &inputs, &settings, &outputs)
+    let mut data = run_module(&processor, &inputs, &settings, &outputs);
+    if module.phase_increment {
+        let tick_time = 1.0f32 / processor.sample_rate() as f32;
+        for value in data.iter_mut().flatten().flatten() {
+            *value *= tick_time;
+        }
+    }
+    data
 }
 
 /// Captures must come from a reference of the ISA whose semantics this build

@@ -12,6 +12,22 @@ namespace {
   float param(const nlohmann::json& params, const char* name, float fallback) {
     return params.value(name, fallback);
   }
+
+  // A control-rate frequency operator whose output is captured as the
+  // per-sample phase increment SynthLfo consumes (synth_lfo.cpp:411-413):
+  // frequency * tick_time, tick_time = 1.0f / getSampleRate().
+  template<class Base>
+  class PhaseIncrementOf : public Base {
+    public:
+      vital::Processor* clone() const override { return new PhaseIncrementOf(*this); }
+
+      void process(int num_samples) override {
+        Base::process(num_samples);
+        vital::poly_float frequency = this->output()->buffer[0];
+        float tick_time = 1.0f / this->getSampleRate();
+        this->output()->buffer[0] = frequency * tick_time;
+      }
+  };
 } // namespace
 
 REGISTER_REF_MODULE(refmod::ModuleDef{
@@ -164,6 +180,21 @@ REGISTER_REF_MODULE(refmod::ModuleDef{
   { { "out", 0 } },
 });
 
+REGISTER_REF_MODULE(refmod::ModuleDef{
+  "op_tempo_chooser_phase_increment", "TempoChooser, output as the SynthLfo phase increment frequency * (1.0f / sample rate)",
+  [](const nlohmann::json&) -> vital::Processor* { return new PhaseIncrementOf<vital::TempoChooser>(); },
+  {
+    { "frequency", vital::TempoChooser::kFrequency, 1.0f, Rate::kControl },
+    { "tempo_index", vital::TempoChooser::kTempoIndex, 0.0f, Rate::kControl },
+    { "beats_per_second", vital::TempoChooser::kBeatsPerSecond, 2.0f, Rate::kControl },
+    { "sync", vital::TempoChooser::kSync, 0.0f, Rate::kControl },
+    { "midi", vital::TempoChooser::kMidi, 0.0f, Rate::kControl },
+    { "keytrack_transpose", vital::TempoChooser::kKeytrackTranspose, 0.0f, Rate::kControl },
+    { "keytrack_tune", vital::TempoChooser::kKeytrackTune, 0.0f, Rate::kControl },
+  },
+  { { "out", 0 } },
+});
+
 #define CR_UNARY(name, desc, expression) \
   REGISTER_REF_MODULE(refmod::ModuleDef{ \
     name, desc, \
@@ -190,6 +221,8 @@ CR_UNARY("op_cr_frequency_to_samples", "cr::FrequencyToSamples", new vital::cr::
 CR_UNARY("op_cr_time_to_samples", "cr::TimeToSamples", new vital::cr::TimeToSamples());
 CR_UNARY("op_cr_magnitude_scale", "cr::MagnitudeScale", new vital::cr::MagnitudeScale());
 CR_UNARY("op_cr_midi_scale", "cr::MidiScale", new vital::cr::MidiScale());
+CR_UNARY("op_cr_midi_scale_phase_increment", "cr::MidiScale, output as frequency * (1.0f / sample rate)",
+         new PhaseIncrementOf<vital::cr::MidiScale>());
 
 REGISTER_REF_MODULE(refmod::ModuleDef{
   "op_cr_add", "cr::Add",

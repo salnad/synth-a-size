@@ -493,6 +493,30 @@
         "keytrack_tune": 0.3
       }
     },
+    "tempo_chooser_keytrack_phase_increment": {
+      "module": "op_tempo_chooser_phase_increment",
+      "inputs": {
+        "frequency": {
+          "signal": "ramp",
+          "from": 0.5,
+          "to": 8.0
+        },
+        "tempo_index": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 13.0
+        },
+        "beats_per_second": 2.25,
+        "sync": 4.0,
+        "midi": {
+          "signal": "ramp",
+          "from": 48.0,
+          "to": 127.0
+        },
+        "keytrack_transpose": 24.0,
+        "keytrack_tune": 0.3
+      }
+    },
     "cr_clamp": {
       "module": "op_cr_clamp",
       "inputs": {
@@ -635,8 +659,8 @@
       "inputs": {
         "in": {
           "signal": "ramp",
-          "from": 20.0,
-          "to": 2000.0
+          "from": 8.0,
+          "to": 20000.0
         }
       }
     },
@@ -645,8 +669,8 @@
       "inputs": {
         "in": {
           "signal": "ramp",
-          "from": 200.0,
-          "to": 2000.0
+          "from": 8.0,
+          "to": 20000.0
         }
       }
     },
@@ -656,7 +680,7 @@
         "in": {
           "signal": "ramp",
           "from": 0.0,
-          "to": 0.01
+          "to": 4.0
         }
       }
     },
@@ -677,6 +701,16 @@
           "signal": "ramp",
           "from": 0.0,
           "to": 4800.0
+        }
+      }
+    },
+    "cr_midi_scale_phase_increment": {
+      "module": "op_cr_midi_scale_phase_increment",
+      "inputs": {
+        "in": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 13600.0
         }
       }
     },

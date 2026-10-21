@@ -73,6 +73,15 @@ fn functions() -> BTreeMap<&'static str, PolyFunction> {
         ("round", |a, _| u::round(a)),
         ("round_to_int", |a, _| u::to_float(u::round_to_int(a))),
         ("floor_to_int", |a, _| u::to_float(u::floor_to_int(a))),
+        ("int_min", |a, b| {
+            u::to_float(sas_simd::PolyInt::min(
+                u::round_to_int(a),
+                u::round_to_int(b),
+            ))
+        }),
+        ("any_mask", |a, b| {
+            P::splat(P::less_than(a, b).any_mask() as f32)
+        }),
         ("mod", |a, _| u::modulo(a)),
         ("mod_once", |a, _| u::mod_once(a)),
         ("sqrt", |a, _| u::sqrt(a)),
@@ -147,6 +156,9 @@ fn functions() -> BTreeMap<&'static str, PolyFunction> {
         ("poly_cents_to_ratio", |a, _| u::cents_to_ratio(a)),
         ("poly_midi_note_to_frequency", |a, _| {
             u::midi_note_to_frequency(a)
+        }),
+        ("poly_midi_note_to_normalized_frequency", |a, b| {
+            u::midi_note_to_frequency(a) * (1.0 / b.get(0))
         }),
         ("poly_frequency_to_midi_note", |a, _| {
             u::frequency_to_midi_note(a)
@@ -239,6 +251,9 @@ fn functions() -> BTreeMap<&'static str, PolyFunction> {
         }),
         ("mono_midi_note_to_frequency", |a, _| {
             lanes(a, mu::midi_note_to_frequency)
+        }),
+        ("mono_midi_note_to_normalized_frequency", |a, b| {
+            lanes(a, mu::midi_note_to_frequency) * (1.0 / b.get(0))
         }),
         ("mono_frequency_to_midi_note", |a, _| {
             lanes(a, mu::frequency_to_midi_note)

@@ -479,6 +479,8 @@ with the coordinator.
   `sas-parity` (`cases::check_name`). Both test suites test this.
 - All existing case files comply: 6 module cases and 8 render cases.
 
+---
+
 ## 2026-10-20: M1 PR 2, `sas-dsp-core` (processor graph, operators, utilities)
 
 **Changed**
@@ -534,22 +536,75 @@ Cases are in `migration/corpus/modules/framework/*.json`.
 under `module_defaults`. Against the official pinned fast-math x86_64
 reference:
 
-- 73/73 outputs (71 cases) pass; 64/73 are bit-identical.
+- 75/75 outputs (73 cases) pass; 64/75 are bit-identical.
 - Worst `max_abs_error` 2.3e-5 (`operators/tempo_chooser_sync_4`, the
   keytrack frequency path through libm `powf`), 4.4× under the limit.
-  Worst `residual_db` −130.3 dB (`lookups/lookup_sin`), 50 dB under the
+  Worst `residual_db` −122.9 dB
+  (`operators/tempo_chooser_keytrack_phase_increment`), 43 dB under the
   limit.
 - The non-identical outputs are fast-math reassociation in the reference:
   Catmull matrices in `Memory`/`OneDimLookup`, `futils::tanh` saturation,
   `powf`/`logf` maps. `values/peak_meter_burst:memory_peak` differs only in
   16 signed zeros (`-fno-signed-zeros`), with zero error.
-- The no-fast-math proxy passes all 73 under the tolerances (calibration
-  job).
-- Case design note: the keytrack case was first written with notes up to
-  72, giving frequencies around 530 Hz. There the fast-math reference's own
-  ULP noise (2.1e-4) exceeds the absolute 1e-4 gate, and the proxy would
-  have failed it too. The case now spans notes 0–48 (frequencies up to
-  about 130 Hz). Tolerances unchanged.
+- The no-fast-math proxy passes all of them under the tolerances
+  (calibration job).
+
+**Parity review fixes (PR #11): full-range coverage**
+
+The first revision narrowed the keytrack case to notes 0–48, because above
+about 130 Hz the fast-math reference's own ULP noise on a raw Hz value
+exceeds the absolute 1e-4 gate. The review rejected that as reduced
+coverage. Rule, now also in `migration/AGENTS.md`: quantities with a large
+natural scale (Hz, samples, ms) cover their full working range. Where the
+raw value cannot pass, they are captured in the normalized form their
+upstream consumer uses, computed identically in the ref-module and the
+parity test (an f32 multiply by the f32 reciprocal). Inputs are never
+narrowed to fit the gate, and if no faithful form exists, record it and ask.
+
+Applied in this PR, to `framework/*` and to the `simd/poly_function` cases
+merged with #5. All under `module_defaults`, no tolerance changed:
+
+| Case | Range | Captured as | max abs error |
+|---|---|---|---|
+| `operators/tempo_chooser_sync_4` (kept) | keytrack notes 0.3–48.3 | Hz | 2.3e-5 |
+| `operators/tempo_chooser_keytrack_phase_increment` (new) | MIDI 48–127, transpose +24, tune 0.3 (notes 72.3–151.3, up to 47.6 kHz) | SynthLfo phase increment `frequency * (1.0f / getSampleRate())` (`synth_lfo.cpp:411-413`) | 1.4e-6 |
+| `operators/cr_midi_scale` (kept) | 0–4800 cents | Hz | 0 (bit-identical) |
+| `operators/cr_midi_scale_phase_increment` (new) | 0–13600 cents (MIDI 0–136, up to 18.7 kHz) | same phase increment | 2.4e-7 |
+| `operators/cr_frequency_to_phase`, `cr_frequency_to_samples` | 8 Hz–20 kHz (was 20/200–2000) | raw | 0 (bit-identical) |
+| `operators/cr_time_to_samples` | 0–4 s (was 0–0.01) | raw | 0 (bit-identical) |
+| `poly_function/{poly,mono}_midi_note_to_frequency` | notes −36–48 (was −36–12) | Hz | 3.8e-5 / 4.6e-5 |
+| `poly_function/{poly,mono}_midi_note_to_normalized_frequency` (new) | notes 0–136 (up to 21.1 kHz), b = 44100 | `frequency * (1.0f / sample rate)`, as the filters consume it (`digital_svf.cpp:81`) | 3.6e-7 |
+| `poly_function/midi_note_to_frequency` (futils) | notes 0–136 | raw | 0 (bit-identical) |
+| `poly_function/{poly,mono}_cents_to_ratio` | ±4800 cents (was ±2400) | raw | 2.9e-6 |
+| `poly_function/midi_offset_to_ratio`, `mono_note_offset_to_ratio` | ±48 semitones (was ±24) | raw | 0 / 2.9e-6 |
+| `poly_function/{poly,mono}_frequency_to_midi_note` | 8 Hz–21 kHz (was 1–16 Hz) | raw | 3.1e-5 / 2.3e-5 |
+| `poly_function/*db_to_magnitude` (4 cases) | ±30 dB (was ±24, mono ±16) | raw | ≤ 6.1e-5 (`mono_db_to_magnitude`) |
+| `poly_function/*magnitude_to_db` (4 cases) | 0.001–31.6 (was 0.1–3.9) | raw | 0 (bit-identical) |
+
+Raw-Hz numbers for the bands that are captured normalized (fast-math
+reference against the port; the reviewer measured the port identical to the
+no-fast-math proxy):
+
+- keytrack, notes 72.3–151.3: 6.25e-2 Hz max, residual −122.9 dB. The
+  reviewer's run, notes 0–127 with tune 0.3, gave 3.4e-3 Hz (7.5e-7
+  relative, 11 ULP). By band: 1.5e-5 for notes 0–48, 1.2e-4 for 48–72,
+  and 3.4e-3 for 72–127.
+- `cr::MidiScale`, 0–13600 cents: 9.8e-3 Hz max, −128.5 dB.
+- `{poly,mono}_midi_note_to_frequency`, notes 0–136: 1.56e-2 Hz max,
+  −128.2 / −128.0 dB.
+
+`cr::MidiScale` has no consumer upstream (nothing instantiates it). Its
+normalized case therefore uses the form every upstream consumer of a
+MIDI-derived frequency applies, `* (1.0f / getSampleRate())` (SynthLfo,
+RandomLfo and the filters' cutoffs). Flagged for the reviewer.
+
+Also new: `poly_function/int_min` (reference-arm.md A7, signed vs unsigned
+`poly_int::min` on negative inputs) and `poly_function/any_mask` (A8,
+`PMOVMSKB` byte mask vs lane maximum). Both are bit-identical against the
+x86_64 reference; the arm64 column runs in the macOS job. `simd/poly_function`
+now has 131 cases, 92 bit-identical. Worst `max_abs_error` is 6.1e-5
+(`mono_db_to_magnitude`, 1.6× under), and the worst residual −127.9 dB
+(`mono_midi_note_to_normalized_frequency`).
 
 **Open / next**
 
