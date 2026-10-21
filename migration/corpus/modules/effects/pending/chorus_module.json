@@ -1,5 +1,5 @@
 {
-  "description": "PENDING exact comparison against the no-fast-math reference (coordinator's pending proposal, 2026-10-21, awaiting the owner): the official reference fails module_defaults against its own no-fast-math build here, and the port is bit-identical to that build. See LEDGER.md 2026-10-21 M6 PR 4. Not loaded by the harness (only modules/<area>/*.json is). To re-enable, move these cases into ../chorus_module.json and write hashes.",
+  "description": "PENDING exact comparison against the no-fast-math reference under SAS-35 (approved, migration/decisions/nofastmath/README.md), returning in the re-enable PR: the official reference fails module_defaults against its own no-fast-math build here, and the port is bit-identical to that build. See migration/ledger/2026-10-21-m6-chorus-flanger.md. Not loaded by the harness (only modules/<area>/*.json is). To re-enable, move these cases into ../chorus_module.json and write hashes.",
   "module": "chorus_module",
   "cases": {
     "defaults_saw": {

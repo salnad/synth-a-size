@@ -28,9 +28,9 @@ render-calibration "phase drift" class). Worst proxy noise: chorus
 flanger `dotted_and_triplet` 2.7e-1 / −43.8 dB. Mildest failures: flanger
 `defaults_saw` 1.2e-4 / −108.8 dB and chorus `rate_48k` 1.1e-3 / −90.8 dB.
 
-Under the coordinator's pending proposal, awaiting the owner (exact comparison
-against no-fast-math only where the official reference fails against its own
-no-fast-math build), the 24 are parked with their inputs, unchanged, in
+Under SAS-35 (exact comparison against no-fast-math where the official
+reference fails against its own no-fast-math build; proposed by the
+coordinator, approved by the owner and on main with #51), the 24 are parked with their inputs, unchanged, in
 `migration/corpus/modules/effects/pending/{chorus_module,flanger_module}.json`:
 all 16 chorus cases and 8 flanger cases.
 

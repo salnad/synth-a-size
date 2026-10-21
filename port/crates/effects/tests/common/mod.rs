@@ -107,10 +107,8 @@ fn assert_capture_matches_semantics(id: &str) {
     );
 }
 
-/// The case ids of `effects/<module>/*` for each module in `table`. Every
-/// module needs loaded cases, except the `parked` ones: those must have none
-/// loaded and all of theirs in `migration/corpus/modules/effects/pending/`.
-pub fn case_ids(table: &BTreeMap<&'static str, ModuleDef>, parked: &[&str]) -> Vec<String> {
+/// The case ids of `effects/<module>/*` for each module in `table`.
+pub fn case_ids(table: &BTreeMap<&'static str, ModuleDef>) -> Vec<String> {
     let ids: Vec<String> = sas_parity::all_case_ids()
         .into_iter()
         .filter(|id| {
@@ -120,21 +118,11 @@ pub fn case_ids(table: &BTreeMap<&'static str, ModuleDef>, parked: &[&str]) -> V
         })
         .collect();
     for name in table.keys() {
-        let loaded = ids
-            .iter()
-            .any(|id| id.starts_with(&format!("effects/{name}/")));
-        if parked.contains(name) {
-            let pending = sas_parity::cases::corpus_dir()
-                .join("modules/effects/pending")
-                .join(format!("{name}.json"));
-            assert!(
-                !loaded && pending.exists(),
-                "effects/{name} is listed as parked: it must have no loaded cases and a {}",
-                pending.display()
-            );
-        } else {
-            assert!(loaded, "no cases for effects/{name}");
-        }
+        assert!(
+            ids.iter()
+                .any(|id| id.starts_with(&format!("effects/{name}/"))),
+            "no cases for effects/{name}"
+        );
     }
     ids
 }
@@ -142,14 +130,8 @@ pub fn case_ids(table: &BTreeMap<&'static str, ModuleDef>, parked: &[&str]) -> V
 /// Runs every case of the modules in `table` and asserts parity on every
 /// output, printing per-output metrics first (`--nocapture`).
 pub fn check_modules(table: &BTreeMap<&'static str, ModuleDef>) {
-    check_modules_with_parked(table, &[]);
-}
-
-/// [`check_modules`] where the `parked` modules have all their cases in
-/// `pending/` (see [`case_ids`]).
-pub fn check_modules_with_parked(table: &BTreeMap<&'static str, ModuleDef>, parked: &[&str]) {
     params::install();
-    let ids = case_ids(table, parked);
+    let ids = case_ids(table);
     let mut results = Vec::new();
     println!(
         "{:<64} {:>11} {:>11} {:>6}",

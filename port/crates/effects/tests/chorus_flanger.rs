@@ -10,7 +10,7 @@ mod common;
 use std::collections::BTreeMap;
 
 use common::harness::EffectModuleHarness;
-use common::{check_modules_with_parked, def, ModuleDef};
+use common::{check_modules, def, ModuleDef};
 use sas_effects::{ChorusModule, FlangerModule};
 
 const CHORUS_MODULE_CONTROLS: &[(&str, f32)] = &[
@@ -59,12 +59,7 @@ fn modules() -> BTreeMap<&'static str, ModuleDef> {
     m
 }
 
-/// No module is fully parked: the full-range chorus and flanger cases are in
-/// `migration/corpus/modules/effects/pending/` and the loaded chorus cases are
-/// interim (LEDGER.md, M6 PR 4).
-const PARKED: &[&str] = &[];
-
 #[test]
 fn chorus_and_flanger_match_reference() {
-    check_modules_with_parked(&modules(), PARKED);
+    check_modules(&modules());
 }
