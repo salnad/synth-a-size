@@ -2473,9 +2473,14 @@ lands.
     the whole engine found no other site.
   - `platform_libm` alone changed nothing (run 39549289498), because Apple's
     double `exp` equals the `libm` crate on these inputs.
-  - Port: on Apple targets the denominator is `f64::from(power.exp() - 1.0)`,
-    i.e. `expf` and a float subtraction, as the C++ types dictate. Other
-    targets keep the double form. The numerator,
+  - Port: under `sas_common::AARCH64_SEMANTICS` (aarch64, or the
+    `aarch64-semantics` feature, like A9) the denominator is
+    `f64::from(power.exp() - 1.0)`, i.e. `expf` and a float subtraction,
+    as the C++ types dictate. Otherwise it keeps the double form. It is a
+    libc++ overload difference rather than an Apple library, so x86
+    developers can reproduce it with the feature; glibc's `expf` gives the
+    macOS deltas within 3e-6. A11 and `platform_libm` call Apple-only
+    functions and so stay keyed on `target_vendor = "apple"`. The numerator,
     `exp(power * abs_value)` with a double product, is double on both.
   - The frequency filter's `powerScale` takes a `double` power, so it is
     unaffected.
