@@ -40,6 +40,9 @@ namespace complex_algos {
   void smith(float a, float b, float c, float d, float& x, float& y);
   void logbScalbn(float a, float b, float c, float d, float& x, float& y);
   void wideDouble(float a, float b, float c, float d, float& x, float& y);
+  // The runtime's own __divsc3 (libgcc on Linux, compiler-rt in libSystem on
+  // macOS), called directly; the reference itself never calls it.
+  void runtimeDivide(const float* a, const float* b, const float* c, const float* d, float* re, float* im, int n);
   // Naive formula with one reciprocal of the denominator (fast-math's
   // rewrite of two divisions by the same value).
   void reciprocal(float a, float b, float c, float d, float& x, float& y);

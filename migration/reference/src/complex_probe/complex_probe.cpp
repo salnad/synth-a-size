@@ -96,6 +96,8 @@ void probeCategory(harness::json& result, const std::string& category, const com
           fast_ops::builtinRealDivide(v.c.data(), v.d.data(), re, im, count); } },
       { "builtin_strict", [](const complex_algos::Inputs& v, float* re, float* im, int count) {
           strict_ops::builtinRealDivide(v.c.data(), v.d.data(), re, im, count); } },
+      { "runtime_divsc3", [](const complex_algos::Inputs& v, float* re, float* im, int count) {
+          complex_algos::runtimeDivide(v.a.data(), v.b.data(), v.c.data(), v.d.data(), re, im, count); } },
     };
   }
   else {
@@ -108,6 +110,8 @@ void probeCategory(harness::json& result, const std::string& category, const com
           fast_ops::builtinDivide(v.a.data(), v.b.data(), v.c.data(), v.d.data(), re, im, count); } },
       { "builtin_strict", [](const complex_algos::Inputs& v, float* re, float* im, int count) {
           strict_ops::builtinDivide(v.a.data(), v.b.data(), v.c.data(), v.d.data(), re, im, count); } },
+      { "runtime_divsc3", [](const complex_algos::Inputs& v, float* re, float* im, int count) {
+          complex_algos::runtimeDivide(v.a.data(), v.b.data(), v.c.data(), v.d.data(), re, im, count); } },
     };
   }
 

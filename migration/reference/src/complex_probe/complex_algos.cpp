@@ -4,6 +4,8 @@
 #include <cmath>
 #include <cstring>
 
+extern "C" __complex__ float __divsc3(float a, float b, float c, float d);
+
 namespace complex_algos {
   namespace {
     uint64_t splitmix(uint64_t& state) {
@@ -157,6 +159,14 @@ namespace complex_algos {
     x = static_cast<float>((static_cast<double>(a) * c + static_cast<double>(b) * d) / denominator);
     y = static_cast<float>((static_cast<double>(b) * c - static_cast<double>(a) * d) / denominator);
   }
+  void runtimeDivide(const float* a, const float* b, const float* c, const float* d, float* re, float* im, int n) {
+    for (int i = 0; i < n; ++i) {
+      __complex__ float result = __divsc3(a[i], b[i], c[i], d[i]);
+      re[i] = __real__ result;
+      im[i] = __imag__ result;
+    }
+  }
+
   void reciprocal(float a, float b, float c, float d, float& x, float& y) {
     float inverse = 1.0f / (c * c + d * d);
     x = (a * c + b * d) * inverse;
