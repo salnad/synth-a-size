@@ -1,7 +1,7 @@
-// Builds the LineGenerator for modulation ref-modules from params.shape:
+// Builds LineGenerator shapes for modulation ref-modules from params[key]:
 //   "linear" | "triangle" | "square" | "sin" | "saw_up" | "saw_down", or
 //   { "points": [[x, y], ...], "powers": [p, ...], "smooth": bool }.
-// Default: "triangle". Mirrored in port/crates/modulation/tests/common/mod.rs.
+// Mirrored in port/crates/modulation/tests/common/mod.rs.
 #pragma once
 
 #include "json/json.h"
@@ -11,14 +11,11 @@
 
 namespace refmod_modulation {
 
-// Returns nullptr for an unknown shape. The generator is never freed: it must
-// outlive the processor, and ref-module exits after one capture.
-inline LineGenerator* createLineShape(const nlohmann::json& params, const char* key = "shape") {
-  LineGenerator* line = new LineGenerator();
-  if (!params.count(key)) {
-    line->initTriangle();
-    return line;
-  }
+// Applies params[key] to line. Absent key: line is left as it is. Returns
+// false for an unknown or invalid shape.
+inline bool applyLineShape(LineGenerator* line, const nlohmann::json& params, const char* key) {
+  if (!params.count(key))
+    return true;
 
   const nlohmann::json& shape = params[key];
   if (shape.is_string()) {
@@ -30,14 +27,14 @@ inline LineGenerator* createLineShape(const nlohmann::json& params, const char* 
     else if (name == "saw_up") line->initSawUp();
     else if (name == "saw_down") line->initSawDown();
     else
-      return nullptr;
-    return line;
+      return false;
+    return true;
   }
 
   const nlohmann::json& points = shape["points"];
   int num_points = static_cast<int>(points.size());
   if (num_points < 1 || num_points > LineGenerator::kMaxPoints)
-    return nullptr;
+    return false;
   line->setNumPoints(num_points);
   for (int i = 0; i < num_points; ++i) {
     line->setPoint(i, { points[i][0].get<float>(), points[i][1].get<float>() });
@@ -46,6 +43,19 @@ inline LineGenerator* createLineShape(const nlohmann::json& params, const char* 
   }
   line->setSmooth(shape.value("smooth", false));
   line->render();
+  return true;
+}
+
+// A new generator with params[key] applied, "triangle" when absent. Returns
+// nullptr for an unknown shape. The generator is never freed: it must outlive
+// the processor, and ref-module exits after one capture.
+inline LineGenerator* createLineShape(const nlohmann::json& params, const char* key = "shape") {
+  LineGenerator* line = new LineGenerator();
+  line->initTriangle();
+  if (!applyLineShape(line, params, key)) {
+    delete line;
+    return nullptr;
+  }
   return line;
 }
 
