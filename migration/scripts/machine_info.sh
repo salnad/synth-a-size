@@ -86,6 +86,31 @@ if [[ -x "$build/ref-rng-probe" ]]; then
   "$build/ref-rng-probe" > "$out/rng_probe.json"
 fi
 
+if [[ "$os" == "Darwin" ]]; then
+  # The libc++ std::complex division the reference compiles (A10).
+  header="$(xcrun --show-sdk-path)/usr/include/c++/v1/complex"
+  {
+    echo "## $header"
+    grep -n "_LIBCPP_VERSION\|__builtin\|_Complex" "$header" || true
+    echo "## operator/"
+    grep -n -A45 "operator/(const complex<_Tp>& __z, const complex<_Tp>& __w)" "$header" || true
+  } > "$out/libcxx_complex_division.txt" 2>&1
+  grep -h "define _LIBCPP_VERSION" "$(xcrun --show-sdk-path)/usr/include/c++/v1/__config" >> "$out/libcxx_complex_division.txt" 2>/dev/null || true
+  # Whether the engine calls libSystem's __divsc3 / __mulsc3, and the
+  # phase modifier's division as compiled (fused instructions counted).
+  render_symbol=__ZN13PhaseModifier21PhaseModifierKeyframe6renderEPN5vital9WaveFrameE
+  {
+    for bin in ref-render ref-module ref-complex-probe; do
+      [[ -x "$build/$bin" ]] || continue
+      echo "## $bin imports: $(nm -u "$build/$bin" | grep -E '___(div|mul)[sd]c3' | tr '\n' ' ')"
+    done
+    if [[ -x "$build/ref-module" ]]; then
+      objdump -d --no-show-raw-insn --disassemble-symbols="$render_symbol" "$build/ref-module" > "$out/phase_modifier_render.s"
+      echo "## render: $(grep -cE '\sf(n)?m(add|sub|la|ls)\s' "$out/phase_modifier_render.s") fused, $(grep -cE '\sfdiv\s' "$out/phase_modifier_render.s") fdiv, $(grep -cE '\sbl\s' "$out/phase_modifier_render.s") calls: $(grep -oE '\sbl\s.*' "$out/phase_modifier_render.s" | sort | uniq -c | tr '\n' ';')"
+    fi
+  } >> "$out/libcxx_complex_division.txt" 2>&1
+fi
+
 if [[ -x "$build/ref-complex-probe" ]]; then
   "$build/ref-complex-probe" > "$out/complex_probe.json"
 fi
