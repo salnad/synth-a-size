@@ -1,0 +1,43 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "audio_defaults:artifact/saved.json": "7fc6108682adb503",
+        "audio_defaults:artifact/upgraded.json": "e07e8df7a012e58a",
+        "audio_small:artifact/saved.json": "0ef9c5aabf736d36",
+        "audio_small:artifact/upgraded.json": "a8088a8b527d12fa",
+        "boolean_numbers:artifact/saved.json": "47f8c8e7f74e498c",
+        "boolean_numbers:artifact/upgraded.json": "380a87127b9888ed",
+        "empty:artifact/saved.json": "c0008f33a15d76ce",
+        "empty:artifact/upgraded.json": "cf8639a2027b4ac0",
+        "every_component:artifact/saved.json": "7a6d044ad318a229",
+        "every_component:artifact/upgraded.json": "5a93c6c2a45a3e89",
+        "float_positions_and_settings:artifact/saved.json": "4ae29a6988816ce2",
+        "float_positions_and_settings:artifact/upgraded.json": "b29f108d151d0e75",
+        "line_shape:artifact/saved.json": "27f1b47ee4ce75bd",
+        "line_shape:artifact/upgraded.json": "e6bf8f8c07331aee",
+        "no_version_index_types:artifact/saved.json": "f79cdbe210f08a2b",
+        "no_version_index_types:artifact/upgraded.json": "8ab6fa6cf32a5b57",
+        "preset_init:keyframe_waves": "2bb1725da71eb7d9",
+        "preset_predefined:keyframe_waves": "999f439b290e8c3e",
+        "upgrade_0_3_2:artifact/saved.json": "547211fa54d15ed7",
+        "upgrade_0_3_2:artifact/upgraded.json": "b13c3bb14d7a5d86",
+        "upgrade_0_3_6_audio:artifact/saved.json": "337336269cf8bfd0",
+        "upgrade_0_3_6_audio:artifact/upgraded.json": "c0648b31fdab7cca",
+        "upgrade_0_3_8_pcm_wave:artifact/saved.json": "8bc9e8d53c223eb5",
+        "upgrade_0_3_8_pcm_wave:artifact/upgraded.json": "349d1e1a9827e3ef",
+        "upgrade_0_7_6_line:artifact/saved.json": "6ae476ba334cc03e",
+        "upgrade_0_7_6_line:artifact/upgraded.json": "4f617f0ba0217c35"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}

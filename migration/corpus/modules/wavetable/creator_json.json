@@ -1,0 +1,76 @@
+{
+  "description": "WavetableCreator JSON load -> save and updateJson (vital/src/common/wavetable/wavetable_creator.cpp), compared byte for byte. {\"$wave\": ...} recipes are expanded by migration/reference/src/modules/wavetable/wave_recipes.h and port/crates/wavetable/tests/recipes.rs. Ported in port/crates/wavetable (creator).",
+  "module": "wavetable_creator_json",
+  "cases": {
+    "every_component": {
+      "params": {
+        "creator": "{\"name\": \"Every\", \"author\": \"Tests\", \"version\": \"1.0.6\", \"remove_all_dc\": false, \"full_normalize\": true, \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 2, \"keyframes\": [{\"position\": 128, \"wave_data\": {\"$wave\": {\"shape\": \"saw\", \"amp\": -0.5}}}, {\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 200, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"saw\", \"shift\": 757}], \"weights\": [0.5, 0.375]}}}]}, {\"type\": \"Phase Shift\", \"style\": 3, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"phase\": 0.5, \"mix\": 1}, {\"position\": 256, \"phase\": 3.0, \"mix\": 0.25}]}, {\"type\": \"Wave Window\", \"window_shape\": 4, \"keyframes\": [{\"position\": 10, \"left_position\": 0.1, \"right_position\": 0.8}]}, {\"type\": \"Frequency Filter\", \"style\": 3, \"normalize\": false, \"keyframes\": [{\"position\": 0, \"cutoff\": 2.5, \"shape\": 0.7}]}, {\"type\": \"Slew Limiter\", \"keyframes\": [{\"position\": 0, \"up_run_rise\": 0.1, \"down_run_rise\": 0.2}]}, {\"type\": \"Wave Folder\", \"keyframes\": [{\"position\": 0, \"fold_boost\": 2.0}, {\"position\": 200, \"fold_boost\": 6.5}, {\"position\": 200, \"fold_boost\": 1.5}]}, {\"type\": \"Wave Warp\", \"horizontal_asymmetric\": true, \"vertical_asymmetric\": false, \"keyframes\": [{\"position\": 0, \"horizontal_power\": -3, \"vertical_power\": 4.25}]}]}, {\"components\": [{\"type\": \"Line Source\", \"num_points\": 4, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"pull_power\": 1.5, \"line\": {\"num_points\": 3, \"points\": [0, 1, 0.5, 0, 1, 1], \"powers\": [0, 2, 0], \"name\": \"V\", \"smooth\": true}}, {\"position\": 200, \"pull_power\": -2, \"line\": {\"num_points\": 3, \"points\": [0, 0.2, 0.7, 0.9, 1, 0.1], \"powers\": [1, -1, 3], \"name\": \"W\"}}, {\"position\": 77}]}]}, {\"components\": [{\"type\": \"Audio File Source\", \"normalize_gain\": true, \"window_size\": 600.5, \"fade_style\": 2, \"phase_style\": 2, \"random_seed\": 1234, \"audio_sample_rate\": 48000, \"audio_file\": {\"$wave\": {\"shape\": \"mix\", \"length\": 30000, \"parts\": [{\"shape\": \"saw\", \"period\": 401, \"slope\": 0.00390625}, {\"shape\": \"triangle\", \"period\": 263, \"slope\": 0.0078125}], \"weights\": [0.5, 0.25], \"encoding\": \"pcm\"}}, \"keyframes\": [{\"position\": 0, \"start_position\": 0, \"window_fade\": 0.5, \"window_size\": 600.5}, {\"position\": 256, \"start_position\": 20.25, \"window_fade\": 1.0, \"window_size\": 600.5}]}]}, {\"components\": [{\"type\": \"Shepard Tone Source\", \"interpolation\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"shift\": 300, \"amp\": 0.75}}}]}]}]}"
+      }
+    },
+    "audio_defaults": {
+      "params": {
+        "creator": "{\"version\": \"1.0.0\", \"groups\": [{\"components\": [{\"type\": \"Audio File Source\", \"normalize_gain\": false, \"window_size\": 2048, \"random_seed\": 7, \"audio_file\": \"\", \"keyframes\": [{\"position\": 3, \"start_position\": 1, \"window_fade\": 1, \"window_size\": 2048}]}]}]}"
+      }
+    },
+    "empty": {
+      "params": {
+        "creator": "{\"version\": \"1.0.6\", \"name\": \"E\", \"groups\": []}"
+      }
+    },
+    "no_version_index_types": {
+      "params": {
+        "creator": "{\"name\": \"N\", \"groups\": [{\"components\": [{\"type\": 0, \"interpolation\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}]}, {\"type\": 7, \"keyframes\": [{\"position\": 0, \"fold_boost\": 3}]}]}]}"
+      }
+    },
+    "upgrade_0_3_2": {
+      "params": {
+        "creator": "{\"version\": \"0.3.2\", \"name\": \"Old\", \"groups\": [{\"components\": [{\"type\": 1, \"num_points\": 3, \"keyframes\": [{\"position\": 0, \"points\": [0.0, -1.0, 0.5, 1.0, 0.9, 0.0], \"powers\": [1, 0, 2]}]}, {\"type\": 7, \"keyframes\": [{\"position\": 0, \"fold_boost\": 3}]}]}]}"
+      }
+    },
+    "upgrade_0_3_6_audio": {
+      "params": {
+        "creator": "{\"version\": \"0.3.6\", \"name\": \"OldAudio\", \"groups\": [{\"components\": [{\"type\": \"Audio File Source\", \"normalize_gain\": true, \"window_size\": 1024, \"audio_file\": {\"$wave\": {\"shape\": \"mix\", \"length\": 2500, \"parts\": [{\"shape\": \"saw\", \"period\": 401, \"slope\": 0.00390625}, {\"shape\": \"square\", \"period\": 263}], \"weights\": [0.5, 0.25]}}, \"keyframes\": [{\"position\": 0, \"start_position\": 0, \"window_fade\": 1, \"window_size\": 1024}], \"random_seed\": 31337}]}]}"
+      }
+    },
+    "upgrade_0_3_8_pcm_wave": {
+      "params": {
+        "creator": "{\"version\": \"0.3.8\", \"name\": \"OldWave\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"encoding\": \"pcm\"}}}, {\"position\": 50, \"wave_data\": {\"$wave\": {\"shape\": \"saw\", \"amp\": 0.5, \"encoding\": \"pcm\"}}}]}]}]}"
+      }
+    },
+    "upgrade_0_7_6_line": {
+      "params": {
+        "creator": "{\"version\": \"0.7.6\", \"name\": \"OldLine\", \"groups\": [{\"components\": [{\"type\": \"Line Source\", \"num_points\": 2, \"keyframes\": [{\"position\": 0, \"pull_power\": 0.5, \"points\": [0.1, 0.5, 0.95, -0.5], \"powers\": [2, 0]}, {\"position\": 100, \"points\": [0.0, -1.0, 1.0, 1.0], \"powers\": [0, 0]}]}, {\"type\": \"Line Source\", \"num_points\": 1, \"keyframes\": [{\"position\": 0, \"points\": [0.3, 0.2], \"powers\": [1.5]}]}]}]}"
+      }
+    },
+    "line_shape": {
+      "params": {
+        "creator": "{\"name\": \"Shape\", \"num_points\": 3, \"points\": [0, 0, 0.4, 1, 1, 0], \"powers\": [0, -2, 0], \"smooth\": true}"
+      }
+    },
+    "float_positions_and_settings": {
+      "params": {
+        "creator": "{\"version\": \"1.0.6\", \"name\": \"F\", \"remove_all_dc\": true, \"full_normalize\": false, \"groups\": [{\"components\": [{\"type\": \"Phase Shift\", \"style\": 0, \"keyframes\": [{\"position\": 5.9, \"phase\": 0.1, \"mix\": 0.3333333333}]}, {\"type\": \"Wave Warp\", \"horizontal_asymmetric\": false, \"vertical_asymmetric\": true, \"interpolation_style\": 0, \"keyframes\": [{\"position\": 0, \"horizontal_power\": 1e-07, \"vertical_power\": -12345.678}, {\"position\": 256, \"horizontal_power\": 2, \"vertical_power\": 3}]}]}]}"
+      }
+    },
+    "boolean_numbers": {
+      "params": {
+        "creator": "{\"version\": \"1.0.6\", \"groups\": [{\"components\": [{\"type\": \"Phase Shift\", \"style\": 1, \"keyframes\": [{\"position\": true, \"phase\": true, \"mix\": false}]}, {\"type\": \"Line Source\", \"num_points\": true, \"keyframes\": [{\"position\": 0, \"pull_power\": true}]}]}]}"
+      }
+    },
+    "audio_small": {
+      "params": {
+        "creator": "{\"version\": \"1.0.6\", \"name\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Audio File Source\", \"normalize_gain\": true, \"normalize_mult\": false, \"window_size\": 401, \"fade_style\": 1, \"phase_style\": 1, \"random_seed\": -99, \"audio_sample_rate\": 22050, \"audio_file\": {\"$wave\": {\"shape\": \"saw\", \"length\": 3000, \"period\": 401, \"slope\": 0.00390625, \"encoding\": \"pcm\"}}, \"keyframes\": [{\"position\": 0, \"start_position\": 0, \"window_fade\": 1, \"window_size\": 401}, {\"position\": 128, \"start_position\": 1000.75, \"window_fade\": 0.25, \"window_size\": 401}]}]}]}"
+      }
+    },
+    "preset_init": {
+      "params": {
+        "preset": "init"
+      }
+    },
+    "preset_predefined": {
+      "params": {
+        "preset": "predefined"
+      }
+    }
+  }
+}

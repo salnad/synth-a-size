@@ -817,3 +817,152 @@ Harness Builder's `sas-parity` helper.)
   tests only; upstream throws there, and the port returns the error.
 - `LineGenerator::from_json` rejects `num_points == 0` with an error.
   Upstream's behaviour is undefined there; the port used to panic.
+
+---
+
+## 2026-10-20: M4a wavetable state model, FFT and WaveFrame
+
+`sas-wavetable` now depends only on `sas-common` (the unused `sas-dsp-core`
+dependency was dropped), so `sas-preset` can use it for exact wavetable JSON.
+
+**Added**
+
+- `fourier_transform`: `FourierTransform` on the backend the reference
+  pins, JUCE's `FFTFallback`. It is the recursive mixed-radix FFT (radices
+  4,4,4,4,4,2 for 2048 points) with twiddles computed in double. Forward
+  output is the full unnormalised complex spectrum. The inverse rebuilds
+  bins above Nyquist as conjugates, which also negates the Nyquist bin's
+  imaginary part, scales by 1/N and leaves the imaginary residue in the
+  second half.
+- `complex`: `std::complex<float>` with upstream source semantics
+  (`abs` = `cabsf`/`hypotf`, `arg` = `atan2f`, textbook products). The
+  fast-math reference expands `abs` to `sqrt(re² + im²)`; that differs by
+  ≤ 1 ulp (812/5,000 probe values), which the tolerances absorb, so the
+  source semantics are kept.
+- `wave_frame`: `WaveFrame` and `PredefinedWaveFrames`.
+- `creator`: the `WavetableCreator`/group/component/keyframe state for all
+  10 component types, with `stateToJson`/`jsonToState`. That covers
+  keyframe creation by interpolation (a Line Source keyframe without a
+  `line` inherits the interpolated one), every keyframe `copy`/
+  `interpolate`/`smoothInterpolate`, `updateJson` (0.3.3, 0.3.7, 0.3.8,
+  0.3.9, 0.4.7 and 0.7.7 steps), the line-shape-as-wavetable path, `init`,
+  and `initPredefinedWaves`. Enum-valued settings are stored as the raw
+  integers so they round-trip exactly.
+
+**Measured** (scratch probe linked against the reference engine library;
+the committed parity captures wait for `sas-parity`, PR #3)
+
+- Creator JSON load→save against the **official fast-math reference**:
+  byte-identical for all 12 authored inputs. The inputs cover every
+  component type, unsorted and duplicate keyframe positions, inherited
+  line keyframes, defaults, required-field errors, the 0.3.2/0.3.6/0.3.8/
+  0.7.6 upgrade chains and the line-shape path. `updateJson` output, the
+  `init()` creator and `initPredefinedWaves()` (all six frames' base64
+  `wave_data`) are also identical.
+- Fast-math codegen mirrored (kept to the minimum: only where the output
+  is saved JSON, which is compared byte for byte with no tolerance):
+
+  | Port location | Upstream expression | What GCC emits in the x86 reference | Why mirrored |
+  |---|---|---|---|
+  | `wave_frame.rs` `tanh_as_reference_loop` | `futils::tanh` in `PredefinedWaveFrames::createSaturatedSin` (`vital/src/synthesis/lookups/wave_frame.cpp:120`) | `x·((C·|x| + B)·x² + (|x| + 1)·A) / (|x·E·|x| + x|·(x² + D) + D)`, read from the disassembly | The frame is saved as base64 by `initPredefinedWaves()` (and Preset's 0.5.0 "Sub" upgrade). The source order differs in 372/2048 samples (≤ 1.8e-7) |
+  | `group.rs` `load_default_group` | `float t = i / (kWaveformSize - 1.0f)` (`vital/src/common/wavetable/wavetable_group.cpp:95`) | `i * (1.0f / 2047.0f)` (`-freciprocal-math`) | The default saw is saved in every init wavetable's JSON. Division differs in 4 samples by 1 ulp |
+
+  Both must be re-checked against the arm64 (Apple clang) reference once
+  ARM Reference lands it, because clang's fast-math codegen differs. If
+  the two references disagree, the JSON comparison needs a per-reference
+  decision. `sas_common::scalar::tanh` keeps the source order, since
+  fast-math codegen differs per call site: the mirrored form still
+  differs in 71/18,580 inputs at a scalar call site.
+- FFT against the no-fast-math reference: bit-identical (6 forward and 6
+  inverse transforms, 2048 points). Against the fast-math reference it
+  differs by ≤ 1.2e-7 relative (max 7.8e-3 abs on bins of magnitude
+  6.3e4), from GCC reassociating the butterflies. None of five
+  reassociated butterfly forms tried matched better than the source
+  order.
+- Double-precision transcendentals use the pure-Rust `libm` crate (MIT,
+  `=0.2.16`, default features off) instead of glibc. glibc's double
+  `exp`/`sin`/`cos` return different bits with and without FMA (see
+  `decisions/reference-determinism.md`), which would make the port
+  CPU-dependent. Measured against glibc on 6M inputs, `libm` differs in
+  5% of results by 1 ulp as `f64`, but in none after the cast to `f32`
+  that upstream applies. FFT twiddles are identical, and the FFT stays
+  bit-identical to the no-fast-math reference. Float functions (`sinf`,
+  `atan2f`, ...) stay on the system libm, because glibc's float functions
+  do not depend on FMA.
+- A missing `random_seed` in an Audio File Source is drawn from the
+  global `RandomGenerator` counter, as upstream does. With the counter at
+  the reference's value, the saved seed matches. Authored JSON should
+  always set it.
+
+**Open / next**
+
+- Wavetable rendering (`render`, every source and modifier, normalisation,
+  DC removal, `Wavetable` data and `postProcess`), then reference captures.
+- Capture plan for `sas-parity`: a `ref-module` wrapper processor whose
+  outputs stream the rendered frames and the poly-layout
+  `frequency_amplitudes`/`normalized_frequencies`. Exact-JSON captures
+  need a text output, which the buffer-only registry lacks; I'll raise
+  this with Harness Builder.
+- Spectra have magnitudes up to about 1e3. The module default
+  `max_abs_error` of 1e-4 is about 1e-7 relative there, close to the
+  fast-math FFT noise (1.2e-7 relative). I'll measure the proxy and
+  official-reference metrics on captures before choosing a representation,
+  and ask a human rather than change limits.
+
+- `sas-wavetable` forwards the `aarch64-semantics` feature to
+  `sas-common`, for the RNG's libc++ column (A9). The Audio File Source's
+  random phase generator uses that RNG. Every crate that uses the RNG
+  forwards it the same way.
+
+---
+
+## 2026-10-20: M4a wavetable creator JSON parity captures
+
+**Added**
+
+- `ref-module` module `wavetable_creator_json`
+  (`migration/reference/src/modules/wavetable/creator_json.cpp`):
+  - `params.creator` (a JSON string) produces texts `saved.json`
+    (`jsonToState` → `stateToJson().dump()`) and `upgraded.json`
+    (`updateJson(input).dump()`), both upstream's own serialization.
+  - `params.preset` init/predefined produces array `keyframe_waves` (the
+    keyframes' time-domain samples, compared with tolerances).
+- `wave_recipes.h` and `port/crates/wavetable/tests/support/mod.rs`
+  expand `{"$wave": recipe}` objects (saw, square, triangle, mix; f32 or
+  PCM) into base64 buffers. The two sides produce identical bits (integer
+  phase arithmetic, single float operations, power-of-two slopes), so case
+  files stay small.
+- `migration/corpus/modules/wavetable/creator_json.json` has 14 cases:
+  - every component type;
+  - Audio File Source defaults;
+  - an empty table;
+  - a table with no version (all upgrades);
+  - the 0.3.2, 0.3.6 (float audio → PCM), 0.3.8 (PCM wave data → float)
+    and 0.7.6 (old line points) upgrade chains;
+  - a line shape as a wavetable;
+  - float positions and settings;
+  - boolean numbers;
+  - an Audio File Source with explicit styles;
+  - `init` and predefined keyframes.
+
+  Parity test: `port/crates/wavetable/tests/creator_json_parity.rs`.
+
+**Measured against the official reference:** all 24 JSON artifacts are
+byte-identical. `keyframe_waves` is exact for both presets; against the
+no-fast-math build, predefined differs by ≤ 1.8e-7, within the default
+limits.
+
+**Pending owner decision: byte-exact vs bounded JSON.** The authored
+inputs are in the repo but not loaded; re-enable each by moving its case
+into the live file and writing hashes:
+
+| Case | Where | Why it is pending |
+|---|---|---|
+| `wavetable/creator_json/preset_init_saved_json` | `modules/wavetable/pending/creator_json.json` | The saw keyframe is computed with a reciprocal under fast-math (mirrored in the port); the no-fast-math build saves different `wave_data` bits, so calibration cannot pass |
+| `wavetable/creator_json/preset_predefined_saved_json` | same | The saturated-sine `tanh` order (mirrored); same calibration conflict |
+| `common/json/negative_zero` | `modules/common/pending/json.json` | `-0.0` prints as `0.0` in the shipped build and as `-0.0` in the no-fast-math build |
+| Ill-conditioned render morphs (frequency interpolation between disjoint spectra, folding at ±1, frequency-interpolated audio fades) | not authored yet; measurements in the M4a rendering entry | Depend on FFT rounding noise; −27 to −62 dB against the official build |
+
+- A missing `random_seed` is drawn from the global seed counter, so the
+  0.3.6 case sets one explicitly. The counter behaviour stays covered by
+  unit tests.
