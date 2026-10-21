@@ -43,6 +43,50 @@
         "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
         "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
       }
+    },
+    {
+      "hashes": {
+        "block_128_48k:value": "f3e20e9ea8270b87",
+        "block_37_96k:value": "c891e444f78a406d",
+        "clone_takes_new_seed:value": "4500a44321d2b2f9",
+        "lorenz_low_frequency_mono_audio:value": "e6a0d61e9216e51b",
+        "lorenz_low_frequency_mono_control:value": "0fd3a431fe04d623",
+        "lorenz_low_frequency_stereo_audio:value": "7900ac53be7a9c78",
+        "lorenz_low_frequency_stereo_control:value": "d8c3ad910da50704",
+        "lorenz_tempo_sync:value": "41a85f9f6767ef4f",
+        "oversample_2:value": "32b1c961010579ef",
+        "perlin_frequency_sweep:value": "3ecaf72fae3f998e",
+        "perlin_max_frequency:value": "2d7bb48d0ebb130b",
+        "perlin_mono_audio:value": "104023bfc059c44b",
+        "perlin_mono_control:value": "58388529999104ab",
+        "perlin_stereo_audio:value": "49ba005ae4025e26",
+        "perlin_stereo_control:value": "cb9f144f7e61bfe7",
+        "perlin_tempo_sync:value": "aad4304be77a2563",
+        "sample_and_hold_frequency_sweep:value": "41977079919fe080",
+        "sample_and_hold_max_frequency:value": "c789380c8e7cf0d3",
+        "sample_and_hold_mono_audio:value": "35bd004cc7540c97",
+        "sample_and_hold_mono_control:value": "482f7bf966f1fff3",
+        "sample_and_hold_stereo_audio:value": "35756215dfeea188",
+        "sample_and_hold_stereo_control:value": "b33092a52e87d46c",
+        "sample_and_hold_tempo_sync:value": "345eb5ba5fdba0f7",
+        "sin_frequency_sweep:value": "0b1c9528e1c18f0f",
+        "sin_max_frequency:value": "fb3cbea9a2b9016b",
+        "sin_mono_audio:value": "39eab5b7deb7ba0b",
+        "sin_mono_control:value": "399d3396e43d4d73",
+        "sin_stereo_audio:value": "92d329b9d4de1fb5",
+        "sin_stereo_control:value": "f04c74fa5ddaacbe",
+        "sin_tempo_sync:value": "659f3d8e099aeadb",
+        "style_rounding_and_clamp:value": "49c667fb0a124e4f"
+      },
+      "identity": {
+        "arch": "aarch64",
+        "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+        "fast_math": true,
+        "glibc": null,
+        "libm_variants": "Apple libm (macOS 15.7.9)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
     }
   ]
 }
