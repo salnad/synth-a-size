@@ -75,3 +75,30 @@ transpose/tune at ±96/±1. Measured: worst `noise_transpose_40` 4.4e-11 /
 −134.4 dB, most cases exact. Values are 3e-5 to 0.09, so the −80 dB
 residual gate, not the absolute one, is the effective check.
 Official hashes for both targets in `sample_source_pitch.hashes.json`.
+
+### Correction: the #47 merge commit message
+
+The merge commit 97f5cdf ("Merge pull request #47") carries the message
+of an earlier attempt that was not pushed. Main moved to 400bca5 (#56)
+between my checks and the merge, a scripted "main unchanged" test failed
+without stopping the step, and the old message file was used. The
+message's head (eb08e4a), base (9a0d167), main (6b4fc55) and hash count
+(1830) are wrong. The facts:
+
+- Merged head 86417ad: 979fe81 restacked onto main 77b4089, dropping the
+  temporary #7 merge, plus the ledger-only commit and #47's macOS hashes
+  (run 39644807392). The restack was needed because #59 also changed
+  `port/Cargo.lock`; #47's only lock change is the `sas-preset` line.
+  `git range-diff a4250e4..979fe81 77b4089..166d11c -- .
+  ':!migration/LEDGER.md' ':!migration/ledger'` shows all three patches
+  identical (=).
+- Linux CI green on 86417ad (run 39659395111). Mac CI non-gating by owner
+  policy.
+- Merged into main 400bca5 with --no-ff: (a) conflict-free; (b)
+  `git diff --name-only 77b4089..400bca5` shares no file with the PR's
+  files; (c) checked on 97f5cdf itself after the push: sas-oscillators
+  cargo tests pass, `hashes --check --require-known-identity` on x86
+  checks 1899 hashes with 0 problems, `ledger.py --check` and
+  `--check-frozen` pass.
+
+Merges now write the message and check main in one fail-fast step.
