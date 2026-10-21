@@ -2,7 +2,7 @@
 
 Follows M7 PR 1 (#21) and builds on #26 (dsp-core `RouterHooks` forwarding
 of idle adds and the sample rate) and #7 (`sas-preset`, for parameter
-details), all merged.
+details), all merged. #26's end-to-end coverage is still open (below).
 
 **What changed**
 
@@ -44,25 +44,49 @@ details), all merged.
   `hold_released_voices` sets `env_1_release` to its maximum (~32 s), so
   the upstream envelope frees no released voice within a case; the port has
   no voice killer yet.
-- 8 cases in `migration/corpus/modules/engine/synth_voice_handler.json`:
+- 10 cases in `migration/corpus/modules/engine/synth_voice_handler.json`:
   - chord with zoned bends, bend range, tune, transpose and macros;
-  - poly portamento, and portamento with force, scale and negative slope;
-  - mono legato glide with pitch bend (block 64 and 128);
+  - poly portamento, and portamento with force, scale and negative slope
+    (overlapping notes);
+  - `portamento_force_lone_notes`: each note released before the next, so
+    only `portamento_force` makes a lone note glide;
+  - mono legato glide with pitch bend (block 64 and 128), which releases
+    the older, held note;
+  - `mono_legato_release_playing`: legato with `voice_override` steal,
+    releasing the *playing* note while another is held (no voice is killed),
+    so `note_retrigger`'s `noteOff` condition is decided by `!legato()`;
   - MPE local bend, slide and pressure on member channels;
   - poly releases with lift;
   - portamento at oversample 2.
-- These cases are also the end-to-end coverage of #26's hook forwarding
-  (`createPolyModControl`'s idle switches, mono controls to the global
-  router).
+- Mutations checked: dropping `!legato()` from `noteOff`'s retrigger
+  condition fails `mono_legato_release_playing`; unplugging
+  `portamento_force` fails `portamento_force_lone_notes`. Dropping
+  `|| !legato()` from `noteOn`'s condition still passes: that path only
+  differs with legato off and the voices full, i.e. in `mono_retrigger`
+  (pending below), so it is covered only once that case lands.
 
-**Metrics:** 8 cases × 2 arrays, all **bit-identical** (max abs error 0).
+**Metrics:** 10 cases × 2 arrays, all **bit-identical** (max abs error 0).
 
-**Pending (cases authored, held until the voice killer exists)**
+**Open: #26's end-to-end coverage**
 
-- Mono retrigger (polyphony 1, no legato) and polyphony overflow both kill
-  voices. Upstream frees a killed voice through the amplitude envelope's
-  fast kill, whatever the release time; without the envelope the port keeps
-  it active. Measured: `mono_retrigger` matched the reference until the
-  first killed voice was freed (block 55), then its active-voice count was
-  one higher (max abs error 6, on `block_state`). These cases are added with
-  the modulation crate's envelope.
+These cases do not cover #26's `RouterHooks` forwarding. Reverting either
+half of #26 in dsp-core (the idle forward in `add_idle_processor`, or the
+`set_sample_rate` before forwarding `add_processor`) still passes them:
+`createPolyModControl`'s idle switches change behaviour only once a
+modulation is connected, and the add-time sample rate is overwritten by
+`setSampleRate` afterwards. That coverage stays open for the modulation bank
+PR, where a connected poly modulation makes the switch's ownership
+observable.
+
+**Pending (held until the voice killer exists)**
+
+- `mono_retrigger` (polyphony 1, no legato, `voice_override` kill) and
+  `poly_overflow` (polyphony 2, four overlapping notes) both kill voices.
+  Their inputs are parked in
+  `migration/corpus/modules/engine/pending/synth_voice_handler.json`.
+  Upstream frees a killed voice through the amplitude envelope's fast kill,
+  whatever the release time; without the envelope the port keeps it active.
+  Measured on `block_state`: `mono_retrigger` matches the reference until
+  the first killed voice is freed (block 55), then its active-voice count is
+  one higher (max abs error 3); `poly_overflow` likewise from block 52 (max
+  abs error 3). These cases are added with the modulation crate's envelope.
