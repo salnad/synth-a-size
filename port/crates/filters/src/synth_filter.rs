@@ -216,6 +216,7 @@ pub fn create_filter(model: FilterModel) -> Option<ProcessorRef> {
         FilterModel::Comb => None,
         FilterModel::Formant | FilterModel::Phase => crate::character::create_filter(model),
         FilterModel::Digital => Some(crate::digital_svf::DigitalSvf::create()),
-        FilterModel::Analog | FilterModel::Dirty | FilterModel::Ladder | FilterModel::Diode => None,
+        FilterModel::Ladder => Some(crate::ladder_filter::LadderFilter::create()),
+        FilterModel::Analog | FilterModel::Dirty | FilterModel::Diode => None,
     }
 }

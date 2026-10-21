@@ -184,6 +184,26 @@ pub fn check_module(name: &str, module: &ModuleDef) {
     check_ids(&ids, module);
 }
 
+/// Runs and asserts every `filters/*` case of the generic "filter"
+/// ref-module with `params.model == model`, whatever file it is in.
+pub fn check_filter_model(model: &str) {
+    let ids: Vec<String> = sas_parity::cases::load_module_cases()
+        .unwrap_or_else(|e| panic!("sas-parity: {e}"))
+        .into_iter()
+        .filter(|case| {
+            case.id.starts_with("filters/")
+                && case.json["spec"]["module"] == "filter"
+                && case.json["spec"]["params"]["model"] == model
+        })
+        .map(|case| case.id)
+        .collect();
+    assert!(
+        !ids.is_empty(),
+        "no filters/* cases for filter model {model:?}"
+    );
+    check_ids(&ids, &filter_module());
+}
+
 /// Prints per-case metrics (`--nocapture`), then asserts each output with
 /// `assert_parity`, so a failure names its case and metrics.
 pub fn check_ids(ids: &[String], module: &ModuleDef) {
