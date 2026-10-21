@@ -9,12 +9,13 @@ use sas_dsp_core::ProcessorRef;
 
 use crate::synth_filter::FilterModel;
 
-/// The comb, formant and phaser arms of `SynthFilter::createFilter`
-/// (`CombFilter(1)`, `FormantFilter(0)`, `PhaserFilter(false)`). Returns
-/// `None` for the models not ported yet and for every other model.
+/// The formant and phaser arms of `SynthFilter::createFilter`
+/// (`FormantFilter(0)`, `PhaserFilter(false)`). Returns `None` for the
+/// models not ported yet and for every other model (the comb arm is
+/// handled, as `None`, in `synth_filter::create_filter`).
 pub fn create_filter(model: FilterModel) -> Option<ProcessorRef> {
     match model {
-        FilterModel::Comb | FilterModel::Formant | FilterModel::Phase => None,
+        FilterModel::Formant | FilterModel::Phase => None,
         _ => None,
     }
 }

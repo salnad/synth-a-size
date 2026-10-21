@@ -1064,3 +1064,13 @@ Core Filters (M5a), first PR of the `sas-filters` stack.
   follow once PR #2 merges.
 
 Open: macOS arm64 hashes after PR #2.
+
+## 2026-10-21: M5a PR 1 follow-up, `create_filter(Comb)` returns `None`
+
+Upstream `SynthFilter::createFilter(kComb)` builds `CombFilter(1)`, whose
+processing reads past its 2-float memory (undefined behaviour; found by
+Character Filters). There is no defined output to reproduce, so the port's
+`create_filter(FilterModel::Comb)` returns `None` instead of building a
+filter that could panic or diverge in `process`. Nothing in the engine uses
+that path: `FilterModule` builds its comb through `CombModule`, with full
+memory. No `filter` module case uses `model: comb`.

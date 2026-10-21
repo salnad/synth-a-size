@@ -204,12 +204,17 @@ pub trait SynthFilter: ProcessorImpl {
     fn setup_filter(&mut self, this: &Processor, filter_state: &FilterState);
 }
 
-/// `SynthFilter::createFilter(model)`. Returns the filter's node.
+/// `SynthFilter::createFilter(model)`. Returns the filter's node, or
+/// `None` for a model that is not ported yet.
+///
+/// Always `None` for [`FilterModel::Comb`]: upstream builds `CombFilter(1)`,
+/// whose processing reads past its 2-float memory (undefined behaviour), so
+/// there is no defined output to reproduce. The engine's comb filter
+/// (`CombModule`, inside `FilterModule`) is built with its full memory.
 pub fn create_filter(model: FilterModel) -> Option<ProcessorRef> {
     match model {
-        FilterModel::Formant | FilterModel::Comb | FilterModel::Phase => {
-            crate::character::create_filter(model)
-        }
+        FilterModel::Comb => None,
+        FilterModel::Formant | FilterModel::Phase => crate::character::create_filter(model),
         FilterModel::Digital => Some(crate::digital_svf::DigitalSvf::create()),
         FilterModel::Analog | FilterModel::Dirty | FilterModel::Ladder | FilterModel::Diode => None,
     }
