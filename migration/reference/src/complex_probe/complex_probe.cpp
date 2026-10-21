@@ -228,6 +228,37 @@ void probePhaseModifier(harness::json& result) {
   probeCategory(result, "phase_modifier_odd_shift", shifts, true);
 }
 
+// A11: paired cosf / sinf (merged into __sincosf_stret by Apple clang) vs
+// separate calls, over phases in [-pi, pi] and a wide range.
+void probeSinCos(harness::json& result) {
+  const std::pair<const char*, std::vector<float>> inputs[] = {
+    { "pm_pi", complex_algos::uniform(91, 1 << 20, -vital::kPi, vital::kPi) },
+    { "pm_1e4", complex_algos::uniform(92, 1 << 20, -1.0e4f, 1.0e4f) },
+  };
+  for (const auto& input : inputs) {
+    const std::vector<float>& x = input.second;
+    int n = static_cast<int>(x.size());
+    std::vector<float> c_sep(n), s_sep(n), c(n), s(n);
+    complex_algos::separateSinCos(x.data(), c_sep.data(), s_sep.data(), n);
+    std::string base = std::string("sincos_") + input.first;
+    result["hashes"][base + "/separate"] = harness::hex64(hashResult(c_sep, s_sep));
+    for (int variant = 0; variant < 2; ++variant) {
+      if (variant == 0)
+        fast_ops::pairedSinCos(x.data(), c.data(), s.data(), n);
+      else
+        strict_ops::pairedSinCos(x.data(), c.data(), s.data(), n);
+      std::string key = base + (variant == 0 ? "/paired_fast" : "/paired_strict");
+      result["hashes"][key] = harness::hex64(hashResult(c, s));
+      long long equal = 0, max_ulp = 0;
+      for (int i = 0; i < n; ++i) {
+        equal += sameValue(c[i], c_sep[i]) && sameValue(s[i], s_sep[i]);
+        max_ulp = std::max(max_ulp, std::max(ulpDistance(c[i], c_sep[i]), ulpDistance(s[i], s_sep[i])));
+      }
+      result["sincos"][key] = { { "n", n }, { "equal_separate", equal }, { "max_ulp_vs_separate", max_ulp } };
+    }
+  }
+}
+
 } // namespace
 
 int main() {
@@ -243,6 +274,7 @@ int main() {
   probeCategory(result, "exp_full_range", complex_algos::randomExponent(5, kCount, -150, 127), false);
   probeCategory(result, "special_grid", complex_algos::specialGrid(), false);
   probePhaseModifier(result);
+  probeSinCos(result);
 #ifdef _LIBCPP_VERSION
   result["cxx_library"] = std::string("libc++ ") + std::to_string(_LIBCPP_VERSION);
 #elif defined(__GLIBCXX__)

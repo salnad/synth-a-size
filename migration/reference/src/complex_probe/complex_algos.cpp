@@ -3,6 +3,7 @@
 #include <cfloat>
 #include <cmath>
 #include <cstring>
+#include <math.h>
 
 extern "C" __complex__ float __divsc3(float a, float b, float c, float d);
 
@@ -164,6 +165,15 @@ namespace complex_algos {
       __complex__ float result = __divsc3(a[i], b[i], c[i], d[i]);
       re[i] = __real__ result;
       im[i] = __imag__ result;
+    }
+  }
+
+  void separateSinCos(const float* x, float* c, float* s, int n) {
+    float (*volatile cosine)(float) = cosf;
+    float (*volatile sine)(float) = sinf;
+    for (int i = 0; i < n; ++i) {
+      c[i] = cosine(x[i]);
+      s[i] = sine(x[i]);
     }
   }
 

@@ -3,6 +3,7 @@
 // (complex_ops_strict.cpp). OPS_NS names the copy.
 
 #include <complex>
+#include <math.h>
 
 namespace OPS_NS {
 
@@ -49,6 +50,15 @@ void builtinDivide(const float* a, const float* b, const float* c, const float* 
     __complex__ float result = x / z;
     re[i] = __real__ result;
     im[i] = __imag__ result;
+  }
+}
+
+// cosf and sinf of the same argument, which Clang on Apple targets merges
+// into __sincosf_stret.
+void pairedSinCos(const float* x, float* c, float* s, int n) {
+  for (int i = 0; i < n; ++i) {
+    c[i] = cosf(x[i]);
+    s[i] = sinf(x[i]);
   }
 }
 
