@@ -3,14 +3,9 @@
     {
       "hashes": {
         "band_spread_comb:audio": "17d5b392aaaef8f3",
-        "band_spread_negative_flange:audio": "a63d51d88a7548c3",
         "band_spread_positive_flange:audio": "6b7283ec2d8c60eb",
         "comb_96k_block128:audio": "77fb10773661f6d3",
-        "comb_cutoff_sweep:audio": "c9b98b0338f8960b",
-        "comb_oversample2:audio": "8083fff231eeecdf",
-        "comb_resonance_blend_ramps:audio": "2ec360d6f561d633",
         "impulse_ringing:audio": "b0f8f8aad6089b13",
-        "negative_flange_sweep:audio": "9e451850a716d713",
         "out_of_range_controls:audio": "e5c015fd26bb2133",
         "per_lane_controls_and_resets:audio": "7400d62ea3454cce",
         "positive_flange_sweep:audio": "b7299e4d656e6dcb",

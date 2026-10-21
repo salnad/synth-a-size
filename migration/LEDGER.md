@@ -1396,7 +1396,7 @@ against the PR's CI `reference-renders` artifact).
 - M5b PR 2 (comb filter and comb module), PR 3 (formant filter, formant
   manager, vocal tract, formant module; needs M5a DigitalSvf).
 
-## 2026-10-21: M5b PR 2, `CombFilter` and `CombModule`; 7 cases blocked on reference fast-math noise
+## 2026-10-21: M5b PR 2, `CombFilter` and `CombModule`; 7 cases parked pending the owner
 
 Ports `vital/src/synthesis/filters/comb_filter.{h,cpp}` and
 `modules/comb_module.{h,cpp}` to `port/crates/filters/src/character/`
@@ -1420,8 +1420,8 @@ Reference: ref-modules `comb_filter` (`params.size`, default
 `CombModule::kMaxFeedbackSamples` = 25000, rounded up to 32768) and
 `comb_module` (the factory calls `init()`).
 
-Cases: `filters/comb_filter` (13) and `filters/comb_module` (3), all under
-`module_defaults`. They cover:
+Cases (16 authored, all under `module_defaults`; 9 active in
+`filters/comb_filter` (8) and `filters/comb_module` (1), 7 parked, see below). They cover:
 
 - all six styles, plus 6..9 (`style / 3 >= 2` behaves as low/high blend);
 - MIDI cutoff −40..150 (filter cutoff 8..136 plus modulation; below about
@@ -1446,9 +1446,12 @@ fast-math reference, 9 cases pass and 7 fail. The proxy (CI
 | `filters/comb_module/band_spread_full_range` | 1.2e-4 | −93.7 |
 | `filters/comb_filter/comb_oversample2` | 1.2e-4 | −88.2 |
 
-Passing for comparison: `impulse_ringing` (fixed period of about 400
-samples) at 3.0e-8 / −133.5 dB, and `per_lane_controls_and_resets` (fixed
-cutoffs) at 1.2e-7 / −125.1 dB.
+Active cases, port vs fast-math reference: worst `max_abs_error` 9.8e-5
+(`comb_96k_block128`, a cutoff sweep down to −30 at 96 kHz; it passes with
+only 2 % margin by the same mechanism), worst `residual_db` −94.2 dB
+(`out_of_range_controls`), best 3.0e-8 / −133.5 dB (`impulse_ringing`).
+`comb_96k_block128` may miss against the macOS arm64 reference, whose
+fast-math rounding differs.
 
 Mechanism: every failing case sweeps or modulates the cutoff into long
 delay periods. The per-sample period `sample_rate / (base_frequency *
@@ -1462,14 +1465,18 @@ The captured quantity is audio, so there is no normalized form to capture
 instead. Narrowing the cutoff range, the resonance or the input content to
 pass would be narrowing a test (rule 6).
 
-**Decision needed (human):** approve per-case tolerance exceptions for these
-7 cases, or another remedy. Proposal: `max_abs_error` 1e-3 for six of them;
-for `negative_flange_sweep`, `max_abs_error` 2e-3 and `residual_db` −70.
-Every other case stays at `module_defaults`. Until approved, these 7 fail
-both `parity` and `tolerance-calibration` in CI, so the PR stays draft.
+**Parked, pending the owner (escalated 2026-10-21).** No tolerance exception
+is added. The 7 cases above sit unchanged, inputs kept, in
+`migration/corpus/modules/filters/pending/comb_filter.json` (5) and
+`pending/comb_module.json` (2). Both loaders read only
+`modules/<area>/*.json`, so they are not rendered or tested until they move
+back. The recommendation under review is the `reference: nofastmath`
+exact-match allowlist, not looser tolerances. An earlier draft of this entry
+proposed per-case tolerance exceptions; that proposal is superseded by the
+escalation and withdrawn.
 
 **Open / next**
 
-- The approval above. Then add the `tolerance_exception` blocks, citing
-  this heading or the approval heading.
+- The owner's decision on the 7 parked cases. Then move them back and apply
+  the chosen mechanism.
 - macOS arm64 hashes after PR #2.

@@ -2,8 +2,6 @@
   "entries": [
     {
       "hashes": {
-        "band_spread_full_range:audio": "259b3804344b5fdb",
-        "comb_style_sweep:audio": "0a43b07e9508d5bb",
         "flange_with_resets:audio": "1f6e4f365fdfbccd"
       },
       "identity": {

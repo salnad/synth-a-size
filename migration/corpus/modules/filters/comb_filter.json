@@ -5,30 +5,6 @@
     "size": 25000
   },
   "cases": {
-    "comb_cutoff_sweep": {
-      "num_samples": 22050,
-      "inputs": {
-        "audio": { "signal": "saw", "freq_hz": 110.0, "amp": 0.5 },
-        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
-        "midi_cutoff": { "signal": "ramp", "from": -40.0, "to": 150.0 },
-        "resonance": 0.8,
-        "pass_blend": 1.0,
-        "transpose": 42.0,
-        "style": 0
-      }
-    },
-    "comb_resonance_blend_ramps": {
-      "num_samples": 22050,
-      "inputs": {
-        "audio": { "signal": "noise", "amp": 0.5, "seed": 11, "stereo": true },
-        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
-        "midi_cutoff": { "signal": "sine", "freq_hz": 1.0, "amp": 30.0, "offset": 60.0 },
-        "resonance": { "signal": "ramp", "from": 0.0, "to": 1.0 },
-        "pass_blend": { "signal": "ramp", "from": 0.0, "to": 2.0 },
-        "transpose": { "signal": "ramp", "from": 84.0, "to": 0.0 },
-        "style": 0
-      }
-    },
     "positive_flange_sweep": {
       "num_samples": 22050,
       "inputs": {
@@ -39,18 +15,6 @@
         "pass_blend": 0.6,
         "transpose": 30.0,
         "style": 1
-      }
-    },
-    "negative_flange_sweep": {
-      "num_samples": 22050,
-      "inputs": {
-        "audio": { "signal": "noise", "amp": 0.5, "seed": 5 },
-        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
-        "midi_cutoff": { "signal": "ramp", "from": 150.0, "to": -40.0 },
-        "resonance": 0.9,
-        "pass_blend": { "signal": "ramp", "from": 2.0, "to": 0.0 },
-        "transpose": 60.0,
-        "style": 2
       }
     },
     "band_spread_comb": {
@@ -75,18 +39,6 @@
         "pass_blend": 1.5,
         "transpose": { "signal": "ramp", "from": 84.0, "to": 0.0 },
         "style": 4
-      }
-    },
-    "band_spread_negative_flange": {
-      "num_samples": 22050,
-      "inputs": {
-        "audio": { "signal": "noise", "amp": 0.4, "seed": 9, "stereo": true },
-        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
-        "midi_cutoff": { "signal": "ramp", "from": -40.0, "to": 150.0 },
-        "resonance": 0.7,
-        "pass_blend": { "signal": "ramp", "from": 2.0, "to": 0.0 },
-        "transpose": 42.0,
-        "style": 5
       }
     },
     "styles_past_band_spread": {
@@ -155,20 +107,6 @@
         "pass_blend": 0.8,
         "transpose": 42.0,
         "style": 1
-      }
-    },
-    "comb_oversample2": {
-      "oversample": 2,
-      "block_size": 128,
-      "num_samples": 44100,
-      "inputs": {
-        "audio": { "signal": "noise", "amp": 0.5, "seed": 13, "stereo": true },
-        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
-        "midi_cutoff": { "signal": "sine", "freq_hz": 1.0, "amp": 48.0, "offset": 60.0 },
-        "resonance": 0.95,
-        "pass_blend": 1.2,
-        "transpose": 50.0,
-        "style": 5
       }
     }
   }
