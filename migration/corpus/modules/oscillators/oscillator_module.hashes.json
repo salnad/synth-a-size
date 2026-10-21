@@ -6,6 +6,8 @@
         "block_size_128:raw": "1928e5ad7975136b",
         "defaults:levelled": "d071d7c5da8a52cf",
         "defaults:raw": "995628ae781c1303",
+        "detune_power_range:levelled": "f2d3452d2fd9125e",
+        "detune_power_range:raw": "acadada9e12d64a4",
         "distortion_morph:levelled": "bc432cfccdb013b8",
         "distortion_morph:raw": "4c357f1ad3988902",
         "interim_detune_power_range:levelled": "4cf056c03185f836",
@@ -22,6 +24,10 @@
         "retrigger:raw": "059803968392fb82",
         "sample_rate_48000:levelled": "6285837f36c284cd",
         "sample_rate_48000:raw": "891e0165f5657d2b",
+        "transpose_tune:levelled": "a2357ed87000661f",
+        "transpose_tune:raw": "35b964c912fd68a7",
+        "transpose_tune_unsnapped:levelled": "a2357ed87000661f",
+        "transpose_tune_unsnapped:raw": "35b964c912fd68a7",
         "unison_frame_spread:levelled": "0ba1a0c488b83fc6",
         "unison_frame_spread:raw": "71dad0b570039f5f",
         "voice_1_only:levelled": "78bd05ba7209bcdb",
@@ -71,6 +77,25 @@
         "glibc": null,
         "libm_variants": "Apple libm (macOS 15.7.9)",
         "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    },
+    {
+      "hashes": {
+        "detune_power_range:levelled": "3c3ab3065529b3d8",
+        "detune_power_range:raw": "fa2d4980c1f3fe52",
+        "transpose_tune:levelled": "db8213aa847b1717",
+        "transpose_tune:raw": "b45d99379892ae7f",
+        "transpose_tune_unsnapped:levelled": "db8213aa847b1717",
+        "transpose_tune_unsnapped:raw": "b45d99379892ae7f"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": false,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
         "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
       }
     }

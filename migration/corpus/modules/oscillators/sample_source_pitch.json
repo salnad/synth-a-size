@@ -1,5 +1,5 @@
 {
-  "description": "SampleSource playback increment (vital/src/synthesis/producers/sample_source.cpp): the block's phase_inc_ divided by upsampleLength() (the active length), i.e. the increment in sample lengths per output sample, normalized like the phase output. Covers transposes, tune, keytrack, snapping and sample-rate ratios that are not powers of two (22.05/44.1/48/96/11.025 kHz samples at 44.1/48/96 kHz, oversampled), plus the inputs of every parked sample_source case (pending/sample_source.json). Ported in port/crates/oscillators.",
+  "description": "SampleSource playback increment (vital/src/synthesis/producers/sample_source.cpp): the block's phase_inc_ divided by upsampleLength() (the active length), i.e. the increment in sample lengths per output sample, normalized like the phase output. Covers transposes, tune, keytrack, snapping and sample-rate ratios that are not powers of two (22.05/44.1/48/96/11.025 kHz samples at 44.1/48/96 kHz, oversampled), plus the inputs of every sample_source case compared against the no-fast-math reference. Ported in port/crates/oscillators.",
   "module": "sample_source_pitch",
   "seed": 0,
   "cases": {
