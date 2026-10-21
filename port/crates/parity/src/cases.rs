@@ -38,6 +38,12 @@ pub const NOFASTMATH_APPROVALS: [(&str, &str); 1] = [(
     "2026-10-21: owner approval — SAS-35 noisy-reference rule and SAS-36 JSON bound",
 )];
 
+/// Targets whose official reference an allowlist line may declare as failing
+/// the case's normal limits against that target's no-fast-math build.
+/// Mirrored in run_corpus.py (`JUSTIFY_TARGETS`), which gates the declared
+/// cases per target in `--justify-nofastmath`.
+pub const JUSTIFY_TARGETS: [&str; 2] = ["x86", "macos"];
+
 /// Which reference build a case is compared against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Reference {
@@ -441,14 +447,16 @@ pub fn resolve_tolerances(
     Ok((tolerances, Some(exception.clone())))
 }
 
-/// `(area, module, case, approval)` of a line that is exactly
-/// ``- `<area>/<module>/<case>` (<approval>): <reason>``, where the names are
-/// `[A-Za-z0-9_-]+`, the approval is `[A-Z]+-[0-9]+` and the reason starts
-/// with a non-space character.
-fn parse_allowlist_line(line: &str) -> Option<(&str, &str, &str, &str)> {
+/// `(area, module, case, approval, targets)` of a line that is exactly
+/// ``- `<area>/<module>/<case>` (<approval>; <target>[, <target>]): <reason>``,
+/// where the names are `[A-Za-z0-9_-]+`, the approval is `[A-Z]+-[0-9]+`,
+/// each target is `[a-z0-9]+` and the reason starts with a non-space
+/// character.
+fn parse_allowlist_line(line: &str) -> Option<(&str, &str, &str, &str, Vec<&str>)> {
     let rest = line.strip_prefix("- `")?;
     let (id, rest) = rest.split_once('`')?;
-    let (key, reason) = rest.strip_prefix(" (")?.split_once("): ")?;
+    let (inner, reason) = rest.strip_prefix(" (")?.split_once("): ")?;
+    let (key, targets) = inner.split_once("; ")?;
     let mut parts = id.split('/');
     let (area, module, case) = (parts.next()?, parts.next()?, parts.next()?);
     let name = |n: &str| check_name("", "", n).is_ok();
@@ -457,17 +465,30 @@ fn parse_allowlist_line(line: &str) -> Option<(&str, &str, &str, &str)> {
         && letters.chars().all(|c| c.is_ascii_uppercase())
         && !digits.is_empty()
         && digits.chars().all(|c| c.is_ascii_digit());
+    let targets: Vec<&str> = targets.split(", ").collect();
+    let targets_ok = targets.iter().all(|t| {
+        !t.is_empty()
+            && t.chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+    });
     let reason_ok = reason.chars().next().is_some_and(|c| !c.is_whitespace());
-    (parts.next().is_none() && name(area) && name(module) && name(case) && key_ok && reason_ok)
-        .then_some((area, module, case, key))
+    (parts.next().is_none()
+        && name(area)
+        && name(module)
+        && name(case)
+        && key_ok
+        && targets_ok
+        && reason_ok)
+        .then_some((area, module, case, key, targets))
 }
 
 /// `(case_id, approval)` from one allowlist file,
 /// `migration/decisions/nofastmath/<area>/<module>.md`. Every line that
 /// starts with a list marker (after any indentation) must be exactly
-/// ``- `<area>/<module>/<case>` (<approval>): <reason>``, naming a case of
-/// this file's module and an approval in [`NOFASTMATH_APPROVALS`]. Other
-/// lines are prose. Mirrored in run_corpus.py (`allowlist_entries`).
+/// ``- `<area>/<module>/<case>` (<approval>; <target>[, <target>]): <reason>``,
+/// naming a case of this file's module, an approval in
+/// [`NOFASTMATH_APPROVALS`] and distinct targets from [`JUSTIFY_TARGETS`].
+/// Other lines are prose. Mirrored in run_corpus.py (`allowlist_entries`).
 pub fn allowlist_entries(
     rel: &str,
     area: &str,
@@ -481,10 +502,10 @@ pub fn allowlist_entries(
             Some('-' | '*' | '+') => {}
             _ => continue,
         }
-        let (a, m, c, key) = parse_allowlist_line(line).ok_or_else(|| {
+        let (a, m, c, key, targets) = parse_allowlist_line(line).ok_or_else(|| {
             format!(
-                "{rel}:{number}: list lines must be \"- `<area>/<module>/<case>` (<approval>): \
-                 <reason>\", not {line:?}"
+                "{rel}:{number}: list lines must be \"- `<area>/<module>/<case>` (<approval>; \
+                 <target>[, <target>]): <reason>\", not {line:?}"
             )
         })?;
         if (a, m) != (area, module) {
@@ -496,6 +517,13 @@ pub fn allowlist_entries(
             let keys: Vec<&str> = NOFASTMATH_APPROVALS.iter().map(|(k, _)| *k).collect();
             return Err(format!(
                 "{rel}:{number}: {key} is not an approval pinned in both resolvers ({keys:?})"
+            ));
+        }
+        let distinct: std::collections::BTreeSet<&&str> = targets.iter().collect();
+        if targets.iter().any(|t| !JUSTIFY_TARGETS.contains(t)) || distinct.len() != targets.len() {
+            return Err(format!(
+                "{rel}:{number}: targets must be distinct names from {JUSTIFY_TARGETS:?}, not {:?}",
+                targets.join(", ")
             ));
         }
         entries.push((format!("{a}/{m}/{c}"), key.to_string()));
@@ -1627,18 +1655,39 @@ mod tests {
     #[test]
     fn allowlist_files_are_per_module_and_strict() {
         let good = "# filters/test\n\nProse with `filters/test/other` is ignored.\n\n\
-                    - `filters/test/morph` (SAS-35): noise-level phases\n";
+                    - `filters/test/morph` (SAS-35; x86): noise-level phases\n\
+                    - `filters/test/b` (SAS-35; macos, x86): both\n";
         let parsed =
             allowlist(&[("filters/test.md", good), ("README.md", "- anything\n")]).unwrap();
-        assert_eq!(parsed.keys().collect::<Vec<_>>(), [MORPH]);
+        assert_eq!(parsed.keys().collect::<Vec<_>>(), ["filters/test/b", MORPH]);
         assert_eq!(parsed[MORPH], "SAS-35");
         check_allowlist_approvals(&parsed, &[APPROVAL_LEDGER]).unwrap();
 
         for (file, text, fragment) in [
             (
                 "filters/test.md",
-                "- `filters/test/*` (SAS-35): glob\n",
+                "- `filters/test/*` (SAS-35; x86): glob\n",
                 "list lines must be",
+            ),
+            (
+                "filters/test.md",
+                "- `filters/test/morph` (SAS-35): no target\n",
+                "list lines must be",
+            ),
+            (
+                "filters/test.md",
+                "- `filters/test/morph` (SAS-35; x86,macos): separator\n",
+                "list lines must be",
+            ),
+            (
+                "filters/test.md",
+                "- `filters/test/morph` (SAS-35; arm): x\n",
+                "targets must be distinct",
+            ),
+            (
+                "filters/test.md",
+                "- `filters/test/morph` (SAS-35; x86, x86): x\n",
+                "targets must be distinct",
             ),
             (
                 "filters/test.md",
@@ -1647,32 +1696,32 @@ mod tests {
             ),
             (
                 "filters/test.md",
-                "- `filters/test/morph` (SAS-35):\n",
+                "- `filters/test/morph` (SAS-35; x86):\n",
                 "list lines must be",
             ),
             (
                 "filters/test.md",
-                "  - `filters/test/morph` (SAS-35): indented\n",
+                "  - `filters/test/morph` (SAS-35; x86): indented\n",
                 "list lines must be",
             ),
             (
                 "filters/test.md",
-                "* `filters/test/morph` (SAS-35): star\n",
+                "* `filters/test/morph` (SAS-35; x86): star\n",
                 "list lines must be",
             ),
             (
                 "filters/test.md",
-                "- `filters/test/morph/x` (SAS-35): deep\n",
+                "- `filters/test/morph/x` (SAS-35; x86): deep\n",
                 "list lines must be",
             ),
             (
                 "filters/test.md",
-                "- `filters/other/morph` (SAS-35): x\n",
+                "- `filters/other/morph` (SAS-35; x86): x\n",
                 "lists filters/test cases only",
             ),
             (
                 "filters/test.md",
-                "- `filters/test/morph` (SAS-99): x\n",
+                "- `filters/test/morph` (SAS-99; x86): x\n",
                 "not an approval pinned",
             ),
             ("filters/test.txt", "", "only <area>/<module>.md"),
@@ -1683,7 +1732,8 @@ mod tests {
             let err = allowlist(&[(file, text)]).unwrap_err();
             assert!(err.contains(fragment), "{file}: {text:?}: {err}");
         }
-        let twice = "- `filters/test/morph` (SAS-35): a\n- `filters/test/morph` (SAS-35): b\n";
+        let twice =
+            "- `filters/test/morph` (SAS-35; x86): a\n- `filters/test/morph` (SAS-35; x86): b\n";
         assert!(allowlist(&[("filters/test.md", twice)])
             .unwrap_err()
             .contains("listed twice"));

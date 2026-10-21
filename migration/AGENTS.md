@@ -179,12 +179,14 @@ none of them edits a shared list.
      decision SAS-35), which the official reference cannot meet against its
      own no-fast-math build, may use `"reference": "nofastmath"`. The case
      is then compared bit for bit against the `REF_FAST_MATH=OFF` captures.
-     Two conditions apply. First, its id must be listed, citing `SAS-35`, in
-     `decisions/nofastmath/<area>/<module>.md`, your module's own file.
-     Second, CI's calibration step must show the official reference failing
-     the case's normal limits against that build (`compare
-     --justify-nofastmath`). Such cases cannot set tolerances. The steps are
-     in `decisions/nofastmath/README.md`.
+     Two conditions apply. First, its id must be listed, citing `SAS-35` and
+     the targets where the official reference fails (`x86`, `macos` or
+     both), in `decisions/nofastmath/<area>/<module>.md`, your module's own
+     file. Second, each declared target's CI calibration step must show the
+     official reference failing the case's normal limits against that
+     target's no-fast-math build (`compare --justify-nofastmath`). Such
+     cases cannot set tolerances. The steps are in
+     `decisions/nofastmath/README.md`.
      Their no-fast-math hashes come from the `parity-captures-nofastmath`
      artifact:
      `run_corpus.py hashes <tree> --write --reference nofastmath`.

@@ -229,7 +229,7 @@ LEGACY_DECISION = """# Owner decisions
 APPROVAL_HEADING = rc.NOFASTMATH_APPROVALS["SAS-35"]
 APPROVAL_ENTRY = "## %s\n\nSAS-35: approved.\n" % APPROVAL_HEADING
 ALLOWLIST_FILE = "# filters/test\n\nProse naming `filters/test/other` is ignored.\n\n" \
-                 "- `%s` (SAS-35): noise-level phases\n" % ALLOWED
+                 "- `%s` (SAS-35; x86): noise-level phases\n" % ALLOWED
 
 
 def f32(value, ulps=0):
@@ -337,7 +337,7 @@ class ComparisonRules(unittest.TestCase):
 
     def test_allowlist_additions_must_be_loaded_nofastmath_cases(self):
         check = rc.allowlist_addition_problems
-        head = {ALLOWED: "SAS-35", "filters/test/comb": "SAS-35"}
+        head = {ALLOWED: ("SAS-35", ("x86",)), "filters/test/comb": ("SAS-35", ("macos",))}
         self.assertEqual(check({ALLOWED}, head, {ALLOWED, "filters/test/comb"}), [])
         # Staged ahead of its case, or still parked in pending/.
         problems = check({ALLOWED}, head, {ALLOWED})
@@ -349,24 +349,28 @@ class ComparisonRules(unittest.TestCase):
 
     def test_allowlist_files_are_per_module_and_strict(self):
         parsed = rc.allowlist_from_files({"filters/test.md": ALLOWLIST_FILE, "README.md": "- anything\n"})
-        self.assertEqual(parsed, {ALLOWED: "SAS-35"})
+        self.assertEqual(parsed, {ALLOWED: ("SAS-35", ("x86",))})
         rc.check_allowlist_approvals(parsed, APPROVAL_ENTRY)
         for path, text, fragment in (
-                ("filters/test.md", "- `filters/test/*` (SAS-35): glob\n", "list lines must be"),
+                ("filters/test.md", "- `filters/test/*` (SAS-35; x86): glob\n", "list lines must be"),
                 ("filters/test.md", "- `filters/test/morph`: no approval\n", "list lines must be"),
-                ("filters/test.md", "- `filters/test/morph` (SAS-35):\n", "list lines must be"),
-                ("filters/test.md", "  - `filters/test/morph` (SAS-35): indented\n", "list lines must be"),
-                ("filters/test.md", "* `filters/test/morph` (SAS-35): star\n", "list lines must be"),
-                ("filters/test.md", "- `filters/test/morph/x` (SAS-35): deep\n", "list lines must be"),
-                ("filters/test.md", "- `filters/other/morph` (SAS-35): x\n", "lists filters/test cases only"),
-                ("filters/test.md", "- `filters/test/morph` (SAS-99): x\n", "not an approval pinned"),
+                ("filters/test.md", "- `filters/test/morph` (SAS-35): no target\n", "list lines must be"),
+                ("filters/test.md", "- `filters/test/morph` (SAS-35; x86,macos): separator\n", "list lines must be"),
+                ("filters/test.md", "- `filters/test/morph` (SAS-35; arm): x\n", "targets must be distinct"),
+                ("filters/test.md", "- `filters/test/morph` (SAS-35; x86, x86): x\n", "targets must be distinct"),
+                ("filters/test.md", "- `filters/test/morph` (SAS-35; x86):\n", "list lines must be"),
+                ("filters/test.md", "  - `filters/test/morph` (SAS-35; x86): indented\n", "list lines must be"),
+                ("filters/test.md", "* `filters/test/morph` (SAS-35; x86): star\n", "list lines must be"),
+                ("filters/test.md", "- `filters/test/morph/x` (SAS-35; x86): deep\n", "list lines must be"),
+                ("filters/test.md", "- `filters/other/morph` (SAS-35; x86): x\n", "lists filters/test cases only"),
+                ("filters/test.md", "- `filters/test/morph` (SAS-99; x86): x\n", "not an approval pinned"),
                 ("filters/test.txt", "", "only <area>/<module>.md"),
                 ("filters/sub/test.md", "", "only <area>/<module>.md"),
                 ("test.md", "", "only <area>/<module>.md"),
                 ("filters/te.st.md", "", "module name")):
             self.assertCaseError(fragment, rc.allowlist_from_files, {path: text})
         self.assertCaseError("listed twice", rc.allowlist_from_files,
-                             {"filters/test.md": ALLOWLIST_FILE + "- `%s` (SAS-35): again\n" % ALLOWED})
+                             {"filters/test.md": ALLOWLIST_FILE + "- `%s` (SAS-35; x86): again\n" % ALLOWED})
         # The cited approval's heading must exist and name the key.
         for ledger_text in (LEDGER, "## %s\n\nSAS-350 only.\n" % APPROVAL_HEADING):
             self.assertCaseError("cites SAS-35", rc.check_allowlist_approvals, parsed, ledger_text)
@@ -375,7 +379,7 @@ class ComparisonRules(unittest.TestCase):
     def test_repository_allowlist_parses(self):
         allowlist = rc.read_allowlist(rc.read_ledger())
         self.assertIn("wavetable/render/wave_linear_freq_disjoint_spectra", allowlist)
-        self.assertEqual(set(allowlist.values()), {"SAS-35"})
+        self.assertEqual({approval for approval, _ in allowlist.values()}, {"SAS-35"})
 
     def test_five_ulp_drift_fails_and_four_passes(self):
         # Above |x| = 4 the ulp term is the looser one (4 ulp > 1e-6).
@@ -843,7 +847,34 @@ class ScratchRepo(unittest.TestCase):
         self.add_morph_capture(official, IDENTITY, [0.5, -0.25, 0.125, 0.0])
         code, output = self.run_main("compare", official, proxy, *only)
         self.assertEqual(code, 2, output)
-        self.assertIn("ERROR filters/test/morph (reference \"nofastmath\" NOT justified", output)
+        self.assertIn("ERROR filters/test/morph (reference \"nofastmath\" NOT justified on x86", output)
+
+        # Declared for macOS only: the x86 job does not gate it...
+        allowlist = os.path.join(rc.NOFASTMATH_DIR, "filters", "test.md")
+        self.write_file(os.path.relpath(allowlist, self.tmp.name), ALLOWLIST_FILE.replace("(SAS-35; x86)",
+                                                                                           "(SAS-35; macos)"))
+        code, output = self.run_main("compare", official, proxy, *only)
+        self.assertEqual(code, 0, output)
+        self.assertIn("declared for macos, not gated on x86", output)
+        # ...the macOS job does, on its own official and no-fast-math trees.
+        macos = dict(IDENTITY, arch="aarch64", compiler="Apple LLVM 17.0.0", glibc=None)
+        mac_official = self.add_morph_capture(os.path.join(self.tmp.name, "mac-ref"), macos, [0.5, -0.25, 0.126, 0.0])
+        mac_proxy = self.add_morph_capture(os.path.join(self.tmp.name, "mac-proxy"), macos, [0.5, -0.25, 0.125, 0.0])
+        code, output = self.run_main("compare", mac_official, mac_proxy, *only)
+        self.assertEqual(code, 0, output)
+        self.assertIn("justified on macos", output)
+        self.add_morph_capture(mac_official, macos, [0.5, -0.25, 0.125, 0.0])
+        code, output = self.run_main("compare", mac_official, mac_proxy, *only)
+        self.assertEqual(code, 2, output)
+        self.assertIn("NOT justified on macos", output)
+        # A build that is neither target cannot justify anything.
+        proxy_linux = dict(IDENTITY, arch="aarch64", compiler="13.3.0")
+        linux = self.add_morph_capture(os.path.join(self.tmp.name, "arm-linux"), proxy_linux, [0.5, -0.25, 0.126, 0.0])
+        code, output = self.run_main("compare", linux, mac_proxy, *only)
+        self.assertEqual(code, 2, output)
+        self.assertIn("is not one of ['x86', 'macos']", output)
+        self.assertEqual(rc.justify_target(IDENTITY), "x86")
+        self.assertEqual(rc.justify_target(macos), "macos")
 
     def test_tightened_json_bound_alone_does_not_justify(self):
         self.write_morph_case()
@@ -856,6 +887,7 @@ class ScratchRepo(unittest.TestCase):
             os.makedirs(case_dir)
             with open(os.path.join(case_dir, "artifact_saved.json"), "w") as handle:
                 json.dump({"gain": value}, handle)
+            rc.write_json(os.path.join(case_dir, "capture.json"), {"build": dict(IDENTITY), "outputs": {}})
             trees.append(os.path.join(self.tmp.name, name))
         fake_diff = os.path.join(self.tmp.name, "fake-audio-diff")
         with open(fake_diff, "w") as handle:
@@ -948,11 +980,11 @@ class ScratchRepo(unittest.TestCase):
         self.commit("per-module allowlist")
 
         # Listed, but the case is still parked: rejected.
-        comb = "- `filters/test/comb` (SAS-35): feedback tail\n"
+        comb = "- `filters/test/comb` (SAS-35; x86): feedback tail\n"
         self.write_file("migration/decisions/nofastmath/filters/test.md", comb, "a")
         code, output = self.run_main("allowlist-approval", "--base", "HEAD")
         self.assertEqual(code, 1, output)
-        self.assertIn("added filters/test/comb (SAS-35)", output)
+        self.assertIn("added filters/test/comb (SAS-35; x86)", output)
         self.assertIn("filters/test/comb was added", output)
         # The same change moves the case in: accepted, with no ledger entry.
         rc.write_json(os.path.join(rc.MODULE_CASES, "filters", "test.json"), {
@@ -963,7 +995,7 @@ class ScratchRepo(unittest.TestCase):
 
         # An uncited or unpinned approval fails at load (exit 2).
         self.write_file("migration/decisions/nofastmath/filters/test.md",
-                        ALLOWLIST_FILE + "- `filters/test/comb` (SAS-99): feedback tail\n")
+                        ALLOWLIST_FILE + "- `filters/test/comb` (SAS-99; x86): feedback tail\n")
         code, output = self.run_main("allowlist-approval", "--base", "HEAD")
         self.assertEqual(code, 2, output)
         self.assertIn("SAS-99 is not an approval pinned", output)

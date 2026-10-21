@@ -55,7 +55,8 @@ port/crates/parity):
   --reference-nofastmath DIR; hashes --reference nofastmath). Such a case
   is only valid while the official reference fails the case's normal limits
   (the module defaults and its declared artifact modes) against the
-  no-fast-math build: CI's calibration step checks this with
+  no-fast-math build on each target its allowlist line declares (x86,
+  macos): each target's CI checks its declared cases with
   `compare <official> <nofastmath> --justify-nofastmath`.
 
 Exit status: 0 all pass, 1 any comparison or hash check failed, 2 usage,
@@ -121,7 +122,13 @@ REFERENCES = ("official", "nofastmath")
 NOFASTMATH_APPROVALS = {
     "SAS-35": "2026-10-21: owner approval — SAS-35 noisy-reference rule and SAS-36 JSON bound",
 }
-ALLOWLIST_ENTRY = re.compile(r"- `([A-Za-z0-9_-]+)/([A-Za-z0-9_-]+)/([A-Za-z0-9_-]+)` \(([A-Z]+-[0-9]+)\): \S")
+ALLOWLIST_ENTRY = re.compile(r"- `([A-Za-z0-9_-]+)/([A-Za-z0-9_-]+)/([A-Za-z0-9_-]+)` "
+                             r"\(([A-Z]+-[0-9]+); ([a-z0-9]+(?:, [a-z0-9]+)*)\): \S")
+# Targets whose official reference an allowlist line may declare as failing
+# the case's normal limits against that target's no-fast-math build (the
+# case qualifies if it fails on any one). --justify-nofastmath gates the
+# declared cases on its own target. Mirrored in sas-parity.
+JUSTIFY_TARGETS = ("x86", "macos")
 # Before the per-module files, the allowlist was this section of the
 # decision doc; allowlist-approval still reads it from older bases.
 LEGACY_ALLOWLIST_HEADING = "No-fast-math exact cases (allowlist)"
@@ -323,12 +330,13 @@ def legacy_allowlist_from(text):
 
 
 def allowlist_entries(rel, area, module, text):
-    """[(case_id, approval)] from one allowlist file,
+    """[(case_id, approval, targets)] from one allowlist file,
     migration/decisions/nofastmath/<area>/<module>.md. Every line that
     starts with a list marker (after any indentation) must be exactly
-    "- `<area>/<module>/<case>` (<approval>): <reason>", naming a case of
-    this file's module and an approval in NOFASTMATH_APPROVALS. Other lines
-    are prose. Mirrored in sas-parity (cases.rs allowlist_entries)."""
+    "- `<area>/<module>/<case>` (<approval>; <target>[, <target>]): <reason>",
+    naming a case of this file's module, an approval in NOFASTMATH_APPROVALS
+    and distinct targets from JUSTIFY_TARGETS. Other lines are prose.
+    Mirrored in sas-parity (cases.rs allowlist_entries)."""
     entries = []
     for number, line in enumerate(text.splitlines(), 1):
         stripped = line.lstrip()
@@ -336,22 +344,26 @@ def allowlist_entries(rel, area, module, text):
             continue
         match = ALLOWLIST_ENTRY.match(line)
         if not match:
-            raise CaseError("%s:%d: list lines must be \"- `<area>/<module>/<case>` (<approval>): <reason>\", "
-                            "not %r" % (rel, number, line))
+            raise CaseError("%s:%d: list lines must be \"- `<area>/<module>/<case>` (<approval>; <target>[, "
+                            "<target>]): <reason>\", not %r" % (rel, number, line))
         if (match.group(1), match.group(2)) != (area, module):
             raise CaseError("%s:%d: this file lists %s/%s cases only, not %s/%s/%s"
                             % (rel, number, area, module, match.group(1), match.group(2), match.group(3)))
         if match.group(4) not in NOFASTMATH_APPROVALS:
             raise CaseError("%s:%d: %s is not an approval pinned in both resolvers (%s)"
                             % (rel, number, match.group(4), sorted(NOFASTMATH_APPROVALS)))
-        entries.append(("%s/%s/%s" % match.group(1, 2, 3), match.group(4)))
+        targets = tuple(match.group(5).split(", "))
+        if any(t not in JUSTIFY_TARGETS for t in targets) or len(set(targets)) != len(targets):
+            raise CaseError("%s:%d: targets must be distinct names from %s, not %r"
+                            % (rel, number, list(JUSTIFY_TARGETS), match.group(5)))
+        entries.append(("%s/%s/%s" % match.group(1, 2, 3), match.group(4), targets))
     return entries
 
 
 def allowlist_from_files(texts):
-    """{case_id: approval} from {path relative to NOFASTMATH_DIR: text}.
-    Only README.md and <area>/<module>.md may exist there, and an id may be
-    listed once."""
+    """{case_id: (approval, targets)} from {path relative to NOFASTMATH_DIR:
+    text}. Only README.md and <area>/<module>.md may exist there, and an id
+    may be listed once."""
     allowlist = {}
     for path in sorted(texts):
         parts = path.split("/")
@@ -363,10 +375,10 @@ def allowlist_from_files(texts):
         area, module = parts[0], parts[1][:-len(".md")]
         check_name(rel, "area", area)
         check_name(rel, "module", module)
-        for case_id, approval in allowlist_entries(rel, area, module, texts[path]):
+        for case_id, approval, targets in allowlist_entries(rel, area, module, texts[path]):
             if case_id in allowlist:
                 raise CaseError("%s: %s is listed twice" % (rel, case_id))
-            allowlist[case_id] = approval
+            allowlist[case_id] = (approval, targets)
     return allowlist
 
 
@@ -374,7 +386,7 @@ def check_allowlist_approvals(allowlist, ledger_files):
     """Every cited approval's dated ledger heading exists and its section
     names the approval key."""
     sections = approval_sections(ledger_files)
-    for approval in sorted(set(allowlist.values())):
+    for approval in sorted({approval for approval, _ in allowlist.values()}):
         heading = NOFASTMATH_APPROVALS[approval]
         bodies = [body for title, body in sections if title == heading]
         if not any(names_case(body, approval) for body in bodies):
@@ -383,7 +395,7 @@ def check_allowlist_approvals(allowlist, ledger_files):
 
 
 def read_allowlist(ledger_text):
-    """{case_id: approval} from migration/decisions/nofastmath/, with the
+    """{case_id: (approval, targets)} from migration/decisions/nofastmath/, with the
     cited approvals checked against the ledger. Mirrored in sas-parity
     (cases.rs read_allowlist)."""
     texts = {}
@@ -891,11 +903,28 @@ def compare_module_case(args, case, ref_dir, test_dir, reports, bit_exact):
     return results
 
 
-def justify_nofastmath(args, case, nofastmath_dir, reports):
+def justify_target(identity):
+    """The JUSTIFY_TARGETS name of an official tree's build identity: x86
+    (x86_64) or macos (aarch64 built by Apple clang). Anything else, e.g. the
+    aarch64 Linux proxy, cannot justify a case."""
+    if identity.get("arch") == "x86_64":
+        return "x86"
+    if identity.get("arch") in ("aarch64", "arm64") and str(identity.get("compiler")).startswith("Apple"):
+        return "macos"
+    raise CaseError("--justify-nofastmath: the official tree's build (arch %r, compiler %r) is not one of %s"
+                    % (identity.get("arch"), identity.get("compiler"), list(JUSTIFY_TARGETS)))
+
+
+def justify_nofastmath(args, case, nofastmath_dir, reports, target, declared):
     """Calibration check for a reference "nofastmath" case (the positional
     reference is the official tree, the test tree the REF_FAST_MATH=OFF
-    tree): the case is valid only if the official reference fails the
-    case's normal limits against the no-fast-math build."""
+    tree). A case whose allowlist line declares this tree's target is valid
+    only if the official reference fails the case's normal limits against
+    the no-fast-math build here. A case declared for other targets only is
+    gated by their CI job, not here."""
+    if target not in declared:
+        return [("%s (reference \"nofastmath\": declared for %s, not gated on %s)"
+                 % (case["id"], ", ".join(declared), target), 0)]
     official_dir = os.path.join(args.reference, "modules", case["id"])
     normal = compare_module_case(args, case, official_dir, nofastmath_dir, reports, bit_exact=False)
     errors = [(label, code) for label, code in normal if code not in (0, 1)]
@@ -903,10 +932,11 @@ def justify_nofastmath(args, case, nofastmath_dir, reports):
         return errors
     failing = [label for label, code in normal if code == 1]
     if failing:
-        return [("%s (reference \"nofastmath\" justified: the official reference fails its normal limits "
-                 "against the no-fast-math build in %s)" % (case["id"], ", ".join(failing)), 0)]
-    return [("%s (reference \"nofastmath\" NOT justified: the official reference passes the normal limits "
-             "against the no-fast-math build, so this case must use the official reference)" % case["id"], 2)]
+        return [("%s (reference \"nofastmath\" justified on %s: the official reference fails its normal limits "
+                 "against the no-fast-math build in %s)" % (case["id"], target, ", ".join(failing)), 0)]
+    return [("%s (reference \"nofastmath\" NOT justified on %s: the official reference passes the normal "
+             "limits against the no-fast-math build here; drop %s from its allowlist targets, or use the "
+             "official reference if no target fails)" % (case["id"], target, target), 2)]
 
 
 def cmd_compare(args):
@@ -914,6 +944,10 @@ def cmd_compare(args):
     reports = os.path.join(args.test, "reports")
     os.makedirs(reports, exist_ok=True)
     results = []
+    target = allowlist = None
+    if args.justify_nofastmath and any(c.get("reference") == "nofastmath" for c in modules):
+        target = justify_target(tree_identity(args.reference, renders, modules))
+        allowlist = read_allowlist(read_ledger())
 
     for case in renders:
         if not selected(case["id"], args.only):
@@ -931,7 +965,7 @@ def cmd_compare(args):
             ref_dir = os.path.join(args.reference, "modules", case["id"])
             results.extend(compare_module_case(args, case, ref_dir, test_dir, reports, bit_exact=False))
         elif args.justify_nofastmath:
-            results.extend(justify_nofastmath(args, case, test_dir, reports))
+            results.extend(justify_nofastmath(args, case, test_dir, reports, target, allowlist[case["id"]][1]))
         elif args.reference_nofastmath or args.exact:
             ref_dir = os.path.join(args.reference_nofastmath or args.reference, "modules", case["id"])
             results.extend(compare_module_case(args, case, ref_dir, test_dir, reports, bit_exact=True))
@@ -1216,7 +1250,8 @@ def cmd_allowlist_approval(args):
     live = {case["id"] for case in load_modules() if case.get("reference") == "nofastmath"}
     base_ids = base_allowlist_ids(args.base)
     for case_id in sorted(set(head_allowlist) - base_ids):
-        print("added %s (%s)" % (case_id, head_allowlist[case_id]))
+        approval, targets = head_allowlist[case_id]
+        print("added %s (%s; %s)" % (case_id, approval, ", ".join(targets)))
     problems = allowlist_addition_problems(base_ids, head_allowlist, live)
     for problem in problems:
         print(problem)
@@ -1252,7 +1287,8 @@ def main():
                               "against it")
     compare.add_argument("--justify-nofastmath", action="store_true",
                          help="calibration: REFERENCE is the official tree and TEST the REF_FAST_MATH=OFF tree; "
-                              "each reference \"nofastmath\" case must fail its normal limits there")
+                              "each reference \"nofastmath\" case declared for this tree's target (x86 or "
+                              "macos) must fail its normal limits there")
     compare.add_argument("--only", nargs="*", help="substrings of case ids to run")
 
     hashes = sub.add_parser("hashes", help="write / check output hashes of a render tree")

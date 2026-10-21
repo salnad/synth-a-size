@@ -150,9 +150,10 @@ jobs:
           python3 migration/scripts/run_corpus.py render --out build/ref
           python3 migration/scripts/run_corpus.py render --out build/proxy \
             --ref-render build/ref-no-fast-math/ref-render --ref-module build/ref-no-fast-math/ref-module
-      # Also the owner's no-fast-math gate: every "reference": "nofastmath"
-      # case must fail its normal limits here, or it is rejected
-      # (migration/decisions/owner-decisions-json-and-morphs.md).
+      # Also the owner's no-fast-math gate (SAS-35): every "reference":
+      # "nofastmath" case whose allowlist line declares "x86" must fail its
+      # normal limits here, or it is rejected; reference-arm.yml gates the
+      # cases declared "macos" (migration/decisions/nofastmath/README.md).
       - name: Proxy for a faithful port passes the corpus tolerances
         run: python3 migration/scripts/run_corpus.py compare build/ref build/proxy --justify-nofastmath
       - name: No-fast-math captures match their committed hashes

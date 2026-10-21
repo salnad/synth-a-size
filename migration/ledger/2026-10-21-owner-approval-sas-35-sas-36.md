@@ -25,18 +25,31 @@ relayed them to the Parity Reviewer, who recorded them here.
 
 - The allowlist is one file per module:
   `migration/decisions/nofastmath/<area>/<module>.md`. Each line is
-  ``- `<area>/<module>/<case>` (SAS-35): <why the reference amplifies
-  fast-math noise>``. Ids are exact; globs, other modules' ids and malformed
-  list lines are rejected. A thread edits only its own modules' files, so
-  parallel PRs do not conflict.
+  ``- `<area>/<module>/<case>` (SAS-35; <targets>): <why the reference
+  amplifies fast-math noise>``. Ids are exact; globs, other modules' ids,
+  unknown targets and malformed list lines are rejected. A thread edits only
+  its own modules' files, so parallel PRs do not conflict.
+- **Cross-target qualification** (settled with ARM Reference after #2): a
+  case qualifies if the official reference fails its normal limits against
+  the no-fast-math build on x86 **or** on macOS arm64. `<targets>` declares
+  where (`x86`, `macos`, or `x86, macos`).
+  - `compare --justify-nofastmath` works out its target from the official
+    tree's build identity and gates only the cases declared for it: in
+    `ci.yml` on x86, and in `reference-arm.yml` on macOS (that job had no
+    gate before).
+  - Every listed case is compared exactly against the no-fast-math build
+    on both targets.
+  - The five wavetable cases are declared `x86`, where CI has always
+    justified them.
 - `SAS-35` is pinned in both resolvers (`NOFASTMATH_APPROVALS`) with this
   heading. A line may cite only a pinned key, and the heading must exist and
   name it. A later owner decision outside SAS-35 needs a new pinned key, a
   code change in both resolvers.
 - CI (`run_corpus.py allowlist-approval`) fails an addition unless it is a
   loaded module case declaring `"reference": "nofastmath"` in the same
-  change. CI's calibration step (`compare --justify-nofastmath`) fails any
-  such case that the official reference already meets.
+  change. Each target's calibration step (`compare --justify-nofastmath`)
+  fails any case declared for that target whose official reference already
+  meets the limits there.
 - Agents do not write owner-approval entries for SAS-35 cases. This entry
   is the approval; the allowlist line cites it.
 

@@ -98,7 +98,7 @@ phases taken from `arg(conj(from)·to)` of noise-level FFT bins.
   level).
 - **Allowlist gate:** the case id must be listed in
   `migration/decisions/nofastmath/<area>/<module>.md`, one file per corpus
-  module, as ``- `<area>/<module>/<case>` (SAS-35): <reason>``. The
+  module, as ``- `<area>/<module>/<case>` (SAS-35; <targets>): <reason>``. The
   resolvers read the list from these files and nowhere else. The format,
   what is rejected and the steps to re-enable a parked case are in
   [`nofastmath/README.md`](nofastmath/README.md).
@@ -117,12 +117,20 @@ phases taken from `arg(conj(from)·to)` of noise-level FFT bins.
   - File-level tightening of `tolerances` or `json_bound` does not count,
     and the case itself cannot set either. So a case cannot make the
     official reference "fail" on purpose.
-- **Calibration gate:** a listed case is valid only while CI's calibration
-  step shows that the official reference **fails** the case's normal limits
-  against the no-fast-math build. The step is
-  `run_corpus.py compare build/ref build/proxy --justify-nofastmath`. If the
-  official reference passes, CI fails and the case must use the official
-  reference. SAS-35 requires this for every listed case.
+- **Calibration gate (cross-target):** a case qualifies if the official
+  reference **fails** its normal limits against the no-fast-math build on
+  x86 **or** on macOS arm64. Its allowlist line declares those targets
+  (`x86`, `macos`, or both), and each target's CI proves its own:
+  `run_corpus.py compare <official> <nofastmath> --justify-nofastmath` in
+  `ci.yml` (x86) and in `reference-arm.yml` (macOS).
+  - The step works out its target from the official tree's build identity:
+    x86_64, or aarch64 built by Apple clang. Any other build, such as the
+    aarch64 Linux proxy, is an error.
+  - A declared case whose official reference passes there fails CI
+    (`NOT justified on <target>`). Cases declared only for the other target
+    are reported as not gated.
+  - Wherever it is declared, the case is compared exactly against the
+    no-fast-math build on both targets.
 - **Captures:**
   - The calibration job renders the no-fast-math tree and uploads it as
     `parity-captures-nofastmath`.
