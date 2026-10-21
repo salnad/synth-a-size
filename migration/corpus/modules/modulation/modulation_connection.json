@@ -1679,6 +1679,182 @@
     }
    },
    "block_size": 1
+  },
+  "destination_scale_changes_linear_audio": {
+   "params": {
+    "control_rate": false,
+    "destination_scale_changes": [
+     {
+      "block": 60,
+      "scale": 3.0
+     },
+     {
+      "block": 150,
+      "scale": 0.5
+     },
+     {
+      "block": 151,
+      "scale": 48.0
+     }
+    ]
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.7,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "destination_scale_changes_linear_control": {
+   "params": {
+    "control_rate": true,
+    "destination_scale_changes": [
+     {
+      "block": 60,
+      "scale": 3.0
+     },
+     {
+      "block": 150,
+      "scale": 0.5
+     },
+     {
+      "block": 151,
+      "scale": 48.0
+     }
+    ]
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.7,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  },
+  "destination_scale_changes_morphed_audio": {
+   "params": {
+    "control_rate": false,
+    "destination_scale_changes": [
+     {
+      "block": 60,
+      "scale": 3.0
+     },
+     {
+      "block": 150,
+      "scale": 0.5
+     },
+     {
+      "block": 151,
+      "scale": 48.0
+     }
+    ]
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.7,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    },
+    "modulation_power": 2.0
+   }
+  },
+  "destination_scale_changes_remapped_audio": {
+   "params": {
+    "control_rate": false,
+    "destination_scale_changes": [
+     {
+      "block": 60,
+      "scale": 3.0
+     },
+     {
+      "block": 150,
+      "scale": 0.5
+     },
+     {
+      "block": 151,
+      "scale": 48.0
+     }
+    ],
+    "map": {
+     "points": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.3,
+       0.2
+      ],
+      [
+       0.6,
+       0.8
+      ],
+      [
+       1.0,
+       0.0
+      ]
+     ],
+     "powers": [
+      4.0,
+      -3.0,
+      8.0,
+      0.0
+     ],
+     "smooth": false
+    }
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "modulation_input": {
+     "signal": "sine",
+     "freq_hz": 3.0,
+     "amp": 0.7,
+     "offset": 0.5
+    },
+    "modulation_amount": 0.7,
+    "reset": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
   }
  }
 }

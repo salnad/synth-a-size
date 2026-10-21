@@ -276,28 +276,28 @@ pub fn check_module(module: &ModuleDef) {
     }
 }
 
-type CorrectToTime = dyn Fn(&ProcessorRef, f64);
+type BlockHook = dyn Fn(&ProcessorRef, u64, u64);
 
-/// Kernel of a test wrapper that mirrors the C++ `Clocked*` subclasses:
-/// before each block it calls `correct_to_time(start + frames / rate)` on
-/// the wrapped processor, as the engine does every block. The wrapper uses
-/// the wrapped processor's input and output objects, so `run_module`
-/// drives it unchanged.
+/// Kernel of a test wrapper that mirrors the C++ ref-module subclasses that
+/// act before each block (`Clocked*`, `ScaleChangingConnection`): it calls
+/// `hook(inner, block_index, frames_before)` and then processes the wrapped
+/// processor. The wrapper uses the wrapped processor's input and output
+/// objects, so `run_module` drives it unchanged.
 #[derive(Clone)]
-struct Clocked {
+struct Hooked {
     inner: ProcessorRef,
-    correct_to_time: Rc<CorrectToTime>,
-    start: f64,
+    hook: Rc<BlockHook>,
+    block: u64,
     frames: u64,
 }
 
-impl sas_dsp_core::ProcessorImpl for Clocked {
+impl sas_dsp_core::ProcessorImpl for Hooked {
     sas_dsp_core::processor_boilerplate!();
 
     fn process(&mut self, _this: &sas_dsp_core::Processor, num_samples: usize) {
-        let seconds = self.start + self.frames as f64 / self.inner.sample_rate() as f64;
-        (self.correct_to_time)(&self.inner, seconds);
+        (self.hook)(&self.inner, self.block, self.frames);
         self.inner.process(num_samples);
+        self.block += 1;
         self.frames += num_samples as u64;
     }
 
@@ -320,19 +320,19 @@ impl sas_dsp_core::ProcessorImpl for Clocked {
     }
 }
 
-/// Wraps `inner` in a [`Clocked`] driver starting at `start` seconds.
-pub fn clocked(
+/// Wraps `inner` so `hook(inner, block_index, frames_before)` runs before
+/// each block.
+pub fn per_block(
     inner: ProcessorRef,
-    start: f64,
-    correct_to_time: impl Fn(&ProcessorRef, f64) + 'static,
+    hook: impl Fn(&ProcessorRef, u64, u64) + 'static,
 ) -> ProcessorRef {
     let num_inputs = inner.num_inputs();
     let num_outputs = inner.num_outputs();
     let wrapper = sas_dsp_core::Processor::new(
-        Clocked {
+        Hooked {
             inner: inner.clone(),
-            correct_to_time: Rc::new(correct_to_time),
-            start,
+            hook: Rc::new(hook),
+            block: 0,
             frames: 0,
         },
         0,
@@ -347,4 +347,17 @@ pub fn clocked(
         wrapper.register_output(inner.output(i));
     }
     wrapper
+}
+
+/// Mirrors the C++ `Clocked*` subclasses: before each block, calls
+/// `correct_to_time(inner, start + frames / rate)`, as the engine does every
+/// block.
+pub fn clocked(
+    inner: ProcessorRef,
+    start: f64,
+    correct_to_time: impl Fn(&ProcessorRef, f64) + 'static,
+) -> ProcessorRef {
+    per_block(inner, move |inner, _block, frames| {
+        correct_to_time(inner, start + frames as f64 / inner.sample_rate() as f64)
+    })
 }

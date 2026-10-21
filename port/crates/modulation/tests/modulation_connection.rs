@@ -36,7 +36,30 @@ fn modulation_connection_matches_reference() {
                 kernel.set_destination_scale(param(params, "destination_scale", 1.0))
             });
             processor.set_control_rate(param_bool(params, "control_rate", true));
-            processor
+            let changes: Vec<(u64, f32)> = params
+                .get("destination_scale_changes")
+                .and_then(|v| v.as_array())
+                .map(|changes| {
+                    changes
+                        .iter()
+                        .map(|c| {
+                            (
+                                c["block"].as_u64().unwrap(),
+                                c["scale"].as_f64().unwrap() as f32,
+                            )
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            per_block(processor, move |processor, block, _frames| {
+                for &(at, scale) in &changes {
+                    if at == block {
+                        processor.with::<ModulationConnectionProcessor, _>(|kernel, _| {
+                            kernel.set_destination_scale(scale)
+                        });
+                    }
+                }
+            })
         },
         &[
             (
