@@ -27,6 +27,34 @@
         "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
         "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
       }
+    },
+    {
+      "hashes": {
+        "no_midi_track_transpose:phase_inc": "f16d9e150cb63183",
+        "note_ramp:phase_inc": "dec885348ef371db",
+        "oversample_2_transpose:phase_inc": "539e0407b5ef9e13",
+        "probe_quantize_global_high_note:phase_inc": "2abef1132a644183",
+        "probe_quantize_global_transpose:phase_inc": "83a87d055c2c6b83",
+        "probe_quantize_local_transpose:phase_inc": "703bbbbf43dcd183",
+        "probe_transpose_constant_negative:phase_inc": "c3f072bff68dc383",
+        "probe_transpose_tune_constant:phase_inc": "d3f951d04aca3b83",
+        "reset_offsets_transpose:phase_inc": "ceb957411451e66f",
+        "sample_rate_96000_tune:phase_inc": "2297717fe0f64783",
+        "transpose_quantize_global:phase_inc": "e026dfff80f7a6f3",
+        "transpose_quantize_local:phase_inc": "31de16f7bba9d19b",
+        "transpose_tune_audio:phase_inc": "15ddbb065c040903",
+        "tune_audio_sine:phase_inc": "d3e03f69b2b0fc0b",
+        "voice_1_transpose:phase_inc": "f33177410a9af783"
+      },
+      "identity": {
+        "arch": "aarch64",
+        "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+        "fast_math": true,
+        "glibc": null,
+        "libm_variants": "Apple libm (macOS 15.7.9)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
     }
   ]
 }

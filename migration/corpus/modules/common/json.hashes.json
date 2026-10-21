@@ -33,6 +33,8 @@
         "generated_floats:artifact/floats.json": "c0fef17980e405ea",
         "integer_limits:artifact/dump.json": "125bdf7da35f7cc0",
         "integer_limits:artifact/pretty.json": "a1d16205ad6905ee",
+        "negative_zero:artifact/dump.json": "9efb7c6eef6bbbc5",
+        "negative_zero:artifact/pretty.json": "c5c77d6ad4813e2b",
         "strings:artifact/dump.json": "3fae3ffde7b58185",
         "strings:artifact/pretty.json": "7cecba7a23ce2a1b",
         "typed_numbers:artifact/dump.json": "aa357cda3a37d6c3",

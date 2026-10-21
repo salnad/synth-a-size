@@ -27,7 +27,18 @@
     },
     {
       "hashes": {
-        "impulse_ping_pong:audio": "bcbb3f7a9d6e6670"
+        "clamped_unfiltered_saturating:audio": "cb35d36997fce80b",
+        "feedback_and_wet_sweep:audio": "f1223d8d8dc4d4f7",
+        "frequency_clamp_sweep:audio": "29a62fb8ea07ab7d",
+        "impulse_ping_pong:audio": "bcbb3f7a9d6e6670",
+        "long_tail_full_feedback:audio": "e2b7b65518a4a9c8",
+        "long_tail_ping_pong:audio": "0a49bd9e589468b5",
+        "mid_ping_pong_sine:audio": "583f8ef024b5fb8f",
+        "mono_saw_frequency_sweep:audio": "1f1b710f98cd7e77",
+        "oversampled_2x:audio": "f7b37dc8320d3321",
+        "ping_pong_noise_96k:audio": "353beb7a78698e8d",
+        "saturate_large_ping_pong:audio": "5c3d09f13e1bac77",
+        "stereo_noise_filter_sweep:audio": "e9ab4f97f6c61dfa"
       },
       "identity": {
         "arch": "aarch64",
