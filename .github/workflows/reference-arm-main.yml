@@ -147,11 +147,14 @@ jobs:
       # Strict on main: a missing or changed macOS hash is an error.
       - name: Hashes match the committed macOS arm64 identity
         if: ${{ !cancelled() }}
+        # Both checks always run and report; the step fails if either does.
         run: |
+          status=0
           python3 migration/scripts/run_corpus.py hashes build/platform/pinned --check --require-known-identity \
-            --parked migration/corpus/parked_arm64.json
+            --parked migration/corpus/parked_arm64.json || status=1
           python3 migration/scripts/run_corpus.py hashes build/platform/proxy --check --require-known-identity \
-            --reference nofastmath --parked migration/corpus/parked_arm64.json
+            --reference nofastmath --parked migration/corpus/parked_arm64.json || status=1
+          exit $status
       - name: Write the missing macOS hash entries (new keys only) for the fix PR
         id: write
         if: failure()
