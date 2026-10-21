@@ -36,7 +36,9 @@ fn run_case(case: &ModuleCase) -> (Tuning, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32
             .collect();
         let path = directory.join(file["name"].as_str().unwrap());
         std::fs::write(&path, text).unwrap();
-        tuning.load_file(&path);
+        tuning
+            .load_file(&path)
+            .unwrap_or_else(|e| panic!("{}: {e}", case.id()));
     }
     std::fs::remove_dir_all(&directory).ok();
 
@@ -62,7 +64,9 @@ fn run_case(case: &ModuleCase) -> (Tuning, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32
 
     let data = tuning.state_to_json();
     let mut loaded = Tuning::new();
-    loaded.json_to_state(&data);
+    loaded
+        .json_to_state(&data)
+        .expect("the saved state reloads");
     let roundtrip: Vec<f32> = (0..128)
         .map(|note| loaded.convert_midi_note(note))
         .collect();
