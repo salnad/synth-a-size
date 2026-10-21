@@ -494,6 +494,7 @@ dependencies = [
  "sas-dsp-core",
  "sas-filters",
  "sas-parity",
+ "sas-preset",
  "sas-simd",
  "serde_json",
 ]

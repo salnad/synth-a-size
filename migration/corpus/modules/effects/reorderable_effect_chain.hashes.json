@@ -1,0 +1,65 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "all_on_96k:audio": "2884671d3f4c977a",
+        "all_on_custom_order:audio": "94e08bef0c3d4f69",
+        "all_on_default_order:audio": "de0087c7121c62f4",
+        "all_on_oversampled_2x:audio": "7aff11e072ef89a6",
+        "all_on_reversed_order:audio": "e25f8b38c251dd01",
+        "enable_toggles:audio": "68f2bff7bf163bce",
+        "filter_fx_enable_toggle:audio": "179f57b96529a473",
+        "filter_fx_formant:audio": "950b728a7b71f32b",
+        "filter_fx_keytrack:audio": "661976f6b27b90e3",
+        "filter_fx_mix_and_blend_transpose:audio": "28dabbd7c0ca08ab",
+        "filter_fx_model_and_cutoff_sweep:audio": "ad8e371da903d69b",
+        "filter_fx_style_sweep:audio": "28ab65a4bf578a93",
+        "interim_seven_enable_toggles:audio": "99374be5c413774f",
+        "interim_seven_on_order_toggle:audio": "9fada5defa428c1b",
+        "only_chorus:audio": "8fd5068abc56f540",
+        "only_compressor:audio": "45c6be607687d51b",
+        "only_delay:audio": "456243b4096dc757",
+        "only_distortion:audio": "7b14595181284413",
+        "only_eq:audio": "cfeb49bcba6cf3a3",
+        "only_filter_fx:audio": "81b0f01d7d9645c3",
+        "only_flanger:audio": "e9460025a5b50216",
+        "only_phaser:audio": "9319d2e93b7e3a8b",
+        "only_reverb:audio": "b0ec917fb96c8446",
+        "order_sweep_all_on:audio": "a517bb587da66690",
+        "order_toggle_all_on:audio": "6e0208bb8bcd0e12"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    },
+    {
+      "hashes": {
+        "all_on_96k:audio": "a1f565cbe952bff5",
+        "all_on_custom_order:audio": "3eaf9489a790d8fe",
+        "all_on_default_order:audio": "397c68fab97b1983",
+        "all_on_oversampled_2x:audio": "ac6713c665ae0970",
+        "all_on_reversed_order:audio": "acf97d7e97ab8ae4",
+        "enable_toggles:audio": "41ea37e2ff3c2158",
+        "only_chorus:audio": "714cbcfafecf269b",
+        "only_flanger:audio": "4c5e8a86efd130a8",
+        "order_sweep_all_on:audio": "f70508cc304554b4",
+        "order_toggle_all_on:audio": "615f1fc8b2abb4e7"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": false,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}
