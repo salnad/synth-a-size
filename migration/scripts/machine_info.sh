@@ -108,6 +108,15 @@ if [[ "$os" == "Darwin" ]]; then
       objdump -d --no-show-raw-insn --disassemble-symbols="$render_symbol" "$build/ref-module" > "$out/phase_modifier_render.s"
       echo "## render: $(grep -cE '\sf(n)?m(add|sub|la|ls)\s' "$out/phase_modifier_render.s") fused, $(grep -cE '\sfdiv\s' "$out/phase_modifier_render.s") fdiv, $(grep -cE '\sbl\s' "$out/phase_modifier_render.s") calls: $(grep -oE '\sbl\s.*' "$out/phase_modifier_render.s" | sort | uniq -c | tr '\n' ';')"
     fi
+    # A11: every function that calls Apple's merged sin/cos (__sincosf_stret,
+    # __sincos_stret), demangled, with call counts.
+    for bin in ref-render ref-module; do
+      [[ -x "$build/$bin" ]] || continue
+      otool -tV "$build/$bin" \
+        | awk '/^[^ \t].*:$/ { fn = substr($0, 1, length($0) - 1) } /\tbl\t___sincos(f)?_stret/ { print $NF "\t" fn }' \
+        | sort | uniq -c | c++filt > "$out/sincos_call_sites_$bin.txt"
+      echo "## $bin __sincos(f)_stret call sites: $(wc -l < "$out/sincos_call_sites_$bin.txt")"
+    done
     # The probe's direct __divsc3 call links compiler-rt's builtin statically.
     if [[ -x "$build/ref-complex-probe" ]]; then
       objdump -d --no-show-raw-insn --disassemble-symbols=___divsc3 "$build/ref-complex-probe" > "$out/divsc3.s"
