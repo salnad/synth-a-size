@@ -21,6 +21,9 @@
 //! inside `sas-simd` (for example `toInt` in the coefficient lookups); the
 //! `aarch64-semantics` feature forwards to `sas-dsp-core` and `sas-simd`.
 
+// Indexed loops mirror upstream's.
+#![allow(clippy::needless_range_loop)]
+
 pub use sas_dsp_core;
 
 pub mod character;
@@ -29,6 +32,7 @@ pub mod decimator;
 pub mod digital_svf;
 pub mod fir_halfband_decimator;
 pub mod iir_halfband_decimator;
+pub mod ladder_filter;
 pub mod linkwitz_riley_filter;
 pub mod synth_filter;
 pub mod upsampler;
@@ -38,6 +42,7 @@ pub use decimator::Decimator;
 pub use digital_svf::DigitalSvf;
 pub use fir_halfband_decimator::FirHalfbandDecimator;
 pub use iir_halfband_decimator::IirHalfbandDecimator;
+pub use ladder_filter::LadderFilter;
 pub use linkwitz_riley_filter::LinkwitzRileyFilter;
 pub use synth_filter::{
     coefficient_lookup, create_filter, CoefficientLookup, FilterModel, FilterState, SynthFilter,
@@ -58,6 +63,8 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/src/synthesis/filters/linkwitz_riley_filter.cpp",
     "vital/src/synthesis/filters/dc_filter.h",
     "vital/src/synthesis/filters/dc_filter.cpp",
+    "vital/src/synthesis/filters/ladder_filter.h",
+    "vital/src/synthesis/filters/ladder_filter.cpp",
     "vital/src/synthesis/filters/upsampler.h",
     "vital/src/synthesis/filters/upsampler.cpp",
     "vital/src/synthesis/filters/decimator.h",

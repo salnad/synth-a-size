@@ -1901,3 +1901,69 @@ artifact. macOS arm64 hashes follow once PR #2 merges.
   PRs land.
 - Switch `tests/common/params.rs` to the `sas-preset` registry once M2
   merges.
+
+## 2026-10-21: M5a PR 4, `LadderFilter`
+
+Core Filters (M5a), stacked on PR 3.
+
+- `ladder_filter.rs` ports `ladder_filter.{h,cpp}`: four
+  `OnePoleFilter<algebraicSat>` stages with a `tanh` feedback input, and
+  stage-scale mixes for styles 0–4. Upstream does not handle style 5+ in
+  `setStageScales`, so the scales keep their previous values. Before the
+  first handled style they are zero, in upstream (`poly_float()`
+  zero-initializes, `poly_values.h:793`) and here. The case `style_steps_0_to_9` starts at
+  style 0 and holds the scales through 5–9, matching upstream.
+  `kMaxCoefficient` is unused upstream, as here.
+- `create_filter(Ladder)` builds it. The generic `filter` ref-module
+  already covered it.
+- Cases under `module_defaults`, no tolerance changes. `filters/ladder`
+  grows from 1 to 31 cases:
+  - per style 0–4: cutoff sweeps MIDI 0–100 at resonance 0.8 and drive
+    6 dB, full-range MIDI 0–140 sweeps at resonance 0, blend −0.2–2.2,
+    resonance −0.1–1.1, and drive −4–40 dB;
+  - style steps 0→9;
+  - per-lane settings with retriggers (cutoff up to MIDI 100);
+  - 4× oversampling (MIDI 124→8, resonance 0.8), 96 kHz with a MIDI 8–136
+    sweep, and block size 1.
+  - added after review: resonant MIDI 0–120 sweeps (0.8, 6 dB) for 12 dB,
+    24 dB and notch/pass swap, the well-conditioned interim band Filter
+    Reviewer measured (1.8e-5 / −100.6 dB, 2.5e-5 / −92.2 dB, 1.6e-5 /
+    −97.5 dB). 34 cases in all.
+- Parity, x86_64: 34/34 pass. Worst max_abs_error 3.8e-5
+  (`dual_notch_band_cutoff_sweep_0_to_100`), worst residual −98.1 dB
+  (`k24_96k_block_128`).
+
+### Open: the resonant ladder at high cutoff (same question as the 120 Hz crossover)
+
+The port is bit-identical to the no-fast-math reference on every ladder
+case, including the ones below. The fast-math reference differs from frame
+0–2 on (per-sample reassociation). With resonance, once the cutoff/rate
+ratio gets high (above about MIDI 110–125 at 44.1 kHz, cutoff about
+10 kHz; MIDI 136 at 96 kHz still passes), the ladder turns unstable and
+chaotic, and that difference grows to full scale. Reference against
+no-fast-math proxy, saw, cutoff ramp from MIDI 0 to the given top,
+resonance 0.8, drive 6 dB, 44.1 kHz:
+
+| style | top 100 | top 110 | top 120 | top 125 | top 140 |
+|---|---|---|---|---|---|
+| 12 dB | −112.1 dB | −101.5 | −100.6 | −48.2 | −22.1 |
+| 24 dB | −106.9 | −96.4 | −92.2 | −86.4 (max abs 3.5e-4) | −12.1 |
+| notch/pass swap | −111.6 | −100.7 | −97.5 | −56.4 | −5.5 |
+| dual notch/band | −100.4 | −79.1 | −86.2 (max abs 1.5e-4) | −22.4 | −19.8 |
+| band/peak/notch | −107.1 | −95.7 | −90.9 | −62.6 | −8.0 |
+
+At resonance 0 the full MIDI 0–140 sweep passes for every style (worst
+−117.1 dB); those cases are in the corpus. Self-oscillating lanes
+(resonance 1.0 with drive 24 dB at MIDI 120) and resonance 0.95 at 4×
+fail on max_abs (6.0e-4 and 2.0e-4), though their residuals pass
+(−92.3 and −82.6 dB).
+
+Parked, as for the crossover:
+`migration/corpus/modules/filters/pending/ladder_full_range.json` holds 7
+cases (full-range resonant sweeps for styles 0–4, the self-oscillating
+retrigger case and the resonance 0.95 4× case), each failing against the
+fast-math reference. `tests/ladder_filter.rs` selects cases by filter
+model, so moving the file to `modules/filters/` and writing hashes
+re-enables it. Same question for a human as the crossover: compare
+against the no-fast-math reference, or decide otherwise. No tolerance
+exception added.
