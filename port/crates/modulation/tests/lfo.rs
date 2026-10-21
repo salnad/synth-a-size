@@ -46,36 +46,54 @@ fn synth_lfo_matches_reference() {
     );
 }
 
+/// The C++ `createLfoModule` factory, shared by `lfo_module` and
+/// `lfo_module_frequency`.
+fn create_lfo_module(params: &serde_json::Value) -> sas_dsp_core::ProcessorRef {
+    let beats_per_second = Value::create_control_rate(param(params, "beats_per_second", 2.0));
+    let module = LfoModule::create(
+        param_str(params, "prefix", "lfo_1"),
+        line_shape(params, "shape"),
+        &beats_per_second.output(0),
+    );
+    module.init();
+    module.set_control_rate(param_bool(params, "control_rate", true));
+    let sync_seconds = params.get("sync_seconds").and_then(|v| v.as_f64());
+    module.correct_to_time(sync_seconds.unwrap_or(0.0));
+    set_controls(&module, params);
+    module
+}
+
+const LFO_MODULE_INPUTS: &[(&str, usize, sas_dsp_core::testing::InputRate)] = &[
+    ("note_trigger", LfoModule::NOTE_TRIGGER, Trigger),
+    ("note_count", LfoModule::NOTE_COUNT, Control),
+    ("midi", LfoModule::MIDI, Control),
+];
+
 #[test]
 fn lfo_module_matches_reference() {
     check_module(
         &ModuleDef::new(
             "lfo_module",
-            |params| {
-                let beats_per_second =
-                    Value::create_control_rate(param(params, "beats_per_second", 2.0));
-                let module = LfoModule::create(
-                    param_str(params, "prefix", "lfo_1"),
-                    line_shape(params, "shape"),
-                    &beats_per_second.output(0),
-                );
-                module.init();
-                module.set_control_rate(param_bool(params, "control_rate", true));
-                let sync_seconds = params.get("sync_seconds").and_then(|v| v.as_f64());
-                module.correct_to_time(sync_seconds.unwrap_or(0.0));
-                set_controls(&module, params);
-                module
-            },
-            &[
-                ("note_trigger", LfoModule::NOTE_TRIGGER, Trigger),
-                ("note_count", LfoModule::NOTE_COUNT, Control),
-                ("midi", LfoModule::MIDI, Control),
-            ],
+            create_lfo_module,
+            LFO_MODULE_INPUTS,
             &[
                 ("value", LfoModule::VALUE),
                 ("osc_phase", LfoModule::OSC_PHASE),
                 ("osc_frequency", LfoModule::OSC_FREQUENCY),
             ],
+        )
+        .normalized("osc_frequency", phase_increment),
+    );
+}
+
+#[test]
+fn lfo_module_frequency_matches_reference() {
+    check_module(
+        &ModuleDef::new(
+            "lfo_module_frequency",
+            create_lfo_module,
+            LFO_MODULE_INPUTS,
+            &[("osc_frequency", LfoModule::OSC_FREQUENCY)],
         )
         .normalized("osc_frequency", phase_increment),
     );

@@ -15,6 +15,7 @@ use std::rc::Rc;
 use sas_common::LineGenerator;
 use sas_dsp_core::{Processor, ProcessorImpl, ProcessorRef};
 use sas_simd::common::VoiceEvent;
+use sas_simd::conversions::float_to_i32;
 use sas_simd::poly_utils as utils;
 use sas_simd::{futils, PolyFloat, PolyInt, PolyMask};
 
@@ -172,7 +173,7 @@ impl SynthLfo {
     }
 
     fn sync_type(this: &Processor) -> i32 {
-        this.input(Self::SYNC_TYPE).at(0).get(0) as i32
+        float_to_i32(this.input(Self::SYNC_TYPE).at(0).get(0))
     }
 
     fn smooth_mode(this: &Processor) -> bool {
