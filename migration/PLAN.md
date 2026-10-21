@@ -4,7 +4,7 @@ Each milestone ends when its exit criteria pass in CI. Parity means the
 port's output meets the tolerances in `migration/corpus/cases.json` when
 compared with `audio-diff` against the C++ reference at the same sample
 rate, block size, seed and length. Rules: [AGENTS.md](AGENTS.md). Progress:
-[LEDGER.md](LEDGER.md).
+[ledger/](ledger/README.md) (history before 2026-10-21: [LEDGER.md](LEDGER.md)).
 
 Crate map (`port/crates/<dir>`, package `sas-<dir>`):
 

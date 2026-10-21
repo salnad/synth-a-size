@@ -61,7 +61,7 @@ Module tolerances default to `module_defaults`, render tolerances to
 `defaults`. Both must meet the approved floor, which is pinned in code in
 `run_corpus.py` and `sas-parity`. A case may only make its tolerances
 stricter, unless it carries a structured
-`tolerance_exception: {"approved_in": "<LEDGER.md heading>", "tolerances": {...}}`.
+`tolerance_exception: {"approved_in": "<ledger heading>", "tolerances": {...}}`.
 Each loosened metric must equal its approved value, and the cited ledger
 section must name the case. See "How to port a piece of the engine" in
 `migration/AGENTS.md`.
@@ -98,4 +98,4 @@ Render cases:
    the no-fast-math proxy meets them.
 3. Render the corpus and refresh the hashes with
    `python3 migration/scripts/run_corpus.py hashes <tree> --write`.
-4. Note the addition in `migration/LEDGER.md`.
+4. Note the addition in a new `migration/ledger/` entry.

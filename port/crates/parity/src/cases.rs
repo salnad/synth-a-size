@@ -331,14 +331,14 @@ pub fn resolve_tolerances(
         if !looser.is_empty() {
             return Err(format!(
                 "{case_id}: tolerances {looser:?} are looser than the defaults; that needs a case-level \
-                 tolerance_exception approved in LEDGER.md (migration/AGENTS.md rule 6)"
+                 tolerance_exception approved in the ledger (migration/AGENTS.md rule 6)"
             ));
         }
         return Ok((tolerances, None));
     };
 
     let shape = || {
-        format!("{case_id}: tolerance_exception must be {{\"approved_in\": \"<LEDGER.md heading>\", \"tolerances\": {{...}}}}")
+        format!("{case_id}: tolerance_exception must be {{\"approved_in\": \"<ledger heading>\", \"tolerances\": {{...}}}}")
     };
     let object = exception.as_object().ok_or_else(shape)?;
     if object.len() != 2
@@ -352,7 +352,7 @@ pub fn resolve_tolerances(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| {
-            format!("{case_id}: tolerance_exception.approved_in must name a LEDGER.md heading")
+            format!("{case_id}: tolerance_exception.approved_in must name a ledger heading")
         })?;
     let approved = tolerance_map(
         &object["tolerances"],
@@ -394,12 +394,13 @@ pub fn resolve_tolerances(
         .collect();
     if bodies.is_empty() {
         return Err(format!(
-            "{case_id}: tolerance_exception cites LEDGER.md heading {approved_in:?}, which does not exist"
+            "{case_id}: tolerance_exception cites ledger heading {approved_in:?}, which does not exist \
+             (migration/LEDGER.md or migration/ledger/)"
         ));
     }
     if !bodies.iter().any(|body| names_case(body, case_id)) {
         return Err(format!(
-            "{case_id}: LEDGER.md section {approved_in:?} does not name the case"
+            "{case_id}: ledger section {approved_in:?} does not name the case"
         ));
     }
     Ok((tolerances, Some(exception.clone())))
@@ -790,8 +791,36 @@ pub fn module_cases_from(
 }
 
 fn read_ledger() -> Result<String, String> {
-    let path = ledger_path();
-    fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))
+    read_ledger_at(&repo_root())
+}
+
+/// The whole ledger as one markdown text: `migration/LEDGER.md` (frozen),
+/// then every entry file in `migration/ledger/` in file-name (date) order,
+/// skipping `README.md`. Mirrored in migration/scripts/ledger.py
+/// (`read_text`).
+pub fn read_ledger_at(root: &Path) -> Result<String, String> {
+    let read =
+        |path: &Path| fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()));
+    let mut parts = Vec::new();
+    let frozen = root.join("migration/LEDGER.md");
+    if frozen.is_file() {
+        parts.push(read(&frozen)?);
+    }
+    let entries = root.join("migration/ledger");
+    if entries.is_dir() {
+        let mut names: Vec<String> = fs::read_dir(&entries)
+            .map_err(|e| format!("{}: {e}", entries.display()))?
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.ends_with(".md") && n != "README.md")
+            .collect();
+        names.sort();
+        for name in names {
+            parts.push(read(&entries.join(name))?);
+        }
+    }
+    let parts: Vec<&str> = parts.iter().map(|p| p.trim_end_matches('\n')).collect();
+    Ok(parts.join("\n\n") + "\n")
 }
 
 pub fn load_render_cases() -> Result<Vec<ResolvedCase>, String> {
@@ -1431,6 +1460,60 @@ mod tests {
         let repository = read_allowlist().unwrap();
         assert!(
             repository.contains(&"wavetable/render/wave_linear_freq_disjoint_spectra".to_string())
+        );
+    }
+
+    #[test]
+    fn ledger_is_the_frozen_file_then_entry_files_in_date_order() {
+        let root = std::env::temp_dir().join(format!("sas-parity-ledger-{}", std::process::id()));
+        fs::remove_dir_all(&root).ok();
+        fs::create_dir_all(root.join("migration/ledger")).unwrap();
+        fs::write(
+            root.join("migration/LEDGER.md"),
+            "# Ledger\n\n## 2026-10-20: old\n\nHistory.\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("migration/ledger/2026-10-23-approve-b.md"),
+            "## 2026-10-23: approve looser filters/test/b\n\nOwner approved filters/test/b.\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("migration/ledger/2026-10-21-a.md"),
+            "## 2026-10-21: a\n\nFirst.\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("migration/ledger/README.md"),
+            "# How to add an entry\n",
+        )
+        .unwrap();
+        let text = read_ledger_at(&root).unwrap();
+        fs::remove_dir_all(&root).ok();
+        let titles: Vec<String> = ledger_sections(&text).into_iter().map(|(t, _)| t).collect();
+        assert_eq!(
+            titles,
+            [
+                "Ledger",
+                "2026-10-20: old",
+                "2026-10-21: a",
+                "2026-10-23: approve looser filters/test/b"
+            ]
+        );
+
+        // A tolerance_exception approved in an entry file resolves.
+        let file = json!({ "module": "filter", "cases": { "b": { "num_samples": 10,
+            "tolerances": { "residual_db": -70 },
+            "tolerance_exception": { "approved_in": "2026-10-23: approve looser filters/test/b",
+                                     "tolerances": { "residual_db": -70 } } } } });
+        let cases =
+            module_cases_from("filters", "test", "x.json", &file, &defaults(), &text, &[]).unwrap();
+        assert_eq!(cases[0].tolerances.residual_db, Some(-70.0));
+        let err = module_cases_from("filters", "test", "x.json", &file, &defaults(), LEDGER, &[])
+            .unwrap_err();
+        assert!(
+            err.contains("migration/LEDGER.md or migration/ledger/"),
+            "{err}"
         );
     }
 

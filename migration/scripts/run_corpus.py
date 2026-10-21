@@ -29,10 +29,11 @@ same way; keep the two in sync):
   floor is a code change in both resolvers and needs recorded human approval.
 - Case values layer over file-level values over the defaults. A metric looser
   than the default is an error unless the *case* (never the file) carries
-  "tolerance_exception": {"approved_in": "<exact LEDGER.md heading>",
+  "tolerance_exception": {"approved_in": "<exact ledger heading>",
   "tolerances": {<metric>: <approved value>}} where every loosened metric
   equals its approved value, every listed metric is actually loosened, and the
-  cited LEDGER.md section names the case id.
+  cited ledger section names the case id. The ledger is migration/LEDGER.md
+  (frozen) plus the entry files in migration/ledger/ (scripts/ledger.py).
 - JSON NaN/Infinity and unknown keys are rejected.
 
 Comparison rules (owner decisions in
@@ -71,6 +72,9 @@ import re
 import struct
 import subprocess
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import ledger  # noqa: E402
 
 REPO = CORPUS = MODULE_CASES = RENDER_HASHES = LEDGER = DECISION_DOC = None
 
@@ -145,8 +149,8 @@ def read_json_strict(path):
 
 
 def read_ledger():
-    with open(LEDGER) as handle:
-        return handle.read()
+    """LEDGER.md (frozen) followed by every migration/ledger/ entry."""
+    return ledger.read_text(REPO)
 
 
 def ledger_sections(text):
@@ -244,16 +248,16 @@ def resolve_tolerances(case_id, defaults, file_level, case, ledger_text):
     if exception is None:
         if looser:
             raise CaseError("%s: tolerances %s are looser than the defaults %s; that needs a case-level "
-                            "tolerance_exception approved in LEDGER.md (migration/AGENTS.md rule 6)"
+                            "tolerance_exception approved in the ledger (migration/AGENTS.md rule 6)"
                             % (case_id, {k: tolerances[k] for k in looser}, {k: defaults[k] for k in looser}))
         return tolerances, None
 
     if not isinstance(exception, dict) or set(exception) != set(EXCEPTION_KEYS):
-        raise CaseError("%s: tolerance_exception must be {\"approved_in\": \"<LEDGER.md heading>\", "
+        raise CaseError("%s: tolerance_exception must be {\"approved_in\": \"<ledger heading>\", "
                         "\"tolerances\": {...}}" % case_id)
     approved_in = exception["approved_in"]
     if not isinstance(approved_in, str) or not approved_in.strip():
-        raise CaseError("%s: tolerance_exception.approved_in must name a LEDGER.md heading" % case_id)
+        raise CaseError("%s: tolerance_exception.approved_in must name a ledger heading" % case_id)
     approved = check_tolerance_map(case_id + " tolerance_exception", exception["tolerances"])
     if not approved:
         raise CaseError("%s: tolerance_exception.tolerances is empty" % case_id)
@@ -268,10 +272,10 @@ def resolve_tolerances(case_id, defaults, file_level, case, ledger_text):
         raise CaseError("%s: %s loosened without approval in tolerance_exception" % (case_id, unapproved))
     bodies = [body for title, body in ledger_sections(ledger_text) if title == approved_in.strip()]
     if not bodies:
-        raise CaseError("%s: tolerance_exception cites LEDGER.md heading %r, which does not exist"
-                        % (case_id, approved_in))
+        raise CaseError("%s: tolerance_exception cites ledger heading %r, which does not exist "
+                        "(migration/LEDGER.md or migration/ledger/)" % (case_id, approved_in))
     if not any(names_case(body, case_id) for body in bodies):
-        raise CaseError("%s: LEDGER.md section %r does not name the case" % (case_id, approved_in))
+        raise CaseError("%s: ledger section %r does not name the case" % (case_id, approved_in))
     return tolerances, exception
 
 
@@ -1067,16 +1071,15 @@ def cmd_hashes(args):
     return 1 if problems else 0
 
 
-def unapproved_allowlist_additions(base_doc, head_doc, base_ledger, head_ledger):
-    """Ids added to the no-fast-math allowlist without a LEDGER.md section
-    that is new in this change, has "owner approval" in its heading and
-    names the id. Removals need no approval (the case returns to the
-    official reference)."""
+def unapproved_allowlist_additions(base_doc, head_doc, new_entries):
+    """Ids added to the no-fast-math allowlist without a ledger entry file
+    that is new in this change (`new_entries`: their texts), has "owner
+    approval" in a heading and names the id in that section. Removals need
+    no approval (the case returns to the official reference)."""
     before = set(allowlist_from(base_doc))
     added = [case_id for case_id in allowlist_from(head_doc) if case_id not in before]
-    old_titles = {title for title, _ in ledger_sections(base_ledger)}
-    approvals = [body for title, body in ledger_sections(head_ledger)
-                 if title not in old_titles and "owner approval" in title.lower()]
+    approvals = [body for text in new_entries for title, body in ledger_sections(text)
+                 if "owner approval" in title.lower()]
     return [case_id for case_id in added if not any(names_case(body, case_id) for body in approvals)]
 
 
@@ -1095,11 +1098,17 @@ def cmd_allowlist_approval(args):
         return 2
     with open(DECISION_DOC) as handle:
         head_doc = handle.read()
-    missing = unapproved_allowlist_additions(git_show(args.base, DECISION_DOC), head_doc,
-                                             git_show(args.base, LEDGER), read_ledger())
+    code, listing = run(["git", "-C", REPO, "ls-tree", "--name-only", args.base, ledger.ENTRIES + "/"])
+    existing = {os.path.basename(line) for line in listing.splitlines()} if code == 0 else set()
+    new_entries = []
+    for name in ledger.entry_files(REPO):
+        if name not in existing:
+            with open(os.path.join(REPO, ledger.ENTRIES, name)) as handle:
+                new_entries.append(handle.read())
+    missing = unapproved_allowlist_additions(git_show(args.base, DECISION_DOC), head_doc, new_entries)
     for case_id in missing:
-        print("%s was added to the no-fast-math allowlist without a new LEDGER.md section whose heading "
-              "contains \"owner approval\" and which names the case" % case_id)
+        print("%s was added to the no-fast-math allowlist without a new file under migration/ledger/ "
+              "whose heading contains \"owner approval\" and which names the case" % case_id)
     print("%d allowlist additions without a recorded owner approval" % len(missing))
     return 1 if missing else 0
 
@@ -1152,7 +1161,7 @@ def main():
 
     approval = sub.add_parser("allowlist-approval",
                               help="fail if no-fast-math allowlist additions since --base lack an owner approval "
-                                   "entry in LEDGER.md")
+                                   "entry file in migration/ledger/")
     approval.add_argument("--base", default="", help="git revision to compare against (e.g. origin/main)")
 
     args = parser.parse_args()

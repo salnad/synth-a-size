@@ -139,8 +139,8 @@ folding at the clamp, and frequency-interpolated audio fades.
 To add a case, add one line to this list. The lines must have the form
 ``- `<case id>` `` followed by optional text. CI (`run_corpus.py
 allowlist-approval`) fails the change unless the same change adds a
-LEDGER.md section whose heading contains "owner approval" and which names
-each added id. Removing an id needs no approval: the case returns to the
+new file under `migration/ledger/` whose heading contains "owner approval"
+and which names each added id. Removing an id needs no approval: the case returns to the
 official reference.
 
 - `wavetable/render/wave_linear_freq_disjoint_spectra`: frequency-mode linear interpolation between disjoint spectra
