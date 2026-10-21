@@ -2363,3 +2363,64 @@ arm64 CI) merges.
 
 **Next:** the remaining spectral morphs (PR B), then the sample source
 and sample module, then the oscillator and producers modules.
+
+---
+
+## 2026-10-21: macOS columns for paired sin/cos (A11) and complex division without fast-math (A10)
+
+Reported by ARM Reference while landing #2. The PR is not merged until #2
+lands.
+
+**A11, paired `sinf`/`cosf`:**
+- **The issue:** on the macOS no-fast-math capture,
+  `audio_fade_3_phase_0:phase_coefficients` was off by 1 ulp on 6,190 of
+  526,850 values. Apple clang merges a `sinf`/`cosf` pair of one angle
+  into `__sincosf_stret` even without fast-math (as in the capture's
+  `cosf`/`sinf` in `render.cpp`), while the port called them separately.
+- **Audit of upstream pairs in the ported code:**
+  - five `std::polar` sites: `phase_modifier.cpp:47`,
+    `wave_source.cpp:101, 143`, `file_source.cpp:113` and
+    `wavetable.cpp:174` (`loadNormalizedFrequencies`);
+  - JUCE's FFT twiddles, double `cos`/`sin` (`juce_FFT.cpp:203-204, 213-214`);
+  - every other `sin`/`cos` use is single.
+- **Compile evidence:** clang 18 for `arm64-apple-macos14` at `-O3`,
+  Darwin defaults. The capture pair and libc++'s `polar` body (NaN guards
+  included) each compile to `___sincosf_stret`, and the twiddle loop to
+  `___sincos_stret`. So the polar sites and the twiddles are merged in the
+  macOS reference too, which is consistent with the reference importing
+  both symbols.
+- **Port:**
+  - `sas_common::scalar::sin_cos(angle)` calls `__sincosf_stret` on Apple
+    targets and `sinf`/`cosf` elsewhere; glibc's `sincosf`, which GCC may
+    merge a pair into, gives the same bits.
+  - `Complex::polar` (every polar site) and the render test's
+    `phase_coefficients` use it.
+  - The FFT twiddles call `__sincos_stret` on Apple targets and keep the
+    pure-Rust `libm` crate elsewhere.
+  - Making the pair explicit also keeps the port independent of whether
+    its own LLVM merges two adjacent `.sin()`/`.cos()` calls, which
+    depends on the optimisation level.
+- **Limits:** Linux output is unchanged (all hashes and tests pass). The
+  Apple branches compile and pass clippy for `aarch64-apple-darwin`, but
+  bit-exactness on macOS still needs a macOS run (#2's job). This column
+  follows the target OS's libm, so `aarch64-semantics` on x86 cannot
+  emulate it.
+
+**A10, complex division without fast-math on macOS:**
+- Apple compiler-rt's `__divsc3`, which the macOS no-fast-math build
+  calls, is the logb/scalbn-scaled formula with FMAs:
+  `denom = fma(c, c, d·d)`, `re = fma(a, c, b·d)`, `im = fma(b, c, -(a·d))`.
+  ARM Reference verified it bit for bit on 4.2M random and 6,561 special
+  inputs.
+- `complex::div_compiler_rt` implements it with `mul_add`, which is
+  exactly fused on every target, and is now the aarch64 column. The
+  unfused `div_libcxx` is removed: it matched only the fast-math macOS
+  build, and the owner's rule is source semantics, i.e. the no-fast-math
+  builds; the x86 column is libgcc without fast-math in the same way.
+- Unit tests pin both columns on 11 inputs, including 4 where fusing
+  changes the result. Fused and unfused differ in about 12% of
+  unit-circle `1/z`.
+
+**After #2 lands:** run the port on the macOS job against its pinned and
+no-fast-math trees, and re-enable `audio_fade_3_phase_0` on arm64 if #2
+parked it.

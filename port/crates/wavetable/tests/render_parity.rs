@@ -66,10 +66,10 @@ fn render(case: &ModuleCase) -> Rendered {
                 amplitude * normalized[2 * h],
                 amplitude * normalized[2 * h + 1],
             ]);
-            rendered.phase_coefficients.extend([
-                amplitude * phases[2 * h].cos(),
-                amplitude * phases[2 * h].sin(),
-            ]);
+            let (sin, cos) = sas_common::scalar::sin_cos(phases[2 * h]);
+            rendered
+                .phase_coefficients
+                .extend([amplitude * cos, amplitude * sin]);
             rendered.lanes[0] += f32::from(u8::from(
                 amplitudes[2 * h + 1].to_bits() != amplitudes[2 * h].to_bits(),
             ));

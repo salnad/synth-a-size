@@ -36,6 +36,29 @@ struct FftConfig {
     twiddles: Vec<Complex>,
 }
 
+/// One twiddle, `(float) cos(phase), (float) sin(phase)` in double. On Apple
+/// targets Clang merges the pair into `__sincos_stret` (A11), so that is
+/// called; elsewhere the pure-Rust `libm` crate stands in for glibc, whose
+/// double `sin`/`cos` depend on the CPU's FMA support.
+fn twiddle_at(phase: f64) -> Complex {
+    #[cfg(target_vendor = "apple")]
+    let (sin, cos) = {
+        #[repr(C)]
+        struct SinCos {
+            sin: f64,
+            cos: f64,
+        }
+        extern "C" {
+            fn __sincos_stret(angle: f64) -> SinCos;
+        }
+        let result = unsafe { __sincos_stret(phase) };
+        (result.sin, result.cos)
+    };
+    #[cfg(not(target_vendor = "apple"))]
+    let (sin, cos) = (libm::sin(phase), libm::cos(phase));
+    Complex::new(cos as f32, sin as f32)
+}
+
 impl FftConfig {
     fn new(fft_size: usize, inverse: bool) -> Self {
         let inverse_factor =
@@ -45,12 +68,12 @@ impl FftConfig {
         if fft_size <= 4 {
             for (i, twiddle) in twiddles.iter_mut().enumerate() {
                 let phase = i as f64 * inverse_factor;
-                *twiddle = Complex::new(libm::cos(phase) as f32, libm::sin(phase) as f32);
+                *twiddle = twiddle_at(phase);
             }
         } else {
             for (i, twiddle) in twiddles.iter_mut().enumerate().take(fft_size / 4) {
                 let phase = i as f64 * inverse_factor;
-                *twiddle = Complex::new(libm::cos(phase) as f32, libm::sin(phase) as f32);
+                *twiddle = twiddle_at(phase);
             }
             for i in fft_size / 4..fft_size / 2 {
                 let other = twiddles[i - fft_size / 4];
