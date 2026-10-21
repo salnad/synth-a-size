@@ -1,27 +1,28 @@
-name: Reference ARM
+name: Reference ARM (PR, advisory)
 
-# Apple Silicon reference coverage (migration/decisions/reference-arm.md).
-# The shipping target is an arm64 macOS VST3, so macOS 15 on Apple Silicon is
-# the primary ARM reference. The workflow builds it with the pinned flags,
-# checks the binaries and repeatability, renders build variants that isolate
-# each Apple/ARM-specific source of difference, runs the same binary on
-# macOS 14 to isolate OS / Apple libm drift, and compares everything against
-# an x86 reference built in the same run. aarch64 Linux is an optional
-# diagnostic proxy (manual dispatch only).
+# Mac CI policy (owner approval 2026-10-21; migration/decisions/reference-arm.md,
+# "Mac CI policy"). macOS does not gate merges: they go on Linux CI plus
+# review. This per-PR job is advisory and runs on macOS 15 only:
+# - builds the macOS reference and checks that a repeat render is identical;
+# - runs the arm64 (NEON) parity tests for the port crates the PR touches,
+#   plus their dependents (everything when a shared input changes; see
+#   migration/scripts/mac_pr_scope.py);
+# - checks the macOS hashes. A changed output fails. A missing hash (a new
+#   case or module) is only a warning here; on main it is an error
+#   (reference-arm-main.yml);
+# - writes the missing macOS hash entries, new keys only, as the
+#   `macos-hashes` patch artifact (apply: migration/scripts/macos_hashes.sh);
+# - runs the macOS no-fast-math justification when the PR adds or edits a
+#   `macos` allowlist line.
+# The full suite (build variants, macOS 14 drift, cross-platform report) runs
+# on main: reference-arm-main.yml.
 
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
-    inputs:
-      aarch64_linux:
-        description: Also build the optional aarch64 Linux proxy reference
-        type: boolean
-        default: false
 
 concurrency:
-  group: reference-arm-${{ github.ref }}
+  group: reference-arm-pr-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -31,31 +32,13 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  x86:
-    name: x86_64 Linux reference (baseline for cross-ISA comparison)
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: Build reference
-        run: migration/scripts/build_reference.sh
-      - name: Diagnostics
-        run: migration/scripts/machine_info.sh build/platform/diag
-      - name: Render corpus
-        run: python3 migration/scripts/run_corpus.py render --out build/platform/pinned
-      - name: Render attribution variants
-        run: python3 migration/scripts/arm_attribution.py render --ref-render migration/reference/build/ref-render --out build/platform/attribution
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ref-x86_64-linux
-          path: build/platform/
-          if-no-files-found: error
-          retention-days: 14
-
   macos-15:
-    name: Apple Silicon reference (macOS 15, Apple clang) - primary
+    name: macOS 15 arm64 reference and parity (advisory)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
@@ -63,21 +46,18 @@ jobs:
             migration/tools/audio-diff
       - name: Toolchain info
         run: |
-          uname -m
           sw_vers
           clang++ --version | head -1
-          cmake --version | head -1
           rustup toolchain install || rustup show
           cargo --version
-      - name: Does the compiler honour -ffp-contract=off?
-        run: CXX=clang++ migration/scripts/fp_contract_flags_probe.sh
+      - name: Scope (crates to test, justification)
+        id: scope
+        run: python3 migration/scripts/mac_pr_scope.py "${{ github.event.pull_request.base.sha || 'origin/main' }}" | tee -a "$GITHUB_OUTPUT"
       - name: Build pinned reference
         run: CXX=clang++ migration/scripts/build_reference.sh
       - name: No CPU-dependent floating-point instructions (estimates, FMA, vector math)
         run: migration/scripts/check_fp_determinism.sh
-      - name: Diagnostics
-        run: CXX=clang++ migration/scripts/machine_info.sh build/platform/diag
-      - name: Render corpus and check repeatability
+      - name: Render corpus twice
         run: |
           python3 migration/scripts/run_corpus.py render --out build/platform/pinned
           python3 migration/scripts/run_corpus.py render --out build/platform/pinned-again
@@ -85,53 +65,73 @@ jobs:
         run: cargo build --release --locked --manifest-path migration/tools/audio-diff/Cargo.toml
       - name: Repeat render is bit-identical
         run: python3 migration/scripts/run_corpus.py compare build/platform/pinned build/platform/pinned-again --exact
-      - name: Render attribution variants
-        run: python3 migration/scripts/arm_attribution.py render --ref-render migration/reference/build/ref-render --out build/platform/attribution
-      - name: Variant - JUCE FFT via Accelerate/vDSP (upstream Mac default)
-        run: |
-          REF_BUILD_DIR=build/variant-vdsp CXX=clang++ migration/scripts/build_reference.sh -DREF_USE_VDSP=ON
-          python3 migration/scripts/run_corpus.py render --out build/platform/vdsp \
-            --ref-render build/variant-vdsp/ref-render --ref-module build/variant-vdsp/ref-module
-      - name: Variant - FP contraction allowed (Apple clang default)
-        run: |
-          REF_BUILD_DIR=build/variant-contract CXX=clang++ migration/scripts/build_reference.sh -DREF_FP_CONTRACT=ON
-          python3 migration/scripts/run_corpus.py render --out build/platform/contract \
-            --ref-render build/variant-contract/ref-render --ref-module build/variant-contract/ref-module
-      - name: Variant - no fast-math (faithful-port proxy)
+      - name: Build and render the no-fast-math reference
+        if: steps.scope.outputs.proxy == 'true'
         run: |
           REF_BUILD_DIR=build/variant-proxy CXX=clang++ migration/scripts/build_reference.sh -DREF_FAST_MATH=OFF
           python3 migration/scripts/run_corpus.py render --out build/platform/proxy \
             --ref-render build/variant-proxy/ref-render --ref-module build/variant-proxy/ref-module
-      # A "reference": "nofastmath" case qualifies if the official reference
-      # fails its normal limits on x86 or on macOS (SAS-35). Its allowlist
-      # line declares where; this step gates the cases declared "macos" and
-      # ci.yml gates those declared "x86". Every such case resolves to the
-      # macOS no-fast-math tree, and the arm64 parity tests compare the port
-      # with it exactly. Cases in parked_arm64.json are skipped (and listed) in
-      # this compare and the hash checks below, and only here: x86 keeps them
-      # live and hashed.
-      - name: Tolerances are achievable on macOS arm64 (proxy must pass; macOS no-fast-math justification)
+      # Evidence for a `macos` allowlist declaration (SAS-35): the official
+      # macOS reference must fail its normal limits against no-fast-math.
+      - name: macOS no-fast-math justification (the PR adds or edits a macos allowlist line)
+        if: steps.scope.outputs.justify == 'true'
         run: >
           python3 migration/scripts/run_corpus.py compare build/platform/pinned build/platform/proxy
           --justify-nofastmath --parked migration/corpus/parked_arm64.json
-      - name: Rust parity tests on arm64 against the macOS arm64 captures (NEON path)
-        if: ${{ !cancelled() }}
+      - name: arm64 parity tests (${{ steps.scope.outputs.cargo_args || 'none' }})
+        if: ${{ !cancelled() && steps.scope.outputs.cargo_args != '' }}
         env:
           SAS_PARITY_CAPTURES: build/platform/pinned
           SAS_PARITY_CAPTURES_NOFASTMATH: build/platform/proxy
           SAS_PARITY_NO_BUILD: "1"
-          # Tests run from their crate directory: absolute paths.
+          SAS_PARITY_MISSING_HASHES: warn
           SAS_PARITY_FAILURES: ${{ github.workspace }}/build/parity-failures
-          # Cases parked on the macOS reference only (x86 keeps them active).
           SAS_PARITY_PARKED: ${{ github.workspace }}/migration/corpus/parked_arm64.json
-        run: cargo test --workspace --locked --no-fail-fast --manifest-path port/Cargo.toml
-      - name: Hashes match the committed macOS arm64 identity
+        run: cargo test --locked --no-fail-fast ${{ steps.scope.outputs.cargo_args }} --manifest-path port/Cargo.toml
+      - name: macOS hashes (a changed output fails; a missing hash is a warning)
         if: ${{ !cancelled() }}
         run: |
           python3 migration/scripts/run_corpus.py hashes build/platform/pinned --check --require-known-identity \
+            --missing-ok --parked migration/corpus/parked_arm64.json
+          if [ -d build/platform/proxy ]; then
+            python3 migration/scripts/run_corpus.py hashes build/platform/proxy --check --require-known-identity \
+              --missing-ok --reference nofastmath --parked migration/corpus/parked_arm64.json
+          fi
+      - name: Write the missing macOS hash entries (new keys only)
+        id: write
+        if: ${{ !cancelled() }}
+        run: |
+          python3 migration/scripts/run_corpus.py hashes build/platform/pinned --write --only-new \
             --parked migration/corpus/parked_arm64.json
-          python3 migration/scripts/run_corpus.py hashes build/platform/proxy --check --require-known-identity \
-            --reference nofastmath --parked migration/corpus/parked_arm64.json
+          if [ -d build/platform/proxy ]; then
+            python3 migration/scripts/run_corpus.py hashes build/platform/proxy --write --only-new \
+              --reference nofastmath --parked migration/corpus/parked_arm64.json
+          fi
+          mkdir -p build/macos-hashes
+          git diff -- migration/corpus > build/macos-hashes/macos-hashes.patch
+          if [ -s build/macos-hashes/macos-hashes.patch ]; then
+            echo "written=true" >> "$GITHUB_OUTPUT"
+            files=$(git diff --name-only -- migration/corpus | tr '\n' ' ')
+            echo "::warning::New cases have no macOS hashes yet: ${files}. Apply them with migration/scripts/macos_hashes.sh ${{ github.run_id }}"
+            {
+              echo "### macOS hash entries for new cases"
+              echo
+              echo "Commit them in this PR (new keys only; existing hashes are never changed):"
+              echo
+              echo '```bash'
+              echo "migration/scripts/macos_hashes.sh ${{ github.run_id }}"
+              echo '```'
+              echo
+              git diff --stat -- migration/corpus
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload the macOS hash patch
+        if: ${{ !cancelled() && steps.write.outputs.written == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-hashes
+          path: build/macos-hashes/
+          retention-days: 14
       - name: Upload parity failures
         if: failure()
         uses: actions/upload-artifact@v7
@@ -141,144 +141,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ !cancelled() }}
         with:
           name: ref-arm64-macos-15
           path: |
-            build/platform/
+            build/platform/pinned/
+            build/platform/proxy/
             migration/reference/build/ref-render
             migration/reference/build/ref-module
-            migration/reference/build/ref-fp-probe
-            migration/reference/build/ref-rng-probe
-            migration/reference/build/ref-complex-probe
           if-no-files-found: error
-          retention-days: 14
-
-  macos-14:
-    name: macOS 14 (same binary as macOS 15; Apple clang 15 diagnostics)
-    needs: macos-15
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v7
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: migration/tools/audio-diff
-      - name: Toolchain info
-        run: |
-          sw_vers
-          clang++ --version | head -1
-          rustup toolchain install || rustup show
-      - uses: actions/download-artifact@v8
-        with:
-          name: ref-arm64-macos-15
-          path: build/from-macos-15
-      - name: Diagnostics for the macOS 15 binary running on macOS 14
-        run: |
-          chmod +x build/from-macos-15/migration/reference/build/ref-*
-          REF_BUILD_DIR=build/from-macos-15/migration/reference/build CXX=clang++ \
-            migration/scripts/machine_info.sh build/platform/diag
-      - name: Render corpus with the macOS 15 binary
-        run: |
-          bin=build/from-macos-15/migration/reference/build
-          python3 migration/scripts/run_corpus.py render --out build/platform/same-binary \
-            --ref-render $bin/ref-render --ref-module $bin/ref-module
-      - name: Build audio-diff
-        run: cargo build --release --locked --manifest-path migration/tools/audio-diff/Cargo.toml
-      # Exact, except the committed list of known Apple libm drift cases
-      # (migration/corpus/macos_libm_drift.json), which are reported with
-      # their metrics. Any other difference fails.
-      - name: Same binary on macOS 14 vs macOS 15 is bit-identical (OS / Apple libm drift)
-        run: |
-          python3 migration/scripts/compare_known_drift.py \
-            build/from-macos-15/build/platform/pinned build/platform/same-binary \
-            migration/corpus/macos_libm_drift.json
-      - name: Does Apple clang 15 honour -ffp-contract=off?
-        run: CXX=clang++ migration/scripts/fp_contract_flags_probe.sh
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: ref-arm64-macos-14
-          path: build/platform/
-          if-no-files-found: error
-          retention-days: 14
-
-  arm-linux:
-    name: aarch64 Linux proxy reference (GCC, optional)
-    if: github.event_name == 'workflow_dispatch' && inputs.aarch64_linux
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install Rust if missing
-        run: |
-          if ! command -v rustup >/dev/null 2>&1; then
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
-            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          fi
-      - name: Toolchain info
-        run: |
-          g++ --version | head -1
-          rustup toolchain install || rustup show
-      - name: Build pinned reference
-        run: migration/scripts/build_reference.sh
-      - name: No CPU-dependent floating-point instructions
-        run: migration/scripts/check_fp_determinism.sh
-      - name: Diagnostics
-        run: migration/scripts/machine_info.sh build/platform/diag
-      - name: Render corpus
-        run: python3 migration/scripts/run_corpus.py render --out build/platform/pinned
-      - name: Variant - FP contraction allowed (GCC default on aarch64)
-        run: |
-          REF_BUILD_DIR=build/variant-contract migration/scripts/build_reference.sh -DREF_FP_CONTRACT=ON
-          python3 migration/scripts/run_corpus.py render --out build/platform/contract \
-            --ref-render build/variant-contract/ref-render --ref-module build/variant-contract/ref-module
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: ref-aarch64-linux
-          path: build/platform/
-          if-no-files-found: error
-          retention-days: 14
-
-  cross-isa:
-    name: Cross-platform reference comparison (report)
-    needs: [x86, macos-15, macos-14, arm-linux]
-    if: ${{ !cancelled() && needs.x86.result == 'success' && needs.macos-15.result == 'success' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: migration/tools/audio-diff
-      - name: Install pinned toolchain (rust-toolchain.toml)
-        run: |
-          rustup toolchain install || rustup show
-          cargo --version
-      - name: Build audio-diff
-        run: cargo build --release --locked --manifest-path migration/tools/audio-diff/Cargo.toml
-      - uses: actions/download-artifact@v8
-        with:
-          path: build/artifacts
-      - name: Compare
-        run: |
-          a=build/artifacts
-          m=$a/ref-arm64-macos-15/build/platform
-          python3 migration/scripts/cross_platform_report.py --out build/cross \
-            --pair "macOS 15 arm64 vs x86_64 Linux=$a/ref-x86_64-linux/pinned:$m/pinned" \
-            --pair "macOS 14 (same binary) vs macOS 15=$m/pinned:$a/ref-arm64-macos-14/same-binary" \
-            --pair "macOS contraction on vs off=$m/pinned:$m/contract" \
-            --pair "macOS vDSP FFT vs fallback FFT=$m/pinned:$m/vdsp" \
-            --pair "macOS no-fast-math proxy=$m/pinned:$m/proxy" \
-            --pair "aarch64 Linux vs macOS 15=$m/pinned:$a/ref-aarch64-linux/pinned" \
-            --pair "aarch64 Linux vs x86_64 Linux=$a/ref-x86_64-linux/pinned:$a/ref-aarch64-linux/pinned" \
-            --probe-pair "x86_64 Linux vs macOS 15 arm64=$a/ref-x86_64-linux/diag:$m/diag" \
-            --probe-pair "macOS 15 vs macOS 14 (same binaries)=$m/diag:$a/ref-arm64-macos-14/diag"
-          python3 migration/scripts/arm_attribution.py compare $a/ref-x86_64-linux/attribution $m/attribution \
-            --audio-diff migration/tools/audio-diff/target/release/audio-diff --markdown build/cross/attribution.md
-          cat build/cross/report.md >> "$GITHUB_STEP_SUMMARY"
-          { echo; echo "### Attribution: macOS 15 arm64 vs x86_64 Linux"; cat build/cross/attribution.md; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: cross-platform-report
-          path: build/cross/
-          retention-days: 14
+          retention-days: 7

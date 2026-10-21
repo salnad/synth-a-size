@@ -636,6 +636,66 @@ class ScratchRepo(unittest.TestCase):
         code, output = self.run_main("hashes", tree, "--check", "--require-known-identity")
         self.assertEqual(code, 0, output)
 
+    def edit_module_hashes(self, edit):
+        path = os.path.join(rc.MODULE_CASES, "filters", "test.hashes.json")
+        with open(path) as handle:
+            data = json.load(handle)
+        edit(data["entries"][0]["hashes"])
+        rc.write_json(path, data)
+        return path
+
+    # Mac CI policy: on pull requests a new case's missing macOS hash is a
+    # warning, but a changed output is still an error.
+    def test_missing_ok_warns_on_missing_hash_and_still_fails_on_mismatch(self):
+        tree = self.make_tree()
+        self.write_baseline(tree)
+        self.edit_module_hashes(lambda h: h.pop("a:artifact/saved.json"))
+        code, output = self.run_main("hashes", tree, "--check", "--require-known-identity")
+        self.assertEqual(code, 1, output)
+        self.assertIn("no stored hash for a:artifact/saved.json", output)
+        code, output = self.run_main("hashes", tree, "--check", "--require-known-identity", "--missing-ok")
+        self.assertEqual(code, 0, output)
+        self.assertIn("warning: ", output)
+        self.edit_module_hashes(lambda h: h.update({"a:audio": "0" * 16}))
+        code, output = self.run_main("hashes", tree, "--check", "--require-known-identity", "--missing-ok")
+        self.assertEqual(code, 1, output)
+        self.assertIn("MISMATCH", output)
+
+    def test_missing_ok_covers_a_hash_file_without_the_identity(self):
+        tree = self.make_tree()
+        self.write_baseline(tree)
+        rc.write_json(os.path.join(rc.MODULE_CASES, "filters", "test.hashes.json"), {"entries": []})
+        code, output = self.run_main("hashes", tree, "--check", "--missing-ok")
+        self.assertEqual(code, 0, output)
+        self.assertIn("warning: ", output)
+        self.assertIn("has no hashes for the CI build identity", output)
+
+    # Auto-written hashes must not mask drift: --only-new adds missing keys
+    # and never re-pins an existing one.
+    def test_only_new_adds_missing_hashes_without_overwriting(self):
+        tree = self.make_tree()
+        self.write_baseline(tree)
+        stale = "0" * 16
+        path = self.edit_module_hashes(lambda h: (h.pop("a:artifact/saved.json"), h.update({"a:audio": stale})))
+        code, output = self.run_main("hashes", tree, "--write", "--only-new")
+        self.assertEqual(code, 0, output)
+        self.assertIn("1 new: a:artifact/saved.json", output)
+        with open(path) as handle:
+            hashes = json.load(handle)["entries"][0]["hashes"]
+        self.assertIn("a:artifact/saved.json", hashes)
+        self.assertEqual(hashes["a:audio"], stale)
+        code, output = self.run_main("hashes", tree, "--check", "--missing-ok")
+        self.assertEqual(code, 1, output)
+        self.assertIn("MISMATCH", output)
+
+    def test_missing_ok_and_only_new_need_their_mode(self):
+        tree = self.make_tree()
+        self.write_baseline(tree)
+        code, output = self.run_main("hashes", tree, "--write", "--missing-ok")
+        self.assertEqual(code, 2, output)
+        code, output = self.run_main("hashes", tree, "--check", "--only-new")
+        self.assertEqual(code, 2, output)
+
     # B4: a module hash file without the CI identity was skipped with exit 0.
     def test_module_hash_file_missing_ci_identity_fails(self):
         tree = self.make_tree()

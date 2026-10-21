@@ -230,14 +230,55 @@ achievable on arm64.
    corpus).
 5. **Where parity is checked:**
    - On macOS arm64, `sas-parity` runs against captures rendered by the
-     macOS reference in the same CI job (`reference-arm.yml`), with
-     `SAS_PARITY_CAPTURES=build/platform/pinned SAS_PARITY_NO_BUILD=1 cargo test --workspace`.
-     This is the gate for the shipped plugin. The macOS arm64 build identity
-     (Apple clang 17.0.0, macOS 15.7.9, pinned flags) has its own entries in
-     `corpus/reference_hashes.json` and the per-module `.hashes.json` files.
-     The job checks them with `hashes --check --require-known-identity`.
+     macOS reference in the same CI job, with
+     `SAS_PARITY_CAPTURES=build/platform/pinned SAS_PARITY_NO_BUILD=1 cargo test`.
+     The macOS arm64 build identity (Apple clang 17.0.0, macOS 15.7.9,
+     pinned flags) has its own entries in `corpus/reference_hashes.json` and
+     the per-module `.hashes.json` files. Since the Mac CI policy (below),
+     this runs on every PR but is advisory, and the full suite runs on main.
    - On x86_64 Linux, `sas-parity` runs against x86 captures (`ci.yml`) with
-     x86 semantics, for development speed and the existing tests.
+     x86 semantics. With review, this is the merge gate.
+
+## Mac CI policy (owner approval 2026-10-21)
+
+Recorded in `migration/ledger/2026-10-21-mac-ci-policy.md`. Over about 21
+hours, 31 of 33 macOS-only CI failures were missing hashes for new cases.
+Only 2 were real, both on bring-up branches, and the cost was mostly
+waiting for hosted macOS runners. There is no self-hosted Apple Silicon.
+
+- **macOS does not gate merges.** Merges go on Linux CI (`ci.yml`, including
+  the per-module audio parity gate) plus review.
+- **Per PR (`reference-arm.yml`, macOS 15 only, advisory, never required):**
+  - builds the reference, runs the FP guard, and checks that a repeat render
+    is identical;
+  - runs the arm64 parity tests for the port crates the PR touches plus
+    their workspace dependents. When a shared input changes (corpus,
+    reference harness, `sas-parity`, `sas-common`, `sas-simd`, manifests,
+    toolchain, this tooling), it runs the whole workspace
+    (`scripts/mac_pr_scope.py`);
+  - checks the macOS hashes, pinned and no-fast-math. A changed output
+    fails. A missing hash (new case or module) or a stale one is a warning
+    (`hashes --missing-ok`, `SAS_PARITY_MISSING_HASHES=warn`);
+  - writes the missing entries, new keys only, never overwriting or pruning
+    (`hashes --write --only-new`), as the `macos-hashes` patch artifact. The
+    PR commits it with `scripts/macos_hashes.sh <run-id>`. Nothing is
+    pushed automatically;
+  - runs the macOS no-fast-math justification (`compare --justify-nofastmath
+    --parked`) when the PR adds or edits a `macos` allowlist line, because
+    that run is the evidence for the declaration.
+- **Main (`reference-arm-main.yml`, the full suite):**
+  - runs nightly, on manual dispatch, and on a push to main once 6 merges
+    have landed since the last full run (`scripts/mac_full_suite_gate.py`);
+  - jobs: the macOS 15 suite (guard, repeat render, attribution, the vDSP,
+    contraction and no-fast-math variants, the macOS justification gate with
+    `--parked`, arm64 parity on the whole workspace), the macOS 14
+    same-binary drift check, the x86 baseline and the cross-platform report;
+  - is strict: `hashes --check --require-known-identity` (pinned and
+    no-fast-math) fails on a missing or changed macOS hash;
+  - on a failure, opens or updates the issue "Mac full suite failing on main"
+    with the failing steps (`scripts/mac_full_suite_report.py`). When new
+    cases only lack hashes, the issue gives the `macos_hashes.sh` command
+    for the run's patch. The issue closes when main is green again.
 
 ## Residual risks
 
