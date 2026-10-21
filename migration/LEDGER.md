@@ -1834,7 +1834,7 @@ edit.
 - Faithful upstream quirks kept: `Voice::clearSlideEvent` clears the
   aftertouch sample; `noteOff`'s stealing path applies the channel's bend,
   pressure and slide to the released voice rather than the new one.
-- `aarch64-semantics` forwards to `sas-simd` and `sas-dsp-core` (#40).
+- `aarch64-semantics` forwards to `sas-simd`, `sas-dsp-core` (#40) and `sas-filters`.
 
 **Reference capture**
 
