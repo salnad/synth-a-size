@@ -1871,7 +1871,7 @@ Core Filters (M5a), stacked on PR 3.
     24 dB and notch/pass swap, the well-conditioned interim band Filter
     Reviewer measured (1.8e-5 / −100.6 dB, 2.5e-5 / −92.2 dB, 1.6e-5 /
     −97.5 dB). 34 cases in all.
-- Parity, x86_64: 31/31 pass. Worst max_abs_error 3.8e-5
+- Parity, x86_64: 34/34 pass. Worst max_abs_error 3.8e-5
   (`dual_notch_band_cutoff_sweep_0_to_100`), worst residual −98.1 dB
   (`k24_96k_block_128`).
 
