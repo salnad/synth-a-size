@@ -16,8 +16,7 @@
   `module_content.h`): wavetables, sample and control values from the case
   params, applied after `init()` as a preset load does. Parity test:
   `port/crates/oscillators/tests/module_parity.rs`. Control details come
-  from `sas-preset`'s registry (dev-dependency; PR #7 is temporarily
-  merged into this branch until it lands).
+  from `sas-preset`'s registry (dev-dependency, from #7).
 - `migration/corpus/modules/oscillators/{oscillator_module,producers_module}.json`:
   12 + 16 cases under `module_defaults` (two interim, below). They include a modulation cycle
   (each oscillator modulated by the next), where upstream processes none
