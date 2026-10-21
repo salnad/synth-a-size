@@ -511,6 +511,9 @@ name = "sas-filters"
 version = "0.0.1"
 dependencies = [
  "sas-dsp-core",
+ "sas-parity",
+ "sas-simd",
+ "serde_json",
 ]
 
 [[package]]
