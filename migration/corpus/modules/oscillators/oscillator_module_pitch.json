@@ -1,5 +1,5 @@
 {
-  "description": "OscillatorModule pitch (vital/src/synthesis/modules/oscillator_module.cpp driving SynthOscillator::setPhaseIncBufferSnap): the osc_1 transpose, tune, transpose-quantize and MIDI-track controls, scaled through the registry details and the audio-rate modulation sums, captured as the oscillator's per-sample phase increment / 2^32 (frequency / sample rate). Includes the inputs of the parked oscillator_module audio cases (pending/oscillator_module.json); unison detune is a separate per-voice multiplier and is not part of this capture. Ported in port/crates/oscillators.",
+  "description": "OscillatorModule pitch (vital/src/synthesis/modules/oscillator_module.cpp driving SynthOscillator::setPhaseIncBufferSnap): the osc_1 transpose, tune, transpose-quantize and MIDI-track controls, scaled through the registry details and the audio-rate modulation sums, captured as the oscillator's per-sample phase increment / 2^32 (frequency / sample rate). Includes the inputs of the oscillator_module audio cases compared against the no-fast-math reference; unison detune is a separate per-voice multiplier and is not part of this capture. Ported in port/crates/oscillators.",
   "module": "oscillator_module_pitch",
   "seed": 0,
   "cases": {

@@ -1,0 +1,109 @@
+## 2026-10-21: M4b SAS-35 re-enable and `sample_source_pitch` (sas-oscillators)
+
+**Agent:** Oscillators. **Branch:** `cursor/m4b-sas35-reenable-7d24`.
+
+### Re-enabled under SAS-35
+
+The 22 oscillator cases parked by the M4b PRs (#28, #42, #47), including
+the 5 constant-pitch probes, and the 3 macOS-only
+`distortion_{1,2,3}_spread` cases parked by #2, are back in their module
+files unchanged, with `"reference": "nofastmath"`. They are listed in
+`migration/decisions/nofastmath/oscillators/{synth_oscillator,sample_source,oscillator_module}.md`.
+Every `pending/` file under `modules/oscillators` is deleted. None of these
+cases renders a wavetable with a Phase Shift component (A11).
+
+Targets come from `compare --justify-nofastmath` on x86 (every case
+declared `x86` prints `justified on x86`) and from the `Reference ARM`
+macOS 15 job for `macos` (Reference ARM run 39661942644 on d51ac50: 15
+cases print `justified on macos`; the 10 that print `NOT justified on macos`
+are declared `x86` only and stay re-enabled). The table gives official against no-fast-math,
+worst output (max_abs_error / residual):
+
+| Case | Targets | x86 | macOS |
+|---|---|---|---|
+| `oscillators/synth_oscillator/probe_transpose_tune_constant` | x86, macos | 4.8e-03 / -66.5 dB | 6.5e-03 / -64.0 dB |
+| `oscillators/synth_oscillator/probe_transpose_constant_negative` | x86, macos | 1.6e-03 / -81.5 dB | 1.6e-03 / -81.5 dB |
+| `oscillators/synth_oscillator/probe_quantize_local_transpose` | x86, macos | 5.4e-03 / -66.0 dB | 5.4e-03 / -66.0 dB |
+| `oscillators/synth_oscillator/probe_quantize_global_transpose` | x86, macos | 3.4e-03 / -73.6 dB | 4.6e-03 / -71.1 dB |
+| `oscillators/synth_oscillator/probe_quantize_global_high_note` | x86 | 3.5e-03 / -58.4 dB | 1.8e-07 / -145.1 dB (passes) |
+| `oscillators/synth_oscillator/note_ramp` | x86, macos | 1.1e-03 / -72.4 dB | 1.1e-03 / -72.4 dB |
+| `oscillators/synth_oscillator/transpose_quantize_local` | x86, macos | 7.3e-04 / -80.9 dB | 6.8e-04 / -81.3 dB |
+| `oscillators/synth_oscillator/transpose_quantize_global` | x86, macos | 2.5e-04 / -93.2 dB | 3.9e-04 / -86.4 dB |
+| `oscillators/synth_oscillator/transpose_tune_audio` | x86, macos | 5.8e-04 / -82.5 dB | 5.3e-04 / -82.4 dB |
+| `oscillators/synth_oscillator/distortion_1_spread` | macos | passes (not gated) | 2.2e-03 / -86.2 dB |
+| `oscillators/synth_oscillator/distortion_2_spread` | macos | passes (not gated) | 1.5e-03 / -86.2 dB |
+| `oscillators/synth_oscillator/distortion_3_spread` | macos | passes (not gated) | 8.8e-04 / -90.5 dB |
+| `oscillators/sample_source/noise_transpose_m13` | x86 | 2.5e-04 / -82.7 dB | 3.6e-07 / -139.7 dB (passes) |
+| `oscillators/sample_source/noise_transpose_7` | x86 | 8.8e-04 / -73.1 dB | 2.4e-07 / -144.7 dB (passes) |
+| `oscillators/sample_source/noise_transpose_19` | x86 | 5.6e-04 / -74.4 dB | 3.6e-07 / -135.7 dB (passes) |
+| `oscillators/sample_source/noise_transpose_40` | x86, macos | 7.9e-04 / -61.9 dB | 8.3e-04 / -62.0 dB |
+| `oscillators/sample_source/noise_keytrack_off` | x86 | 5.3e-04 / -76.1 dB | 1.2e-07 / -144.6 dB (passes) |
+| `oscillators/sample_source/saw_random_phase` | x86 | 1.6e-04 / -98.5 dB | 2.4e-07 / -144.8 dB (passes) |
+| `oscillators/sample_source/stereo` | x86 | 1.2e-04 / -102.6 dB | 3.6e-07 / -142.2 dB (passes) |
+| `oscillators/sample_source/long_96k_at_48k` | x86 | 1.1e-03 / -92.3 dB | 2.4e-07 / -144.7 dB (passes) |
+| `oscillators/sample_source/saw_at_96k` | x86 | 1.4e-04 / -99.7 dB | 2.4e-07 / -140.3 dB (passes) |
+| `oscillators/sample_source/block_size_17` | x86 | 1.3e-04 / -99.8 dB | 2.4e-07 / -144.1 dB (passes) |
+| `oscillators/oscillator_module/transpose_tune` | x86, macos | 2.3e-03 / -72.5 dB | 2.4e-03 / -72.5 dB |
+| `oscillators/oscillator_module/transpose_tune_unsnapped` | x86, macos | 2.3e-03 / -72.5 dB | 2.4e-03 / -72.5 dB |
+| `oscillators/oscillator_module/detune_power_range` | x86, macos | 1.0e-03 / -81.5 dB | 1.1e-03 / -81.3 dB |
+
+**Port:** bit-exact against the no-fast-math build on all 25 cases on x86
+(every output 0.000e0). On macOS arm64 the parity tests compare every case
+exactly against the macOS no-fast-math captures (see the PR's Reference ARM
+run).
+
+**Hashes:** official and no-fast-math entries for both targets in
+`synth_oscillator`, `sample_source` and `oscillator_module`; the macOS
+entries come from run 39661942644 through `migration/scripts/macos_hashes.sh`
+(new keys only).
+
+### `sample_source_pitch`
+
+Addresses Graph Reviewer's non-blocking note on #42: no active
+`sample_source` case used a sample-rate ratio that is not a power of two.
+The module stays on the official reference.
+
+**Module:** `ref-module` module `sample_source_pitch` (same file as
+`sample_source`, private `SampleSource::phase_inc_` read through an
+explicit-instantiation member pointer like `synth_oscillator_pitch`)
+captures the block's playback increment divided by `upsampleLength()`:
+the increment in sample lengths per output sample, normalized like the
+phase output. `activeLength()` can't be used after `process()`, because
+`process()` ends with `markUnused()`, which nulls the active data.
+`SampleSource::phase_inc()` exposes the Rust value.
+
+**Cases:** `migration/corpus/modules/oscillators/sample_source_pitch.json`
+(18): the inputs of the ten re-enabled `sample_source` cases, plus 22.05 kHz
+at 48 kHz, 44.1 kHz at 48 kHz, 96 kHz at 44.1 kHz, 48 kHz at 96 kHz
+(oversample 2), 11.025 kHz keytracked, global transpose snapping and
+transpose/tune at ±96/±1. Measured: worst `noise_transpose_40` 4.4e-11 /
+−134.4 dB, most cases exact. Values are 3e-5 to 0.09, so the −80 dB
+residual gate, not the absolute one, is the effective check.
+Official hashes for both targets in `sample_source_pitch.hashes.json`.
+
+### Correction: the #47 merge commit message
+
+The merge commit 97f5cdf ("Merge pull request #47") carries the message
+of an earlier attempt that was not pushed. Main moved to 400bca5 (#56)
+between my checks and the merge, a scripted "main unchanged" test failed
+without stopping the step, and the old message file was used. The
+message's head (eb08e4a), base (9a0d167), main (6b4fc55) and hash count
+(1830) are wrong. The facts:
+
+- Merged head 86417ad: 979fe81 restacked onto main 77b4089, dropping the
+  temporary #7 merge, plus the ledger-only commit and #47's macOS hashes
+  (run 39644807392). The restack was needed because #59 also changed
+  `port/Cargo.lock`; #47's only lock change is the `sas-preset` line.
+  `git range-diff a4250e4..979fe81 77b4089..166d11c -- .
+  ':!migration/LEDGER.md' ':!migration/ledger'` shows all three patches
+  identical (=).
+- Linux CI green on 86417ad (run 39659395111). Mac CI non-gating by owner
+  policy.
+- Merged into main 400bca5 with --no-ff: (a) conflict-free; (b)
+  `git diff --name-only 77b4089..400bca5` shares no file with the PR's
+  files; (c) checked on 97f5cdf itself after the push: sas-oscillators
+  cargo tests pass, `hashes --check --require-known-identity` on x86
+  checks 1899 hashes with 0 problems, `ledger.py --check` and
+  `--check-frozen` pass.
+
+Merges now write the message and check main in one fail-fast step.

@@ -1,0 +1,66 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "block_size_17:phase_inc": "0db79ba983310683",
+        "long_96k_at_48k:phase_inc": "abd8eed6eede5383",
+        "noise_keytrack_off:phase_inc": "fd059c5063926183",
+        "noise_transpose_19:phase_inc": "cb6201c7ff33f783",
+        "noise_transpose_40:phase_inc": "5a4aa7f062131903",
+        "noise_transpose_7:phase_inc": "b8e6ffb0eda3f783",
+        "noise_transpose_m13:phase_inc": "e7ae3a372c228783",
+        "ratio_11025_keytrack:phase_inc": "db30daab99dc9803",
+        "ratio_22050_at_48000:phase_inc": "c67377eff6840f83",
+        "ratio_44100_at_48000:phase_inc": "50369b95a91c2003",
+        "ratio_48000_at_96000_oversample_2:phase_inc": "e897750ccf8a0983",
+        "ratio_96000_at_44100:phase_inc": "4019b057cc744383",
+        "saw_at_96k:phase_inc": "5377340b3f0e6883",
+        "saw_random_phase:phase_inc": "ec4861e85dffc283",
+        "stereo:phase_inc": "b6813bbb7b78de83",
+        "transpose_extremes:phase_inc": "08ad9d7921822383",
+        "transpose_low_extreme:phase_inc": "12f366731ff94383",
+        "transpose_quantize_global:phase_inc": "28a5272629e1c183"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    },
+    {
+      "hashes": {
+        "block_size_17:phase_inc": "0db79ba983310683",
+        "long_96k_at_48k:phase_inc": "abd8eed6eede5383",
+        "noise_keytrack_off:phase_inc": "fd059c5063926183",
+        "noise_transpose_19:phase_inc": "cb6201c7ff33f783",
+        "noise_transpose_40:phase_inc": "5a4aa7f062131903",
+        "noise_transpose_7:phase_inc": "b8e6ffb0eda3f783",
+        "noise_transpose_m13:phase_inc": "e7ae3a372c228783",
+        "ratio_11025_keytrack:phase_inc": "db30daab99dc9803",
+        "ratio_22050_at_48000:phase_inc": "c67377eff6840f83",
+        "ratio_44100_at_48000:phase_inc": "50369b95a91c2003",
+        "ratio_48000_at_96000_oversample_2:phase_inc": "c3bb7f8d9a195983",
+        "ratio_96000_at_44100:phase_inc": "4019b057cc744383",
+        "saw_at_96k:phase_inc": "5377340b3f0e6883",
+        "saw_random_phase:phase_inc": "ec4861e85dffc283",
+        "stereo:phase_inc": "b6813bbb7b78de83",
+        "transpose_extremes:phase_inc": "08ad9d7921822383",
+        "transpose_low_extreme:phase_inc": "12f366731ff94383",
+        "transpose_quantize_global:phase_inc": "28a5272629e1c183"
+      },
+      "identity": {
+        "arch": "aarch64",
+        "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+        "fast_math": true,
+        "glibc": null,
+        "libm_variants": "Apple libm (macOS 15.7.9)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}

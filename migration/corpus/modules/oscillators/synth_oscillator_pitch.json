@@ -1,5 +1,5 @@
 {
-  "description": "SynthOscillator pitch (vital/src/synthesis/producers/synth_oscillator.cpp, setPhaseIncBufferSnap): the per-sample phase increment / 2^32 (frequency / sample rate), the normalized form the oscillator consumes. Covers MIDI sweeps, transpose and tune (constant, swept, audio-rate), local and global transpose snapping, non-integer pitch, single-voice swap, reset offsets, no MIDI tracking, 96 kHz and oversampling. Includes the inputs of every parked synth_oscillator audio case (pending/synth_oscillator.json), whose audio drifts in the official reference. Ported in port/crates/oscillators.",
+  "description": "SynthOscillator pitch (vital/src/synthesis/producers/synth_oscillator.cpp, setPhaseIncBufferSnap): the per-sample phase increment / 2^32 (frequency / sample rate), the normalized form the oscillator consumes. Covers MIDI sweeps, transpose and tune (constant, swept, audio-rate), local and global transpose snapping, non-integer pitch, single-voice swap, reset offsets, no MIDI tracking, 96 kHz and oversampling. Includes the inputs of every synth_oscillator audio case compared against the no-fast-math reference for its pitch, whose audio drifts in the official reference. Ported in port/crates/oscillators.",
   "module": "synth_oscillator_pitch",
   "seed": 0,
   "cases": {
