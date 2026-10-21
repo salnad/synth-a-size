@@ -9,9 +9,7 @@
 //   set_power {index, power}, set_num_points {count}, set_smooth {value},
 //   set_loop {value}
 // Then render(). Arrays buffer (cubic-interpolation buffer), value_at_phase
-// (41 phases) and state ([linear(), getNumPoints()]); text saved.json unless
-// params.saved_json is false (cases whose saved JSON holds -0.0 are pending
-// the owner's byte-exact vs bounded JSON decision, see LEDGER.md).
+// (41 phases) and state ([linear(), getNumPoints()]); text saved.json.
 
 #include "module_registry.h"
 
@@ -83,8 +81,7 @@ REGISTER_REF_MODULE(refmod::ModuleDef{
       values.push_back(generator.valueAtPhase(i / 40.0f));
     sink.array("value_at_phase", values, 1);
     sink.array("state", { generator.linear() ? 1.0f : 0.0f, static_cast<float>(generator.getNumPoints()) }, 1);
-    if (params.value("saved_json", true))
-      sink.text("saved.json", generator.stateToJson().dump());
+    sink.text("saved.json", generator.stateToJson().dump());
     return true;
   },
 });

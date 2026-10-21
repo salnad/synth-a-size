@@ -42,8 +42,6 @@ fn creator_json() {
             .flat_map(|k| k.data.wave_frame.time_domain[..WAVEFORM_SIZE].to_vec())
             .collect();
         assert_parity!(&format!("{id}:keyframe_waves"), waves);
-        if params["saved_json"].as_bool().unwrap_or(false) {
-            assert_artifact!(&id, "saved.json", creator.to_json().dump());
-        }
+        assert_artifact!(&id, "saved.json", creator.to_json().dump());
     }
 }

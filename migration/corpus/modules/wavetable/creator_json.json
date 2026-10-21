@@ -65,12 +65,24 @@
     "preset_init": {
       "params": {
         "preset": "init"
-      }
+      },
+      "artifacts": {
+        "saved.json": "json"
+      },
+      "base64_f32_keys": [
+        "wave_data"
+      ]
     },
     "preset_predefined": {
       "params": {
         "preset": "predefined"
-      }
+      },
+      "artifacts": {
+        "saved.json": "json"
+      },
+      "base64_f32_keys": [
+        "wave_data"
+      ]
     }
   }
 }

@@ -134,8 +134,10 @@
           {
             "op": "flip_horizontal"
           }
-        ],
-        "saved_json": false
+        ]
+      },
+      "artifacts": {
+        "saved.json": "json"
       }
     },
     "square_middle_remove_flip_vertical": {
@@ -173,8 +175,10 @@
           {
             "op": "flip_horizontal"
           }
-        ],
-        "saved_json": false
+        ]
+      },
+      "artifacts": {
+        "saved.json": "json"
       }
     },
     "saw_up_set_point_num_points": {
@@ -266,8 +270,10 @@
             "op": "set_smooth",
             "value": true
           }
-        ],
-        "saved_json": false
+        ]
+      },
+      "artifacts": {
+        "saved.json": "json"
       }
     },
     "triangle_back_to_linear": {

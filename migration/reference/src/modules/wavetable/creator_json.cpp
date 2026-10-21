@@ -10,8 +10,8 @@
 // "Sub", as LoadSave's 0.5.0 upgrade builds it). Their keyframe waveforms are
 // computed (not loaded), and the two reference builds differ in their last
 // bits, so these emit the keyframes' time-domain samples as array
-// keyframe_waves (compared with tolerances); params.saved_json = true also
-// emits their saved.json (used by the pending cases, see LEDGER.md).
+// keyframe_waves (compared with tolerances) and their saved.json (compared
+// as bounded JSON, with wave_data decoded as f32).
 
 #include "module_registry.h"
 
@@ -52,8 +52,7 @@ REGISTER_REF_MODULE(refmod::ModuleDef{
           waves.insert(waves.end(), time_domain, time_domain + vital::WaveFrame::kWaveformSize);
         }
         sink.array("keyframe_waves", waves, 1);
-        if (params.value("saved_json", false))
-          sink.text("saved.json", creator.stateToJson().dump());
+        sink.text("saved.json", creator.stateToJson().dump());
         return true;
       }
       else {
