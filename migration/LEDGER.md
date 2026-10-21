@@ -1066,6 +1066,18 @@ owns both sides.
   interpolation. The upstream-differs pairs stay pinned: `tanh` and
   `power_scale` mono vs poly, and `fmin`/`fmax` vs `poly_float::min`/`max`.
   A new test checks that both crates select the same column.
+- Parity Reviewer's non-blocking notes on #14:
+  1. Mono `clamp` (`fmin(max, fmax(value, min))`) vs poly `clamp`
+     (`max(min(value, max), min)`) is added to the differs list. It is
+     pinned for inverted bounds and NaN, and checked to agree, up to the
+     sign of zero, for ordered bounds.
+  2. The `±0` tie of poly `min`/`max` is pinned on both columns. On SSE2 it
+     returns the second operand; on NEON, +0 for max and −0 for min. The
+     mono side isn't pinned, because neither C's `fmax` nor Rust's
+     `f32::max` specifies the sign of a zero tie.
+  3. Resolved by the per-target `to_int`: `sas-common`'s callers outside
+     processors now follow upstream on arm64 for NaN and out-of-range
+     values too.
 
 **Parity**
 

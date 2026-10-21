@@ -27,14 +27,19 @@
 //! - `power_scale`: the `mono_float` overload returns `value` for
 //!   `|power| < 0.01`, the `poly_float` one for `|power| < 0.005`.
 //! - `min`/`max`: `utils.h` uses `fmin`/`fmax`, and `poly_float::min`/`max`
-//!   use `MINPS`/`MAXPS` or `FMIN`/`FMAX` (A5). They differ on NaN, and on
-//!   SSE2 also on a `±0` tie. `poly_utils::clamp` builds on the poly
-//!   versions.
+//!   use `MINPS`/`MAXPS` or `FMIN`/`FMAX` (A5). They differ on NaN. On a
+//!   `±0` tie SSE2 returns the second operand; neither C's `fmin`/`fmax` nor
+//!   Rust's `f32::min`/`max` specifies the sign there, so only the poly side
+//!   is pinned.
+//! - `clamp`: `utils.h` computes `fmin(max, fmax(value, min))` and
+//!   `poly_utils.h` `max(min(value, max), min)`. They differ for inverted
+//!   bounds (`min > max`) and NaN on both columns, and agree otherwise up to
+//!   the sign of zero.
 //!
 //! `tests/futils_mono_vs_poly.rs` covers the remaining `futils` pairs.
 
 use sas_common::scalar as s;
-use sas_simd::{futils as f, poly_utils as u, PolyFloat as P, PolyInt};
+use sas_simd::{futils as f, poly_utils as u, utils as mu, PolyFloat as P, PolyInt};
 
 const TWO_POW_31: f32 = 2_147_483_648.0;
 
@@ -261,8 +266,50 @@ fn upstream_differs_power_scale_overloads() {
 #[test]
 fn upstream_differs_min_max() {
     let nan = f32::NAN;
-    assert_eq!(sas_simd::utils::min(1.0, nan), 1.0);
-    assert_eq!(sas_simd::utils::max(1.0, nan), 1.0);
+    assert_eq!(mu::min(1.0, nan), 1.0);
+    assert_eq!(mu::max(1.0, nan), 1.0);
     assert!(P::min(P::splat(1.0), P::splat(nan)).get(0).is_nan());
     assert!(P::max(P::splat(1.0), P::splat(nan)).get(0).is_nan());
+
+    let (zero, negative_zero) = (P::splat(0.0), P::splat(-0.0));
+    let max_ties = [
+        P::max(zero, negative_zero).get(0).to_bits(),
+        P::max(negative_zero, zero).get(0).to_bits(),
+    ];
+    let min_ties = [
+        P::min(zero, negative_zero).get(0).to_bits(),
+        P::min(negative_zero, zero).get(0).to_bits(),
+    ];
+    let (zero, negative_zero) = (0.0f32.to_bits(), (-0.0f32).to_bits());
+    if sas_simd::AARCH64_SEMANTICS {
+        assert_eq!(max_ties, [zero, zero]);
+        assert_eq!(min_ties, [negative_zero, negative_zero]);
+    } else {
+        assert_eq!(max_ties, [negative_zero, zero]);
+        assert_eq!(min_ties, [negative_zero, zero]);
+    }
+}
+
+#[test]
+fn upstream_differs_clamp() {
+    assert_eq!(mu::clamp(0.0, 1.0, -1.0), -1.0);
+    assert_eq!(u::clamp(P::splat(0.0), 1.0, -1.0).get(0), 1.0);
+    assert_eq!(mu::clamp(f32::NAN, -1.0, 1.0), -1.0);
+    let poly_nan = u::clamp(P::splat(f32::NAN), -1.0, 1.0).get(0);
+    assert_ne!(poly_nan.to_bits(), (-1.0f32).to_bits());
+
+    for (a, b) in float_pairs() {
+        let (low, high) = if a <= b { (a, b) } else { (b, a) };
+        for value in [a, b, 0.5, -3.0] {
+            if value.is_nan() || low.is_nan() || high.is_nan() {
+                continue;
+            }
+            let mono = mu::clamp(value, low, high);
+            let poly = u::clamp(P::splat(value), low, high).get(0);
+            assert!(
+                mono == poly,
+                "clamp({value}, {low}, {high}): mono {mono} vs poly {poly}"
+            );
+        }
+    }
 }
