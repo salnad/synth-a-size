@@ -508,6 +508,7 @@ dependencies = [
  "sas-modulation",
  "sas-oscillators",
  "sas-parity",
+ "sas-preset",
  "sas-simd",
  "serde_json",
 ]

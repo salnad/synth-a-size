@@ -1,0 +1,66 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "chord_bend_tune:block_state": "38d812648d66d4bb",
+        "chord_bend_tune:status": "8da0fdd61b57f76b",
+        "mono_legato_glide:block_state": "abaf9a47a2f5998b",
+        "mono_legato_glide:status": "853208d8880a0f53",
+        "mono_legato_glide_b128:block_state": "3371a35576df83d3",
+        "mono_legato_glide_b128:status": "b99ebf0c0e6b67db",
+        "mono_legato_release_playing:block_state": "32d80dcaa011b89a",
+        "mono_legato_release_playing:status": "d73f245cae0e7ed3",
+        "mpe_local_bend:block_state": "04998998b485bf23",
+        "mpe_local_bend:status": "0555f6121e7a1183",
+        "poly_release_lift:block_state": "914826950d97358a",
+        "poly_release_lift:status": "5d58b7d087222a53",
+        "portamento_force_lone_notes:block_state": "e1472137f538daa2",
+        "portamento_force_lone_notes:status": "980fbce9949c6193",
+        "portamento_force_scale:block_state": "87389059bd45027b",
+        "portamento_force_scale:status": "ef27f74c81c33353",
+        "portamento_poly:block_state": "918abd4dd78f35f3",
+        "portamento_poly:status": "6882ac29471bfbf3",
+        "portamento_poly_os2:block_state": "918abd4dd78f35f3",
+        "portamento_poly_os2:status": "6882ac29471bfbf3"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    },
+    {
+      "hashes": {
+        "chord_bend_tune:block_state": "38d812648d66d4bb",
+        "chord_bend_tune:status": "8da0fdd61b57f76b",
+        "mono_legato_glide:block_state": "abaf9a47a2f5998b",
+        "mono_legato_glide:status": "853208d8880a0f53",
+        "mono_legato_glide_b128:block_state": "3371a35576df83d3",
+        "mono_legato_glide_b128:status": "b99ebf0c0e6b67db",
+        "mpe_local_bend:block_state": "04998998b485bf23",
+        "mpe_local_bend:status": "0555f6121e7a1183",
+        "poly_release_lift:block_state": "914826950d97358a",
+        "poly_release_lift:status": "5d58b7d087222a53",
+        "portamento_force_scale:block_state": "87389059bd45027b",
+        "portamento_force_scale:status": "ef27f74c81c33353",
+        "portamento_poly:block_state": "6f72a0a0b825072b",
+        "portamento_poly:status": "de744e78375c6363",
+        "portamento_poly_os2:block_state": "6f72a0a0b825072b",
+        "portamento_poly_os2:status": "de744e78375c6363"
+      },
+      "identity": {
+        "arch": "aarch64",
+        "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+        "fast_math": true,
+        "glibc": null,
+        "libm_variants": "Apple libm (macOS 15.7.9)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}

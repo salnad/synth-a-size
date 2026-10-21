@@ -13,6 +13,12 @@
 //! - [`tuning`]: `Tuning` (`common/tuning.*`): Scala `.scl`, keyboard maps
 //!   `.kbm` and AnaMark `.tun`, and the JSON state.
 //!
+//! - [`synth_voice_handler`](mod@synth_voice_handler): `SynthVoiceHandler`
+//!   (`modules/synth_voice_handler.*`), built so far from note articulation,
+//!   macros and expression sources; see its docs for what follows;
+//! - [`parameters`]: the `sas-preset` registry as the graph's
+//!   `Parameters::getDetails`.
+//!
 //! The upstream per-ISA sites (`migration/decisions/reference-arm.md`) are
 //! reached only through `sas-simd`; the `aarch64-semantics` feature forwards
 //! to every direct dependency that has it.
@@ -23,10 +29,13 @@ pub use sas_filters;
 pub use sas_modulation;
 pub use sas_oscillators;
 
+pub mod parameters;
 mod slot_queue;
+pub mod synth_voice_handler;
 pub mod tuning;
 pub mod voice_handler;
 
+pub use synth_voice_handler::SynthVoiceHandler;
 pub use tuning::Tuning;
 pub use voice_handler::{NoteHandler, VoiceHandler};
 
