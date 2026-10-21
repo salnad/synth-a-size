@@ -21,8 +21,8 @@ waiting for hosted macOS runners. There is no self-hosted Apple Silicon.
     no-fast-math tree. That is always the case when the PR adds or edits a
     `macos` allowlist line, so a change that un-justifies a case is caught on
     the PR. The result goes to the step summary for reviewers to cite
-    (Parity Reviewer's review items).
-    (`migration/scripts/justify_nofastmath_summary.sh`).
+    (`migration/scripts/justify_nofastmath_summary.sh`; Parity Reviewer's
+    review items).
 - **Auto-written macOS hashes:** the PR job writes the missing entries
   (`hashes --write --only-new`: new keys only, never overwriting or
   pruning, so drift is not masked) as the `macos-hashes` patch artifact.
