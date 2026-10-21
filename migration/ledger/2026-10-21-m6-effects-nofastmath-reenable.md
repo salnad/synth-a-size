@@ -11,7 +11,7 @@
 
 **Hashes:** x86 hashes for both builds come from local CI-identity trees. `hashes --check --require-known-identity` covers 2620 hashes and the no-fast-math check covers 272, both with 0 problems.
 
-**macOS:** Reference ARM is non-gating by owner policy. The macOS official and no-fast-math hashes for these cases, and the macOS justification of the `macos` targets, come from this PR's macOS 15 artifact when it is available. A case that also fails the official reference on macOS gets `macos` added to its targets then.
+**macOS:** Reference ARM is non-gating by owner policy. Run 39664460173 (macOS 15, on the first 50 cases) prints `justified on macos` for exactly the 10 `macos` declarations, and `not gated on macos` for the 40 `x86` ones, with 0 `NOT justified`. The macOS official and no-fast-math hashes for those 50 cases come from that run (`migration/scripts/macos_hashes.sh 39664460173`, hash-only commit). The 19 compressor cases are `x86` only. Their macOS hashes are added from this PR's next macOS run if it arrives; missing macOS hashes are a warning.
 
 `allowlist-approval --base origin/main` lists the 69 additions with 0 problems.
 
