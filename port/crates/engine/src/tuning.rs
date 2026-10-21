@@ -335,6 +335,62 @@ fn read_lines(path: &Path) -> Vec<String> {
     jt::lines(&String::from_utf8_lossy(&bytes))
 }
 
+/// Why a tuning change was refused. Nothing is applied when it is.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TuningError {
+    /// A keyboard mapping names a scale degree outside the scale. Upstream
+    /// reads past the scale vector in `loadScale` (undefined behaviour); the
+    /// port refuses the mapping instead (migration/DIVERGENCES.md, D6).
+    MappingOutsideScale {
+        /// The offending mapping entry.
+        degree: i32,
+        /// Entries in the scale (degrees `0..scale_len` are valid).
+        scale_len: usize,
+    },
+}
+
+impl std::fmt::Display for TuningError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TuningError::MappingOutsideScale { degree, scale_len } => write!(
+                f,
+                "keyboard map degree {degree} is outside the scale's {scale_len} entries"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for TuningError {}
+
+/// Checks that `loadScale` would read only inside `scale` with `mapping`.
+/// Only the mapping positions its table walk visits are checked: entries of
+/// a map longer than about 128 that the walk never reaches are not read
+/// upstream either. A scale of at most one entry gives a constant tuning
+/// and reads no mapping.
+fn mapping_fits(mapping: &[i32], scale: &[f32]) -> Result<(), TuningError> {
+    if scale.len() <= 1 || mapping.is_empty() {
+        return Ok(());
+    }
+
+    let mapping_size = mapping.len() as i32;
+    let start_octave = -Tuning::TUNING_CENTER / mapping_size - 1;
+    let mut mapping_position = -Tuning::TUNING_CENTER - start_octave * mapping_size;
+    for _ in 0..Tuning::TUNING_SIZE {
+        if mapping_position >= mapping_size {
+            mapping_position = 0;
+        }
+        let degree = mapping[mapping_position as usize];
+        if degree < 0 || degree as usize >= scale.len() {
+            return Err(TuningError::MappingOutsideScale {
+                degree,
+                scale_len: scale.len(),
+            });
+        }
+        mapping_position += 1;
+    }
+    Ok(())
+}
+
 /// `Tuning`.
 #[derive(Clone, Debug)]
 pub struct Tuning {
@@ -375,10 +431,10 @@ impl Tuning {
     }
 
     /// `Tuning(File)` / `getTuningForFile(file)`.
-    pub fn from_file(path: &Path) -> Tuning {
+    pub fn from_file(path: &Path) -> Result<Tuning, TuningError> {
         let mut tuning = Tuning::new();
-        tuning.load_file(path);
-        tuning
+        tuning.load_file(path)?;
+        Ok(tuning)
     }
 
     /// `allFileExtensions()`.
@@ -437,17 +493,20 @@ impl Tuning {
         NOTES_PER_OCTAVE * octave + offset
     }
 
-    /// `loadFile(file)`: by extension (`.scl`, `.tun`, `.kbm`).
-    pub fn load_file(&mut self, path: &Path) {
+    /// `loadFile(file)`: by extension (`.scl`, `.tun`, `.kbm`). A keyboard
+    /// map that names a degree outside the current scale is refused and
+    /// changes nothing (D6).
+    pub fn load_file(&mut self, path: &Path) -> Result<(), TuningError> {
         let extension = file_extension(path).to_lowercase();
         if extension == SCALA_FILE_EXTENSION {
             self.load_scala_file(path);
         } else if extension == TUN_FILE_EXTENSION {
             self.load_tun_file(path);
         } else if extension == KEYBOARD_MAP_EXTENSION {
-            self.load_keyboard_map_file(path);
+            self.load_keyboard_map_file(path)?;
         }
         self.default = false;
+        Ok(())
     }
 
     /// `loadScalaFile(const StringArray&)`.
@@ -498,7 +557,8 @@ impl Tuning {
         self.scale_start_midi_note = DEFAULT_MIDI_REFERENCE;
         self.reference_midi_note = 0.0;
 
-        self.load_scale(scale);
+        self.load_scale(scale)
+            .expect("a Scala file maps every key to its own degree");
         self.default = false;
     }
 
@@ -508,7 +568,7 @@ impl Tuning {
         self.tuning_name = file_name_without_extension(path);
     }
 
-    fn load_keyboard_map_file(&mut self, path: &Path) {
+    fn load_keyboard_map_file(&mut self, path: &Path) -> Result<(), TuningError> {
         const HEADER_SIZE: usize = 7;
 
         let lines = read_lines(path);
@@ -516,7 +576,7 @@ impl Tuning {
         let mut header_position = 0;
         let mut map_size: i32 = 0;
         let mut last_scale_value: i32 = 0;
-        self.keyboard_mapping.clear();
+        let mut keyboard_mapping = Vec::new();
 
         for line in &lines {
             let trimmed_line = jt::trim(line);
@@ -530,10 +590,10 @@ impl Tuning {
                     last_scale_value = jt::int_value(&token);
                 }
 
-                self.keyboard_mapping.push(last_scale_value);
+                keyboard_mapping.push(last_scale_value);
 
                 // Compared as size_t, so a negative map size never stops the read.
-                if self.keyboard_mapping.len() as u64 >= map_size as i64 as u64 {
+                if keyboard_mapping.len() as u64 >= map_size as i64 as u64 {
                     break;
                 }
             } else {
@@ -545,15 +605,20 @@ impl Tuning {
             }
         }
 
+        mapping_fits(&keyboard_mapping, &self.scale)?;
+        self.keyboard_mapping = keyboard_mapping;
+
         self.set_start_midi_note(header_data[KBM_MIDI_MAP_MIDDLE_POSITION] as i32);
         self.set_reference_note_frequency(
             header_data[KBM_REFERENCE_NOTE_POSITION] as i32,
             header_data[KBM_REFERENCE_FREQUENCY_POSITION],
         );
         let scale = self.scale.clone();
-        self.load_scale(scale);
+        self.load_scale(scale)
+            .expect("the mapping was checked against this scale");
 
         self.mapping_name = file_name_without_extension(path);
+        Ok(())
     }
 
     fn load_tun_file(&mut self, path: &Path) {
@@ -604,18 +669,21 @@ impl Tuning {
 
         scale.resize(last_read_note as usize + 1, 0.0);
 
-        self.load_scale(scale);
+        self.load_scale(scale)
+            .expect("a .tun file clears the keyboard mapping");
         self.set_start_midi_note(0);
         self.set_reference_frequency(base_frequency);
         self.tuning_name = file_name_without_extension(path);
     }
 
-    /// `loadScale(scale)`.
-    pub fn load_scale(&mut self, scale: Vec<f32>) {
+    /// `loadScale(scale)`. Refused, changing nothing, if the current keyboard
+    /// mapping names a degree outside `scale` (D6).
+    pub fn load_scale(&mut self, scale: Vec<f32>) -> Result<(), TuningError> {
+        mapping_fits(&self.keyboard_mapping, &scale)?;
         self.scale = scale.clone();
         if scale.len() <= 1 {
             self.set_constant_tuning(DEFAULT_MIDI_REFERENCE as f32);
-            return;
+            return Ok(());
         }
 
         let scale_size = scale.len() as i32 - 1;
@@ -643,6 +711,7 @@ impl Tuning {
             self.tuning[i] = current_offset + scale[note_in_scale as usize];
             mapping_position += 1;
         }
+        Ok(())
     }
 
     /// `setConstantTuning(note)`.
@@ -664,12 +733,15 @@ impl Tuning {
         self.mapping_name.clear();
     }
 
-    /// `convertMidiNote(note)`.
+    /// `convertMidiNote(note)`. A note more than `TUNING_CENTER` keys from
+    /// the scale's start note reads the nearest end of the table, where
+    /// upstream reads outside `tuning_` (undefined behaviour). Any start note
+    /// loads, as upstream, so this must hold for every `note` and start note.
     pub fn convert_midi_note(&self, note: i32) -> f32 {
-        let scale_offset = note - self.scale_start_midi_note;
-        self.tuning[(Self::TUNING_CENTER + scale_offset) as usize]
-            + self.scale_start_midi_note as f32
-            + self.reference_midi_note
+        let scale_offset = i64::from(note) - i64::from(self.scale_start_midi_note);
+        let index =
+            (i64::from(Self::TUNING_CENTER) + scale_offset).clamp(0, Self::TUNING_SIZE as i64 - 1);
+        self.tuning[index as usize] + self.scale_start_midi_note as f32 + self.reference_midi_note
     }
 
     pub fn set_start_midi_note(&mut self, start_midi_note: i32) {
@@ -732,8 +804,30 @@ impl Tuning {
         data
     }
 
-    /// `jsonToState(data)`.
-    pub fn json_to_state(&mut self, data: &Value) {
+    /// `jsonToState(data)`. Refused, changing nothing, if the state's
+    /// mapping names a degree outside its scale (D6).
+    pub fn json_to_state(&mut self, data: &Value) -> Result<(), TuningError> {
+        let scale: Vec<f32> = data["scale"]
+            .as_array()
+            .map(|values| {
+                values
+                    .iter()
+                    .map(|v| v.as_f64().unwrap_or(0.0) as f32)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let keyboard_mapping: Vec<i32> = data
+            .get("mapping")
+            .and_then(Value::as_array)
+            .map(|mapping| {
+                mapping
+                    .iter()
+                    .map(|v| v.as_i64().unwrap_or(0) as i32)
+                    .collect()
+            })
+            .unwrap_or_default();
+        mapping_fits(&keyboard_mapping, &scale)?;
+
         self.scale_start_midi_note = data["scale_start_midi_note"].as_i64().unwrap_or(0) as i32;
         self.reference_midi_note = data["reference_midi_note"].as_f64().unwrap_or(0.0) as f32;
         self.tuning_name = data["tuning_name"].as_str().unwrap_or_default().to_string();
@@ -746,26 +840,13 @@ impl Tuning {
             self.default = default;
         }
 
-        self.scale = data["scale"]
-            .as_array()
-            .map(|values| {
-                values
-                    .iter()
-                    .map(|v| v.as_f64().unwrap_or(0.0) as f32)
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        self.keyboard_mapping.clear();
-        if let Some(mapping) = data.get("mapping").and_then(Value::as_array) {
-            self.keyboard_mapping = mapping
-                .iter()
-                .map(|v| v.as_i64().unwrap_or(0) as i32)
-                .collect();
-        }
+        self.scale = scale;
+        self.keyboard_mapping = keyboard_mapping;
 
         let scale = self.scale.clone();
-        self.load_scale(scale);
+        self.load_scale(scale)
+            .expect("the mapping was checked against this scale");
+        Ok(())
     }
 
     /// The 256-entry tuning table (`tuning_`), for tests.
@@ -811,6 +892,224 @@ mod tests {
         assert_eq!(Tuning::note_to_midi_key("C4"), 60);
         assert_eq!(Tuning::note_to_midi_key("a#-1"), -2);
         assert_eq!(Tuning::note_to_midi_key("h4"), -1);
+    }
+
+    fn temp_file(name: &str, lines: &[&str]) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("sas-tuning-unit-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(name);
+        let text: String = lines.iter().map(|l| format!("{l}\n")).collect();
+        std::fs::write(&path, text).unwrap();
+        path
+    }
+
+    fn seven_degree_scale() -> Tuning {
+        let lines: Vec<String> = [
+            "just 7", "7", "9/8", "5/4", "4/3", "3/2", "5/3", "15/8", "2/1",
+        ]
+        .iter()
+        .map(|l| l.to_string())
+        .collect();
+        let mut tuning = Tuning::new();
+        tuning.load_scala_lines(&lines);
+        tuning
+    }
+
+    fn snapshot(tuning: &Tuning) -> (Vec<f32>, Value, String) {
+        (
+            (0..128).map(|n| tuning.convert_midi_note(n)).collect(),
+            tuning.state_to_json(),
+            tuning.name(),
+        )
+    }
+
+    const KBM_HEADER: [&str; 7] = ["12", "0", "127", "60", "69", "440.0", "12"];
+
+    /// D6: a keyboard map that names a degree past the scale is refused and
+    /// changes nothing; upstream reads past the scale vector.
+    #[test]
+    fn keyboard_map_past_the_scale_is_refused() {
+        let mut tuning = seven_degree_scale();
+        let before = snapshot(&tuning);
+
+        let mut lines = KBM_HEADER.to_vec();
+        lines.extend(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"]);
+        let path = temp_file("past_scale.kbm", &lines);
+        assert_eq!(
+            tuning.load_file(&path),
+            Err(TuningError::MappingOutsideScale {
+                degree: 8,
+                scale_len: 8
+            })
+        );
+        assert_eq!(snapshot(&tuning), before);
+    }
+
+    #[test]
+    fn negative_keyboard_map_degree_is_refused() {
+        let mut tuning = seven_degree_scale();
+        let before = snapshot(&tuning);
+
+        let mut lines = KBM_HEADER.to_vec();
+        lines.extend(["0", "-1", "2", "3", "4", "5", "6", "0", "1", "2", "3", "4"]);
+        let path = temp_file("negative.kbm", &lines);
+        assert_eq!(
+            tuning.load_file(&path),
+            Err(TuningError::MappingOutsideScale {
+                degree: -1,
+                scale_len: 8
+            })
+        );
+        assert_eq!(snapshot(&tuning), before);
+    }
+
+    #[test]
+    fn keyboard_map_inside_the_scale_still_loads() {
+        let mut tuning = seven_degree_scale();
+        let mut lines = KBM_HEADER.to_vec();
+        lines.extend(["0", "x", "1", "2", "x", "3", "4", "5", "x", "6", "7", "7"]);
+        let path = temp_file("inside.kbm", &lines);
+        assert_eq!(tuning.load_file(&path), Ok(()));
+        assert_eq!(tuning.name(), "inside");
+    }
+
+    #[test]
+    fn state_with_a_mapping_past_its_scale_is_refused() {
+        let mut tuning = seven_degree_scale();
+        let before = snapshot(&tuning);
+
+        let mut state = tuning.state_to_json();
+        state["mapping"] = json!([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+        assert_eq!(
+            tuning.json_to_state(&state),
+            Err(TuningError::MappingOutsideScale {
+                degree: 8,
+                scale_len: 8
+            })
+        );
+        assert_eq!(snapshot(&tuning), before);
+    }
+
+    #[test]
+    fn shorter_scale_than_the_mapping_is_refused() {
+        let mut tuning = seven_degree_scale();
+        let mut lines = KBM_HEADER.to_vec();
+        lines.extend(["0", "1", "2", "3", "4", "5", "6", "7", "0", "1", "2", "3"]);
+        let path = temp_file("full.kbm", &lines);
+        assert_eq!(tuning.load_file(&path), Ok(()));
+        let before = snapshot(&tuning);
+
+        assert_eq!(
+            tuning.load_scale(vec![0.0, 2.0, 4.0, 12.0]),
+            Err(TuningError::MappingOutsideScale {
+                degree: 4,
+                scale_len: 4
+            })
+        );
+        assert_eq!(snapshot(&tuning), before);
+    }
+
+    fn kbm_with_middle_note(name: &str, middle_note: &str) -> std::path::PathBuf {
+        let mut lines = KBM_HEADER.to_vec();
+        lines[3] = middle_note;
+        lines.extend(["0", "1", "2", "3", "4", "5", "6", "7", "0", "1", "2", "3"]);
+        temp_file(name, &lines)
+    }
+
+    /// A start note far outside the MIDI range loads, as upstream, and every
+    /// note reads the nearest end of the table instead of indexing outside
+    /// it (upstream: undefined behaviour in `convertMidiNote`).
+    #[test]
+    fn keyboard_map_middle_note_far_outside_midi_converts_every_note() {
+        for middle_note in ["1000", "-1000"] {
+            let mut tuning = seven_degree_scale();
+            let path = kbm_with_middle_note("far_middle.kbm", middle_note);
+            assert_eq!(tuning.load_file(&path), Ok(()));
+
+            let start = middle_note.parse::<f32>().unwrap();
+            let edge = if start > 0.0 {
+                tuning.table()[0]
+            } else {
+                tuning.table()[Tuning::TUNING_SIZE - 1]
+            };
+            let reference = tuning.state_to_json()["reference_midi_note"]
+                .as_f64()
+                .unwrap() as f32;
+            for note in 0..128 {
+                assert_eq!(tuning.convert_midi_note(note), edge + start + reference);
+            }
+        }
+    }
+
+    /// Notes whose index is inside the table read it exactly as upstream;
+    /// only the ones past its end are clamped.
+    #[test]
+    fn start_note_partly_outside_the_table_reads_inside_notes_exactly() {
+        let mut tuning = seven_degree_scale();
+        let path = kbm_with_middle_note("partly_outside.kbm", "200");
+        assert_eq!(tuning.load_file(&path), Ok(()));
+        let reference = tuning.state_to_json()["reference_midi_note"]
+            .as_f64()
+            .unwrap() as f32;
+
+        for note in 0..128 {
+            let index = (Tuning::TUNING_CENTER + note - 200).max(0) as usize;
+            assert_eq!(
+                tuning.convert_midi_note(note),
+                tuning.table()[index] + 200.0 + reference
+            );
+        }
+    }
+
+    #[test]
+    fn state_with_a_start_note_far_outside_midi_converts_every_note() {
+        for start in [5000i64, -5000, i64::from(i32::MAX), i64::from(i32::MIN)] {
+            let mut tuning = seven_degree_scale();
+            let mut state = tuning.state_to_json();
+            state["scale_start_midi_note"] = json!(start);
+            assert_eq!(tuning.json_to_state(&state), Ok(()));
+            for note in [i32::MIN, -1, 0, 60, 127, 128, i32::MAX] {
+                assert!(tuning.convert_midi_note(note).is_finite());
+            }
+        }
+    }
+
+    /// `loadScale` reads 256 consecutive positions of a long map, so entries
+    /// it never visits are accepted, as upstream; a visited one is refused.
+    #[test]
+    fn long_keyboard_map_checks_only_the_positions_read() {
+        fn long_map(bad_position: usize) -> Vec<String> {
+            let mut lines: Vec<String> = KBM_HEADER.iter().map(|l| l.to_string()).collect();
+            lines[0] = "300".to_string();
+            lines.extend((0..300).map(|i| {
+                if i == bad_position {
+                    "99".to_string()
+                } else {
+                    (i % 8).to_string()
+                }
+            }));
+            lines
+        }
+
+        // A 300-entry map starts its walk at position 172, reads to 299,
+        // then wraps to 0..=127: position 150 is never read.
+        let mut tuning = seven_degree_scale();
+        let lines = long_map(150);
+        let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
+        assert_eq!(tuning.load_file(&temp_file("unread.kbm", &lines)), Ok(()));
+
+        let mut tuning = seven_degree_scale();
+        let before = snapshot(&tuning);
+        let lines = long_map(172);
+        let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
+        assert_eq!(
+            tuning.load_file(&temp_file("read.kbm", &lines)),
+            Err(TuningError::MappingOutsideScale {
+                degree: 99,
+                scale_len: 8
+            })
+        );
+        assert_eq!(snapshot(&tuning), before);
     }
 
     /// A blank Scala degree line reads as ratio 0, and upstream's
