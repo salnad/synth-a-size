@@ -22,9 +22,10 @@ type and mix sweeps, enable toggling, 96 kHz, 2× oversampling). All under
 `module_defaults`.
 
 Metrics (x86_64): EQ 10 outputs pass, worst 4.4e-5 / −99.9 dB
-(`pass_and_notch_modes`); distortion module 12 outputs pass, 4
-bit-identical, worst 3.0e-5 / −109.4 dB (`rate_96k`). The port is
-bit-identical to the `REF_FAST_MATH=OFF` build on all 23 outputs.
+(`pass_and_notch_modes`); distortion module 15 outputs pass (12 plus the 3
+interim cases below), 4 bit-identical, worst 3.0e-5 / −109.4 dB
+(`rate_96k`). The port is bit-identical to the `REF_FAST_MATH=OFF` build on
+all 26 outputs (the parked one included).
 
 Parked under the coordinator's pending no-fast-math proposal (awaiting the
 owner): `effects/distortion_module/filter_before`
