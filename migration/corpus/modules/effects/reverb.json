@@ -1,0 +1,240 @@
+{
+  "description": "Reverb processor; inputs take the values ReverbModule's controls produce.",
+  "module": "reverb",
+  "cases": {
+    "impulse_long_tail": {
+      "num_samples": 352800,
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 300
+        },
+        "decay_time": 4.0,
+        "wet": 1.0,
+        "size": 0.7
+      }
+    },
+    "decay_sweep_saw": {
+      "num_samples": 132300,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "decay_time": {
+          "signal": "ramp",
+          "from": 0.05,
+          "to": 100.0
+        },
+        "wet": 0.5
+      }
+    },
+    "size_sweep_noise": {
+      "num_samples": 132300,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 3
+        },
+        "size": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "decay_time": 2.0,
+        "wet": 0.6
+      }
+    },
+    "chorus_sweep_sine": {
+      "num_samples": 132300,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 440.0,
+          "amp": 0.5
+        },
+        "chorus_amount": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "chorus_frequency": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 16.0
+        },
+        "decay_time": 3.0,
+        "wet": 0.7
+      }
+    },
+    "filter_sweeps": {
+      "num_samples": 132300,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 4
+        },
+        "pre_low_cutoff": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 130.0
+        },
+        "pre_high_cutoff": {
+          "signal": "ramp",
+          "from": 130.0,
+          "to": 0.0
+        },
+        "low_cutoff": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 130.0
+        },
+        "high_cutoff": {
+          "signal": "ramp",
+          "from": 130.0,
+          "to": 0.0
+        },
+        "low_gain": {
+          "signal": "ramp",
+          "from": -24.0,
+          "to": 0.0
+        },
+        "high_gain": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": -24.0
+        },
+        "decay_time": 2.5,
+        "wet": 0.8
+      }
+    },
+    "pre_delay_sweep": {
+      "num_samples": 132300,
+      "inputs": {
+        "audio": {
+          "signal": "square",
+          "freq_hz": 3.0,
+          "amp": 0.4
+        },
+        "delay": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 0.3
+        },
+        "decay_time": 1.0,
+        "wet": 0.9
+      }
+    },
+    "wet_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 220.0,
+          "amp": 0.4
+        },
+        "wet": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "decay_time": 1.5
+      }
+    },
+    "rate_48k": {
+      "sample_rate": 48000,
+      "block_size": 128,
+      "num_samples": 144000,
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 300
+        },
+        "decay_time": 3.0,
+        "size": 0.9,
+        "wet": 1.0,
+        "chorus_amount": 0.3,
+        "chorus_frequency": 1.0
+      }
+    },
+    "rate_96k": {
+      "sample_rate": 96000,
+      "block_size": 128,
+      "num_samples": 288000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.3,
+          "stereo": true,
+          "seed": 6
+        },
+        "decay_time": 2.0,
+        "size": 0.4,
+        "wet": 0.5,
+        "delay": 0.1
+      }
+    },
+    "rate_192k": {
+      "sample_rate": 192000,
+      "block_size": 128,
+      "num_samples": 384000,
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 1000
+        },
+        "decay_time": 1.5,
+        "size": 1.0,
+        "wet": 1.0
+      }
+    },
+    "oversampled_2x": {
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 132300,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "decay_time": 2.0,
+        "wet": 0.5
+      }
+    },
+    "max_decay_full_size_tail": {
+      "num_samples": 441000,
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 300
+        },
+        "decay_time": 100.0,
+        "size": 1.0,
+        "wet": 1.0,
+        "chorus_amount": 1.0,
+        "chorus_frequency": 16.0,
+        "high_gain": 0.0,
+        "low_gain": 0.0
+      }
+    },
+    "pre_delay_clamped": {
+      "num_samples": 264600,
+      "inputs": {
+        "audio": {
+          "signal": "square",
+          "freq_hz": 3.0,
+          "amp": 0.4
+        },
+        "delay": 4.5,
+        "decay_time": 1.0,
+        "wet": 0.9
+      }
+    }
+  }
+}
