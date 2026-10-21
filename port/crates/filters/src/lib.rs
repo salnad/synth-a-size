@@ -1,9 +1,36 @@
-//! Filter models (analog, dirty, ladder, digital, diode, formant, comb, phaser) and building blocks.
+// Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//! Filter models (analog, dirty, ladder, digital, diode, formant, comb,
+//! phaser) and building blocks.
 //!
-//! Stub crate: nothing is ported yet. Porting starts in milestone M5
-//! (see `migration/PLAN.md`); follow `migration/AGENTS.md`.
+//! Ports `vital/src/synthesis/filters/` and the filter modules
+//! (`modules/filter_module.cpp`, `modules/filters_module.cpp`). Every model
+//! is a `sas_dsp_core` processor kernel implementing
+//! [`synth_filter::SynthFilter`]; [`synth_filter::create_filter`] is
+//! `SynthFilter::createFilter`.
+//!
+//! The core models and building blocks are top-level modules (M5a). The
+//! character models (comb, formant, phaser) live under [`character`] (M5b).
+//!
+//! # Numerics
+//!
+//! Straightforward translations of upstream: no FMA contraction, no
+//! estimate instructions, upstream's operation order. Per-ISA behaviour
+//! exists only at the sites of `migration/decisions/reference-arm.md`,
+//! inside `sas-simd` (for example `toInt` in the coefficient lookups); the
+//! `aarch64-semantics` feature forwards to `sas-simd`.
 
 pub use sas_dsp_core;
+
+pub mod character;
+pub mod digital_svf;
+pub mod synth_filter;
+
+pub use digital_svf::DigitalSvf;
+pub use synth_filter::{
+    coefficient_lookup, create_filter, CoefficientLookup, FilterModel, FilterState, SynthFilter,
+};
 
 /// Milestone in `migration/PLAN.md` that ports this crate.
 pub const MILESTONE: &str = "M5";
@@ -11,6 +38,10 @@ pub const MILESTONE: &str = "M5";
 /// Upstream files (relative to the repository root) this crate ports.
 pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/src/synthesis/filters/",
+    "vital/src/synthesis/filters/synth_filter.h",
+    "vital/src/synthesis/filters/synth_filter.cpp",
+    "vital/src/synthesis/filters/digital_svf.h",
+    "vital/src/synthesis/filters/digital_svf.cpp",
     "vital/src/synthesis/modules/filter_module.cpp",
     "vital/src/synthesis/modules/filters_module.cpp",
 ];
