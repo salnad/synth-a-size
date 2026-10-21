@@ -233,6 +233,18 @@ none of them edits a shared list.
      passes on x86 but misses there is parked and re-enabled under
      `reference: nofastmath` like any other noisy-reference case.
 
+     *macOS-only parks.* Park such a case on macOS only, never by moving it
+     to `pending/`. Record the owner decision in a ledger entry, then list
+     the case in `migration/corpus/parked_arm64.json` as
+     `"cases": {"<case id>": "<reason and ledger entry>"}`.
+     - The macOS job skips it in sas-parity (`SAS_PARITY_PARKED`), in the
+       proxy compare and in the hash checks (`run_corpus.py --parked`),
+       and lists it in its log.
+     - Every other job, including x86, keeps it live, hashed and gated.
+     - A parked id must be a loaded case, so a renamed, removed or pending
+       case fails both tools.
+     - Remove the entry when the fix lands.
+
 3. **Port faithfully.** Keep upstream's structure where practical,
    including processing order, control-rate vs audio-rate behaviour,
    sub-block splitting at 128 samples, smoothing, denormal handling and the

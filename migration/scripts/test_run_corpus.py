@@ -1009,6 +1009,66 @@ class ScratchRepo(unittest.TestCase):
         code, output = self.run_main("allowlist-approval", "--base", "no-such-rev")
         self.assertEqual(code, 2, output)
 
+    def write_park(self, cases):
+        path = os.path.join(self.tmp.name, "parked_arm64.json")
+        rc.write_json(path, {"description": "test", "cases": cases})
+        return path
+
+    # Arm64-only parks used to drop x86 coverage: run_corpus.py ignored them,
+    # so threads moved macOS-only noisy cases to pending/.
+    def test_compare_skips_and_reports_parked_cases(self):
+        ((ref, _), (test, test_case)), fake_diff = self.make_text_only_trees()
+        with open(os.path.join(test_case, "artifact_saved.json"), "wb") as handle:
+            handle.write(b'{"version": "1.0.7"}\n')
+        only = ["--audio-diff", fake_diff, "--only", "harness/textonly"]
+        code, output = self.run_main("compare", ref, test, *only)
+        self.assertEqual(code, 1, output)
+
+        park = self.write_park({"harness/textonly/json": "noisy on macOS (A11)"})
+        code, output = self.run_main("compare", ref, test, "--parked", park, *only)
+        self.assertEqual(code, 0, output)
+        self.assertIn("parked harness/textonly/json (parked_arm64.json; not compared on this reference only): "
+                      "noisy on macOS (A11)", output)
+        self.assertNotIn("artifact/saved.json", output)
+
+        # Strict: a parked id must be a loaded case.
+        for cases in ({"harness/textonly/gone": "x"}, {"harness/textonly": "x"}):
+            code, output = self.run_main("compare", ref, test, "--parked", self.write_park(cases), *only)
+            self.assertEqual(code, 2, output)
+            self.assertIn("are not loaded cases", output)
+        rc.write_json(park, {"cases": [], "description": "x"})
+        code, output = self.run_main("compare", ref, test, "--parked", park, *only)
+        self.assertEqual(code, 2, output)
+
+    def test_hashes_skip_parked_cases_and_keep_their_hashes(self):
+        tree = self.make_tree()
+        self.write_baseline(tree)
+        hash_file = os.path.join(rc.MODULE_CASES, "filters", "test.hashes.json")
+        with open(hash_file) as handle:
+            committed = json.load(handle)
+        npy = os.path.join(tree, "modules", "filters", "test", "a", "out_audio.npy")
+        digest = write_npy(npy, [0.25] * 16, 4)
+        capture = os.path.join(tree, "modules", "filters", "test", "a", "capture.json")
+        with open(capture) as handle:
+            data = json.load(handle)
+        data["outputs"]["audio"]["fnv1a64"] = digest
+        rc.write_json(capture, data)
+        code, output = self.run_main("hashes", tree, "--check")
+        self.assertEqual(code, 1, output)
+        self.assertIn("MISMATCH", output)
+
+        park = self.write_park({"filters/test/a": "noisy on macOS"})
+        code, output = self.run_main("hashes", tree, "--check", "--require-known-identity", "--parked", park)
+        self.assertEqual(code, 0, output)
+        self.assertIn("parked filters/test/a (parked_arm64.json; hashes not checked on this reference only)", output)
+        # Writing with the park keeps the committed hashes of the parked case.
+        code, output = self.run_main("hashes", tree, "--write", "--parked", park)
+        self.assertEqual(code, 0, output)
+        with open(hash_file) as handle:
+            self.assertEqual(json.load(handle), committed)
+        code, output = self.run_main("hashes", tree, "--check", "--parked", self.write_park({"filters/test/b": "x"}))
+        self.assertEqual(code, 2, output)
+
     # B3: a failed render left stale data plus a new case.json.
     def test_failed_render_leaves_no_stale_capture(self):
         tree = self.make_tree()

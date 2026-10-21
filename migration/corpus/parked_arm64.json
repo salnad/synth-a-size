@@ -1,4 +1,4 @@
 {
-  "description": "Cases parked on the macOS arm64 reference only (owner decision 2026-10-21; LEDGER 'ARM Reference'). The macOS job's sas-parity run skips them through SAS_PARITY_PARKED; every other job, including x86, keeps them active. Inputs and tolerances are unchanged. Remove an entry when its fix lands.",
+  "description": "Cases parked on the macOS arm64 reference only (owner decision 2026-10-21; LEDGER 'ARM Reference'). The macOS job skips them (and lists them in its log) in sas-parity (SAS_PARITY_PARKED), the proxy compare and the hash checks (run_corpus.py --parked); every other job, including x86, keeps them live, hashed and gated. Every listed id must be a loaded case (not pending/). Inputs and tolerances are unchanged. Remove an entry when its fix lands.",
   "cases": {}
 }

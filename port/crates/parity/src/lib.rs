@@ -102,10 +102,11 @@ pub fn all_case_ids() -> Vec<String> {
     let modules = cases::load_module_cases().unwrap_or_else(|e| panic!("sas-parity: {e}"));
     let renders = cases::load_render_cases().unwrap_or_else(|e| panic!("sas-parity: {e}"));
     let parked = parked_case_ids();
-    modules
-        .into_iter()
-        .chain(renders)
-        .map(|c| c.id)
+    let ids: Vec<String> = modules.into_iter().chain(renders).map(|c| c.id).collect();
+    if let Err(e) = check_parked(&parked, &ids) {
+        panic!("sas-parity: SAS_PARITY_PARKED: {e}");
+    }
+    ids.into_iter()
         .filter(|id| {
             let skip = parked.contains(id);
             if skip {
@@ -114,6 +115,20 @@ pub fn all_case_ids() -> Vec<String> {
             !skip
         })
         .collect()
+}
+
+/// Every parked id must be a loaded case, so a renamed, removed or
+/// pending/ case cannot leave a stale park behind. Mirrored in
+/// run_corpus.py (`load_parked`).
+fn check_parked(parked: &[String], ids: &[String]) -> Result<(), String> {
+    let unknown: Vec<&String> = parked.iter().filter(|p| !ids.contains(p)).collect();
+    if unknown.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "parked ids {unknown:?} are not loaded cases (renamed, removed or moved to pending/?)"
+        ))
+    }
 }
 
 /// Case ids parked on one reference only: the keys of `"cases"` in the JSON
@@ -839,6 +854,17 @@ mod tests {
 
     fn audio(data: &[f32]) -> Audio {
         Audio::new(2, None, data.to_vec())
+    }
+
+    #[test]
+    fn parked_ids_must_be_loaded_cases() {
+        let ids = vec!["filters/x/a".to_string(), "render/r".to_string()];
+        assert!(check_parked(&[], &ids).is_ok());
+        assert!(check_parked(&["filters/x/a".to_string()], &ids).is_ok());
+        for stale in ["filters/x/gone", "filters/x"] {
+            let err = check_parked(&[stale.to_string()], &ids).unwrap_err();
+            assert!(err.contains("are not loaded cases"), "{err}");
+        }
     }
 
     #[test]
