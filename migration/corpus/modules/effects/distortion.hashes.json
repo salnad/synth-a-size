@@ -4,6 +4,10 @@
       "hashes": {
         "bit_crush_drive_sweep:audio": "48fa82fce554322b",
         "bit_crush_drive_sweep:drive": "b2a7e9fec84e9ecb",
+        "down_sample_96k:audio": "1356d0a24dd66a9b",
+        "down_sample_96k:drive": "0485dc10e547bf23",
+        "down_sample_drive_sweep_48k:audio": "278b8866b8b955a3",
+        "down_sample_drive_sweep_48k:drive": "e3734fc99ddf9e8f",
         "down_sample_oversampled_2x:audio": "b77c334a67c720d3",
         "down_sample_oversampled_2x:drive": "1c1df414469f3683",
         "down_sample_reentry:audio": "3c1ae7087943262b",
@@ -18,6 +22,8 @@
         "interim_down_sample_96k_constant_drive:drive": "b9a08ae3d8ed3b83",
         "interim_down_sample_drive_steps:audio": "473fe5e28d0105f3",
         "interim_down_sample_drive_steps:drive": "54c29ae894fdbc23",
+        "interim_down_sample_drive_sweep_short:audio": "b559a9c6c798d5a3",
+        "interim_down_sample_drive_sweep_short:drive": "ab88c6af7d3e0f63",
         "linear_fold_drive_sweep:audio": "70b22f06988288c3",
         "linear_fold_drive_sweep:drive": "b2a7e9fec84e9ecb",
         "odd_block_bit_crush:audio": "1c97d78dced39983",
@@ -47,6 +53,10 @@
       "hashes": {
         "bit_crush_drive_sweep:audio": "48fa82fce554322b",
         "bit_crush_drive_sweep:drive": "b2a7e9fec84e9ecb",
+        "down_sample_96k:audio": "1356d0a24dd66a9b",
+        "down_sample_96k:drive": "0485dc10e547bf23",
+        "down_sample_drive_sweep_48k:audio": "278b8866b8b955a3",
+        "down_sample_drive_sweep_48k:drive": "e3734fc99ddf9e8f",
         "down_sample_oversampled_2x:audio": "b77c334a67c720d3",
         "down_sample_oversampled_2x:drive": "1c1df414469f3683",
         "down_sample_reentry:audio": "b11836353334b27b",
@@ -61,6 +71,8 @@
         "interim_down_sample_96k_constant_drive:drive": "b9a08ae3d8ed3b83",
         "interim_down_sample_drive_steps:audio": "473fe5e28d0105f3",
         "interim_down_sample_drive_steps:drive": "54c29ae894fdbc23",
+        "interim_down_sample_drive_sweep_short:audio": "f4f2b3fa14fbb0b3",
+        "interim_down_sample_drive_sweep_short:drive": "ab88c6af7d3e0f63",
         "linear_fold_drive_sweep:audio": "70b22f06988288c3",
         "linear_fold_drive_sweep:drive": "b2a7e9fec84e9ecb",
         "odd_block_bit_crush:audio": "1c97d78dced39983",
@@ -83,6 +95,44 @@
         "glibc": null,
         "libm_variants": "Apple libm (macOS 15.7.9)",
         "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    },
+    {
+      "hashes": {
+        "down_sample_96k:audio": "933d534a3f6d8a97",
+        "down_sample_96k:drive": "0485dc10e547bf23",
+        "down_sample_drive_sweep_48k:audio": "691d52d27c4cf673",
+        "down_sample_drive_sweep_48k:drive": "e3734fc99ddf9e8f",
+        "interim_down_sample_drive_sweep_short:audio": "b559a9c6c798d5a3",
+        "interim_down_sample_drive_sweep_short:drive": "ab88c6af7d3e0f63"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": false,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    },
+    {
+      "hashes": {
+        "down_sample_96k:audio": "933d534a3f6d8a97",
+        "down_sample_96k:drive": "0485dc10e547bf23",
+        "down_sample_drive_sweep_48k:audio": "691d52d27c4cf673",
+        "down_sample_drive_sweep_48k:drive": "e3734fc99ddf9e8f",
+        "interim_down_sample_drive_sweep_short:audio": "b559a9c6c798d5a3",
+        "interim_down_sample_drive_sweep_short:drive": "ab88c6af7d3e0f63"
+      },
+      "identity": {
+        "arch": "aarch64",
+        "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+        "fast_math": false,
+        "glibc": null,
+        "libm_variants": "Apple libm (macOS 15.7.9)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
         "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
       }
     }

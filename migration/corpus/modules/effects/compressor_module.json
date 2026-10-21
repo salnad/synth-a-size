@@ -1,5 +1,5 @@
 {
-  "description": "CompressorModule through effect_module_harness.h (controls set once per block; 'on' toggles enable()). The full multiband path waits in pending/compressor_module.json; interim_* cases are the ones that pass both references.",
+  "description": "CompressorModule through effect_module_harness.h (controls set once per block; 'on' toggles enable()). The full multiband path, whose series crossovers the fast-math reference amplifies, is compared exactly against the no-fast-math build (\"reference\": \"nofastmath\", SAS-35, migration/decisions/nofastmath/effects/compressor_module.md); interim_* cases pass the official reference.",
   "module": "compressor_module",
   "cases": {
     "defaults_saw": {
@@ -62,6 +62,127 @@
           "freq_hz": 10.0,
           "amp": 0.5,
           "offset": 0.5
+        }
+      }
+    },
+    "defaults_noise": {
+      "reference": "nofastmath",
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 1
+        }
+      }
+    },
+    "threshold_and_ratio_sweeps": {
+      "reference": "nofastmath",
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 5
+        },
+        "compressor_low_upper_threshold": {
+          "signal": "ramp",
+          "from": -80.0,
+          "to": 0.0
+        },
+        "compressor_band_lower_threshold": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": -80.0
+        },
+        "compressor_high_upper_ratio": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "compressor_low_lower_ratio": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 1.0
+        }
+      }
+    },
+    "gain_attack_release_mix": {
+      "reference": "nofastmath",
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "square",
+          "freq_hz": 3.0,
+          "amp": 0.7
+        },
+        "compressor_low_gain": {
+          "signal": "ramp",
+          "from": -30.0,
+          "to": 30.0
+        },
+        "compressor_attack": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "compressor_release": {
+          "signal": "ramp",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "compressor_mix": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    },
+    "enable_toggle": {
+      "reference": "nofastmath",
+      "num_samples": 132300,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 6
+        },
+        "on": {
+          "signal": "square",
+          "freq_hz": 1.0,
+          "amp": 0.5,
+          "offset": 0.5
+        }
+      }
+    },
+    "rate_96k": {
+      "reference": "nofastmath",
+      "sample_rate": 96000,
+      "block_size": 128,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 7
+        }
+      }
+    },
+    "oversampled_2x": {
+      "reference": "nofastmath",
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 8
         }
       }
     }
