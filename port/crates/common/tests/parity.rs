@@ -60,7 +60,11 @@ fn random_generator() {
         generator.seed(params["seed"].as_i64().expect("seed") as i32);
         let count = params["count"].as_u64().unwrap_or(4096) as usize;
         let values: Vec<f32> = (0..count).map(|_| generator.next()).collect();
+        // Exact: tells the libstdc++ and libc++ columns apart (A9), which
+        // `values` alone cannot within tolerance.
+        let at_max = values.iter().filter(|&&v| v == max).count() as f32;
         assert_parity!(&format!("{id}:values"), values);
+        assert_parity!(&format!("{id}:at_max"), vec![at_max]);
     }
 }
 
