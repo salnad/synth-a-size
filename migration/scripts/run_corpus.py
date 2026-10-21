@@ -939,8 +939,69 @@ def justify_nofastmath(args, case, nofastmath_dir, reports, target, declared):
              "official reference if no target fails)" % (case["id"], target, target), 2)]
 
 
+PARK_KEYS = ("approved_in", "reason")
+
+
+def resolve_parked(data, where, known_ids, allowlist, ledger_files):
+    """{case id: reason} from a park file's JSON, such as
+    migration/corpus/parked_arm64.json:
+    {"description": "...", "cases": {"<id>": {"approved_in": "<dated ledger
+    heading>", "reason": "..."}}}. A park switches off every check for the
+    case on that reference, so it needs a recorded owner approval, like a
+    tolerance_exception: approved_in must be a dated heading whose section
+    names the case. Every parked id must be a loaded case, and a case whose
+    no-fast-math allowlist targets include "macos" cannot be parked (it is
+    justified only on macOS). Mirrored in sas-parity (cases.rs
+    resolve_parked)."""
+    if (not isinstance(data, dict) or set(data) - {"description", "cases"} or not isinstance(data.get("cases"), dict)
+            or not isinstance(data.get("description", ""), str)):
+        raise CaseError("%s: must be {\"description\": \"...\", \"cases\": {<case id>: {\"approved_in\": "
+                        "\"<dated ledger heading>\", \"reason\": \"...\"}}}" % where)
+    sections = approval_sections(ledger_files)
+    parked = {}
+    for case_id, entry in sorted(data["cases"].items()):
+        if not isinstance(entry, dict) or set(entry) != set(PARK_KEYS) or not all(
+                isinstance(entry[k], str) and entry[k].strip() for k in PARK_KEYS):
+            raise CaseError("%s: %s must be {\"approved_in\": \"<dated ledger heading>\", \"reason\": \"...\"} "
+                            "with non-empty strings" % (where, case_id))
+        if case_id not in known_ids:
+            raise CaseError("%s: parked id %s is not a loaded case (renamed, removed or moved to pending/?)"
+                            % (where, case_id))
+        approved_in = entry["approved_in"].strip()
+        if not DATED_HEADING.match(approved_in):
+            raise CaseError("%s: %s: approved_in must cite a dated ledger heading (\"YYYY-MM-DD: ...\"), not %r"
+                            % (where, case_id, approved_in))
+        bodies = [body for title, body in sections if title == approved_in]
+        if not bodies:
+            raise CaseError("%s: %s: approved_in cites ledger heading %r, which does not exist "
+                            "(migration/LEDGER.md or migration/ledger/)" % (where, case_id, approved_in))
+        if not any(names_case(body, case_id) for body in bodies):
+            raise CaseError("%s: %s: ledger section %r does not name the case" % (where, case_id, approved_in))
+        if "macos" in allowlist.get(case_id, ((), ()))[1]:
+            raise CaseError("%s: %s is declared for macos in the no-fast-math allowlist: the macOS proxy compare "
+                            "is its justification, so it cannot be parked there (it stays live)" % (where, case_id))
+        parked[case_id] = entry["reason"]
+    return parked
+
+
+def load_parked(path, renders, modules):
+    ledger_files = read_ledger()
+    known = {c["id"] for c in renders} | {c["id"] for c in modules}
+    return resolve_parked(read_json_strict(path), path, known, read_allowlist(ledger_files), ledger_files)
+
+
+def report_parked(parked, path, what):
+    for case_id, reason in sorted(parked.items()):
+        print("parked %s (%s; %s on this reference only): %s" % (case_id, os.path.basename(path), what, reason))
+
+
 def cmd_compare(args):
     renders, modules = load_renders(), load_modules()
+    if args.parked:
+        parked = load_parked(args.parked, renders, modules)
+        report_parked({k: v for k, v in parked.items() if selected(k, args.only)}, args.parked, "not compared")
+        renders = [c for c in renders if c["id"] not in parked]
+        modules = [c for c in modules if c["id"] not in parked]
     reports = os.path.join(args.test, "reports")
     os.makedirs(reports, exist_ok=True)
     results = []
@@ -1113,6 +1174,20 @@ def nofastmath_identity_known(identity):
 
 def cmd_hashes(args):
     renders, modules = load_renders(), load_modules()
+    # Parked cases (this reference only) are neither checked nor written,
+    # and their committed hashes are kept, not reported as stale.
+    parked_names = {}
+    if args.parked:
+        parked = load_parked(args.parked, renders, modules)
+        report_parked(parked, args.parked, "hashes not checked")
+        for case in modules:
+            if case["id"] in parked:
+                parked_names.setdefault(module_hash_file(case), set()).add(case["id"].rsplit("/", 1)[1])
+        for case in renders:
+            if case["id"] in parked:
+                parked_names.setdefault(RENDER_HASHES, set()).add(case["name"])
+        renders = [c for c in renders if c["id"] not in parked]
+        modules = [c for c in modules if c["id"] not in parked]
     if args.reference == "nofastmath":
         # Only reference "nofastmath" cases are consumed from the no-fast-math
         # tree, so only they are pinned for its identity.
@@ -1153,9 +1228,10 @@ def cmd_hashes(args):
             entry["hashes"].update(hashes)
             if path != RENDER_HASHES:
                 live = {c["id"].rsplit("/", 1)[1] for c in modules if module_hash_file(c) == path}
+                live |= parked_names.get(path, set())
                 entry["hashes"] = {k: v for k, v in entry["hashes"].items() if k.split(":")[0] in live}
             else:
-                live = {c["name"] for c in renders}
+                live = {c["name"] for c in renders} | parked_names.get(path, set())
                 entry["hashes"] = {k: v for k, v in entry["hashes"].items() if k in live}
             write_json(path, data)
             print("wrote %s (%d hashes)" % (os.path.relpath(path, REPO), len(entry["hashes"])))
@@ -1184,6 +1260,8 @@ def cmd_hashes(args):
         expected = entry["hashes"]
         for key in sorted(set(expected) | set(got)):
             name = key.split(":")[0]
+            if name in parked_names.get(path, ()):
+                continue
             if case_names is not None and name not in case_names:
                 problems.append("%s: stale hash for removed case %s" % (rel, key))
             elif key not in got:
@@ -1289,6 +1367,9 @@ def main():
                          help="calibration: REFERENCE is the official tree and TEST the REF_FAST_MATH=OFF tree; "
                               "each reference \"nofastmath\" case declared for this tree's target (x86 or "
                               "macos) must fail its normal limits there")
+    compare.add_argument("--parked", metavar="FILE",
+                         help="park file (e.g. migration/corpus/parked_arm64.json): listed cases are skipped "
+                              "and reported; every listed id must be a loaded case")
     compare.add_argument("--only", nargs="*", help="substrings of case ids to run")
 
     hashes = sub.add_parser("hashes", help="write / check output hashes of a render tree")
@@ -1300,6 +1381,9 @@ def main():
                         help="--check fails (instead of skipping) when the tree's build identity has no hashes")
     hashes.add_argument("--new-identity", action="store_true",
                         help="--write may add hashes for a build identity that has none yet")
+    hashes.add_argument("--parked", metavar="FILE",
+                        help="park file: listed cases are not checked or written (their committed hashes are "
+                             "kept); every listed id must be a loaded case")
     hashes.add_argument("--reference", choices=REFERENCES, default="official",
                         help="nofastmath: TREE is a REF_FAST_MATH=OFF tree; pin only reference \"nofastmath\" cases")
 

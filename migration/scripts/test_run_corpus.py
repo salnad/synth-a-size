@@ -488,6 +488,61 @@ class LedgerFiles(unittest.TestCase):
         self.assertEqual(ledger.problems(rc.REPO), [])
 
 
+class ParkRules(unittest.TestCase):
+    """Parked cases (migration/corpus/parked_arm64.json) need a recorded owner
+    approval and cannot be macos-declared no-fast-math cases (Parity
+    Reviewer on #56)."""
+
+    KNOWN = {"filters/x/a", "filters/x/b"}
+    FILES = ["# Ledger\n\nfilters/x/a and filters/x/b are mentioned here.\n",
+             "## 2026-10-21: owner approval — park\n\nfilters/x/a is parked on macOS.\n",
+             "## Park approval\n\nfilters/x/b\n"]
+
+    def resolve(self, cases, allowlist=None, data=None):
+        data = data if data is not None else {"description": "d", "cases": cases}
+        return rc.resolve_parked(data, "parked_arm64.json", self.KNOWN, allowlist or {}, self.FILES)
+
+    def park(self, heading="2026-10-21: owner approval — park", reason="noisy (A11)"):
+        return {"approved_in": heading, "reason": reason}
+
+    def assertCaseError(self, fragment, function, *args, **kwargs):
+        with self.assertRaises(rc.CaseError) as raised:
+            function(*args, **kwargs)
+        self.assertIn(fragment, str(raised.exception))
+
+    def test_approved_park_resolves(self):
+        self.assertEqual(self.resolve({"filters/x/a": self.park()}), {"filters/x/a": "noisy (A11)"})
+        self.assertEqual(self.resolve({}), {})
+
+    def test_park_needs_a_dated_heading_that_names_the_case(self):
+        self.assertCaseError("does not exist", self.resolve, {"filters/x/a": self.park("2026-10-22: nothing")})
+        self.assertCaseError("does not name the case", self.resolve, {"filters/x/b": self.park()})
+        self.assertCaseError("must cite a dated ledger heading", self.resolve,
+                             {"filters/x/b": self.park("Park approval")})
+        self.assertCaseError("must cite a dated ledger heading", self.resolve, {"filters/x/a": self.park("Ledger")})
+
+    def test_park_file_shape(self):
+        for entry in ("noisy", {"approved_in": "2026-10-21: owner approval — park"},
+                      dict(self.park(), extra=1), self.park(reason=""), self.park(reason=3), self.park(heading=None)):
+            self.assertCaseError("must be {", self.resolve, {"filters/x/a": entry})
+        for data in ({"cases": [], "description": "d"}, {"description": "d"}, {"cases": {}, "extra": 1},
+                     {"cases": {}, "description": 3}, []):
+            self.assertCaseError("must be {", self.resolve, None, data=data)
+        self.assertCaseError("is not a loaded case", self.resolve, {"filters/x/gone": self.park()})
+
+    def test_macos_declared_case_cannot_be_parked(self):
+        self.assertCaseError("declared for macos", self.resolve, {"filters/x/a": self.park()},
+                             {"filters/x/a": ("SAS-35", ("x86", "macos"))})
+        self.assertEqual(self.resolve({"filters/x/a": self.park()}, {"filters/x/a": ("SAS-35", ("x86",))}),
+                         {"filters/x/a": "noisy (A11)"})
+
+    def test_repository_park_file_resolves(self):
+        ledger_files = rc.read_ledger()
+        known = {c["id"] for c in rc.load_renders()} | {c["id"] for c in rc.load_modules()}
+        rc.resolve_parked(rc.read_json_strict(os.path.join(rc.CORPUS, "parked_arm64.json")), "parked_arm64.json",
+                          known, rc.read_allowlist(ledger_files), ledger_files)
+
+
 class Selection(unittest.TestCase):
     # N5: --only matched substrings.
     def test_only_matches_exact_ids_or_path_prefixes(self):
@@ -1007,6 +1062,73 @@ class ScratchRepo(unittest.TestCase):
         self.assertIn("cites SAS-35", output)
 
         code, output = self.run_main("allowlist-approval", "--base", "no-such-rev")
+        self.assertEqual(code, 2, output)
+
+    def write_park(self, cases):
+        """cases: {id: reason}; each park cites a dated approval entry."""
+        os.makedirs(os.path.join(self.tmp.name, "migration", "ledger"), exist_ok=True)
+        with open(os.path.join(self.tmp.name, "migration", "ledger", "2026-10-21-parks.md"), "w") as handle:
+            handle.write("## 2026-10-21: owner approval — macOS parks\n\nParked on macOS: %s.\n"
+                         % ", ".join(sorted(cases)))
+        path = os.path.join(self.tmp.name, "parked_arm64.json")
+        rc.write_json(path, {"description": "test", "cases": {
+            case_id: {"approved_in": "2026-10-21: owner approval — macOS parks", "reason": reason}
+            for case_id, reason in cases.items()}})
+        return path
+
+    # Arm64-only parks used to drop x86 coverage: run_corpus.py ignored them,
+    # so threads moved macOS-only noisy cases to pending/.
+    def test_compare_skips_and_reports_parked_cases(self):
+        ((ref, _), (test, test_case)), fake_diff = self.make_text_only_trees()
+        with open(os.path.join(test_case, "artifact_saved.json"), "wb") as handle:
+            handle.write(b'{"version": "1.0.7"}\n')
+        only = ["--audio-diff", fake_diff, "--only", "harness/textonly"]
+        code, output = self.run_main("compare", ref, test, *only)
+        self.assertEqual(code, 1, output)
+
+        park = self.write_park({"harness/textonly/json": "noisy on macOS (A11)"})
+        code, output = self.run_main("compare", ref, test, "--parked", park, *only)
+        self.assertEqual(code, 0, output)
+        self.assertIn("parked harness/textonly/json (parked_arm64.json; not compared on this reference only): "
+                      "noisy on macOS (A11)", output)
+        self.assertNotIn("artifact/saved.json", output)
+
+        # Strict: a parked id must be a loaded case.
+        for cases in ({"harness/textonly/gone": "x"}, {"harness/textonly": "x"}):
+            code, output = self.run_main("compare", ref, test, "--parked", self.write_park(cases), *only)
+            self.assertEqual(code, 2, output)
+            self.assertIn("is not a loaded case", output)
+        rc.write_json(park, {"cases": [], "description": "x"})
+        code, output = self.run_main("compare", ref, test, "--parked", park, *only)
+        self.assertEqual(code, 2, output)
+
+    def test_hashes_skip_parked_cases_and_keep_their_hashes(self):
+        tree = self.make_tree()
+        self.write_baseline(tree)
+        hash_file = os.path.join(rc.MODULE_CASES, "filters", "test.hashes.json")
+        with open(hash_file) as handle:
+            committed = json.load(handle)
+        npy = os.path.join(tree, "modules", "filters", "test", "a", "out_audio.npy")
+        digest = write_npy(npy, [0.25] * 16, 4)
+        capture = os.path.join(tree, "modules", "filters", "test", "a", "capture.json")
+        with open(capture) as handle:
+            data = json.load(handle)
+        data["outputs"]["audio"]["fnv1a64"] = digest
+        rc.write_json(capture, data)
+        code, output = self.run_main("hashes", tree, "--check")
+        self.assertEqual(code, 1, output)
+        self.assertIn("MISMATCH", output)
+
+        park = self.write_park({"filters/test/a": "noisy on macOS"})
+        code, output = self.run_main("hashes", tree, "--check", "--require-known-identity", "--parked", park)
+        self.assertEqual(code, 0, output)
+        self.assertIn("parked filters/test/a (parked_arm64.json; hashes not checked on this reference only)", output)
+        # Writing with the park keeps the committed hashes of the parked case.
+        code, output = self.run_main("hashes", tree, "--write", "--parked", park)
+        self.assertEqual(code, 0, output)
+        with open(hash_file) as handle:
+            self.assertEqual(json.load(handle), committed)
+        code, output = self.run_main("hashes", tree, "--check", "--parked", self.write_park({"filters/test/b": "x"}))
         self.assertEqual(code, 2, output)
 
     # B3: a failed render left stale data plus a new case.json.

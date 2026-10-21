@@ -116,21 +116,18 @@ pub fn all_case_ids() -> Vec<String> {
         .collect()
 }
 
-/// Case ids parked on one reference only: the keys of `"cases"` in the JSON
-/// file named by `SAS_PARITY_PARKED`. Only the macOS arm64 job sets it
+/// Case ids parked on one reference only, from the park file named by
+/// `SAS_PARITY_PARKED`, resolved strictly by [`cases::resolve_parked`]
+/// (approved, loaded, not macos-declared). Only the macOS arm64 job sets it
 /// (`migration/corpus/parked_arm64.json`); elsewhere every case runs.
 pub fn parked_case_ids() -> Vec<String> {
     let Some(path) = std::env::var_os("SAS_PARITY_PARKED").filter(|v| !v.is_empty()) else {
         return Vec::new();
     };
-    let path = PathBuf::from(path);
-    let value =
-        cases::read_json(&path).unwrap_or_else(|e| panic!("sas-parity: SAS_PARITY_PARKED: {e}"));
-    let parked = value
-        .get("cases")
-        .and_then(Value::as_object)
-        .unwrap_or_else(|| panic!("sas-parity: {}: missing \"cases\" object", path.display()));
-    parked.keys().cloned().collect()
+    cases::load_parked(&PathBuf::from(path))
+        .unwrap_or_else(|e| panic!("sas-parity: SAS_PARITY_PARKED: {e}"))
+        .into_keys()
+        .collect()
 }
 
 enum ParsedId {

@@ -107,9 +107,13 @@ jobs:
       # line declares where; this step gates the cases declared "macos" and
       # ci.yml gates those declared "x86". Every such case resolves to the
       # macOS no-fast-math tree, and the arm64 parity tests compare the port
-      # with it exactly.
+      # with it exactly. Cases in parked_arm64.json are skipped (and listed) in
+      # this compare and the hash checks below, and only here: x86 keeps them
+      # live and hashed.
       - name: Tolerances are achievable on macOS arm64 (proxy must pass; macOS no-fast-math justification)
-        run: python3 migration/scripts/run_corpus.py compare build/platform/pinned build/platform/proxy --justify-nofastmath
+        run: >
+          python3 migration/scripts/run_corpus.py compare build/platform/pinned build/platform/proxy
+          --justify-nofastmath --parked migration/corpus/parked_arm64.json
       - name: Rust parity tests on arm64 against the macOS arm64 captures (NEON path)
         if: ${{ !cancelled() }}
         env:
@@ -124,8 +128,10 @@ jobs:
       - name: Hashes match the committed macOS arm64 identity
         if: ${{ !cancelled() }}
         run: |
-          python3 migration/scripts/run_corpus.py hashes build/platform/pinned --check --require-known-identity
-          python3 migration/scripts/run_corpus.py hashes build/platform/proxy --check --require-known-identity --reference nofastmath
+          python3 migration/scripts/run_corpus.py hashes build/platform/pinned --check --require-known-identity \
+            --parked migration/corpus/parked_arm64.json
+          python3 migration/scripts/run_corpus.py hashes build/platform/proxy --check --require-known-identity \
+            --reference nofastmath --parked migration/corpus/parked_arm64.json
       - name: Upload parity failures
         if: failure()
         uses: actions/upload-artifact@v7
