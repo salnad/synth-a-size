@@ -30,8 +30,8 @@ pub struct LadderFilter {
     resonance: PolyFloat,
     drive: PolyFloat,
     post_multiply: PolyFloat,
-    /// Upstream leaves these uninitialized until the first `setupFilter`
-    /// with a style it handles (0 to 4); here they start at zero.
+    /// Zero until the first `setupFilter` with a style it handles (0 to 4),
+    /// as upstream (`poly_float()` zero-initializes).
     stage_scales: [PolyFloat; NUM_STAGES + 1],
     stages: [OnePoleFilter; NUM_STAGES],
     filter_input: PolyFloat,

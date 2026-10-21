@@ -1852,8 +1852,8 @@ Core Filters (M5a), stacked on PR 3.
   `OnePoleFilter<algebraicSat>` stages with a `tanh` feedback input, and
   stage-scale mixes for styles 0–4. Upstream does not handle style 5+ in
   `setStageScales`, so the scales keep their previous values. Before the
-  first handled style upstream leaves them uninitialized (indeterminate);
-  the port starts them at zero. The case `style_steps_0_to_9` starts at
+  first handled style they are zero, in upstream (`poly_float()`
+  zero-initializes, `poly_values.h:793`) and here. The case `style_steps_0_to_9` starts at
   style 0 and holds the scales through 5–9, matching upstream.
   `kMaxCoefficient` is unused upstream, as here.
 - `create_filter(Ladder)` builds it. The generic `filter` ref-module
@@ -1867,6 +1867,10 @@ Core Filters (M5a), stacked on PR 3.
   - per-lane settings with retriggers (cutoff up to MIDI 100);
   - 4× oversampling (MIDI 124→8, resonance 0.8), 96 kHz with a MIDI 8–136
     sweep, and block size 1.
+  - added after review: resonant MIDI 0–120 sweeps (0.8, 6 dB) for 12 dB,
+    24 dB and notch/pass swap, the well-conditioned interim band Filter
+    Reviewer measured (1.8e-5 / −100.6 dB, 2.5e-5 / −92.2 dB, 1.6e-5 /
+    −97.5 dB). 34 cases in all.
 - Parity, x86_64: 31/31 pass. Worst max_abs_error 3.8e-5
   (`dual_notch_band_cutoff_sweep_0_to_100`), worst residual −98.1 dB
   (`k24_96k_block_128`).
