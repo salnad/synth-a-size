@@ -9,6 +9,10 @@
 pub mod component;
 pub mod group;
 pub mod keyframes;
+pub mod pitch_detector;
+pub mod render;
+
+pub use render::{AudioFileLoadStyle, RenderError};
 
 use sas_common::json::{JsonError, Result, Value};
 use sas_common::load_save::{self, compare_version_strings};
@@ -32,6 +36,11 @@ pub struct WavetableCreator {
     pub last_file_loaded: String,
     pub full_normalize: bool,
     pub remove_all_dc: bool,
+    /// `compute_frame_` and `compute_frame_combine_`: render scratch that
+    /// persists between renders like upstream's (the last source's frequency
+    /// ratio and sample rate carry over to the wavetable).
+    pub(crate) compute_frame: Box<crate::WaveFrame>,
+    pub(crate) compute_frame_combine: Box<crate::WaveFrame>,
 }
 
 impl Default for WavetableCreator {
@@ -89,6 +98,8 @@ impl WavetableCreator {
             last_file_loaded: String::new(),
             full_normalize: true,
             remove_all_dc: true,
+            compute_frame: Box::default(),
+            compute_frame_combine: Box::default(),
         }
     }
 

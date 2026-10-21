@@ -221,29 +221,11 @@ fn create_sin(frame: &mut WaveFrame) {
     frame.to_time_domain();
 }
 
-/// `futils::tanh` evaluated in the order GCC emits for this loop in the
-/// `-ffast-math` reference (read from its disassembly). With this order the
-/// saturated sine matches the reference bit for bit; the source order of
-/// `sas_common::scalar::tanh` differs from it in 372 of 2048 samples by up to 1.8e-7.
-#[allow(clippy::excessive_precision)]
-fn tanh_as_reference_loop(value: f32) -> f32 {
-    const A: f32 = 2.45550750702956;
-    const B: f32 = 0.893229853513558;
-    const C: f32 = 0.821226666969744;
-    const D: f32 = 2.44506634652299;
-    const E: f32 = 0.814642734961073;
-    let abs_value = value.abs();
-    let square = value * value;
-    let num = value * ((C * abs_value + B) * square + (abs_value + 1.0) * A);
-    let den = (value * E * abs_value + value).abs() * (square + D) + D;
-    num / den
-}
-
 fn create_saturated_sin(frame: &mut WaveFrame) {
     frame.frequency_domain[1] = Complex::real(WAVEFORM_SIZE as f32);
     frame.to_time_domain();
     for value in &mut frame.time_domain[..WAVEFORM_SIZE] {
-        *value = tanh_as_reference_loop(*value);
+        *value = sas_common::scalar::tanh(*value);
     }
     frame.to_frequency_domain();
 }

@@ -1,12 +1,12 @@
 //! `std::complex<float>` with upstream source semantics: products use the
-//! textbook formula (what libstdc++ computes for finite values), `abs` is
-//! `cabsf` (`hypotf`) and `arg` is `atan2f`.
+//! textbook formula (what libstdc++ computes for finite values), division is
+//! libgcc's `__divsc3`, `abs` is `cabsf` (`hypotf`) and `arg` is `atan2f`.
 //!
 //! The `-ffast-math` reference expands `std::abs` to `sqrtf(re² + im²)`
-//! instead; the two differ by at most 1 ulp, which the parity tolerances
-//! absorb, so the source semantics are kept.
+//! and divides in float without scaling; both differ by rounding only, which
+//! the parity tolerances absorb, so the source semantics are kept.
 
-use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
 
 /// One `std::complex<float>` (real part first, as in memory).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -69,16 +69,46 @@ impl Complex {
         }
     }
 
-    /// `value / z` for a real `value`: `value * conj(z) / |z|^2`, the
-    /// straightforward formula (libgcc's `__divsc3` adds scaling that only
-    /// matters near overflow).
+    /// `value / z` for a real `value`: libstdc++ divides `complex(value, 0)`
+    /// by `z`.
     #[inline]
     pub fn real_div(value: f32, z: Complex) -> Self {
-        let denominator = z.re * z.re + z.im * z.im;
-        Self {
-            re: (value * z.re) / denominator,
-            im: (-value * z.im) / denominator,
+        Complex { re: value, im: 0.0 } / z
+    }
+}
+
+/// `self / z` as GCC compiles `std::complex<float>` division without
+/// fast-math: libgcc's `__divsc3`, which (GCC 12 and later, with double
+/// hardware) evaluates the textbook formula in double and rounds each
+/// part to float, then recovers infinities from NaN results.
+impl Div for Complex {
+    type Output = Complex;
+
+    fn div(self, z: Complex) -> Complex {
+        let (mut a, mut b, mut c, mut d) = (self.re, self.im, z.re, z.im);
+        let (ad, bd, cd, dd) = (f64::from(a), f64::from(b), f64::from(c), f64::from(d));
+        let denominator = cd * cd + dd * dd;
+        let mut x = ((ad * cd + bd * dd) / denominator) as f32;
+        let mut y = ((bd * cd - ad * dd) / denominator) as f32;
+
+        if x.is_nan() && y.is_nan() {
+            let unit = |v: f32, on: bool| (if on { 1.0f32 } else { 0.0 }).copysign(v);
+            if denominator == 0.0 && (!a.is_nan() || !b.is_nan()) {
+                x = f32::INFINITY.copysign(c) * a;
+                y = f32::INFINITY.copysign(c) * b;
+            } else if (a.is_infinite() || b.is_infinite()) && c.is_finite() && d.is_finite() {
+                a = unit(a, a.is_infinite());
+                b = unit(b, b.is_infinite());
+                x = f32::INFINITY * (a * c + b * d);
+                y = f32::INFINITY * (b * c - a * d);
+            } else if (c.is_infinite() || d.is_infinite()) && a.is_finite() && b.is_finite() {
+                c = unit(c, c.is_infinite());
+                d = unit(d, d.is_infinite());
+                x = 0.0 * (a * c + b * d);
+                y = 0.0 * (b * c - a * d);
+            }
         }
+        Complex { re: x, im: y }
     }
 }
 
@@ -159,5 +189,43 @@ impl Neg for Complex {
             re: -self.re,
             im: -self.im,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Results of `std::complex<float>` division compiled by GCC 13 without
+    /// fast-math (`__divsc3`), as bit patterns.
+    #[test]
+    fn division_matches_divsc3() {
+        type Case = ((f32, f32), (f32, f32), u32, u32);
+        let cases: [Case; 4] = [
+            ((1.0, 0.0), (0.3, 0.7), 0x3f04_69ef, 0xbf9a_7b96),
+            ((1.0, 0.0), (-0.123456, 0.987654), 0xbdff_35fe, 0xbf7f_3663),
+            ((0.5, -0.25), (1e-3, 3.0), 0xbdaa_8d89, 0xbe2a_b1f2),
+            (
+                (1.0, 0.0),
+                (0.70710677, 0.70710677),
+                0x3f35_04f3,
+                0xbf35_04f3,
+            ),
+        ];
+        for ((a, b), (c, d), re, im) in cases {
+            let q = Complex { re: a, im: b } / Complex { re: c, im: d };
+            assert_eq!(
+                (q.re.to_bits(), q.im.to_bits()),
+                (re, im),
+                "({a}, {b}) / ({c}, {d})"
+            );
+        }
+    }
+
+    #[test]
+    fn division_by_zero_recovers_infinity() {
+        let q = Complex::real_div(1.0, Complex::ZERO);
+        assert_eq!(q.re, f32::INFINITY);
+        assert!(q.im.is_nan());
     }
 }
