@@ -265,8 +265,8 @@ jobs:
             echo "sas-simd compiled with sas-common on the aarch64 column and itself on SSE2"; exit 1
           fi
           grep -q "aarch64-semantics is enabled on sas-common but not on sas-simd" check.log
-      # sas-wavetable's libc++ complex division column (A10); parity tests need reference captures.
+      # sas-wavetable's aarch64 column (A12, the warp's expf); parity tests need reference captures.
       - name: sas-wavetable clippy (aarch64-semantics)
         run: cargo clippy -p sas-wavetable --all-targets --locked --features aarch64-semantics --manifest-path port/Cargo.toml -- -D warnings
-      - name: sas-wavetable tests (libc++ complex division column)
+      - name: sas-wavetable tests (aarch64-semantics)
         run: cargo test -p sas-wavetable --locked --features aarch64-semantics --manifest-path port/Cargo.toml --lib
