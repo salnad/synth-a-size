@@ -72,14 +72,14 @@ corrected the one authored input that did) or puts a converted note outside
 the table, and `cargo test -p sas-engine` passes against the official
 captures.
 
-**Follow-up after #60:** `migration/DIVERGENCES.md` comes with #60, which
-is not on main yet. Whichever of #60 and this PR lands second updates it:
-- D6 becomes "rejected at load": a mapping naming a degree outside the
-  scale at a position `loadScale` reads is refused with
-  `TuningError::MappingOutsideScale` and nothing is applied; unread
-  positions of a long map are accepted, as upstream.
-- A new entry for the start note: upstream's `convertMidiNote` reads
-  outside `tuning_` for a note more than 128 keys from the start note
-  (undefined behaviour); the port reads the nearest end of the table. There
-  is no defined output to reproduce, and refusing such start notes would
-  refuse files upstream plays correctly for most notes.
+**`migration/DIVERGENCES.md`** (#60 landed first, so this PR applies it):
+- D6 is now "A keyboard map that indexes outside the scale is rejected at
+  load": a mapping naming a degree outside the scale at a position
+  `loadScale` reads is refused with `TuningError::MappingOutsideScale` and
+  nothing is applied; unread positions of a long map are accepted, as
+  upstream.
+- D11 (new), "A note outside the tuning table reads the table's nearest
+  end": upstream's `convertMidiNote` reads outside `tuning_` for a note more
+  than 128 keys from the start note (undefined behaviour); the port clamps
+  to the table. There is no defined output to reproduce, and refusing such
+  start notes would refuse files upstream plays correctly for most notes.

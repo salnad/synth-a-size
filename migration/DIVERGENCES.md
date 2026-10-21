@@ -128,23 +128,31 @@ What is **not** listed:
   recorded in `migration/LEDGER.md` ("M5a PR 1 follow-up,
   `create_filter(Comb)` returns `None`").
 
-### D6. A keyboard map that indexes past the scale panics
+### D6. A keyboard map that indexes outside the scale is rejected at load
 
-*Merged in #24 (tuning files). Follow-up open: reject such a map at load.*
+*Merged in #24 (tuning files); rejection at load in #62.*
 
-- **Differs:** a `.kbm` whose mapping names a scale degree beyond the loaded
-  scale. An example is degrees 9–11 on a 7-degree Scala scale.
-- **Upstream:** `Tuning::loadScale` reads `scale[note_in_scale]` past the end
-  of the scale vector (undefined behaviour; `vital/src/common/tuning.cpp:340`).
-- **Port:** the index is bounds-checked, so loading such a mapping panics
-  (`port/crates/engine/src/tuning.rs`, `scale[note_in_scale as usize]`). The authored test inputs
-  that hit it were corrected in #24. These are invalid inputs, not narrowed
-  coverage.
-- **Why:** there is no defined output to reproduce.
-- **Approved:** #24 (`migration/ledger/2026-10-21-m7-tuning-files.md`).
-  Open follow-up: a panic is not acceptable in a shipped plugin, so the
-  loader should reject such a map with an error instead. Update this entry
-  when that lands.
+- **Differs:** a keyboard mapping that names a scale degree outside the
+  scale (≥ the scale's entry count, or negative) at a position
+  `Tuning::loadScale` reads. An example is degrees 9–11 on a 7-degree Scala
+  scale. It reaches a scale through a `.kbm`, a saved tuning state
+  (`jsonToState`) or a new scale under an existing map (`loadScale`).
+- **Upstream:** `Tuning::loadScale` reads `scale[note_in_scale]` outside the
+  scale vector (undefined behaviour; `vital/src/common/tuning.cpp:340`).
+- **Port:** the load is refused with `TuningError::MappingOutsideScale`, and
+  nothing is applied: the start note, reference, table, mapping and names
+  keep their previous values (`port/crates/engine/src/tuning.rs`,
+  `mapping_fits`). Only the positions `loadScale`'s 256-step table walk
+  visits are checked, so the unread entries of a map longer than about 128
+  are accepted, as upstream. A scale of at most one entry gives a constant
+  tuning and reads no mapping, so any mapping is accepted with it.
+- **Why:** there is no defined output to reproduce, and the bounds check
+  that replaced the read would panic, which a shipped plugin must not do.
+  The authored test inputs that hit it were corrected in #24. These are
+  invalid inputs, not narrowed coverage.
+- **Approved:** #24 (`migration/ledger/2026-10-21-m7-tuning-files.md`) and
+  #62 (`migration/ledger/2026-10-21-tuning-kbm-validation.md`), reviewed by
+  Graph Reviewer.
 
 ### D7. A line generator with `num_points` outside 1–100 is an error
 
@@ -246,6 +254,30 @@ What is **not** listed:
     and "Residual risks", owner-approved with #2.
   - `decisions/reference-determinism.md`, for x86 `RCPPS` and libmvec.
   - migration/AGENTS.md hard rule 5 and "Reference-specific facts".
+
+### D11. A note outside the tuning table reads the table's nearest end
+
+*Merged in #62.*
+
+- **Differs:** `Tuning::convertMidiNote` for a note more than 128 keys from
+  the scale's start note. The start note comes from a `.kbm` header's
+  middle note or a saved `scale_start_midi_note`, and can be any int; any
+  start note outside 0–128 puts some MIDI notes 0–127 outside the table.
+- **Upstream:** `tuning_[kTuningCenter + note - scale_start_midi_note_]` is
+  read unchecked, outside the 256-entry table for such notes (undefined
+  behaviour; `vital/src/common/tuning.cpp:367`). Notes inside the table read
+  it correctly whatever the start note.
+- **Port:** any start note loads, as upstream. The index is clamped to the
+  table, so a note past either end reads that end's entry. Notes inside the
+  table read exactly what upstream reads. The offset is computed in `i64`,
+  so no start note or note overflows (`port/crates/engine/src/tuning.rs`,
+  `convert_midi_note`).
+- **Why:** there is no defined output to reproduce, and the unchecked index
+  would panic in the port. Refusing such start notes at load would reject
+  files upstream plays correctly for most notes: a middle note of 200
+  serves MIDI notes 72–127.
+- **Approved:** #62 (`migration/ledger/2026-10-21-tuning-kbm-validation.md`),
+  reviewed by Graph Reviewer.
 
 ## Verification exceptions
 
