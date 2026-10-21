@@ -1,0 +1,201 @@
+{
+  "description": "Upsampler and Decimator (IIR halfband stages, 9-tap and sharp 25-tap) through the round-trip probe: Passthrough at the internal rate -> Decimator(max_stages) -> Upsampler, as SoundEngine and EffectsEngine wire them. Output is the decimated signal held for `oversample` frames.",
+  "module": "oversampling_round_trip",
+  "params": {
+    "max_stages": 3
+  },
+  "cases": {
+    "noise_x1": {
+      "sample_rate": 44100,
+      "oversample": 1,
+      "block_size": 64,
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 1,
+          "stereo": true
+        }
+      }
+    },
+    "saw_x1_48k_block_128": {
+      "sample_rate": 48000,
+      "oversample": 1,
+      "block_size": 128,
+      "num_samples": 24000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 1000.0,
+          "amp": 0.6
+        }
+      }
+    },
+    "noise_x2": {
+      "sample_rate": 44100,
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 2,
+          "stereo": true
+        }
+      }
+    },
+    "saw_x2_48k_block_128": {
+      "sample_rate": 48000,
+      "oversample": 2,
+      "block_size": 256,
+      "num_samples": 48000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 1000.0,
+          "amp": 0.6
+        }
+      }
+    },
+    "noise_x4": {
+      "sample_rate": 44100,
+      "oversample": 4,
+      "block_size": 256,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 4,
+          "stereo": true
+        }
+      }
+    },
+    "saw_x4_48k_block_128": {
+      "sample_rate": 48000,
+      "oversample": 4,
+      "block_size": 512,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 1000.0,
+          "amp": 0.6
+        }
+      }
+    },
+    "noise_x8": {
+      "sample_rate": 44100,
+      "oversample": 8,
+      "block_size": 512,
+      "num_samples": 176400,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 8,
+          "stereo": true
+        }
+      }
+    },
+    "saw_x8_48k_block_128": {
+      "sample_rate": 48000,
+      "oversample": 8,
+      "block_size": 1024,
+      "num_samples": 192000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 1000.0,
+          "amp": 0.6
+        }
+      }
+    },
+    "sine_sweep_points_x2": {
+      "sample_rate": 44100,
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 19000.0,
+          "amp": 0.7
+        }
+      }
+    },
+    "sine_above_nyquist_x4": {
+      "sample_rate": 44100,
+      "oversample": 4,
+      "block_size": 256,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 30000.0,
+          "amp": 0.7
+        }
+      }
+    },
+    "impulse_x8": {
+      "sample_rate": 44100,
+      "oversample": 8,
+      "block_size": 512,
+      "num_samples": 16384,
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 5,
+          "amp": 1.0
+        }
+      }
+    },
+    "noise_x2_max_stages_1": {
+      "params": {
+        "max_stages": 1
+      },
+      "sample_rate": 48000,
+      "oversample": 2,
+      "block_size": 256,
+      "num_samples": 48000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 9,
+          "stereo": true
+        }
+      }
+    },
+    "noise_x4_block_4": {
+      "sample_rate": 44100,
+      "oversample": 4,
+      "block_size": 4,
+      "num_samples": 8000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 10,
+          "stereo": true
+        }
+      }
+    },
+    "noise_x2_96k": {
+      "sample_rate": 96000,
+      "oversample": 2,
+      "block_size": 256,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 11,
+          "stereo": true
+        }
+      }
+    }
+  }
+}
