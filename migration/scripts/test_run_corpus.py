@@ -34,7 +34,8 @@ MODULE_DEFAULTS = {"sample_rate": 44100, "block_size": 64, "oversample": 1,
                    "tolerances": {"max_abs_error": 1e-4, "residual_db": -80.0}}
 RENDER_TOLERANCES = {"rms_diff_db": 0.01, "residual_db": -50.0, "lsd_db": 0.1}
 IDENTITY = {"upstream_sha": "abc", "compiler": "13.3.0", "glibc": "2.39", "fast_math": True,
-            "opt_flags": "-O3", "arch": "x86_64", "libm_variants": "baseline"}
+            "opt_flags": "-O3 -ffast-math -U__FAST_MATH__ -march=x86-64", "arch": "x86_64",
+            "libm_variants": "baseline"}
 
 
 def approved(tolerances):
@@ -277,6 +278,54 @@ class ComparisonRules(unittest.TestCase):
                              {"reference": "nofastmath"}, allowlist=[ALLOWED])
         self.assertCaseError("reference must be one of", self.resolve, {"reference": "x86"})
         self.assertEqual(self.resolve({"reference": "official"}).get("reference"), None)
+
+    # Reviewer note on #34: declaring "audio_file" let int16 PCM pass the f32
+    # bound (reinterpreted words are denormals within 1e-6).
+    def test_only_pinned_base64_f32_keys_can_be_declared(self):
+        json_artifact = {"artifacts": {"saved.json": "json"}}
+        self.assertCaseError("cannot be declared in base64_f32_keys", self.resolve,
+                             dict(json_artifact, base64_f32_keys=["audio_file"]))
+        self.assertCaseError("cannot be declared in base64_f32_keys", self.resolve,
+                             dict(json_artifact, base64_f32_keys=["wave_data", "x"]))
+        self.assertCaseError("cannot be declared in base64_f32_keys", self.resolve,
+                             json_artifact, {"base64_f32_keys": ["audio_file"]})
+        self.assertEqual(rc.BASE64_F32_KEYS, ("wave_data",))
+        # The reviewer's repro: these PCM strings pass only if reinterpreted.
+        pcm = lambda v: __import__("base64").b64encode(struct.pack("<4h", *v)).decode()  # noqa: E731
+        ref, test = {"audio_file": pcm([5, 0, 1000, 0])}, {"audio_file": pcm([30000, 0, -1000, 0])}
+        self.assertEqual(json_problems(ref, test, ["audio_file"]), [])
+        self.assertNotEqual(json_problems(ref, test), [])
+
+    # Reviewer note on #34: a tightened json_bound made the official
+    # reference "fail" the justification on purpose.
+    def test_nofastmath_cases_always_use_the_pinned_json_bound(self):
+        entry = self.resolve({"reference": "nofastmath"},
+                             {"artifacts": {"saved.json": "json"}, "json_bound": {"ulp": 0, "abs": 0}},
+                             allowlist=[ALLOWED])
+        self.assertEqual(entry["json_bound"], rc.JSON_BOUND)
+        self.assertCaseError("cannot set json_bound", self.resolve, {"reference": "nofastmath",
+                             "json_bound": {"ulp": 0}}, {"artifacts": {"saved.json": "json"}}, allowlist=[ALLOWED])
+
+    def test_allowlist_additions_need_a_new_owner_approval_section(self):
+        base_doc = DECISION
+        head_doc = DECISION.replace("- `%s` (test)" % ALLOWED, "- `%s` (test)\n- `filters/test/comb`" % ALLOWED)
+        base_ledger = LEDGER + "\n## 2026-10-21: owner approval — earlier\n\nfilters/test/morph\n"
+        check = rc.unapproved_allowlist_additions
+        self.assertEqual(check(base_doc, head_doc, base_ledger, base_ledger), ["filters/test/comb"])
+        approved = base_ledger + "\n## 2026-10-23: owner approval — comb filter\n\nfilters/test/comb\n"
+        self.assertEqual(check(base_doc, head_doc, base_ledger, approved), [])
+        # The new section must say "owner approval" and name the case.
+        unlabelled = base_ledger + "\n## 2026-10-23: comb filter\n\nfilters/test/comb\n"
+        self.assertEqual(check(base_doc, head_doc, base_ledger, unlabelled), ["filters/test/comb"])
+        other = base_ledger + "\n## 2026-10-23: owner approval — comb\n\nfilters/test/comb_2\n"
+        self.assertEqual(check(base_doc, head_doc, base_ledger, other), ["filters/test/comb"])
+        # Editing an existing approval section does not count.
+        edited = base_ledger.replace("filters/test/morph\n", "filters/test/morph filters/test/comb\n")
+        self.assertEqual(check(base_doc, head_doc, base_ledger, edited), ["filters/test/comb"])
+        # Removals and a first doc with its approval are fine.
+        self.assertEqual(check(head_doc, base_doc, base_ledger, base_ledger), [])
+        self.assertEqual(check("", base_doc, LEDGER, base_ledger), [])
+        self.assertEqual(check("", base_doc, LEDGER, LEDGER), [ALLOWED])
 
     def test_allowlist_comes_from_its_decision_doc_section(self):
         self.assertEqual(rc.allowlist_from(DECISION), [ALLOWED])
@@ -701,9 +750,30 @@ class ScratchRepo(unittest.TestCase):
         self.assertEqual(code, 2, output)
         self.assertIn("ERROR filters/test/morph (reference \"nofastmath\" NOT justified", output)
 
+    def test_tightened_json_bound_alone_does_not_justify(self):
+        self.write_morph_case()
+        rc.write_json(os.path.join(rc.MODULE_CASES, "filters", "test.json"), {
+            "module": "filter", "artifacts": {"saved.json": "json"}, "json_bound": {"ulp": 0, "abs": 0},
+            "cases": {"a": {"num_samples": 4}, "morph": {"reference": "nofastmath"}}})
+        trees = []
+        for name, value in (("ref", f32(0.3)), ("proxy", f32(0.3, 1))):
+            case_dir = os.path.join(self.tmp.name, name, "modules", "filters", "test", "morph")
+            os.makedirs(case_dir)
+            with open(os.path.join(case_dir, "artifact_saved.json"), "w") as handle:
+                json.dump({"gain": value}, handle)
+            trees.append(os.path.join(self.tmp.name, name))
+        fake_diff = os.path.join(self.tmp.name, "fake-audio-diff")
+        with open(fake_diff, "w") as handle:
+            handle.write("#!/bin/sh\nexit 2\n")
+        os.chmod(fake_diff, 0o755)
+        code, output = self.run_main("compare", trees[0], trees[1], "--audio-diff", fake_diff,
+                                     "--only", "filters/test/morph", "--justify-nofastmath")
+        self.assertEqual(code, 2, output)
+        self.assertIn("NOT justified", output)
+
     def test_nofastmath_hashes_use_their_own_identity(self):
         self.write_morph_case()
-        nofastmath = dict(IDENTITY, fast_math=False, opt_flags="-O3 (no fast-math)")
+        nofastmath = dict(IDENTITY, fast_math=False, opt_flags="-O3 -march=x86-64")
         official = self.add_morph_capture(self.make_tree(), IDENTITY, [0.5] * 4)
         self.write_baseline(official)
         proxy = self.add_morph_capture(self.make_tree(nofastmath, "proxy"), nofastmath, [0.25] * 4)
@@ -734,11 +804,18 @@ class ScratchRepo(unittest.TestCase):
         self.assertEqual(code, 1, output)
         self.assertIn("MISMATCH", output)
 
-        other = dict(nofastmath, compiler="14.2.0")
-        stranger = self.add_morph_capture(self.make_tree(other, "stranger"), other, [0.25] * 4)
-        code, output = self.run_main("hashes", stranger, "--write", "--reference", "nofastmath")
-        self.assertEqual(code, 2, output)
-        self.assertIn("not a known CI identity", output)
+        # Only the exact counterpart is known: the CI flags minus
+        # " -ffast-math -U__FAST_MATH__" (reviewer note on #34).
+        for index, change in enumerate(({"compiler": "14.2.0"}, {"opt_flags": "-O3 -march=native"},
+                                        {"opt_flags": "-O3 -march=x86-64 -ffp-contract=fast"},
+                                        {"opt_flags": "-O3 -ffast-math -U__FAST_MATH__ -march=x86-64"})):
+            other = dict(nofastmath, **change)
+            stranger = self.add_morph_capture(self.make_tree(other, "stranger%d" % index), other, [0.25] * 4)
+            code, output = self.run_main("hashes", stranger, "--write", "--reference", "nofastmath")
+            self.assertEqual(code, 2, (change, output))
+            self.assertIn("not a known CI identity", output)
+        self.assertEqual(rc.nofastmath_counterpart(IDENTITY), nofastmath)
+        self.assertIsNone(rc.nofastmath_counterpart(dict(IDENTITY, opt_flags="-O3")))
 
     # B3: a failed render left stale data plus a new case.json.
     def test_failed_render_leaves_no_stale_capture(self):

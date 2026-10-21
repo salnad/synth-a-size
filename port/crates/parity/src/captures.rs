@@ -464,22 +464,34 @@ pub fn verify_committed_hash(case: &ResolvedCase, key: &str, digest: &str) {
     }
 }
 
-/// A no-fast-math identity is known when it is a CI identity with only the
-/// fast-math setting (and so the optimisation flags) changed. Mirrored in
-/// run_corpus.py (`nofastmath_identity_known`).
-pub(crate) fn nofastmath_identity_known(identity: &Value, known: &[Value]) -> bool {
-    if identity["fast_math"] != Value::Bool(false) {
-        return false;
+/// The no-fast-math reference build's `opt_flags` are the CI build's minus
+/// this. Mirrored in run_corpus.py (`FAST_MATH_FLAGS`).
+const FAST_MATH_FLAGS: &str = " -ffast-math -U__FAST_MATH__";
+
+/// The identity a `REF_FAST_MATH=OFF` build of CI identity `known` has:
+/// `fast_math` false and `opt_flags` without [`FAST_MATH_FLAGS`], everything
+/// else equal. `None` if `known` is not a fast-math identity.
+fn nofastmath_counterpart(known: &Value) -> Option<Value> {
+    let flags = known["opt_flags"].as_str()?;
+    if known["fast_math"] != Value::Bool(true) || !flags.contains(FAST_MATH_FLAGS) {
+        return None;
     }
-    let strip = |value: &Value| -> Value {
-        let mut object = value.as_object().cloned().unwrap_or_default();
-        object.remove("fast_math");
-        object.remove("opt_flags");
-        Value::Object(object)
-    };
+    let mut counterpart = known.as_object()?.clone();
+    counterpart.insert("fast_math".into(), Value::Bool(false));
+    counterpart.insert(
+        "opt_flags".into(),
+        Value::from(flags.replacen(FAST_MATH_FLAGS, "", 1)),
+    );
+    Some(Value::Object(counterpart))
+}
+
+/// A no-fast-math identity is known when it is exactly the no-fast-math
+/// counterpart of a CI identity. Mirrored in run_corpus.py
+/// (`nofastmath_identity_known`).
+pub(crate) fn nofastmath_identity_known(identity: &Value, known: &[Value]) -> bool {
     known
         .iter()
-        .any(|k| k["fast_math"] == Value::Bool(true) && strip(k) == strip(identity))
+        .any(|k| nofastmath_counterpart(k).as_ref() == Some(identity))
 }
 
 #[cfg(test)]
@@ -516,18 +528,28 @@ mod tests {
     }
 
     #[test]
-    fn nofastmath_identity_is_a_ci_identity_with_only_fast_math_changed() {
-        let ci = serde_json::json!({ "compiler": "13.3.0", "fast_math": true, "opt_flags": "-O3 -ffast-math" });
-        let proxy =
-            serde_json::json!({ "compiler": "13.3.0", "fast_math": false, "opt_flags": "-O3" });
-        assert!(nofastmath_identity_known(&proxy, std::slice::from_ref(&ci)));
-        let other =
-            serde_json::json!({ "compiler": "14.2.0", "fast_math": false, "opt_flags": "-O3" });
-        assert!(!nofastmath_identity_known(
-            &other,
-            std::slice::from_ref(&ci)
-        ));
-        assert!(!nofastmath_identity_known(&ci, std::slice::from_ref(&ci)));
+    fn nofastmath_identity_is_the_exact_counterpart_of_a_ci_identity() {
+        let ci = serde_json::json!({ "compiler": "13.3.0", "fast_math": true,
+            "opt_flags": "-O3 -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -ffp-contract=off" });
+        let known = std::slice::from_ref(&ci);
+        let proxy = serde_json::json!({ "compiler": "13.3.0", "fast_math": false,
+            "opt_flags": "-O3 -funroll-loops -march=x86-64 -ffp-contract=off" });
+        assert!(nofastmath_identity_known(&proxy, known));
+        let mut other = proxy.clone();
+        other["compiler"] = "14.2.0".into();
+        assert!(!nofastmath_identity_known(&other, known));
+        assert!(!nofastmath_identity_known(&ci, known));
+        // Reviewer note on #34: any other flag change is a different build.
+        for flags in [
+            "-O3 -funroll-loops -march=x86-64 -ffp-contract=fast",
+            "-O3 -funroll-loops -march=native -ffp-contract=off",
+            "-O3 -funroll-loops -march=x86-64",
+            "-O3 -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -ffp-contract=off",
+        ] {
+            let mut altered = proxy.clone();
+            altered["opt_flags"] = flags.into();
+            assert!(!nofastmath_identity_known(&altered, known), "{flags}");
+        }
     }
 
     // Pinned vectors of the harness hash (see fnv1a64); run_corpus.py's

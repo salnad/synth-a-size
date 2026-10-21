@@ -159,8 +159,9 @@ none of them edits a shared list.
      JSON so it is compared structurally, with floats held to the
      owner-approved bound of 4 f32 ulp or 1e-6 absolute, whichever is
      looser. Name the keys whose strings are base64 little-endian f32 data;
-     they are decoded and compared element-wise. Other strings, including
-     PCM base64, stay exact:
+     they are decoded and compared element-wise. Only the keys pinned in
+     code (`wave_data`) can be declared. Other strings, including PCM
+     base64, stay exact:
 
      ```json
      "artifacts": { "saved.json": "json" },

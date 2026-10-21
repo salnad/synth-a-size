@@ -100,6 +100,12 @@ MODULE_FLOOR = {"max_abs_error": 1e-4, "residual_db": -80.0}
 # Owner decision (migration/decisions/owner-decisions-json-and-morphs.md,
 # LEDGER.md 2026-10-21). Mirrored in port/crates/parity/src/cases.rs.
 JSON_BOUND = {"ulp": 4, "abs": 1e-6}
+# The only keys a case may declare as base64 little-endian f32 data. Any
+# other string (e.g. PCM int16 "audio_file") stays exact; extending this set
+# is a code change in both resolvers plus an owner decision.
+BASE64_F32_KEYS = ("wave_data",)
+# The no-fast-math reference build's opt_flags are the CI build's minus this.
+FAST_MATH_FLAGS = " -ffast-math -U__FAST_MATH__"
 ARTIFACT_MODES = ("exact", "json")
 REFERENCES = ("official", "nofastmath")
 ALLOWLIST_HEADING = "No-fast-math exact cases (allowlist)"
@@ -316,6 +322,10 @@ def resolve_comparison(case_id, file_level, case, allowlist):
         value = layer["base64_f32_keys"]
         if not isinstance(value, list) or not all(isinstance(k, str) and k for k in value):
             raise CaseError("%s (%s level): base64_f32_keys must be a list of key names" % (case_id, where))
+        for key in value:
+            if key not in BASE64_F32_KEYS:
+                raise CaseError("%s: %r cannot be declared in base64_f32_keys; only %s hold base64 f32 data "
+                                "(pinned in both resolvers)" % (case_id, key, list(BASE64_F32_KEYS)))
         keys = sorted(set(value))
 
     bound = dict(JSON_BOUND)
@@ -344,6 +354,11 @@ def resolve_comparison(case_id, file_level, case, allowlist):
         raise CaseError("%s: reference must be one of %s, not %r" % (case_id, list(REFERENCES), reference))
     extra = {}
     if reference == "nofastmath":
+        # The JSON bound is part of the normal limits the calibration
+        # justification uses, so it is always the pinned one here.
+        bound = dict(JSON_BOUND)
+        if "json_bound" in case:
+            raise CaseError("%s: a reference \"nofastmath\" case cannot set json_bound" % case_id)
         if case_id not in allowlist:
             raise CaseError("%s: reference \"nofastmath\" is only allowed for case ids listed under \"%s\" "
                             "in %s" % (case_id, ALLOWLIST_HEADING, os.path.relpath(DECISION_DOC, REPO)))
@@ -944,14 +959,20 @@ def known_identities():
     return [entry["identity"] for entry in read_hash_file(RENDER_HASHES)["entries"]]
 
 
+def nofastmath_counterpart(known):
+    """The identity a REF_FAST_MATH=OFF build of CI identity `known` has:
+    fast_math false and opt_flags without FAST_MATH_FLAGS, everything else
+    equal. None if `known` is not a fast-math identity."""
+    flags = known.get("opt_flags")
+    if known.get("fast_math") is not True or not isinstance(flags, str) or FAST_MATH_FLAGS not in flags:
+        return None
+    return dict(known, fast_math=False, opt_flags=flags.replace(FAST_MATH_FLAGS, "", 1))
+
+
 def nofastmath_identity_known(identity):
-    """A no-fast-math identity is known when it is a CI identity with only
-    the fast-math setting (and so the optimisation flags) changed.
-    Mirrored in sas-parity (captures.rs)."""
-    if identity.get("fast_math") is not False:
-        return False
-    strip = lambda i: {k: v for k, v in i.items() if k not in ("fast_math", "opt_flags")}  # noqa: E731
-    return any(known.get("fast_math") is True and strip(known) == strip(identity) for known in known_identities())
+    """A no-fast-math identity is known when it is exactly the no-fast-math
+    counterpart of a CI identity. Mirrored in sas-parity (captures.rs)."""
+    return any(nofastmath_counterpart(known) == identity for known in known_identities())
 
 
 def cmd_hashes(args):
@@ -1046,6 +1067,43 @@ def cmd_hashes(args):
     return 1 if problems else 0
 
 
+def unapproved_allowlist_additions(base_doc, head_doc, base_ledger, head_ledger):
+    """Ids added to the no-fast-math allowlist without a LEDGER.md section
+    that is new in this change, has "owner approval" in its heading and
+    names the id. Removals need no approval (the case returns to the
+    official reference)."""
+    before = set(allowlist_from(base_doc))
+    added = [case_id for case_id in allowlist_from(head_doc) if case_id not in before]
+    old_titles = {title for title, _ in ledger_sections(base_ledger)}
+    approvals = [body for title, body in ledger_sections(head_ledger)
+                 if title not in old_titles and "owner approval" in title.lower()]
+    return [case_id for case_id in added if not any(names_case(body, case_id) for body in approvals)]
+
+
+def git_show(rev, path):
+    code, output = run(["git", "-C", REPO, "show", "%s:%s" % (rev, os.path.relpath(path, REPO))])
+    return output if code == 0 else ""
+
+
+def cmd_allowlist_approval(args):
+    if not args.base or set(args.base) == {"0"}:
+        print("no base revision; allowlist approval check skipped")
+        return 0
+    code, output = run(["git", "-C", REPO, "rev-parse", "--verify", args.base + "^{commit}"])
+    if code != 0:
+        print("base revision %s not found: %s" % (args.base, output.strip()))
+        return 2
+    with open(DECISION_DOC) as handle:
+        head_doc = handle.read()
+    missing = unapproved_allowlist_additions(git_show(args.base, DECISION_DOC), head_doc,
+                                             git_show(args.base, LEDGER), read_ledger())
+    for case_id in missing:
+        print("%s was added to the no-fast-math allowlist without a new LEDGER.md section whose heading "
+              "contains \"owner approval\" and which names the case" % case_id)
+    print("%d allowlist additions without a recorded owner approval" % len(missing))
+    return 1 if missing else 0
+
+
 def cmd_list(args):
     data = {"renders": load_renders(), "modules": load_modules()}
     if args.only:
@@ -1092,8 +1150,15 @@ def main():
     listing = sub.add_parser("list", help="print resolved cases as JSON")
     listing.add_argument("--only", nargs="*", help="substrings of case ids to include")
 
+    approval = sub.add_parser("allowlist-approval",
+                              help="fail if no-fast-math allowlist additions since --base lack an owner approval "
+                                   "entry in LEDGER.md")
+    approval.add_argument("--base", default="", help="git revision to compare against (e.g. origin/main)")
+
     args = parser.parse_args()
     try:
+        if args.command == "allowlist-approval":
+            return cmd_allowlist_approval(args)
         if args.command == "hashes":
             return cmd_hashes(args)
         if args.command == "list":

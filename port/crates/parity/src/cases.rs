@@ -23,6 +23,12 @@ const METRICS: [&str; 4] = ["max_abs_error", "rms_diff_db", "residual_db", "lsd_
 /// only tighten it. Mirrored in run_corpus.py (`JSON_BOUND`).
 pub const JSON_BOUND: JsonBound = JsonBound { ulp: 4, abs: 1e-6 };
 
+/// The only keys a case may declare as base64 little-endian f32 data. Any
+/// other string (e.g. PCM int16 `audio_file`) stays exact; extending this
+/// set is a code change in both resolvers plus an owner decision. Mirrored
+/// in run_corpus.py (`BASE64_F32_KEYS`).
+pub const BASE64_F32_KEYS: [&str; 1] = ["wave_data"];
+
 /// Heading of the decision doc section that lists the case ids allowed to
 /// use `"reference": "nofastmath"`. Mirrored in run_corpus.py.
 pub const ALLOWLIST_HEADING: &str = "No-fast-math exact cases (allowlist)";
@@ -488,6 +494,15 @@ pub fn resolve_comparison(
         let names = names.ok_or_else(|| {
             format!("{case_id} ({level} level): base64_f32_keys must be a list of key names")
         })?;
+        if let Some(key) = names
+            .iter()
+            .find(|k| !BASE64_F32_KEYS.contains(&k.as_str()))
+        {
+            return Err(format!(
+                "{case_id}: {key:?} cannot be declared in base64_f32_keys; only {BASE64_F32_KEYS:?} hold \
+                 base64 f32 data (pinned in both resolvers)"
+            ));
+        }
         keys = Some(names.into_iter().collect());
     }
 
@@ -545,6 +560,14 @@ pub fn resolve_comparison(
     };
     let mut extra = Map::new();
     if reference == Reference::NoFastMath {
+        // The JSON bound is part of the normal limits the calibration
+        // justification uses, so it is always the pinned one here.
+        bound = JSON_BOUND;
+        if case.contains_key("json_bound") {
+            return Err(format!(
+                "{case_id}: a reference \"nofastmath\" case cannot set json_bound"
+            ));
+        }
         if !allowlist.iter().any(|id| id == case_id) {
             return Err(format!(
                 "{case_id}: reference \"nofastmath\" is only allowed for case ids listed under \
@@ -1303,6 +1326,55 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.contains("mode must be one of"), "{err}");
+    }
+
+    // Reviewer note on #34: declaring "audio_file" let int16 PCM pass the f32
+    // bound (reinterpreted words are denormals within 1e-6).
+    #[test]
+    fn only_pinned_base64_f32_keys_can_be_declared() {
+        let json_artifact = json!({ "saved.json": "json" });
+        for (case, file) in [
+            (
+                json!({ "artifacts": json_artifact, "base64_f32_keys": ["audio_file"] }),
+                json!({}),
+            ),
+            (
+                json!({ "artifacts": json_artifact, "base64_f32_keys": ["wave_data", "x"] }),
+                json!({}),
+            ),
+            (
+                json!({ "artifacts": json_artifact }),
+                json!({ "base64_f32_keys": ["audio_file"] }),
+            ),
+        ] {
+            let err = resolve_morph(case, file, &[]).unwrap_err();
+            assert!(
+                err.contains("cannot be declared in base64_f32_keys"),
+                "{err}"
+            );
+        }
+        assert_eq!(BASE64_F32_KEYS, ["wave_data"]);
+    }
+
+    // Reviewer note on #34: a tightened json_bound made the official
+    // reference "fail" the justification on purpose.
+    #[test]
+    fn nofastmath_cases_always_use_the_pinned_json_bound() {
+        let case = resolve_morph(
+            json!({ "reference": "nofastmath" }),
+            json!({ "artifacts": { "saved.json": "json" }, "json_bound": { "ulp": 0, "abs": 0 } }),
+            &[MORPH],
+        )
+        .unwrap();
+        assert_eq!(case.json["json_bound"], json!({ "ulp": 4, "abs": 1e-6 }));
+        assert_eq!(case.comparison.json_bound, JSON_BOUND);
+        let err = resolve_morph(
+            json!({ "reference": "nofastmath", "json_bound": { "ulp": 0 } }),
+            json!({ "artifacts": { "saved.json": "json" } }),
+            &[MORPH],
+        )
+        .unwrap_err();
+        assert!(err.contains("cannot set json_bound"), "{err}");
     }
 
     #[test]

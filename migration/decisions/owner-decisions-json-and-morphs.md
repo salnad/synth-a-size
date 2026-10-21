@@ -1,9 +1,20 @@
 # Owner decisions: bounded JSON state and no-fast-math exact cases
 
-Approved by the owner (Salil) on 2026-10-21. LEDGER.md entry:
-"2026-10-21: owner approval — JSON bound and no-fast-math exact cases".
-Both rules are enforced in code, identically, by
-`migration/scripts/run_corpus.py` and `port/crates/parity` (sas-parity).
+The owner (Salil) approved the following on 2026-10-21 (LEDGER.md entry
+"2026-10-21: owner approval — JSON bound and no-fast-math exact cases"):
+
+1. "ULP-bounded, not byte-exact: preset and wavetable JSON values must agree
+   within a few ULP of float rounding".
+2. Exact comparison against the no-fast-math build for frequency-mode
+   interpolation between keyframes with disjoint spectra, folding at the
+   clamp, and frequency-interpolated audio fades.
+
+The specific numbers below (4 f32 ULP or 1e-6 absolute, whichever is
+looser) are the coordinator's interpretation of "a few ULP", **pending owner
+confirmation**. The five allowlisted case ids are the measured instances of
+the three categories in decision 2. Both rules are enforced in code,
+identically, by `migration/scripts/run_corpus.py` and `port/crates/parity`
+(sas-parity).
 
 ## 1. JSON state parity is bounded, not byte-exact
 
@@ -15,8 +26,9 @@ must agree within a small bound.
   integer, float, string, array and object; an integer is not a float.
   Strings, integers, booleans and array lengths must match exactly.
 - **Floats** must agree within **4 f32 ulp** (after rounding both values to
-  f32) **or 1e-6 absolute, whichever is looser**. The owner said "a few
-  ulp"; this is how that is applied.
+  f32) **or 1e-6 absolute, whichever is looser**. These numbers are the
+  coordinator's interpretation of the owner's "a few ULP", pending owner
+  confirmation.
   - The absolute floor is needed because source-formula values near zero
     differ by up to 96 ulp but only 7.8e-7 absolute.
   - Below |x| = 4 the absolute floor is the looser term. At 1.0, 1e-6 is
@@ -28,8 +40,14 @@ must agree within a small bound.
   For keys the case declares in `base64_f32_keys`, both strings are decoded.
   The two arrays must have exactly the same length, and each element must
   agree within the same bound. Keys are declared, never guessed from the
-  content. Every other string stays exact, including PCM int16 base64 such
-  as `audio_file` in PCM form.
+  content.
+  - Only the keys pinned in code may be declared: `BASE64_F32_KEYS` =
+    `{"wave_data"}` in both resolvers. Any other name is rejected at load.
+    Declaring `audio_file` would otherwise let int16 PCM pass the f32 bound,
+    because reinterpreted PCM words are denormals within 1e-6.
+  - Extending the set is a code change plus an owner decision.
+  - Every other string stays exact, including PCM int16 base64 such as
+    `audio_file` in PCM form.
 - **Opt-in per artifact.** The case (or its file) declares which text
   artifacts are JSON state:
 
@@ -55,7 +73,10 @@ it.
 
 ## 2. Ill-conditioned wavetable morphs are compared exactly against the no-fast-math build
 
-Some content depends on FFT rounding noise. In frequency-mode keyframe
+The owner approved exact comparison against the no-fast-math build for
+frequency-mode interpolation between keyframes with disjoint spectra,
+folding at the clamp, and frequency-interpolated audio fades. Some content
+depends on FFT rounding noise. In frequency-mode keyframe
 interpolation between disjoint spectra, folding at the clamp and
 frequency-interpolated audio fades, upstream takes interpolated phases from
 `arg(conj(from)·to)` of noise-level bins.
@@ -79,9 +100,11 @@ frequency-interpolated audio fades, upstream takes interpolated phases from
 - **No tolerances:**
   - The case cannot set `tolerances` or carry a `tolerance_exception`.
   - Its normal limits, used only by the calibration check, are the module
-    defaults plus its declared artifact modes. File-level tightening does
-    not count, so a case cannot make the official reference "fail" on
-    purpose.
+    defaults plus its declared artifact modes under the pinned
+    `JSON_BOUND`.
+  - File-level tightening of `tolerances` or `json_bound` does not count,
+    and the case itself cannot set either. So a case cannot make the
+    official reference "fail" on purpose.
 - **Calibration gate:** a listed case is valid only while CI's calibration
   step shows that the official reference **fails** the case's normal limits
   against the no-fast-math build. The step is
@@ -99,15 +122,26 @@ frequency-interpolated audio fades, upstream takes interpolated phases from
   - Captures are pinned with their own build identity (`fast_math: false`)
     in each module's `.hashes.json`, for listed cases only:
     `run_corpus.py hashes <tree> --write --reference nofastmath`.
-  - The identity is known only if it equals a CI identity with just the
-    fast-math setting (and so the optimisation flags) changed.
+  - The identity is known only if it is exactly a CI identity's
+    no-fast-math counterpart: `fast_math: false`, and `opt_flags` equal to
+    the CI flags with ` -ffast-math -U__FAST_MATH__` removed. Everything
+    else must be equal. Any other flag change (FMA contraction, `-march`)
+    is a different build.
   - The official reference still renders and hash-pins these cases, so its
     determinism stays covered.
 
 ### No-fast-math exact cases (allowlist)
 
-To add a case, add one line to this list in a PR the owner approves. The
-lines must have the form ``- `<case id>` `` followed by optional text.
+These five ids are the measured instances of the three approved categories:
+frequency-mode interpolation between keyframes with disjoint spectra,
+folding at the clamp, and frequency-interpolated audio fades.
+
+To add a case, add one line to this list. The lines must have the form
+``- `<case id>` `` followed by optional text. CI (`run_corpus.py
+allowlist-approval`) fails the change unless the same change adds a
+LEDGER.md section whose heading contains "owner approval" and which names
+each added id. Removing an id needs no approval: the case returns to the
+official reference.
 
 - `wavetable/render/wave_linear_freq_disjoint_spectra`: frequency-mode linear interpolation between disjoint spectra
 - `wavetable/render/wave_cubic_freq_disjoint_spectra`: frequency-mode cubic interpolation between disjoint spectra

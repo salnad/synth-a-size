@@ -1342,24 +1342,37 @@ cover it end to end.
 
 ## 2026-10-21: owner approval — JSON bound and no-fast-math exact cases
 
-The owner (Salil) approved two decisions. They are recorded in
-`migration/decisions/owner-decisions-json-and-morphs.md` and enforced
-identically by `run_corpus.py` and sas-parity.
+The owner (Salil) approved:
+
+1. "ULP-bounded, not byte-exact: preset and wavetable JSON values must agree
+   within a few ULP of float rounding";
+2. exact comparison against the no-fast-math build for frequency-mode
+   interpolation between keyframes with disjoint spectra, folding at the
+   clamp, and frequency-interpolated audio fades.
+
+The specific numbers (4 f32 ULP or 1e-6 absolute, whichever is looser) are
+the coordinator's interpretation, pending owner confirmation. The 5 ids
+below are the measured instances of the categories in (2). The decisions are
+recorded in `migration/decisions/owner-decisions-json-and-morphs.md` (same
+wording) and enforced identically by `run_corpus.py` and sas-parity.
 
 - **JSON state is bounded, not byte-exact.**
   - Text artifacts a case declares `"artifacts": {"<name>": "json"}` must
     match structurally: keys (order ignored), types (integer ≠ float),
     strings, integers and array lengths.
   - Floats must agree within 4 f32 ulp or 1e-6 absolute, whichever is
-    looser; -0.0 equals 0.0. "A few ulp" is applied this way: the floor is
-    needed because source-formula values near zero differ by up to 96 ulp
-    but only 7.8e-7 absolute.
+    looser (the coordinator's interpretation of "a few ULP", pending owner
+    confirmation); -0.0 equals 0.0. The floor is needed because
+    source-formula values near zero differ by up to 96 ulp but only 7.8e-7
+    absolute.
   - Below |x| = 4 the floor is the looser term. Samples in [-1, 1] are
     therefore effectively held to 1e-6 absolute, and only magnitudes ≥ 4
     are held to 4 ulp.
-  - Keys listed in `base64_f32_keys` (e.g. `wave_data`) are decoded as
-    little-endian f32 arrays: same length, each element under the same
-    bound. Other strings stay exact, including PCM `audio_file`.
+  - Keys listed in `base64_f32_keys` are decoded as little-endian f32
+    arrays: same length, each element under the same bound. Only the
+    pinned `BASE64_F32_KEYS` = `{"wave_data"}` may be declared; anything
+    else is rejected at load. Other strings stay exact, including PCM
+    `audio_file`.
   - Undeclared artifacts stay byte-exact. The bound is pinned in both
     resolvers (`JSON_BOUND`); `"json_bound"` may only tighten it.
   - It applies in sas-parity (`assert_artifact!` reads the mode from the
@@ -1439,3 +1452,18 @@ identically by `run_corpus.py` and sas-parity.
   - the justification gate passes and rejects as specified;
   - no-fast-math hashes use their own identity;
   - the bit-exact comparison flags -0.0 vs 0.0 and a 1-ulp change.
+- **Parity Reviewer changes on #34:**
+  - `base64_f32_keys` is pinned to `{"wave_data"}` in both resolvers. The
+    reviewer showed that declaring `audio_file` let int16 PCM `[5, 0,
+    1000, 0]` vs `[30000, 0, -1000, 0]` pass, as denormals within 1e-6.
+  - The no-fast-math identity must be the exact counterpart of a CI
+    identity: `opt_flags` equal to the CI flags minus
+    ` -ffast-math -U__FAST_MATH__`, instead of ignoring the flags.
+  - A nofastmath case always resolves to the pinned `JSON_BOUND` and cannot
+    set `json_bound`, so tightening cannot game the justification.
+  - Optional item, done: `run_corpus.py allowlist-approval --base <rev>`
+    runs in CI's repo checks. It fails if an id is added to the allowlist
+    without a new LEDGER.md section whose heading contains "owner approval"
+    and which names the id. This entry approves the 5 initial ids.
+  - Each fix has tests in both suites (the guard is Python-only, since it
+    runs in CI).
