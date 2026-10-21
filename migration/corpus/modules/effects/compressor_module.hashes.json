@@ -26,11 +26,17 @@
     },
     {
       "hashes": {
+        "defaults_noise:audio": "c1ba93af8bcc629d",
         "defaults_saw:audio": "95a6b92f51fe386b",
+        "enable_toggle:audio": "7ab286c27e9189f7",
         "enabled_bands_1:audio": "cec692caa32f66df",
         "enabled_bands_2:audio": "6c7b6f6d404ec1b7",
         "enabled_bands_3:audio": "7fea756c847ee353",
-        "interim_enable_toggle_short:audio": "8de5f5263a88150d"
+        "gain_attack_release_mix:audio": "f527c2577bb7b4ab",
+        "interim_enable_toggle_short:audio": "8de5f5263a88150d",
+        "oversampled_2x:audio": "157d04fddcf95d12",
+        "rate_96k:audio": "35d0c938ac63eea8",
+        "threshold_and_ratio_sweeps:audio": "fe30a85ea96cdfb0"
       },
       "identity": {
         "arch": "aarch64",
@@ -58,6 +64,25 @@
         "glibc": "2.39",
         "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
         "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    },
+    {
+      "hashes": {
+        "defaults_noise:audio": "85e40289e9554375",
+        "enable_toggle:audio": "73f45850adade8ae",
+        "gain_attack_release_mix:audio": "b32f9cd51dacaecb",
+        "oversampled_2x:audio": "33e28487e2329a8c",
+        "rate_96k:audio": "a3147b9f3fe181a7",
+        "threshold_and_ratio_sweeps:audio": "4e62cbd34584bd62"
+      },
+      "identity": {
+        "arch": "aarch64",
+        "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+        "fast_math": false,
+        "glibc": null,
+        "libm_variants": "Apple libm (macOS 15.7.9)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
         "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
       }
     }
