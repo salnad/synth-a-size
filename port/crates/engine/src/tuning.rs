@@ -363,22 +363,32 @@ impl std::fmt::Display for TuningError {
 impl std::error::Error for TuningError {}
 
 /// Checks that `loadScale` would read only inside `scale` with `mapping`.
-/// A scale of at most one entry gives a constant tuning and reads no
-/// mapping.
+/// Only the mapping positions its table walk visits are checked: entries of
+/// a map longer than about 128 that the walk never reaches are not read
+/// upstream either. A scale of at most one entry gives a constant tuning
+/// and reads no mapping.
 fn mapping_fits(mapping: &[i32], scale: &[f32]) -> Result<(), TuningError> {
-    if scale.len() <= 1 {
+    if scale.len() <= 1 || mapping.is_empty() {
         return Ok(());
     }
-    match mapping
-        .iter()
-        .find(|&&degree| degree < 0 || degree as usize >= scale.len())
-    {
-        Some(&degree) => Err(TuningError::MappingOutsideScale {
-            degree,
-            scale_len: scale.len(),
-        }),
-        None => Ok(()),
+
+    let mapping_size = mapping.len() as i32;
+    let start_octave = -Tuning::TUNING_CENTER / mapping_size - 1;
+    let mut mapping_position = -Tuning::TUNING_CENTER - start_octave * mapping_size;
+    for _ in 0..Tuning::TUNING_SIZE {
+        if mapping_position >= mapping_size {
+            mapping_position = 0;
+        }
+        let degree = mapping[mapping_position as usize];
+        if degree < 0 || degree as usize >= scale.len() {
+            return Err(TuningError::MappingOutsideScale {
+                degree,
+                scale_len: scale.len(),
+            });
+        }
+        mapping_position += 1;
     }
+    Ok(())
 }
 
 /// `Tuning`.
@@ -723,12 +733,15 @@ impl Tuning {
         self.mapping_name.clear();
     }
 
-    /// `convertMidiNote(note)`.
+    /// `convertMidiNote(note)`. A note more than `TUNING_CENTER` keys from
+    /// the scale's start note reads the nearest end of the table, where
+    /// upstream reads outside `tuning_` (undefined behaviour). Any start note
+    /// loads, as upstream, so this must hold for every `note` and start note.
     pub fn convert_midi_note(&self, note: i32) -> f32 {
-        let scale_offset = note - self.scale_start_midi_note;
-        self.tuning[(Self::TUNING_CENTER + scale_offset) as usize]
-            + self.scale_start_midi_note as f32
-            + self.reference_midi_note
+        let scale_offset = i64::from(note) - i64::from(self.scale_start_midi_note);
+        let index =
+            (i64::from(Self::TUNING_CENTER) + scale_offset).clamp(0, Self::TUNING_SIZE as i64 - 1);
+        self.tuning[index as usize] + self.scale_start_midi_note as f32 + self.reference_midi_note
     }
 
     pub fn set_start_midi_note(&mut self, start_midi_note: i32) {
@@ -991,6 +1004,109 @@ mod tests {
             Err(TuningError::MappingOutsideScale {
                 degree: 4,
                 scale_len: 4
+            })
+        );
+        assert_eq!(snapshot(&tuning), before);
+    }
+
+    fn kbm_with_middle_note(name: &str, middle_note: &str) -> std::path::PathBuf {
+        let mut lines = KBM_HEADER.to_vec();
+        lines[3] = middle_note;
+        lines.extend(["0", "1", "2", "3", "4", "5", "6", "7", "0", "1", "2", "3"]);
+        temp_file(name, &lines)
+    }
+
+    /// A start note far outside the MIDI range loads, as upstream, and every
+    /// note reads the nearest end of the table instead of indexing outside
+    /// it (upstream: undefined behaviour in `convertMidiNote`).
+    #[test]
+    fn keyboard_map_middle_note_far_outside_midi_converts_every_note() {
+        for middle_note in ["1000", "-1000"] {
+            let mut tuning = seven_degree_scale();
+            let path = kbm_with_middle_note("far_middle.kbm", middle_note);
+            assert_eq!(tuning.load_file(&path), Ok(()));
+
+            let start = middle_note.parse::<f32>().unwrap();
+            let edge = if start > 0.0 {
+                tuning.table()[0]
+            } else {
+                tuning.table()[Tuning::TUNING_SIZE - 1]
+            };
+            let reference = tuning.state_to_json()["reference_midi_note"]
+                .as_f64()
+                .unwrap() as f32;
+            for note in 0..128 {
+                assert_eq!(tuning.convert_midi_note(note), edge + start + reference);
+            }
+        }
+    }
+
+    /// Notes whose index is inside the table read it exactly as upstream;
+    /// only the ones past its end are clamped.
+    #[test]
+    fn start_note_partly_outside_the_table_reads_inside_notes_exactly() {
+        let mut tuning = seven_degree_scale();
+        let path = kbm_with_middle_note("partly_outside.kbm", "200");
+        assert_eq!(tuning.load_file(&path), Ok(()));
+        let reference = tuning.state_to_json()["reference_midi_note"]
+            .as_f64()
+            .unwrap() as f32;
+
+        for note in 0..128 {
+            let index = (Tuning::TUNING_CENTER + note - 200).max(0) as usize;
+            assert_eq!(
+                tuning.convert_midi_note(note),
+                tuning.table()[index] + 200.0 + reference
+            );
+        }
+    }
+
+    #[test]
+    fn state_with_a_start_note_far_outside_midi_converts_every_note() {
+        for start in [5000i64, -5000, i64::from(i32::MAX), i64::from(i32::MIN)] {
+            let mut tuning = seven_degree_scale();
+            let mut state = tuning.state_to_json();
+            state["scale_start_midi_note"] = json!(start);
+            assert_eq!(tuning.json_to_state(&state), Ok(()));
+            for note in [i32::MIN, -1, 0, 60, 127, 128, i32::MAX] {
+                assert!(tuning.convert_midi_note(note).is_finite());
+            }
+        }
+    }
+
+    /// `loadScale` reads 256 consecutive positions of a long map, so entries
+    /// it never visits are accepted, as upstream; a visited one is refused.
+    #[test]
+    fn long_keyboard_map_checks_only_the_positions_read() {
+        fn long_map(bad_position: usize) -> Vec<String> {
+            let mut lines: Vec<String> = KBM_HEADER.iter().map(|l| l.to_string()).collect();
+            lines[0] = "300".to_string();
+            lines.extend((0..300).map(|i| {
+                if i == bad_position {
+                    "99".to_string()
+                } else {
+                    (i % 8).to_string()
+                }
+            }));
+            lines
+        }
+
+        // A 300-entry map starts its walk at position 172, reads to 299,
+        // then wraps to 0..=127: position 150 is never read.
+        let mut tuning = seven_degree_scale();
+        let lines = long_map(150);
+        let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
+        assert_eq!(tuning.load_file(&temp_file("unread.kbm", &lines)), Ok(()));
+
+        let mut tuning = seven_degree_scale();
+        let before = snapshot(&tuning);
+        let lines = long_map(172);
+        let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
+        assert_eq!(
+            tuning.load_file(&temp_file("read.kbm", &lines)),
+            Err(TuningError::MappingOutsideScale {
+                degree: 99,
+                scale_len: 8
             })
         );
         assert_eq!(snapshot(&tuning), before);
