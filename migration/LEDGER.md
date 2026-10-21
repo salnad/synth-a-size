@@ -2458,3 +2458,16 @@ is optional (manual dispatch).
   written from #2's own macOS 15 CI tree.
 - poly_function macOS vs x86: 124/127 pass (95 bit-exact). `to_int`,
   `trunc` and `encode_phase_and_voice` fail, all A1.
+
+**Rebase on #5 + #11 (processor graph)**
+
+- Rebased on main; only LEDGER conflicts.
+- The macOS no-fast-math proxy failed 2/224:
+  `framework/lookups/memory_ramp_delay` and `stereo_memory_ramp_delay`
+  (max abs 1.6e-4 vs 1e-4; residual −88.6 dB passes). The cause is the
+  harness driver, not Vital: Clang `-ffast-math` turns the ramp
+  generator's division into a reciprocal multiply, moving the delay inputs by
+  1 ulp, which white-noise audio amplifies through Catmull-Rom. Fixed in
+  the flags: `module_main.cpp` builds with `-fno-fast-math
+  -ffp-contract=off`. GCC already emitted the exact division, so x86 hashes
+  are unchanged (224/224 locally). Recorded in `decisions/reference-arm.md` B.
