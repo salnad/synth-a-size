@@ -6,6 +6,8 @@
 - **Accessors:** `getEffect`, `getEqualizerMemory`, `hardReset` and `correctToTime` are ported.
 - **`FilterFxModule`:** a mono `FilterModule` ("filter_fx") from #58, without its own `filter_fx_on` control (the chain owns it), with keytrack from the chain.
 
+**Construction order (review):** as upstream's constructors do, `ReorderableEffectChain::create` builds the nine effect modules, registers them and creates the `<effect>_on` controls, and `FilterFxModule::create` builds and wires its `FilterModule`. Both `init()`s only run `router_init()`. So `get_effect`, `get_equalizer_memory` and the `_on` controls exist before `init()`, which `SoundEngine::init` relies on: it calls `getEffect` before the chain's own init (`sound_engine.cpp:82–98`). `effects_and_on_controls_exist_before_init` pins this.
+
 No intentional divergence, so `migration/DIVERGENCES.md` is unchanged. The test parameter lookup now falls back to `sas-preset`'s registry for names outside its effects table (the `_on` switches and `filter_fx_*`), via a new `sas-preset` dev-dependency (one line in `port/Cargo.lock`).
 
 **Captures:** `effects/reorderable_effect_chain` (new `migration/reference/src/modules/effects/reorderable_effect_chain.cpp`). It drives the chain like SoundEngine: order, keytrack, tempo and controls set per block. There are 25 cases:

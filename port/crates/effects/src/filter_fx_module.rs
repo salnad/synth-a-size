@@ -19,7 +19,6 @@ use sas_simd::common::MAX_BUFFER_SIZE;
 /// `vital::FilterFxModule`.
 #[derive(Clone)]
 pub struct FilterFxModule {
-    keytrack: Rc<Output>,
     filter: Option<ProcessorRef>,
     input: Rc<Output>,
 }
@@ -29,24 +28,36 @@ impl FilterFxModule {
     pub const KEYTRACK: usize = 1;
     pub const NUM_INPUTS: usize = 2;
 
-    /// `new FilterFxModule(keytrack)`.
+    /// `new FilterFxModule(keytrack)`: builds and wires the filter, as the
+    /// upstream constructor does.
     pub fn create(keytrack: &Rc<Output>) -> ProcessorRef {
-        SynthModule::create_with(
+        let input = Output::new_default();
+        let module = SynthModule::create_with(
             FilterFxModule {
-                keytrack: keytrack.clone(),
                 filter: None,
-                input: Output::new_default(),
+                input: input.clone(),
             },
             Self::NUM_INPUTS,
             1,
             false,
-        )
+        );
+        let filter = FilterModule::create_with("filter_fx", |filter| {
+            filter.set_create_on_value(false);
+            filter.set_mono(true);
+        });
+        module.add_submodule(&filter);
+        module.add_processor(&filter);
+        filter.use_output(&module.output(0), 0);
+        filter.plug(&input, FilterModule::AUDIO);
+        filter.plug(keytrack, FilterModule::KEYTRACK);
+        module.with::<FilterFxModule, _>(|kernel, _| kernel.filter = Some(filter));
+        module
     }
 
     fn filter(&self) -> &ProcessorRef {
         self.filter
             .as_ref()
-            .expect("FilterFxModule::init creates the filter")
+            .expect("FilterFxModule::create sets the filter")
     }
 }
 
@@ -54,17 +65,6 @@ impl ProcessorImpl for FilterFxModule {
     sas_dsp_core::processor_boilerplate!();
 
     fn init(&mut self, this: &Processor) {
-        let filter = FilterModule::create_with("filter_fx", |filter| {
-            filter.set_create_on_value(false);
-            filter.set_mono(true);
-        });
-        this.add_submodule(&filter);
-        this.add_processor(&filter);
-        filter.use_output(&this.output(0), 0);
-        filter.plug(&self.input, FilterModule::AUDIO);
-        filter.plug(&self.keytrack, FilterModule::KEYTRACK);
-        self.filter = Some(filter);
-
         this.router_init();
     }
 

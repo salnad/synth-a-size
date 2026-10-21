@@ -14,7 +14,7 @@ use sas_dsp_core::output::Output;
 use sas_dsp_core::processor::{Processor, ProcessorImpl, ProcessorRef};
 use sas_dsp_core::testing::InputRate;
 use sas_dsp_core::Value;
-use sas_effects::ReorderableEffectChain;
+use sas_effects::{Effect, ReorderableEffectChain};
 
 /// `kControls` of the ref-module: name and default (the parameter default).
 const CONTROLS: &[(&str, f32)] = &[
@@ -164,13 +164,42 @@ fn effect_chain_matches_reference() {
     check_modules(&modules());
 }
 
+/// Upstream's constructor builds the effects and their `_on` switches, and
+/// `SoundEngine::init` calls `getEffect` before the chain's `init()`.
 #[test]
-fn every_effect_has_an_on_control_and_the_eq_memory_is_exposed() {
+fn effects_and_on_controls_exist_before_init() {
     common::params::install();
     let beats_per_second: Rc<Output> = Value::create_control_rate(2.0).output(0);
     let keytrack: Rc<Output> = Value::create_control_rate(0.0).output(0);
     let chain = ReorderableEffectChain::create(&beats_per_second, &keytrack);
-    chain.init();
+
+    let effects = [
+        Effect::Chorus,
+        Effect::Compressor,
+        Effect::Delay,
+        Effect::Distortion,
+        Effect::Eq,
+        Effect::FilterFx,
+        Effect::Flanger,
+        Effect::Phaser,
+        Effect::Reverb,
+    ];
+    let modules: Vec<ProcessorRef> = chain.with::<ReorderableEffectChain, _>(|chain, _| {
+        effects
+            .iter()
+            .map(|&effect| chain.get_effect(effect).clone())
+            .collect()
+    });
+    assert_eq!(modules.len(), sas_effects::NUM_EFFECTS);
+    for (i, module) in modules.iter().enumerate() {
+        assert!(module.is_synth_module(), "{}", sas_effects::EFFECT_ORDER[i]);
+        assert!(
+            modules[..i].iter().all(|other| !Rc::ptr_eq(other, module)),
+            "{} is a distinct module",
+            sas_effects::EFFECT_ORDER[i]
+        );
+    }
+
     let controls = chain.get_controls();
     for name in sas_effects::EFFECT_ORDER {
         assert!(controls.contains_key(&format!("{name}_on")), "{name}_on");

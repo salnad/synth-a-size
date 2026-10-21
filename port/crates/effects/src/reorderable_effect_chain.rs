@@ -62,8 +62,6 @@ pub const EFFECT_ORDER: [&str; NUM_EFFECTS] = [
 #[derive(Clone)]
 pub struct ReorderableEffectChain {
     equalizer_memory: Option<Rc<RefCell<StereoMemory>>>,
-    beats_per_second: Rc<Output>,
-    keytrack: Rc<Output>,
     effects: Vec<ProcessorRef>,
     effects_on: Vec<ProcessorRef>,
     effect_order: [i32; NUM_EFFECTS],
@@ -75,13 +73,13 @@ impl ReorderableEffectChain {
     pub const ORDER: usize = 1;
     pub const NUM_INPUTS: usize = 2;
 
-    /// `new ReorderableEffectChain(beats_per_second, keytrack)`.
+    /// `new ReorderableEffectChain(beats_per_second, keytrack)`. As upstream's
+    /// constructor, this builds the nine effect modules and their `_on`
+    /// controls, so `get_effect` and `get_controls` work before `init()`.
     pub fn create(beats_per_second: &Rc<Output>, keytrack: &Rc<Output>) -> ProcessorRef {
-        SynthModule::create_with(
+        let module = SynthModule::create_with(
             ReorderableEffectChain {
                 equalizer_memory: None,
-                beats_per_second: beats_per_second.clone(),
-                keytrack: keytrack.clone(),
                 effects: Vec::new(),
                 effects_on: Vec::new(),
                 effect_order: [0; NUM_EFFECTS],
@@ -90,7 +88,31 @@ impl ReorderableEffectChain {
             Self::NUM_INPUTS,
             1,
             false,
-        )
+        );
+
+        let mut equalizer_memory = None;
+        let mut effects = Vec::with_capacity(NUM_EFFECTS);
+        let mut effects_on = Vec::with_capacity(NUM_EFFECTS);
+        let mut effect_order = [0; NUM_EFFECTS];
+        for (i, name) in EFFECT_ORDER.iter().enumerate() {
+            let effect_module =
+                create_effect_module(i, beats_per_second, keytrack, &mut equalizer_memory);
+            module.add_submodule(&effect_module);
+            module.add_processor(&effect_module);
+            effects_on.push(module.create_base_control(&format!("{name}_on"), false, false));
+            effects.push(effect_module);
+            effect_order[i] = i as i32;
+        }
+        let last_order = encode_order_to_float(&effect_order);
+
+        module.with::<ReorderableEffectChain, _>(|chain, _| {
+            chain.equalizer_memory = equalizer_memory;
+            chain.effects = effects;
+            chain.effects_on = effects_on;
+            chain.effect_order = effect_order;
+            chain.last_order = last_order;
+        });
+        module
     }
 
     /// `getEffect(effect)`.
@@ -102,26 +124,30 @@ impl ReorderableEffectChain {
     pub fn get_equalizer_memory(&self) -> Option<Rc<RefCell<StereoMemory>>> {
         self.equalizer_memory.clone()
     }
+}
 
-    /// `createEffectModule(index)`.
-    fn create_effect_module(&mut self, index: usize) -> ProcessorRef {
-        match index {
-            0 => ChorusModule::create(&self.beats_per_second),
-            1 => CompressorModule::create(),
-            2 => DelayModule::create(&self.beats_per_second),
-            3 => DistortionModule::create(),
-            4 => {
-                let eq = EqualizerModule::create();
-                self.equalizer_memory =
-                    Some(eq.with::<EqualizerModule, _>(|eq, _| eq.audio_memory()));
-                eq
-            }
-            5 => FilterFxModule::create(&self.keytrack),
-            6 => FlangerModule::create(&self.beats_per_second),
-            7 => PhaserModule::create(&self.beats_per_second),
-            8 => ReverbModule::create(),
-            _ => unreachable!("no effect {index}"),
+/// `createEffectModule(index)`; the equalizer also sets `equalizer_memory`.
+fn create_effect_module(
+    index: usize,
+    beats_per_second: &Rc<Output>,
+    keytrack: &Rc<Output>,
+    equalizer_memory: &mut Option<Rc<RefCell<StereoMemory>>>,
+) -> ProcessorRef {
+    match index {
+        0 => ChorusModule::create(beats_per_second),
+        1 => CompressorModule::create(),
+        2 => DelayModule::create(beats_per_second),
+        3 => DistortionModule::create(),
+        4 => {
+            let eq = EqualizerModule::create();
+            *equalizer_memory = Some(eq.with::<EqualizerModule, _>(|eq, _| eq.audio_memory()));
+            eq
         }
+        5 => FilterFxModule::create(keytrack),
+        6 => FlangerModule::create(beats_per_second),
+        7 => PhaserModule::create(beats_per_second),
+        8 => ReverbModule::create(),
+        _ => unreachable!("no effect {index}"),
     }
 }
 
@@ -129,17 +155,6 @@ impl ProcessorImpl for ReorderableEffectChain {
     sas_dsp_core::processor_boilerplate!();
 
     fn init(&mut self, this: &Processor) {
-        for (i, name) in EFFECT_ORDER.iter().enumerate() {
-            let effect_module = self.create_effect_module(i);
-            this.add_submodule(&effect_module);
-            this.add_processor(&effect_module);
-            self.effects_on
-                .push(this.create_base_control(&format!("{name}_on"), false, false));
-            self.effects.push(effect_module);
-            self.effect_order[i] = i as i32;
-        }
-        self.last_order = encode_order_to_float(&self.effect_order);
-
         this.router_init();
     }
 
