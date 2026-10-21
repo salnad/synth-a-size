@@ -219,3 +219,8 @@ jobs:
         run: >
           cargo test -p sas-simd --locked --features aarch64-semantics --manifest-path port/Cargo.toml
           --lib --test semantics --test backend_parity --test poly_utils --test futils --test futils_mono_vs_poly
+      # sas-common's libc++ RNG column (A9); its parity test needs reference captures.
+      - name: sas-common clippy (aarch64-semantics)
+        run: cargo clippy -p sas-common --all-targets --locked --features aarch64-semantics --manifest-path port/Cargo.toml -- -D warnings
+      - name: sas-common tests (libc++ RNG column)
+        run: cargo test -p sas-common --locked --features aarch64-semantics --manifest-path port/Cargo.toml --lib
