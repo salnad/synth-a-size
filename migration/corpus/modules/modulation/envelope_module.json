@@ -1,0 +1,94 @@
+{
+  "description": "EnvelopeModule: an Envelope wired to registry controls (quartic time scaling, base power controls). Control values are the normalized parameter values set on the module's controls after init().",
+  "module": "envelope_module",
+  "cases": {
+    "defaults": {
+      "num_samples": 88200,
+      "inputs": {
+        "trigger": { "trigger": [ { "sample": 0, "value": "voice_on" }, { "sample": 44100, "value": "voice_off" } ] }
+      }
+    },
+    "dahdsr": {
+      "params": {
+        "prefix": "env_2",
+        "controls": {
+          "env_2_delay": 0.5,
+          "env_2_attack": 0.6,
+          "env_2_hold": 0.55,
+          "env_2_decay": 0.8,
+          "env_2_sustain": 0.3,
+          "env_2_release": 0.9,
+          "env_2_attack_power": 3.0,
+          "env_2_decay_power": -5.0,
+          "env_2_release_power": 8.0
+        }
+      },
+      "num_samples": 88200,
+      "inputs": {
+        "trigger": { "trigger": [ { "sample": 17, "value": "voice_on" }, { "sample": 900, "value": "voice_on", "voices": "1" }, { "sample": 50000, "value": "voice_off" } ] }
+      }
+    },
+    "dahdsr_audio_rate": {
+      "params": {
+        "prefix": "env_2",
+        "force_audio_rate": true,
+        "controls": {
+          "env_2_delay": 0.5,
+          "env_2_attack": 0.6,
+          "env_2_hold": 0.55,
+          "env_2_decay": 0.8,
+          "env_2_sustain": 0.3,
+          "env_2_release": 0.9,
+          "env_2_attack_power": 3.0,
+          "env_2_decay_power": -5.0,
+          "env_2_release_power": 8.0
+        }
+      },
+      "num_samples": 88200,
+      "inputs": {
+        "trigger": { "trigger": [ { "sample": 17, "value": "voice_on" }, { "sample": 900, "value": "voice_on", "voices": "1" }, { "sample": 50000, "value": "voice_off" } ] }
+      }
+    },
+    "range_extremes_audio_rate": {
+      "params": {
+        "prefix": "env_6",
+        "force_audio_rate": true,
+        "controls": {
+          "env_6_delay": 0.0,
+          "env_6_attack": 2.37842,
+          "env_6_hold": 1.4142135624,
+          "env_6_decay": 2.37842,
+          "env_6_sustain": 1.0,
+          "env_6_release": 0.0,
+          "env_6_attack_power": -20.0,
+          "env_6_decay_power": 20.0,
+          "env_6_release_power": -20.0
+        }
+      },
+      "num_samples": 44100,
+      "inputs": {
+        "trigger": { "trigger": [ { "sample": 0, "value": "voice_on" }, { "sample": 30000, "value": "voice_off", "voices": "1" } ] }
+      }
+    },
+    "range_extremes_control_rate": {
+      "params": {
+        "prefix": "env_3",
+        "controls": {
+          "env_3_delay": 1.4142135624,
+          "env_3_attack": 0.0,
+          "env_3_hold": 0.0,
+          "env_3_decay": 0.0,
+          "env_3_sustain": 0.5,
+          "env_3_release": 2.37842,
+          "env_3_attack_power": 20.0,
+          "env_3_decay_power": -20.0,
+          "env_3_release_power": 20.0
+        }
+      },
+      "num_samples": 264600,
+      "inputs": {
+        "trigger": { "trigger": [ { "sample": 0, "value": "voice_on" }, { "sample": 200000, "value": "voice_off" } ] }
+      }
+    }
+  }
+}
