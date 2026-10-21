@@ -1723,3 +1723,89 @@ Margin ≥ 3.4× and ≥ 22.5 dB. The port is bit-identical to the
 
 - Switch the test's parameter details to `sas-preset` once it merges.
 - macOS arm64 hashes after PR #2.
+
+## 2026-10-21: M5a PR 2, `LinkwitzRileyFilter` and `DcFilter`
+
+Core Filters (M5a), stacked on PR 1. Effects needs `LinkwitzRileyFilter`
+for the multiband compressor (crossovers at 120 Hz and 2500 Hz,
+`compressor.cpp:167`).
+
+- `linkwitz_riley_filter.rs` ports `linkwitz_riley_filter.{h,cpp}`. As
+  upstream, coefficients stay zero until `setSampleRate`/`setOversampleAmount`.
+  `dc_filter.rs` ports `dc_filter.{h,cpp}`, including upstream's `reset`,
+  which loads `past_out_` from the already-reset `past_in_` (lanes outside
+  the mask take `past_in_`; covered by `dc_filter/retrigger_voices`).
+- New ref-module `linkwitz_riley` (param `cutoff`, outputs `low` and
+  `high`). `dc_filter` already had one; it had no cases until now.
+- The generic `filter` ref-module now rejects `model: comb`, so no capture
+  can record `CombFilter(1)`'s undefined output (Parity Reviewer note on
+  PR 1). Existing `filter` captures are unchanged.
+- `aarch64-semantics` now forwards to `sas-dsp-core` as well as `sas-simd`
+  (PR #40 rule).
+- Cases under `module_defaults`, no tolerance changes. `filters/linkwitz_riley`
+  has 13 cases (26 outputs): 120, 2500, 10000 and 20000 Hz with noise and
+  impulses, 120 Hz saw at 48 kHz, 120 Hz noise at block size 1, 2500 Hz at
+  96 kHz, 2500 Hz at 2× oversampling, and 2500 Hz at 192 kHz × 2.
+  `filters/dc_filter` has 7 cases: offset saw, square and noise at 44.1, 48
+  and 96 kHz, an impulse, per-voice retriggers, 2× oversampling and block
+  size 1.
+- Parity, x86_64: 33/33 outputs pass. `dc_filter`: worst max_abs_error
+  6.3e-6, residual −105.0 dB, and 2 cases bit-identical. `linkwitz_riley`:
+  worst max_abs_error 6.2e-5 (`saw_120hz_48k_block_128:low`), worst
+  residual −84.9 dB (`noise_120hz_48k_block_1:high`).
+
+### Open: the 120 Hz crossover at oversampled rates (decision needed)
+
+The port is bit-identical to the no-fast-math reference (`REF_FAST_MATH=OFF`)
+on every case checked, including the failing ones below, so these numbers are
+the fast-math reference's own noise. The cause is in `computeCoefficients`:
+GCC `-ffast-math` reassociates `1.0f + kSqrt2 * warp + warp2` into
+`(kSqrt2 * warp + warp2) + 1.0f` (disassembly of
+`LinkwitzRileyFilter::computeCoefficients` in `ref-module`). That changes
+`mult` by about 1 ULP. At a low cutoff relative to the sample rate, the
+poles sit next to the unit circle (warp = 1/tan(π·120/88200) ≈ 234), so the
+recursion amplifies the coefficient difference. The macOS clang reference
+may reassociate differently (unknown until PR #2).
+
+Reference against no-fast-math proxy (identical to the port), residual and
+max_abs error, worst of the two bands, noise and saw:
+
+| cutoff | internal rate | residual | max abs |
+|---|---|---|---|
+| 120 Hz | 44.1 / 48 kHz | −85.2 dB | 5.2e-5 (pass) |
+| 120 Hz | 88.2 / 96 kHz | −72.7 dB | 1.9e-4 (fail) |
+| 120 Hz | 176.4 / 192 kHz | −66.4 dB | 5.7e-4 (fail) |
+| 120 Hz | 352.8 / 384 kHz | −50.8 dB | 2.2e-3 (fail) |
+| 120 Hz | 705.6 / 768 kHz | −36.6 dB | 1.8e-2 (fail) |
+| 2500 Hz | up to 384 kHz | −87.3 dB | 1.1e-5 (pass) |
+| 2500 Hz | 705.6 kHz | −66.2 dB | 4.7e-4 (fail) |
+| 20 Hz (not an upstream cutoff) | 44.1 kHz | −63.9 dB | 5.4e-4 (fail) |
+
+These rates are in the working range. The effect chain runs at the engine's
+oversampling amount (`sound_engine.cpp:226-236`), and the default
+`oversampling` setting is 2×. So the default patch's compressor runs its
+120 Hz crossover at 88.2/96 kHz, which fails `module_defaults` for the
+reference itself (the CI no-fast-math calibration job would fail these
+cases too). Per AGENTS.md, the cases keep the passing band, and the
+full-range numbers are recorded here. No faithful normalized form exists:
+the outputs are audio, not a large-scale quantity.
+
+**Question for a human:** approve a per-case tolerance exception for
+120 Hz at ≥ 88.2 kHz internal (and 2500 Hz at 705.6 kHz), or decide
+another way to cover that range (for example, comparing against the macOS
+arm64 reference once PR #2 lands, if clang does not reassociate there).
+Escalated to the owner by the coordinator. The coordinator recommends an
+exact comparison against the no-fast-math reference (a `reference:
+nofastmath` allowlist) rather than a tolerance exception. No tolerance
+exception has been added.
+
+Parked coverage: `migration/corpus/modules/filters/pending/linkwitz_riley_oversampled.json`
+holds 30 cases: 120 Hz with noise and saw at 44.1/48 kHz × 2 and × 4,
+88.2/96 kHz × 1, 2 and 4, and 176.4/192 kHz × 1, 2 and 4 (internal 88.2 to
+768 kHz), plus 2500 Hz at 176.4 kHz × 4. The corpus loaders read only
+`modules/<area>/*.json`, so the file is not rendered or tested. Every case
+has at least one output failing `module_defaults` against the reference
+(best output −89.0 dB, worst −36.6 dB). To re-enable: move the file to
+`modules/filters/`, write its hashes, and apply the decided comparison.
+`tests/building_blocks.rs` selects cases by module name, so it needs no
+edit.

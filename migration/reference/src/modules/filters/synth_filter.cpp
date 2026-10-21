@@ -28,10 +28,12 @@ using F = vital::SynthFilter;
 
 REGISTER_REF_MODULE(refmod::ModuleDef{
   "filter",
-  "SynthFilter::createFilter(model). params.model: analog|dirty|ladder|digital|diode|formant|comb|phase",
+  "SynthFilter::createFilter(model). params.model: analog|dirty|ladder|digital|diode|formant|phase (comb is rejected: CombFilter(1) is undefined upstream)",
   [](const nlohmann::json& params) -> vital::Processor* {
     int model = filterModelFromName(params.value("model", std::string("digital")));
-    if (model < 0)
+    // createFilter(kComb) builds CombFilter(1), which reads past its memory
+    // (undefined behaviour), so there is no defined output to capture.
+    if (model < 0 || model == vital::constants::kComb)
       return nullptr;
     vital::SynthFilter* filter = vital::SynthFilter::createFilter(static_cast<vital::constants::FilterModel>(model));
     return dynamic_cast<vital::Processor*>(filter);

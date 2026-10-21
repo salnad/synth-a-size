@@ -1,0 +1,43 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "impulse_10000hz:high": "f1923196f0854653",
+        "impulse_10000hz:low": "1294b1bb86c3ad8b",
+        "impulse_120hz:high": "945006add1b0332b",
+        "impulse_120hz:low": "b887853d8b7079fb",
+        "impulse_20000hz:high": "a0f562f936349f8b",
+        "impulse_20000hz:low": "198215bb4dba1173",
+        "impulse_2500hz:high": "932245a5c7e75a6b",
+        "impulse_2500hz:low": "0341b225ec640f2b",
+        "noise_10000hz:high": "91f1946a24733f37",
+        "noise_10000hz:low": "8373c8ab34d198db",
+        "noise_120hz:high": "cc57cdf757b0ca37",
+        "noise_120hz:low": "8f734f6dc58840bf",
+        "noise_120hz_48k_block_1:high": "5888e4fba25f0ac3",
+        "noise_120hz_48k_block_1:low": "70b690408c9fcabf",
+        "noise_20000hz:high": "8f772ac8e0e69277",
+        "noise_20000hz:low": "ac7e57fe4740460b",
+        "noise_2500hz:high": "d2088705b49faca7",
+        "noise_2500hz:low": "b902a3ef45a91817",
+        "noise_2500hz_oversample_2x:high": "38250e4acd763e87",
+        "noise_2500hz_oversample_2x:low": "fb6606616016771b",
+        "saw_120hz_48k_block_128:high": "ef6590e20c37ca83",
+        "saw_120hz_48k_block_128:low": "65119dee92fd270b",
+        "saw_2500hz_192k_oversample_2x:high": "b02682a3211bb963",
+        "saw_2500hz_192k_oversample_2x:low": "291dbd5793ecf043",
+        "saw_2500hz_96k:high": "f6d36174d23045cb",
+        "saw_2500hz_96k:low": "f52c9881b08fb363"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}

@@ -19,15 +19,19 @@
 //! estimate instructions, upstream's operation order. Per-ISA behaviour
 //! exists only at the sites of `migration/decisions/reference-arm.md`,
 //! inside `sas-simd` (for example `toInt` in the coefficient lookups); the
-//! `aarch64-semantics` feature forwards to `sas-simd`.
+//! `aarch64-semantics` feature forwards to `sas-dsp-core` and `sas-simd`.
 
 pub use sas_dsp_core;
 
 pub mod character;
+pub mod dc_filter;
 pub mod digital_svf;
+pub mod linkwitz_riley_filter;
 pub mod synth_filter;
 
+pub use dc_filter::DcFilter;
 pub use digital_svf::DigitalSvf;
+pub use linkwitz_riley_filter::LinkwitzRileyFilter;
 pub use synth_filter::{
     coefficient_lookup, create_filter, CoefficientLookup, FilterModel, FilterState, SynthFilter,
 };
@@ -42,6 +46,10 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/src/synthesis/filters/synth_filter.cpp",
     "vital/src/synthesis/filters/digital_svf.h",
     "vital/src/synthesis/filters/digital_svf.cpp",
+    "vital/src/synthesis/filters/linkwitz_riley_filter.h",
+    "vital/src/synthesis/filters/linkwitz_riley_filter.cpp",
+    "vital/src/synthesis/filters/dc_filter.h",
+    "vital/src/synthesis/filters/dc_filter.cpp",
     "vital/src/synthesis/modules/filter_module.cpp",
     "vital/src/synthesis/modules/filters_module.cpp",
     "vital/src/synthesis/filters/phaser_filter.h",
