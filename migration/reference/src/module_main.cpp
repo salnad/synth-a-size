@@ -21,6 +21,10 @@
 
 using harness::json;
 
+namespace refsig {
+  float ramp(float from, float to, long long frame, long long total_frames);
+}
+
 namespace {
 
 const char* kUsage = R"(usage: ref-module <spec.json> --out-dir DIR
@@ -188,7 +192,7 @@ class Signal {
       else if (type_ == "impulse")
         value = frame == impulse_at_ ? 1.0f : 0.0f;
       else if (type_ == "ramp")
-        value = total_frames_ > 1 ? from_ + (to_ - from_) * (frame / float(total_frames_ - 1)) : from_;
+        value = refsig::ramp(from_, to_, frame, total_frames_);
       else if (type_ == "noise") {
         std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
         value = distribution(noise_engine_);

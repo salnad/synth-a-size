@@ -219,11 +219,8 @@ target_link_libraries(ref-render PRIVATE harness_common)
 # Compiled straight into the executable (not a static library) so the linker
 # keeps every registration.
 file(GLOB_RECURSE REF_MODULE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/modules/*.cpp")
-add_executable(ref-module src/module_main.cpp src/module_registry.cpp ${REF_MODULE_SOURCES})
-# The driver generates the test inputs; they must not depend on the compiler's
-# fast-math rewrites (Clang turns the ramp's division into a reciprocal multiply,
-# moving delay inputs by 1 ulp). GCC already emits the exact division here.
-set_source_files_properties(src/module_main.cpp PROPERTIES COMPILE_OPTIONS "-fno-fast-math;-ffp-contract=off")
+add_executable(ref-module src/module_main.cpp src/module_registry.cpp src/signal_ramp.cpp ${REF_MODULE_SOURCES})
+set_source_files_properties(src/signal_ramp.cpp PROPERTIES COMPILE_OPTIONS "-fno-fast-math;-ffp-contract=off")
 target_include_directories(ref-module PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(ref-module PRIVATE harness_common)
 

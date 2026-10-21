@@ -2334,10 +2334,11 @@ is optional (manual dispatch).
   (max abs 1.6e-4 vs 1e-4; residual −88.6 dB passes). The cause is the
   harness driver, not Vital: Clang `-ffast-math` turns the ramp
   generator's division into a reciprocal multiply, moving the delay inputs by
-  1 ulp, which white-noise audio amplifies through Catmull-Rom. Fixed in
-  the flags: `module_main.cpp` builds with `-fno-fast-math
-  -ffp-contract=off`. GCC already emitted the exact division, so x86 hashes
-  are unchanged (224/224 locally). Recorded in `decisions/reference-arm.md` B.
+  1 ulp, which white-noise audio amplifies through Catmull-Rom. Fixed by
+  moving the ramp formula into `src/signal_ramp.cpp`, built with
+  `-fno-fast-math -ffp-contract=off`. GCC already emitted the exact
+  division, so x86 hashes are unchanged. Recorded in
+  `decisions/reference-arm.md` B.
 - Rebased again for #4 + #12 (CI does not run while the PR conflicts, and
   the macOS hashes must cover `common/*`).
 - #4's `common/line_generator*` harness modules failed to link on macOS
@@ -2363,15 +2364,17 @@ is optional (manual dispatch).
   `modules/filters/pending/comb_filter.json` under the same rule; its x86
   hash entry is removed like the other seven parked cases'. No tolerance
   changed.
-- `harness/echo` `json_state:artifact/params.json` x86 hash rewritten: the
-  driver now parses the spec without fast-math (ramp fix above), so
-  `"zero": -0.0` survives the round trip instead of becoming `0.0`. x86 and
-  macOS now give the same artifact. The JSON comparison treats the two as
-  equal.
+- A first version built all of `module_main.cpp` without fast-math. That
+  changed upstream behaviour: the driver and the modules instantiate the
+  same inline nlohmann-json code, and the linker kept the strict copy, so
+  `-0.0` dumps changed in `harness/echo` `json_state`, `common/json`
+  `negative_zero` and three `line_generator_edit` flip cases. The strict
+  file now holds only the ramp function and includes no shared headers. All
+  1253 x86 hashes match main unchanged.
 - macOS arm64 hash entries written from #2's macOS 15 CI tree (run
   39526324283) for every module file on main: new for `filters/*` (comb
   filter and module, digital_svf and settings, formant filter and module,
-  phaser), `wavetable/render`, and `harness/echo` `json_state`.
+  phaser), `wavetable/render`.
 - `effects/stereo_delay` `clamped_dampened_damping_sweep` (max abs 3.8e-4)
   and `unclamped_unfiltered_negative_feedback` (1.3e-4) fail the macOS
   no-fast-math proxy (residuals −92 dB pass). Parked unchanged in
