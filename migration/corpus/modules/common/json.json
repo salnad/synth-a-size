@@ -31,6 +31,15 @@
       "params": {
         "float_count": 40000
       }
+    },
+    "negative_zero": {
+      "params": {
+        "text": "[-0.0, 0.0, -0.0e3, [-0.0], {\"z\": -0.0}]"
+      },
+      "artifacts": {
+        "dump.json": "json",
+        "pretty.json": "json"
+      }
     }
   }
 }

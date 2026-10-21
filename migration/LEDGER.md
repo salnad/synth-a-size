@@ -2186,3 +2186,47 @@ Core Filters (M5a), stacked on PR 6.
 - `MidiManager` (and its MPE zone parsing) calls `SoundEngine` directly, so
   its parity comes with the engine PR, through engine-level captures and
   authored MPE MIDI renders.
+---
+
+## 2026-10-21: parked wavetable and JSON cases re-enabled under the owner decisions
+
+Uses #34's mechanism (`migration/decisions/owner-decisions-json-and-morphs.md`).
+
+**No-fast-math exact cases.** The 5 allowlisted ids moved from
+`modules/wavetable/pending/render.json` into `render.json` with
+`"reference": "nofastmath"`:
+- `wave_linear_freq_disjoint_spectra`, `wave_cubic_freq_disjoint_spectra`
+  and `multi_group_disjoint_spectra`;
+- `wave_folder_at_clamp`;
+- `audio_fade_3_phase_0`.
+
+- The port equals the no-fast-math captures bit for bit in every array
+  (`wave`, `coefficients`, `phase_coefficients`, `lanes`, `info`).
+- `compare <official> <nofastmath> --justify-nofastmath` justifies all five:
+  the official reference fails `wave` on each, and the coefficient arrays
+  on all but the folder case.
+- No-fast-math hashes are pinned with `hashes --write --reference
+  nofastmath` (25 hashes) and pass `--check --require-known-identity
+  --reference nofastmath`.
+
+**JSON-bounded artifacts** (`"artifacts": {...: "json"}`):
+- `common/json/negative_zero` (`dump.json`, `pretty.json`);
+- the three `common/line_generator_edit` `flipHorizontal` cases
+  (`saved.json`; the `saved_json` flag is gone);
+- `wavetable/creator_json/preset_init` and `preset_predefined`
+  (`saved.json`, with `base64_f32_keys: ["wave_data"]`).
+
+- All seven artifacts differ byte-wise between the official and the
+  no-fast-math reference (`-0.0` and the last bits of the preset
+  keyframes), and the port passes each under the pinned bound against the
+  official reference.
+- Their authored inputs no longer live under `pending/`; both `pending/`
+  directories are gone.
+
+**Checks run locally:**
+- full corpus render;
+- `hashes --check --require-known-identity`: 758 official hashes;
+- the calibration compare with `--justify-nofastmath`: 738 compared, 0
+  failed;
+- `cargo test --workspace` with `SAS_PARITY_CAPTURES_NOFASTMATH` set;
+- clippy and fmt.

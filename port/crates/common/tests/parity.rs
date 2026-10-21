@@ -271,9 +271,7 @@ fn line_generator_edit() {
             generator.num_points() as f32,
         ];
         assert_parity!(&format!("{id}:state"), state);
-        if params["saved_json"].as_bool().unwrap_or(true) {
-            assert_artifact!(&id, "saved.json", generator.to_json().dump());
-        }
+        assert_artifact!(&id, "saved.json", generator.to_json().dump());
     }
 }
 
