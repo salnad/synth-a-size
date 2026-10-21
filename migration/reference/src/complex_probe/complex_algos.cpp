@@ -157,4 +157,9 @@ namespace complex_algos {
     x = static_cast<float>((static_cast<double>(a) * c + static_cast<double>(b) * d) / denominator);
     y = static_cast<float>((static_cast<double>(b) * c - static_cast<double>(a) * d) / denominator);
   }
+  void reciprocal(float a, float b, float c, float d, float& x, float& y) {
+    float inverse = 1.0f / (c * c + d * d);
+    x = (a * c + b * d) * inverse;
+    y = (b * c - a * d) * inverse;
+  }
 } // namespace complex_algos

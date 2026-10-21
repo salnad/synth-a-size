@@ -5,11 +5,10 @@
 
 #define COMPLEX_OPS_DECLARE(ns)                                                                     \
   namespace ns {                                                                                   \
-    void stdRealDivide(float value, const float* c, const float* d, float* re, float* im, int n);  \
+    void stdRealDivide(const float* c, const float* d, float* re, float* im, int n);               \
     void stdDivide(const float* a, const float* b, const float* c, const float* d, float* re,      \
                    float* im, int n);                                                              \
-    void builtinRealDivide(float value, const float* c, const float* d, float* re, float* im,      \
-                           int n);                                                                 \
+    void builtinRealDivide(const float* c, const float* d, float* re, float* im, int n);           \
     void builtinDivide(const float* a, const float* b, const float* c, const float* d, float* re,  \
                        float* im, int n);                                                          \
   }
@@ -41,4 +40,7 @@ namespace complex_algos {
   void smith(float a, float b, float c, float d, float& x, float& y);
   void logbScalbn(float a, float b, float c, float d, float& x, float& y);
   void wideDouble(float a, float b, float c, float d, float& x, float& y);
+  // Naive formula with one reciprocal of the denominator (fast-math's
+  // rewrite of two divisions by the same value).
+  void reciprocal(float a, float b, float c, float d, float& x, float& y);
 } // namespace complex_algos

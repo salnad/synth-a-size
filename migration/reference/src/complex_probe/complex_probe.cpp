@@ -50,6 +50,12 @@ long long ulpDistance(float x, float y) {
   return distance < 0 ? -distance : distance;
 }
 
+std::string hexBits(float value) {
+  char text[16];
+  std::snprintf(text, sizeof(text), "%08x", static_cast<unsigned>(bitsOf(value)));
+  return text;
+}
+
 uint64_t hashResult(const std::vector<float>& re, const std::vector<float>& im) {
   uint64_t hash = 1469598103934665603ULL;
   for (size_t i = 0; i < re.size(); ++i) {
@@ -67,7 +73,9 @@ const std::pair<const char*, Algorithm> kAlgorithms[] = {
   { "smith", complex_algos::smith },
   { "logb_scalbn", complex_algos::logbScalbn },
   { "wide_double", complex_algos::wideDouble },
+  { "reciprocal", complex_algos::reciprocal },
 };
+const int kNumAlgorithms = sizeof(kAlgorithms) / sizeof(kAlgorithms[0]);
 
 struct Variant {
   const char* name;
@@ -81,13 +89,13 @@ void probeCategory(harness::json& result, const std::string& category, const com
   if (real_numerator) {
     variants = {
       { "std_fast", [](const complex_algos::Inputs& v, float* re, float* im, int count) {
-          fast_ops::stdRealDivide(1.0f, v.c.data(), v.d.data(), re, im, count); } },
+          fast_ops::stdRealDivide(v.c.data(), v.d.data(), re, im, count); } },
       { "std_strict", [](const complex_algos::Inputs& v, float* re, float* im, int count) {
-          strict_ops::stdRealDivide(1.0f, v.c.data(), v.d.data(), re, im, count); } },
+          strict_ops::stdRealDivide(v.c.data(), v.d.data(), re, im, count); } },
       { "builtin_fast", [](const complex_algos::Inputs& v, float* re, float* im, int count) {
-          fast_ops::builtinRealDivide(1.0f, v.c.data(), v.d.data(), re, im, count); } },
+          fast_ops::builtinRealDivide(v.c.data(), v.d.data(), re, im, count); } },
       { "builtin_strict", [](const complex_algos::Inputs& v, float* re, float* im, int count) {
-          strict_ops::builtinRealDivide(1.0f, v.c.data(), v.d.data(), re, im, count); } },
+          strict_ops::builtinRealDivide(v.c.data(), v.d.data(), re, im, count); } },
     };
   }
   else {
@@ -103,8 +111,9 @@ void probeCategory(harness::json& result, const std::string& category, const com
     };
   }
 
-  std::vector<std::vector<float>> expected_re(4, std::vector<float>(n)), expected_im(4, std::vector<float>(n));
-  for (int k = 0; k < 4; ++k) {
+  std::vector<std::vector<float>> expected_re(kNumAlgorithms, std::vector<float>(n));
+  std::vector<std::vector<float>> expected_im(kNumAlgorithms, std::vector<float>(n));
+  for (int k = 0; k < kNumAlgorithms; ++k) {
     for (int i = 0; i < n; ++i)
       kAlgorithms[k].second(in.a[i], in.b[i], in.c[i], in.d[i], expected_re[k][i], expected_im[k][i]);
   }
@@ -116,7 +125,7 @@ void probeCategory(harness::json& result, const std::string& category, const com
     std::string key = category + "/" + variant.name;
     result["hashes"][key] = harness::hex64(hashResult(re, im));
     harness::json stats;
-    for (int k = 0; k < 4; ++k) {
+    for (int k = 0; k < kNumAlgorithms; ++k) {
       long long equal = 0;
       long long max_ulp = 0;
       long long nan_mismatch = 0;
@@ -170,19 +179,48 @@ void probePhaseModifier(harness::json& result) {
     }
   }
 
-  // std::polar's cosf/sinf come from the platform libm; hashed separately so
-  // a render difference can be split into polar vs division.
-  uint64_t polar_hash = 1469598103934665603ULL;
+  // In situ: with every bin 1 + 0i and mix 1, kHarmonicEvenOdd writes
+  // phase_shift (std::polar, platform libm) to the even bins and the engine's
+  // own 1.0f / phase_shift to the odd bins, both exactly.
   complex_algos::Inputs shifts;
+  std::vector<float> odd_re, odd_im;
+  harness::json values = harness::json::array();
   for (float phase : phases) {
-    std::complex<float> shift = std::polar(1.0f, -phase);
-    polar_hash = harness::fnv1a64(&shift, sizeof(shift), polar_hash);
+    vital::WaveFrame frame;
+    for (int i = 0; i < vital::WaveFrame::kWaveformSize; ++i)
+      frame.frequency_domain[i] = std::complex<float>(1.0f, 0.0f);
+    PhaseModifier::PhaseModifierKeyframe keyframe;
+    keyframe.setPhase(phase);
+    keyframe.setMix(1.0f);
+    keyframe.setPhaseStyle(PhaseModifier::kHarmonicEvenOdd);
+    keyframe.render(&frame);
+    std::complex<float> shift = frame.frequency_domain[0];
+    std::complex<float> odd = frame.frequency_domain[1];
     shifts.a.push_back(1.0f);
     shifts.b.push_back(0.0f);
     shifts.c.push_back(shift.real());
     shifts.d.push_back(shift.imag());
+    odd_re.push_back(odd.real());
+    odd_im.push_back(odd.imag());
+    values.push_back({ hexBits(phase), hexBits(shift.real()), hexBits(shift.imag()),
+                       hexBits(odd.real()), hexBits(odd.imag()) });
   }
-  result["hashes"]["phase_modifier/polar_shifts"] = harness::hex64(polar_hash);
+  result["phase_modifier_in_situ"]["columns"] = { "phase", "shift_re", "shift_im", "odd_re", "odd_im" };
+  result["phase_modifier_in_situ"]["values"] = values;
+  result["hashes"]["phase_modifier/polar_shifts"] = harness::hex64(hashResult(shifts.c, shifts.d));
+  result["hashes"]["phase_modifier/in_situ_odd_shift"] = harness::hex64(hashResult(odd_re, odd_im));
+  for (int k = 0; k < kNumAlgorithms; ++k) {
+    long long equal = 0;
+    long long max_ulp = 0;
+    for (size_t i = 0; i < odd_re.size(); ++i) {
+      float x, y;
+      kAlgorithms[k].second(1.0f, 0.0f, shifts.c[i], shifts.d[i], x, y);
+      equal += sameValue(x, odd_re[i]) && sameValue(y, odd_im[i]);
+      max_ulp = std::max(max_ulp, std::max(ulpDistance(x, odd_re[i]), ulpDistance(y, odd_im[i])));
+    }
+    result["phase_modifier_in_situ"][std::string("equal_") + kAlgorithms[k].first] = equal;
+    result["phase_modifier_in_situ"][std::string("max_ulp_") + kAlgorithms[k].first] = max_ulp;
+  }
   probeCategory(result, "phase_modifier_odd_shift", shifts, true);
 }
 
@@ -201,6 +239,11 @@ int main() {
   probeCategory(result, "exp_full_range", complex_algos::randomExponent(5, kCount, -150, 127), false);
   probeCategory(result, "special_grid", complex_algos::specialGrid(), false);
   probePhaseModifier(result);
+#ifdef _LIBCPP_VERSION
+  result["cxx_library"] = std::string("libc++ ") + std::to_string(_LIBCPP_VERSION);
+#elif defined(__GLIBCXX__)
+  result["cxx_library"] = std::string("libstdc++ ") + std::to_string(__GLIBCXX__);
+#endif
   result["build"] = harness::buildInfo();
   std::printf("%s\n", result.dump(2).c_str());
   return 0;

@@ -6,10 +6,11 @@
 
 namespace OPS_NS {
 
-// value / std::complex<float>, as in PhaseModifierKeyframe::render.
-void stdRealDivide(float value, const float* c, const float* d, float* re, float* im, int n) {
+// 1.0f / std::complex<float> with the literal numerator, as in
+// PhaseModifierKeyframe::render (fast-math may fold 1 * c and 0 * d).
+void stdRealDivide(const float* c, const float* d, float* re, float* im, int n) {
   for (int i = 0; i < n; ++i) {
-    std::complex<float> result = value / std::complex<float>(c[i], d[i]);
+    std::complex<float> result = 1.0f / std::complex<float>(c[i], d[i]);
     re[i] = result.real();
     im[i] = result.imag();
   }
@@ -26,12 +27,12 @@ void stdDivide(const float* a, const float* b, const float* c, const float* d, f
 // The compiler's own complex division (GCC/Clang `_Complex float`): inline
 // under -fcx-limited-range / -ffast-math, otherwise the runtime's __divsc3
 // (libgcc on Linux, compiler-rt on macOS).
-void builtinRealDivide(float value, const float* c, const float* d, float* re, float* im, int n) {
+void builtinRealDivide(const float* c, const float* d, float* re, float* im, int n) {
   for (int i = 0; i < n; ++i) {
     __complex__ float z;
     __real__ z = c[i];
     __imag__ z = d[i];
-    __complex__ float result = value / z;
+    __complex__ float result = 1.0f / z;
     re[i] = __real__ result;
     im[i] = __imag__ result;
   }
