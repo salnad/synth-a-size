@@ -759,6 +759,18 @@ Harness Builder's `sas-parity` helper.)
   - Unit tests cover both columns at the edge draw on every host.
   - None of the 26,624 draws in `common/random` reach the edge, so its
     captures are the same on both references.
+  - Follow-up (Chain Reviewer's suggestion (a)): the case
+    `common/random/seed_10694_edge_draw` (4096 draws) hits u ≥ 2^32 − 128
+    at index 745 (u = 4294967238). An independent mt19937 confirms that
+    it is the only such draw in the case.
+  - The two columns differ there by only (max − min)·2^-24 ≈ 1.2e-7, well
+    inside the gate. So `random_generator` gains an exact output,
+    `at_max`, which counts values equal to `max`: 0 for libstdc++ and 1
+    for libc++ at this seed.
+  - With `aarch64-semantics` on x86, the test fails `at_max` (error 1),
+    as intended. The x86 reference gives 0.9999999 (1 − 2^-23) at index
+    745, and the case will check the libc++ column once arm64 captures
+    exist.
 
 ### Review follow-up (Chain Reviewer, PR #4)
 
