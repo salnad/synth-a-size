@@ -1501,3 +1501,63 @@ All three also pass the no-fast-math proxy.
 - The owner's decision on the 7 parked cases. Then move them back and apply
   the chosen mechanism.
 - macOS arm64 hashes after PR #2.
+
+## 2026-10-21: M5b PR 3, formant family (`FormantFilter`, `FormantManager`, `VocalTract`, `FormantModule`)
+
+Ports `vital/src/synthesis/filters/{formant_filter,formant_manager,vocal_tract}.{h,cpp}`
+and `modules/formant_module.{h,cpp}` to `port/crates/filters/src/character/`,
+stacked on M5b PR 2. The stages are M5a's `DigitalSvf` at resonance bounds
+4..30.
+
+- `FormantManager`: a router of four `DigitalSvf` stages summed by
+  `VariableAdd`; resets go through `getLocalProcessor`.
+- `FormantFilter`: the router graph from `init` (per formant:
+  `cr::BilinearInterpolate` for gain and Q, `BilinearInterpolate` for the
+  MIDI cutoff, `Interpolate` toward the 80-semitone center by `spread`,
+  `Add` with transpose, `cr::Multiply` with resonance). `setupFilter` is
+  ported too, although nothing calls it while processing. Upstream plugs
+  every filter into shared static `cr::Value`s (the vowel tables, `k12Db`,
+  `kValueOne`). Here each filter owns control-rate `Value` nodes with the
+  same constants. They are sources only and never processed, so the
+  outputs are identical.
+- `VocalTract`: upstream's processing is empty, so the module's shared
+  output keeps the last block written by the previously active style. The
+  port reproduces that, and `style_switching_with_resets` covers it.
+- `FormantModule`: style switching (clamped 0..2), its own
+  `<prefix>_formant_*` mod controls, per-voice resets of the active style.
+- `character::create_filter(Formant)` is `FormantFilter(0)`. Like
+  upstream's, it is a router that needs `init()`.
+
+Reference: ref-modules `formant_filter` (`params.style`; the factory calls
+`init()`; x, y and transpose are audio rate, as the module feeds them) and
+`formant_module` (`FormantModule("filter_1")`, initialised, with
+`params.controls` applied through `getControls()`). The Rust test installs
+the five `filter_1_formant_*` parameter details (linear; min, max and
+default from `filter_parameter_list`) with `set_parameter_lookup`, because
+`sas-preset` has not merged. Switch to the registry when it does.
+
+Cases: `filters/formant_filter` (9) and `filters/formant_module` (4), all
+under `module_defaults`. They cover:
+
+- both vowel styles, with x/y sweeps, corners and out-of-range values
+  (−1.5..2.5; the audio-rate interpolation clamps to −1..2 and the
+  control-rate one does not);
+- transpose over ±12 and ±36, spread over ±1 and ±1.5, resonance over
+  0.3..1 and 0..1.2;
+- per-lane values with per-voice resets, 96 kHz at block 128, and
+  oversample 2;
+- for the module: defaults, control extremes, and a style ramp from −1 to
+  3.5 crossing into the vocal tract.
+
+| Metric (13 cases) | Port vs reference |
+|---|---|
+| worst `max_abs_error` | 2.9e-5 (`aoie_out_of_range`) |
+| worst `residual_db` | −102.5 dB (`aiuo_per_lane_and_resets`) |
+
+Margin ≥ 3.4× and ≥ 22.5 dB. The port is bit-identical to the
+`REF_FAST_MATH=OFF` reference on all 13 cases.
+
+**Open / next**
+
+- Switch the test's parameter details to `sas-preset` once it merges.
+- macOS arm64 hashes after PR #2.
