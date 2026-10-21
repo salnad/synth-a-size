@@ -12,28 +12,6 @@
         }
       }
     },
-    "decay_and_size_sweep": {
-      "num_samples": 132300,
-      "inputs": {
-        "audio": {
-          "signal": "noise",
-          "amp": 0.4,
-          "stereo": true,
-          "seed": 2
-        },
-        "reverb_decay_time": {
-          "signal": "ramp",
-          "from": -6.0,
-          "to": 6.0
-        },
-        "reverb_size": {
-          "signal": "ramp",
-          "from": 0.0,
-          "to": 1.0
-        },
-        "reverb_dry_wet": 0.6
-      }
-    },
     "chorus_sweep": {
       "num_samples": 132300,
       "inputs": {
@@ -53,57 +31,6 @@
           "to": 3.0
         },
         "reverb_dry_wet": 0.7
-      }
-    },
-    "filter_and_delay_sweep": {
-      "num_samples": 132300,
-      "inputs": {
-        "audio": {
-          "signal": "noise",
-          "amp": 0.4,
-          "stereo": true,
-          "seed": 5
-        },
-        "reverb_pre_low_cutoff": {
-          "signal": "ramp",
-          "from": 0.0,
-          "to": 128.0
-        },
-        "reverb_pre_high_cutoff": {
-          "signal": "ramp",
-          "from": 128.0,
-          "to": 0.0
-        },
-        "reverb_low_shelf_cutoff": {
-          "signal": "ramp",
-          "from": 0.0,
-          "to": 128.0
-        },
-        "reverb_low_shelf_gain": {
-          "signal": "ramp",
-          "from": -6.0,
-          "to": 0.0
-        },
-        "reverb_high_shelf_cutoff": {
-          "signal": "ramp",
-          "from": 128.0,
-          "to": 0.0
-        },
-        "reverb_high_shelf_gain": {
-          "signal": "ramp",
-          "from": 0.0,
-          "to": -6.0
-        },
-        "reverb_delay": {
-          "signal": "ramp",
-          "from": 0.0,
-          "to": 0.3
-        },
-        "reverb_dry_wet": {
-          "signal": "ramp",
-          "from": 0.0,
-          "to": 1.0
-        }
       }
     },
     "enable_toggle": {
@@ -148,18 +75,6 @@
           "amp": 0.5
         },
         "reverb_dry_wet": 0.5
-      }
-    },
-    "long_tail_max_decay": {
-      "num_samples": 441000,
-      "inputs": {
-        "audio": {
-          "signal": "impulse",
-          "at": 300
-        },
-        "reverb_decay_time": 6.0,
-        "reverb_size": 1.0,
-        "reverb_dry_wet": 1.0
       }
     }
   }

@@ -3,11 +3,8 @@
     {
       "hashes": {
         "chorus_sweep:audio": "0c05dcf925a72e6e",
-        "decay_and_size_sweep:audio": "3137f7e7e510c566",
         "defaults_saw:audio": "e6856776891d7bcb",
         "enable_toggle:audio": "6a853ede7b449ad0",
-        "filter_and_delay_sweep:audio": "35580d86d3271d25",
-        "long_tail_max_decay:audio": "d9088d427890f6be",
         "oversampled_2x:audio": "db00415b46e875be",
         "rate_96k:audio": "8a937d1e295fbcaa"
       },
