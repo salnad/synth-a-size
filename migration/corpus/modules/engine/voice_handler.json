@@ -2893,6 +2893,166 @@
         ],
         "num_samples": 8192
       }
+    },
+    "scala_tuning": {
+      "params": {
+        "polyphony": 4,
+        "tuning_scala": [
+          "! corpus 7-step just scale",
+          "corpus just 7",
+          " 7",
+          "9/8",
+          "5/4",
+          "4/3",
+          "3/2",
+          "5/3",
+          "15/8",
+          "2/1"
+        ],
+        "events": [
+          {
+            "sample": 100,
+            "type": "note_on",
+            "note": 36,
+            "velocity": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 400,
+            "type": "note_off",
+            "note": 36,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 700,
+            "type": "note_on",
+            "note": 47,
+            "velocity": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 1000,
+            "type": "note_off",
+            "note": 47,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 1300,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 1600,
+            "type": "note_off",
+            "note": 60,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 1900,
+            "type": "note_on",
+            "note": 61,
+            "velocity": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 2200,
+            "type": "note_off",
+            "note": 61,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 2500,
+            "type": "note_on",
+            "note": 66,
+            "velocity": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 2800,
+            "type": "note_off",
+            "note": 66,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 3100,
+            "type": "note_on",
+            "note": 71,
+            "velocity": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 3400,
+            "type": "note_off",
+            "note": 71,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 3700,
+            "type": "note_on",
+            "note": 84,
+            "velocity": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 4000,
+            "type": "note_off",
+            "note": 84,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 4300,
+            "type": "note_on",
+            "note": 96,
+            "velocity": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 4600,
+            "type": "note_off",
+            "note": 96,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 4900,
+            "type": "note_on",
+            "note": 108,
+            "velocity": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 5200,
+            "type": "note_off",
+            "note": 108,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 5500,
+            "type": "note_on",
+            "note": 120,
+            "velocity": 0.7,
+            "channel": 0
+          },
+          {
+            "sample": 5800,
+            "type": "note_off",
+            "note": 120,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ],
+        "num_samples": 8192
+      }
     }
   }
 }

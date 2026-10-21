@@ -2731,3 +2731,77 @@ lands.
 **After #2 lands:** run the port on the macOS job against its pinned and
 no-fast-math trees, and re-enable `audio_fade_3_phase_0` on arm64 if #2
 parked it.
+
+## 2026-10-21: M7 PR 2, `sas-engine` tuning files (Scala, keyboard map, AnaMark)
+
+Stacked on M7 PR 1.
+
+**What changed**
+
+- `port/crates/engine/src/tuning.rs` now ports all of `common/tuning.cpp`:
+  - Scala `.scl` loading (`loadScalaFile`, cents and ratio degrees) and
+    keyboard maps `.kbm` (header, `x` entries, reference note and
+    frequency);
+  - AnaMark `.tun` loading (`[Tuning]` / `[Exact Tuning]`, `basefreq`,
+    `note N`);
+  - `noteToMidiKey`, and `stateToJson` / `jsonToState` (serde_json).
+- `juce_text` reproduces the JUCE string semantics the parser depends on:
+  - `File::readLines` (a trailing empty line), `String::trim` and
+    `addTokens`, which keeps empty tokens, so `note  5` reads note 0 as
+    upstream does;
+  - `getIntValue` (no `+`, unsigned wrap);
+  - `getDoubleValue`: the ≤ 18-significant-digit buffer passed to `strtod`;
+  - the `size_t` comparisons, so a negative scale length or map size never
+    stops the read.
+- The voice handler's `scala_tuning` case (tuned `note`/`last_note`
+  triggers) is added back here, now that Scala loading exists.
+
+**Reference capture**
+
+- `migration/reference/src/modules/engine/tuning.cpp`, artifact-only. It
+  writes `params.files` (authored text) to a temporary directory, loads each
+  file with `Tuning::loadFile`, and emits:
+  - `convertMidiNote(0..127)` raw (`converted`) and as SynthVoiceHandler's
+    `note` source, `note * (1.0f / (kMidiSize - 1))`
+    (`converted_note_percent`);
+  - the same two after a `stateToJson` → `jsonToState` round trip;
+  - `scale_start_midi_note`, `reference_midi_note` and the stored scale;
+  - `getName()` as an exact-match text artifact.
+- 12 cases in `migration/corpus/modules/engine/tuning.json`: default; Scala
+  in cents, ratios, 19-EDO and a stretched period with blank and annotated
+  lines; Scala + kbm; kbm alone; a short kbm; `.tun` with comments, odd
+  spacing, an out-of-range note and a stray section; `.tun` + kbm; reference
+  ratio with a start note; reference frequency.
+
+**Metrics** (x86_64, local tree with the CI identity). Every comparison
+passes under `module_defaults`, and 26 of 57 are bit-identical:
+
+| Output | Worst max abs error | Worst residual |
+|---|---|---|
+| `*_note_percent` | 9.5e-7 (`tun_then_kbm`) | −138.4 dB |
+| raw `converted` / `roundtrip` (captured cases) | 1.5e-5 | −138.4 dB |
+| raw `reference_midi_note` (captured cases) | 6.0e-8 | −141.1 dB |
+
+The voice handler with `scala_tuning` (21 cases) stays bit-identical.
+
+**Raw values not captured** (`params.skip_raw`), with the numbers measured
+before the normalized outputs replaced them. No tolerance changed:
+
+- `tun_then_kbm`, raw `converted` and `roundtrip`: the `.tun` period is
+  ~127 semitones and the kbm repeats it, so values reach ±697 semitones.
+  The max abs error is 1.2e-4 (2 ULP at that magnitude), against the 1e-4
+  gate; the residual is −138.5 dB. The normalized form passes, with 9.5e-7.
+- `scl_reference_frequency`, raw `reference_midi_note`:
+  `setReferenceNoteFrequency(69, 440 Hz)` cancels to about 0. The source
+  formula `12 * logf(f / k) * kInvLogOf2` gives exactly 69.0 in f32, so the
+  port's value is 0. The fast-math reference reassociates it to
+  `logf(...) * (12 * kInvLogOf2)` and gets 68.99999, so its value is
+  −7.6e-6. The absolute error passes (7.6e-6), but the residual against a
+  near-zero reference is 0 dB. Per the owner decision, the port keeps the
+  source formula. `converted` and `converted_note_percent` carry the value
+  in the form `convertMidiNote` consumes, and pass with 1.5e-5 / 1.2e-7.
+- Two authored inputs were fixed, because upstream would either read past
+  the end of the scale vector (a kbm mapping degrees 9–11 onto a 7-degree
+  scale) or produce −∞ (a blank Scala ratio line reads as `logf(0)`). These
+  are invalid inputs, not narrowed coverage. The blank line is still
+  exercised, as the description line.

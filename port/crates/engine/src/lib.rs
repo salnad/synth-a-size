@@ -10,8 +10,8 @@
 //!   priority and override (stealing), legato, sustain and sostenuto, MPE
 //!   per-channel pitch bend, pressure and slide, and the per-voice-pair graph
 //!   copies;
-//! - [`tuning`]: the `Tuning` table (`common/tuning.*`) the voice handler
-//!   reads; tuning files follow in the next PR.
+//! - [`tuning`]: `Tuning` (`common/tuning.*`): Scala `.scl`, keyboard maps
+//!   `.kbm` and AnaMark `.tun`, and the JSON state.
 //!
 //! The upstream per-ISA sites (`migration/decisions/reference-arm.md`) are
 //! reached only through `sas-simd`; the `aarch64-semantics` feature forwards
