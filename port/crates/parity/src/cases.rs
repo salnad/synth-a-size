@@ -482,7 +482,10 @@ fn parse_allowlist_line(line: &str) -> Option<(&str, &str, &str, &str, Vec<&str>
         .then_some((area, module, case, key, targets))
 }
 
-/// `(case_id, approval)` from one allowlist file,
+/// One allowlist line: the approval key and the declared targets.
+pub type AllowlistEntry = (String, Vec<String>);
+
+/// `(case_id, approval, targets)` from one allowlist file,
 /// `migration/decisions/nofastmath/<area>/<module>.md`. Every line that
 /// starts with a list marker (after any indentation) must be exactly
 /// ``- `<area>/<module>/<case>` (<approval>; <target>[, <target>]): <reason>``,
@@ -494,7 +497,7 @@ pub fn allowlist_entries(
     area: &str,
     module: &str,
     text: &str,
-) -> Result<Vec<(String, String)>, String> {
+) -> Result<Vec<(String, String, Vec<String>)>, String> {
     let mut entries = Vec::new();
     for (index, line) in text.lines().enumerate() {
         let number = index + 1;
@@ -526,17 +529,22 @@ pub fn allowlist_entries(
                 targets.join(", ")
             ));
         }
-        entries.push((format!("{a}/{m}/{c}"), key.to_string()));
+        entries.push((
+            format!("{a}/{m}/{c}"),
+            key.to_string(),
+            targets.iter().map(|t| t.to_string()).collect(),
+        ));
     }
     Ok(entries)
 }
 
-/// `{case_id: approval}` from `{path relative to the allowlist dir: text}`.
+/// `{case_id: (approval, targets)}` from `{path relative to the allowlist
+/// dir: text}`.
 /// Only `README.md` and `<area>/<module>.md` may exist there, and an id may
 /// be listed once. Mirrored in run_corpus.py (`allowlist_from_files`).
 pub fn allowlist_from_files(
     texts: &BTreeMap<String, String>,
-) -> Result<BTreeMap<String, String>, String> {
+) -> Result<BTreeMap<String, AllowlistEntry>, String> {
     let mut allowlist = BTreeMap::new();
     for (path, text) in texts {
         if path == "README.md" {
@@ -554,11 +562,11 @@ pub fn allowlist_from_files(
         };
         check_name(&rel, "area", area)?;
         check_name(&rel, "module", module)?;
-        for (case_id, approval) in allowlist_entries(&rel, area, module, text)? {
+        for (case_id, approval, targets) in allowlist_entries(&rel, area, module, text)? {
             if allowlist.contains_key(&case_id) {
                 return Err(format!("{rel}: {case_id} is listed twice"));
             }
-            allowlist.insert(case_id, approval);
+            allowlist.insert(case_id, (approval, targets));
         }
     }
     Ok(allowlist)
@@ -567,11 +575,11 @@ pub fn allowlist_from_files(
 /// Every cited approval's ledger heading exists and its section names the
 /// approval key. Mirrored in run_corpus.py (`check_allowlist_approvals`).
 pub fn check_allowlist_approvals(
-    allowlist: &BTreeMap<String, String>,
+    allowlist: &BTreeMap<String, AllowlistEntry>,
     ledger: &[&str],
 ) -> Result<(), String> {
     let sections = approval_sections(ledger);
-    let cited: std::collections::BTreeSet<&String> = allowlist.values().collect();
+    let cited: std::collections::BTreeSet<&String> = allowlist.values().map(|(a, _)| a).collect();
     for approval in cited {
         let heading = NOFASTMATH_APPROVALS
             .iter()
@@ -614,6 +622,11 @@ fn collect_allowlist_texts(
 /// cited approvals checked against the ledger. Mirrored in run_corpus.py
 /// (`read_allowlist`).
 fn read_allowlist(ledger: &[&str]) -> Result<Vec<String>, String> {
+    Ok(read_allowlist_entries(ledger)?.into_keys().collect())
+}
+
+/// `{case_id: (approval, targets)}`, as [`read_allowlist`] checks them.
+pub fn read_allowlist_entries(ledger: &[&str]) -> Result<BTreeMap<String, AllowlistEntry>, String> {
     let dir = nofastmath_allowlist_dir();
     let mut texts = BTreeMap::new();
     if dir.is_dir() {
@@ -621,7 +634,122 @@ fn read_allowlist(ledger: &[&str]) -> Result<Vec<String>, String> {
     }
     let allowlist = allowlist_from_files(&texts)?;
     check_allowlist_approvals(&allowlist, ledger)?;
-    Ok(allowlist.into_keys().collect())
+    Ok(allowlist)
+}
+
+/// `{case id: reason}` from a park file's JSON, such as
+/// `migration/corpus/parked_arm64.json`:
+/// `{"description": "...", "cases": {"<id>": {"approved_in": "<dated ledger
+/// heading>", "reason": "..."}}}`. A park switches off every check for the
+/// case on that reference, so it needs a recorded owner approval, like a
+/// `tolerance_exception`: `approved_in` must be a dated heading whose
+/// section names the case. Every parked id must be a loaded case, and a
+/// case whose no-fast-math allowlist targets include `macos` cannot be
+/// parked (it is justified only on macOS). Mirrored in run_corpus.py
+/// (`resolve_parked`).
+pub fn resolve_parked(
+    data: &Value,
+    location: &str,
+    known: &[String],
+    allowlist: &BTreeMap<String, AllowlistEntry>,
+    ledger: &[&str],
+) -> Result<BTreeMap<String, String>, String> {
+    let shape = || {
+        format!(
+            "{location}: must be {{\"description\": \"...\", \"cases\": {{<case id>: {{\"approved_in\": \
+             \"<dated ledger heading>\", \"reason\": \"...\"}}}}}}"
+        )
+    };
+    let root = data.as_object().ok_or_else(shape)?;
+    let cases = root
+        .get("cases")
+        .and_then(Value::as_object)
+        .ok_or_else(shape)?;
+    if root.keys().any(|k| k != "description" && k != "cases")
+        || root.get("description").is_some_and(|d| !d.is_string())
+    {
+        return Err(shape());
+    }
+    let sections = approval_sections(ledger);
+    let mut parked = BTreeMap::new();
+    for (case_id, entry) in cases {
+        let field = |key: &str| {
+            entry
+                .get(key)
+                .and_then(Value::as_str)
+                .filter(|s| !s.trim().is_empty())
+        };
+        let shaped = entry.as_object().is_some_and(|o| {
+            o.len() == 2 && o.contains_key("approved_in") && o.contains_key("reason")
+        });
+        let (Some(approved_in), Some(reason), true) =
+            (field("approved_in"), field("reason"), shaped)
+        else {
+            return Err(format!(
+                "{location}: {case_id} must be {{\"approved_in\": \"<dated ledger heading>\", \"reason\": \
+                 \"...\"}} with non-empty strings"
+            ));
+        };
+        if !known.contains(case_id) {
+            return Err(format!(
+                "{location}: parked id {case_id} is not a loaded case (renamed, removed or moved to pending/?)"
+            ));
+        }
+        let approved_in = approved_in.trim();
+        if !is_dated_heading(approved_in) {
+            return Err(format!(
+                "{location}: {case_id}: approved_in must cite a dated ledger heading \
+                 (\"YYYY-MM-DD: ...\"), not {approved_in:?}"
+            ));
+        }
+        let bodies: Vec<&String> = sections
+            .iter()
+            .filter(|(title, _)| title == approved_in)
+            .map(|(_, body)| body)
+            .collect();
+        if bodies.is_empty() {
+            return Err(format!(
+                "{location}: {case_id}: approved_in cites ledger heading {approved_in:?}, which does not \
+                 exist (migration/LEDGER.md or migration/ledger/)"
+            ));
+        }
+        if !bodies.iter().any(|body| names_case(body, case_id)) {
+            return Err(format!(
+                "{location}: {case_id}: ledger section {approved_in:?} does not name the case"
+            ));
+        }
+        if allowlist
+            .get(case_id)
+            .is_some_and(|(_, targets)| targets.iter().any(|t| t == "macos"))
+        {
+            return Err(format!(
+                "{location}: {case_id} is declared for macos in the no-fast-math allowlist: the macOS \
+                 proxy compare is its justification, so it cannot be parked there (it stays live)"
+            ));
+        }
+        parked.insert(case_id.clone(), reason.to_string());
+    }
+    Ok(parked)
+}
+
+/// [`resolve_parked`] on a park file, against the loaded cases, the
+/// repository allowlist and the ledger.
+pub fn load_parked(path: &Path) -> Result<BTreeMap<String, String>, String> {
+    let ledger = read_ledger()?;
+    let ledger: Vec<&str> = ledger.iter().map(String::as_str).collect();
+    let known: Vec<String> = load_module_cases()?
+        .into_iter()
+        .chain(load_render_cases()?)
+        .map(|c| c.id)
+        .collect();
+    let allowlist = read_allowlist_entries(&ledger)?;
+    resolve_parked(
+        &read_json(path)?,
+        &path.display().to_string(),
+        &known,
+        &allowlist,
+        &ledger,
+    )
 }
 
 fn is_artifact_name(name: &str) -> bool {
@@ -1644,7 +1772,7 @@ mod tests {
     const APPROVAL_LEDGER: &str = "# Ledger\n\n## 2026-10-21: owner approval — SAS-35 \
         noisy-reference rule and SAS-36 JSON bound\n\nSAS-35: approved.\n";
 
-    fn allowlist(files: &[(&str, &str)]) -> Result<BTreeMap<String, String>, String> {
+    fn allowlist(files: &[(&str, &str)]) -> Result<BTreeMap<String, AllowlistEntry>, String> {
         let texts = files
             .iter()
             .map(|(p, t)| (p.to_string(), t.to_string()))
@@ -1660,7 +1788,11 @@ mod tests {
         let parsed =
             allowlist(&[("filters/test.md", good), ("README.md", "- anything\n")]).unwrap();
         assert_eq!(parsed.keys().collect::<Vec<_>>(), ["filters/test/b", MORPH]);
-        assert_eq!(parsed[MORPH], "SAS-35");
+        assert_eq!(
+            parsed[MORPH],
+            ("SAS-35".to_string(), vec!["x86".to_string()])
+        );
+        assert_eq!(parsed["filters/test/b"].1, ["macos", "x86"]);
         check_allowlist_approvals(&parsed, &[APPROVAL_LEDGER]).unwrap();
 
         for (file, text, fragment) in [
@@ -1872,6 +2004,112 @@ mod tests {
         ] {
             assert!(!is_dated_heading(title), "{title}");
         }
+    }
+
+    // Parity Reviewer on #56: parks need a recorded approval and cannot cancel
+    // the macOS justification of a macos-declared case.
+    const PARK_KNOWN: [&str; 2] = ["filters/x/a", "filters/x/b"];
+    const PARK_LEDGER: [&str; 3] = [
+        "# Ledger\n\nfilters/x/a and filters/x/b are mentioned here.\n",
+        "## 2026-10-21: owner approval — park\n\nfilters/x/a is parked on macOS.\n",
+        "## Park approval\n\nfilters/x/b\n",
+    ];
+
+    fn park(heading: &str) -> Value {
+        json!({ "approved_in": heading, "reason": "noisy (A11)" })
+    }
+
+    fn resolve_park_file(
+        data: Value,
+        allowlist: &[(&str, &[&str])],
+    ) -> Result<BTreeMap<String, String>, String> {
+        let known: Vec<String> = PARK_KNOWN.iter().map(|s| s.to_string()).collect();
+        let allowlist = allowlist
+            .iter()
+            .map(|(id, targets)| {
+                let targets = targets.iter().map(|t| t.to_string()).collect();
+                (id.to_string(), ("SAS-35".to_string(), targets))
+            })
+            .collect();
+        resolve_parked(&data, "parked_arm64.json", &known, &allowlist, &PARK_LEDGER)
+    }
+
+    fn resolve_parks(cases: Value) -> Result<BTreeMap<String, String>, String> {
+        resolve_park_file(json!({ "description": "d", "cases": cases }), &[])
+    }
+
+    #[test]
+    fn approved_park_resolves() {
+        let parked =
+            resolve_parks(json!({ "filters/x/a": park("2026-10-21: owner approval — park") }))
+                .unwrap();
+        assert_eq!(parked["filters/x/a"], "noisy (A11)");
+        assert!(resolve_parks(json!({})).unwrap().is_empty());
+    }
+
+    #[test]
+    fn park_needs_a_dated_heading_that_names_the_case() {
+        for (id, heading, fragment) in [
+            ("filters/x/a", "2026-10-22: nothing", "does not exist"),
+            (
+                "filters/x/b",
+                "2026-10-21: owner approval — park",
+                "does not name the case",
+            ),
+            (
+                "filters/x/b",
+                "Park approval",
+                "must cite a dated ledger heading",
+            ),
+            ("filters/x/a", "Ledger", "must cite a dated ledger heading"),
+        ] {
+            let err = resolve_parks(json!({ id: park(heading) })).unwrap_err();
+            assert!(err.contains(fragment), "{heading}: {err}");
+        }
+    }
+
+    #[test]
+    fn park_file_shape() {
+        let good = park("2026-10-21: owner approval — park");
+        let mut extra = good.clone();
+        extra["extra"] = json!(1);
+        for entry in [
+            json!("noisy"),
+            json!({ "approved_in": "2026-10-21: owner approval — park" }),
+            extra,
+            json!({ "approved_in": "2026-10-21: owner approval — park", "reason": "" }),
+            json!({ "approved_in": "2026-10-21: owner approval — park", "reason": 3 }),
+            json!({ "approved_in": null, "reason": "x" }),
+        ] {
+            let err = resolve_parks(json!({ "filters/x/a": entry })).unwrap_err();
+            assert!(err.contains("must be {"), "{err}");
+        }
+        for data in [
+            json!({ "cases": [], "description": "d" }),
+            json!({ "description": "d" }),
+            json!({ "cases": {}, "extra": 1 }),
+            json!({ "cases": {}, "description": 3 }),
+            json!([]),
+        ] {
+            let err = resolve_park_file(data.clone(), &[]).unwrap_err();
+            assert!(err.contains("must be {"), "{data}: {err}");
+        }
+        let err = resolve_parks(json!({ "filters/x/gone": good })).unwrap_err();
+        assert!(err.contains("is not a loaded case"), "{err}");
+    }
+
+    #[test]
+    fn macos_declared_case_cannot_be_parked() {
+        let data = json!({ "cases": { "filters/x/a": park("2026-10-21: owner approval — park") } });
+        let err =
+            resolve_park_file(data.clone(), &[("filters/x/a", &["x86", "macos"])]).unwrap_err();
+        assert!(err.contains("declared for macos"), "{err}");
+        assert!(resolve_park_file(data, &[("filters/x/a", &["x86"])]).is_ok());
+    }
+
+    #[test]
+    fn repository_park_file_resolves() {
+        load_parked(&corpus_dir().join("parked_arm64.json")).unwrap();
     }
 
     #[test]

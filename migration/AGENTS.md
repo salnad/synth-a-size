@@ -233,16 +233,30 @@ none of them edits a shared list.
      passes on x86 but misses there is parked and re-enabled under
      `reference: nofastmath` like any other noisy-reference case.
 
-     *macOS-only parks.* Park such a case on macOS only, never by moving it
-     to `pending/`. Record the owner decision in a ledger entry, then list
-     the case in `migration/corpus/parked_arm64.json` as
-     `"cases": {"<case id>": "<reason and ledger entry>"}`.
-     - The macOS job skips it in sas-parity (`SAS_PARITY_PARKED`), in the
-       proxy compare and in the hash checks (`run_corpus.py --parked`),
-       and lists it in its log.
+     *macOS-only parks are temporary.* A park covers a port bug or a
+     macOS-only fix that is still pending. Noise in the macOS reference
+     itself belongs under SAS-35 instead: declare the case `macos` in its
+     no-fast-math allowlist line and keep it live. Never park by moving a
+     case to `pending/`. A park switches off every macOS check for the case
+     on the shipping target, so it needs an owner decision, recorded like a
+     tolerance exception:
+
+     ```json
+     "cases": { "<case id>": { "approved_in": "<dated ledger heading>",
+                               "reason": "<why, and what fix lifts it>" } }
+     ```
+
+     - Both tools enforce that `approved_in` is a dated heading (in an entry
+       file under `migration/ledger/` or the frozen `LEDGER.md`) whose
+       section names the case.
+     - The id must be a loaded case, so a renamed, removed or pending case
+       fails.
+     - A case declared `macos` in the no-fast-math allowlist cannot be
+       parked, because the macOS proxy compare is its justification.
+     - The macOS job skips a parked case in sas-parity (`SAS_PARITY_PARKED`),
+       in the proxy compare and justification, and in the hash checks
+       (`run_corpus.py --parked`), and lists it in its log.
      - Every other job, including x86, keeps it live, hashed and gated.
-     - A parked id must be a loaded case, so a renamed, removed or pending
-       case fails both tools.
      - Remove the entry when the fix lands.
 
 3. **Port faithfully.** Keep upstream's structure where practical,

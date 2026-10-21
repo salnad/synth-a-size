@@ -939,27 +939,60 @@ def justify_nofastmath(args, case, nofastmath_dir, reports, target, declared):
              "official reference if no target fails)" % (case["id"], target, target), 2)]
 
 
+PARK_KEYS = ("approved_in", "reason")
+
+
+def resolve_parked(data, where, known_ids, allowlist, ledger_files):
+    """{case id: reason} from a park file's JSON, such as
+    migration/corpus/parked_arm64.json:
+    {"description": "...", "cases": {"<id>": {"approved_in": "<dated ledger
+    heading>", "reason": "..."}}}. A park switches off every check for the
+    case on that reference, so it needs a recorded owner approval, like a
+    tolerance_exception: approved_in must be a dated heading whose section
+    names the case. Every parked id must be a loaded case, and a case whose
+    no-fast-math allowlist targets include "macos" cannot be parked (it is
+    justified only on macOS). Mirrored in sas-parity (cases.rs
+    resolve_parked)."""
+    if (not isinstance(data, dict) or set(data) - {"description", "cases"} or not isinstance(data.get("cases"), dict)
+            or not isinstance(data.get("description", ""), str)):
+        raise CaseError("%s: must be {\"description\": \"...\", \"cases\": {<case id>: {\"approved_in\": "
+                        "\"<dated ledger heading>\", \"reason\": \"...\"}}}" % where)
+    sections = approval_sections(ledger_files)
+    parked = {}
+    for case_id, entry in sorted(data["cases"].items()):
+        if not isinstance(entry, dict) or set(entry) != set(PARK_KEYS) or not all(
+                isinstance(entry[k], str) and entry[k].strip() for k in PARK_KEYS):
+            raise CaseError("%s: %s must be {\"approved_in\": \"<dated ledger heading>\", \"reason\": \"...\"} "
+                            "with non-empty strings" % (where, case_id))
+        if case_id not in known_ids:
+            raise CaseError("%s: parked id %s is not a loaded case (renamed, removed or moved to pending/?)"
+                            % (where, case_id))
+        approved_in = entry["approved_in"].strip()
+        if not DATED_HEADING.match(approved_in):
+            raise CaseError("%s: %s: approved_in must cite a dated ledger heading (\"YYYY-MM-DD: ...\"), not %r"
+                            % (where, case_id, approved_in))
+        bodies = [body for title, body in sections if title == approved_in]
+        if not bodies:
+            raise CaseError("%s: %s: approved_in cites ledger heading %r, which does not exist "
+                            "(migration/LEDGER.md or migration/ledger/)" % (where, case_id, approved_in))
+        if not any(names_case(body, case_id) for body in bodies):
+            raise CaseError("%s: %s: ledger section %r does not name the case" % (where, case_id, approved_in))
+        if "macos" in allowlist.get(case_id, ((), ()))[1]:
+            raise CaseError("%s: %s is declared for macos in the no-fast-math allowlist: the macOS proxy compare "
+                            "is its justification, so it cannot be parked there (it stays live)" % (where, case_id))
+        parked[case_id] = entry["reason"]
+    return parked
+
+
 def load_parked(path, renders, modules):
-    """{case id: reason} from a park file such as
-    migration/corpus/parked_arm64.json ({"description": ..., "cases": {id:
-    reason}}). Every parked id must be a loaded case. Mirrored in sas-parity
-    (parked_case_ids)."""
-    data = read_json_strict(path)
-    if not isinstance(data, dict) or not isinstance(data.get("cases"), dict) or set(data) - {"description", "cases"}:
-        raise CaseError("%s: must be {\"description\": ..., \"cases\": {<case id>: <reason>}}" % path)
+    ledger_files = read_ledger()
     known = {c["id"] for c in renders} | {c["id"] for c in modules}
-    unknown = sorted(set(data["cases"]) - known)
-    if unknown:
-        raise CaseError("%s: parked ids %s are not loaded cases (renamed, removed or moved to pending/?)"
-                        % (path, unknown))
-    return data["cases"]
+    return resolve_parked(read_json_strict(path), path, known, read_allowlist(ledger_files), ledger_files)
 
 
 def report_parked(parked, path, what):
     for case_id, reason in sorted(parked.items()):
-        reason = reason if isinstance(reason, str) else json.dumps(reason, sort_keys=True)
-        print("parked %s (%s; %s on this reference only): %s"
-              % (case_id, os.path.basename(path), what, reason))
+        print("parked %s (%s; %s on this reference only): %s" % (case_id, os.path.basename(path), what, reason))
 
 
 def cmd_compare(args):
