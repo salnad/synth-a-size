@@ -88,10 +88,29 @@ fn render(case: &ModuleCase) -> Rendered {
     rendered
 }
 
+/// The phase modifier's `std::polar` pair is merged into `__sincosf_stret`
+/// in the official macOS build but evaluated as separate calls in the
+/// no-fast-math one (A11). The port follows the official build there, so a
+/// case compared bit for bit against the no-fast-math reference must not
+/// contain a phase modifier.
+fn check_no_phase_modifier_in_nofastmath_case(case: &ModuleCase) {
+    if case.comparison().reference != sas_parity::cases::Reference::NoFastMath {
+        return;
+    }
+    let creator = case.params()["creator"].as_str().unwrap_or_default();
+    assert!(
+        !creator.contains("\"Phase Shift\""),
+        "{}: a \"reference\": \"nofastmath\" case cannot contain a Phase Shift \
+         modifier; the macOS builds evaluate its sin/cos pair differently (A11)",
+        case.id()
+    );
+}
+
 #[test]
 fn wavetable_render() {
     for id in support::case_ids("wavetable/render/") {
         let case = ModuleCase::load(&id);
+        check_no_phase_modifier_in_nofastmath_case(&case);
         let rendered = render(&case);
         assert_parity!(&format!("{id}:info"), rendered.info);
         assert_parity!(&format!("{id}:lanes"), rendered.lanes);

@@ -2421,6 +2421,28 @@ lands.
     `sas_common::scalar::sin_cos_unmerged`: two calls, each in its own
     non-inlined function. In the `aarch64-apple-darwin` release assembly
     these tail-call `_sinf` and `_cosf`, so no compiler can merge them.
+- **otool on both macOS reference builds** (ARM Reference, runs 39543570959
+  and 39545018805):
+  - Merged into `___sincosf_stret` in both builds: `FileSource` render,
+    both `Wavetable::loadWaveFrame` overloads, `loadNormalizedFrequencies`,
+    `loadDefaultWavetable`, and `WaveSourceKeyframe`'s
+    linear/cubic frequency interpolation. JUCE's FFT twiddles use
+    `___sincos_stret`.
+  - The capture pair in `render.cpp` is separate in both builds, and the
+    ref-module and engine translation units use identical flags.
+  - `PhaseModifierKeyframe::render` differs between the builds: merged in
+    the official build, separate `_cosf`/`_sinf` without fast-math.
+- **Phase-modifier design:**
+  - The port follows the official (shipping) build: `Complex::polar`
+    always merges on Apple.
+  - Official comparisons cover the phase modifier with tolerances.
+  - No no-fast-math case contains a phase modifier, and
+    `render_parity.rs` enforces this: a `"reference": "nofastmath"` case
+    with a Phase Shift component fails with an explanation.
+  - If such a case is ever needed, it needs a per-case selector at this
+    one site.
+- After #52, ARM Reference's #53 re-run has `audio_fade_3_phase_0` and
+  `multi_group_disjoint_spectra` passing bit-exact on macOS.
 
 **A10, complex division without fast-math on macOS:**
 - Apple compiler-rt's `__divsc3`, which the macOS no-fast-math build
