@@ -4,7 +4,12 @@
       "hashes": {
         "grid:catmull": "10a7518dd8613ab0",
         "grid:exp2": "c961d945a23fcd43",
+        "grid:exp_exponent": "00831aef27d3cbac",
+        "grid:exp_mantissa": "e6040a431d9f77a9",
+        "grid:log": "a37dea4724bf6923",
         "grid:log2": "4025b1130dde5210",
+        "grid:pow_exponent": "84b9c2eabdcbe90e",
+        "grid:pow_mantissa": "c34d8dfb3d19d899",
         "grid:power_scale": "fc11c3521abdb911",
         "grid:tanh": "7cf98873420f72bd"
       },

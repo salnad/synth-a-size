@@ -1,0 +1,292 @@
+{
+  "description": "LineGenerator init* shapes and editing methods (vital/src/common/line_generator.cpp). Ported in port/crates/common.",
+  "module": "line_generator_edit",
+  "cases": {
+    "init_linear": {
+      "params": {
+        "init": "linear",
+        "resolution": 2048
+      }
+    },
+    "init_linear_loop": {
+      "params": {
+        "init": "linear",
+        "resolution": 256,
+        "ops": [
+          {
+            "op": "set_loop",
+            "value": true
+          }
+        ]
+      }
+    },
+    "init_triangle": {
+      "params": {
+        "init": "triangle",
+        "resolution": 2048
+      }
+    },
+    "init_triangle_loop": {
+      "params": {
+        "init": "triangle",
+        "resolution": 256,
+        "ops": [
+          {
+            "op": "set_loop",
+            "value": true
+          }
+        ]
+      }
+    },
+    "init_square": {
+      "params": {
+        "init": "square",
+        "resolution": 2048
+      }
+    },
+    "init_square_loop": {
+      "params": {
+        "init": "square",
+        "resolution": 256,
+        "ops": [
+          {
+            "op": "set_loop",
+            "value": true
+          }
+        ]
+      }
+    },
+    "init_sin": {
+      "params": {
+        "init": "sin",
+        "resolution": 2048
+      }
+    },
+    "init_sin_loop": {
+      "params": {
+        "init": "sin",
+        "resolution": 256,
+        "ops": [
+          {
+            "op": "set_loop",
+            "value": true
+          }
+        ]
+      }
+    },
+    "init_saw_up": {
+      "params": {
+        "init": "saw_up",
+        "resolution": 2048
+      }
+    },
+    "init_saw_up_loop": {
+      "params": {
+        "init": "saw_up",
+        "resolution": 256,
+        "ops": [
+          {
+            "op": "set_loop",
+            "value": true
+          }
+        ]
+      }
+    },
+    "init_saw_down": {
+      "params": {
+        "init": "saw_down",
+        "resolution": 2048
+      }
+    },
+    "init_saw_down_loop": {
+      "params": {
+        "init": "saw_down",
+        "resolution": 256,
+        "ops": [
+          {
+            "op": "set_loop",
+            "value": true
+          }
+        ]
+      }
+    },
+    "triangle_add_point_power_flip_horizontal": {
+      "params": {
+        "init": "triangle",
+        "resolution": 512,
+        "ops": [
+          {
+            "op": "add_point",
+            "index": 1,
+            "x": 0.25,
+            "y": 0.8
+          },
+          {
+            "op": "set_power",
+            "index": 0,
+            "power": 2.5
+          },
+          {
+            "op": "set_power",
+            "index": 2,
+            "power": -4.0
+          },
+          {
+            "op": "flip_horizontal"
+          }
+        ],
+        "saved_json": false
+      }
+    },
+    "square_middle_remove_flip_vertical": {
+      "params": {
+        "init": "square",
+        "resolution": 512,
+        "ops": [
+          {
+            "op": "add_middle_point",
+            "index": 1
+          },
+          {
+            "op": "remove_point",
+            "index": 3
+          },
+          {
+            "op": "flip_vertical"
+          }
+        ]
+      }
+    },
+    "sin_smooth_loop_flip_horizontal": {
+      "params": {
+        "init": "sin",
+        "resolution": 1024,
+        "ops": [
+          {
+            "op": "set_smooth",
+            "value": true
+          },
+          {
+            "op": "set_loop",
+            "value": true
+          },
+          {
+            "op": "flip_horizontal"
+          }
+        ],
+        "saved_json": false
+      }
+    },
+    "saw_up_set_point_num_points": {
+      "params": {
+        "init": "saw_up",
+        "resolution": 300,
+        "ops": [
+          {
+            "op": "set_point",
+            "index": 0,
+            "x": 0.0,
+            "y": 0.3
+          },
+          {
+            "op": "add_point",
+            "index": 1,
+            "x": 0.6,
+            "y": 0.1
+          },
+          {
+            "op": "set_num_points",
+            "count": 2
+          }
+        ]
+      }
+    },
+    "linear_many_middle_points": {
+      "params": {
+        "init": "linear",
+        "resolution": 2048,
+        "ops": [
+          {
+            "op": "add_middle_point",
+            "index": 1
+          },
+          {
+            "op": "add_middle_point",
+            "index": 1
+          },
+          {
+            "op": "add_middle_point",
+            "index": 3
+          },
+          {
+            "op": "set_power",
+            "index": 1,
+            "power": -3.0
+          },
+          {
+            "op": "set_point",
+            "index": 2,
+            "x": 0.5,
+            "y": 0.9
+          },
+          {
+            "op": "flip_vertical"
+          },
+          {
+            "op": "set_loop",
+            "value": true
+          }
+        ]
+      }
+    },
+    "saw_down_remove_first_odd_flip": {
+      "params": {
+        "init": "saw_down",
+        "resolution": 512,
+        "ops": [
+          {
+            "op": "add_point",
+            "index": 1,
+            "x": 0.4,
+            "y": 0.2
+          },
+          {
+            "op": "set_power",
+            "index": 1,
+            "power": 1.5
+          },
+          {
+            "op": "remove_point",
+            "index": 0
+          },
+          {
+            "op": "flip_horizontal"
+          },
+          {
+            "op": "set_smooth",
+            "value": true
+          }
+        ],
+        "saved_json": false
+      }
+    },
+    "triangle_back_to_linear": {
+      "params": {
+        "init": "triangle",
+        "resolution": 256,
+        "ops": [
+          {
+            "op": "set_point",
+            "index": 1,
+            "x": 0.5,
+            "y": 0.5
+          },
+          {
+            "op": "remove_point",
+            "index": 1
+          }
+        ]
+      }
+    }
+  }
+}

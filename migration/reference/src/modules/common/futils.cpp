@@ -33,12 +33,25 @@ namespace {
     }
     return xs;
   }
+
+  // Wide-range results as mantissa in [1, 2) (sign kept) and integer
+  // exponent: both exact, and each fits the absolute module gate.
+  void pushSplit(std::vector<float>& mantissas, std::vector<float>& exponents, float value) {
+    uint32_t bits;
+    memcpy(&bits, &value, sizeof(bits));
+    exponents.push_back(static_cast<float>(static_cast<int>((bits >> 23) & 0xffu) - 127));
+    bits = (bits & 0x807fffffu) | (127u << 23);
+    float mantissa;
+    memcpy(&mantissa, &bits, sizeof(mantissa));
+    mantissas.push_back(mantissa);
+  }
 } // namespace
 
 REGISTER_REF_MODULE(refmod::ModuleDef{
   "futils_scalar",
   "Scalar futils/utils over a fixed grid: arrays exp2 (of e = x * 0.1, scaled by 2^-floor(e)), log2 (of |x|, x != 0), tanh, "
-  "power_scale (101 values x 81 powers), catmull (65 t on a fixed 4-sample buffer)",
+  "power_scale (101 values x 81 powers), catmull (65 t on a fixed 4-sample buffer), "
+  "exp (of x, |x| <= 80) and pow (|x|, x != 0, to 8 exponents) as mantissa/exponent pairs, log (of |x|, x != 0)",
   nullptr,
   {},
   {},
@@ -74,6 +87,23 @@ REGISTER_REF_MODULE(refmod::ModuleDef{
       catmull.push_back(weights.multiplyAndSumRows(values)[0]);
     }
     sink.array("catmull", catmull, 1);
+
+    const float kPowExponents[] = { -2.5f, -1.0f, -0.5f, 0.25f, 0.5f, 1.0f, 1.5f, 3.0f };
+    std::vector<float> exp_mantissa, exp_exponent, log, pow_mantissa, pow_exponent;
+    for (float x : xs) {
+      if (fabsf(x) <= 80.0f)
+        pushSplit(exp_mantissa, exp_exponent, vital::futils::exp(x));
+      if (x != 0.0f) {
+        log.push_back(vital::futils::log(fabsf(x)));
+        for (float exponent : kPowExponents)
+          pushSplit(pow_mantissa, pow_exponent, vital::futils::pow(fabsf(x), exponent));
+      }
+    }
+    sink.array("exp_mantissa", exp_mantissa, 1);
+    sink.array("exp_exponent", exp_exponent, 1);
+    sink.array("log", log, 1);
+    sink.array("pow_mantissa", pow_mantissa, 1);
+    sink.array("pow_exponent", pow_exponent, 1);
     return true;
   },
 });

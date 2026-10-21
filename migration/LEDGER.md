@@ -546,8 +546,8 @@ Harness Builder's `sas-parity` helper.)
 
 **Open / next**
 
-- Parity captures for `LineGenerator` rendering and the RNG sequence, plus
-  Rust parity tests, once `sas-parity` and per-module captures land.
+- Parity captures and tests: done, see the next entry and the review
+  follow-up below.
 - Wavetable state model (creator/group/component/keyframe JSON) and the
   FFT next, then rendering.
 
@@ -623,3 +623,61 @@ Harness Builder's `sas-parity` helper.)
   - Unit tests cover both columns at the edge draw on every host.
   - None of the 26,624 draws in `common/random` reach the edge, so its
     captures are the same on both references.
+
+### Review follow-up (Chain Reviewer, PR #4)
+
+- **x86 `toInt` semantics are no longer public.**
+  `scalar::round_to_i32_sse` and `scalar::poly_trunc` implement only the
+  SSE2 column of A1, so they are now `pub(crate)`. Their public callers,
+  `poly_floor` and `round_to_int` (and `exp2` through them), give the same
+  result on both ISAs for non-NaN |x| < 2^31. A unit test checks both
+  against a truncating (NEON) model over more than 100k inputs.
+- **New captures for the surface that had only probe evidence.** Each is
+  an artifact-only module with its own case file and committed hashes.
+  - `load_save_codecs` (`modules/common/load_save.cpp`, 21 cases):
+    - JUCE `Base64::toBase64` text (6 cases);
+    - `convertFromBase64`, with the returned flag and the bytes kept on
+      early stop: invalid characters, truncated groups, spaces, padding
+      in the middle, URL-safe and non-ASCII characters (13 cases);
+    - `convertBufferToPcm`/`convertPcmToFloatBuffer`: texts `pcm.json`
+      and `float.json` plus the decoded PCM (int16/32768) and floats as
+      arrays, including clamping above ±1;
+    - `compareVersionStrings`: 19 pairs, including whitespace, non-numeric
+      components and overflow.
+  - `line_generator_edit` (`modules/common/line_generator_edit.cpp`, 19
+    cases):
+    - every `init*` shape, with and without loop;
+    - sequences of `addPoint`, `addMiddlePoint`, `removePoint`,
+      `flipHorizontal`, `flipVertical`, `setPoint`, `setPower`,
+      `setNumPoints`, `setSmooth` and `setLoop`;
+    - outputs: arrays buffer, `valueAtPhase` and state (`linear()`, point
+      count), and text `saved.json`.
+  - `futils_scalar` gains `exp` (|x| ≤ 80, the function's float range),
+    `log` and `pow` (8 exponents). Wide-range results are split into an
+    exact mantissa in [1, 2) and an integer exponent.
+  - `json_accessors` (`modules/common/json_accessors.cpp`):
+    - nlohmann's `get<bool/double/float/int/int64_t/std::string>` and an
+      unscoped enum, on 24 values (booleans, null, strings, containers,
+      fractions, int and uint extremes) and 12 enum inputs;
+    - the results are serialized by nlohmann itself, with null where it
+      throws;
+    - inputs avoid undefined conversions (floats outside int range,
+      negative floats into an enum).
+- **Measured against the official reference:**
+  - base64, PCM, version comparison, `exp`/`log`/`pow` and the accessors
+    are exact;
+  - `line_generator_edit` is within 3.9e-7, at or below −135 dB;
+  - every text artifact is byte-identical;
+  - the no-fast-math proxy passes all 205 `common` comparisons.
+- **Pending owner decision: byte-exact vs bounded JSON.**
+  - `flipHorizontal` negates zero powers, so three edit cases save `-0.0`.
+    That hits the same `write_f64` mirror site as `negative_zero` above.
+  - Their numeric arrays stay live, with `saved_json: false` in
+    `line_generator_edit.json`.
+  - Their `saved.json` variants are authored in
+    `migration/corpus/modules/common/pending/line_generator_edit.json`.
+- **Nothing left unchecked.** All of the reviewer's list is now captured.
+  `Value::get`/`at` on non-objects and `to_str` errors are covered by unit
+  tests only; upstream throws there, and the port returns the error.
+- `LineGenerator::from_json` rejects `num_points == 0` with an error.
+  Upstream's behaviour is undefined there; the port used to panic.

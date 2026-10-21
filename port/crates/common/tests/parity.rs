@@ -115,6 +115,204 @@ fn futils_scalar() {
         .map(|i| scalar::catmull_interpolate(&buffer, 0, i as f32 / 64.0))
         .collect();
     assert_parity!(&format!("{id}:catmull"), catmull);
+
+    let mut exp_split = (Vec::new(), Vec::new());
+    let mut log = Vec::new();
+    let mut pow_split = (Vec::new(), Vec::new());
+    for &x in &xs {
+        if x.abs() <= 80.0 {
+            push_split(&mut exp_split, scalar::exp(x));
+        }
+        if x != 0.0 {
+            log.push(scalar::log(x.abs()));
+            for exponent in [-2.5f32, -1.0, -0.5, 0.25, 0.5, 1.0, 1.5, 3.0] {
+                push_split(&mut pow_split, scalar::pow(x.abs(), exponent));
+            }
+        }
+    }
+    assert_parity!(&format!("{id}:exp_mantissa"), exp_split.0);
+    assert_parity!(&format!("{id}:exp_exponent"), exp_split.1);
+    assert_parity!(&format!("{id}:log"), log);
+    assert_parity!(&format!("{id}:pow_mantissa"), pow_split.0);
+    assert_parity!(&format!("{id}:pow_exponent"), pow_split.1);
+}
+
+/// `pushSplit` of `futils.cpp`: mantissa in [1, 2) with the sign, and the
+/// unbiased exponent.
+fn push_split((mantissas, exponents): &mut (Vec<f32>, Vec<f32>), value: f32) {
+    let bits = value.to_bits();
+    exponents.push((((bits >> 23) & 0xff) as i32 - 127) as f32);
+    mantissas.push(f32::from_bits((bits & 0x807f_ffff) | (127 << 23)));
+}
+
+#[test]
+fn load_save_codecs() {
+    use sas_common::{base64, load_save};
+    for id in case_ids("common/load_save/") {
+        let case = ModuleCase::load(&id);
+        let params = case.params();
+        match params["kind"].as_str().expect("kind") {
+            "base64_encode" => {
+                let bytes: Vec<u8> = params["bytes"]
+                    .as_array()
+                    .expect("bytes")
+                    .iter()
+                    .map(|b| b.as_u64().expect("byte") as u8)
+                    .collect();
+                assert_artifact!(&id, "base64.txt", base64::encode(&bytes));
+            }
+            "base64_decode" => {
+                let (bytes, ok) = base64::decode(params["text"].as_str().expect("text"));
+                let mut result = vec![f32::from(u8::from(ok)), bytes.len() as f32];
+                result.extend(bytes.iter().map(|&b| f32::from(b)));
+                assert_parity!(&format!("{id}:result"), result);
+            }
+            "pcm" => {
+                let values: Vec<f32> = params["values"]
+                    .as_array()
+                    .expect("values")
+                    .iter()
+                    .map(|v| v.as_f64().expect("value") as f32)
+                    .collect();
+                let mut data = json::Value::Null;
+                data.set("samples", base64::encode_f32s(&values));
+
+                load_save::convert_buffer_to_pcm(&mut data, "samples").expect("to PCM");
+                assert_artifact!(&id, "pcm.json", data.dump());
+                let pcm = base64::decode_i16s(data.get("samples").unwrap().to_str().unwrap());
+                let pcm: Vec<f32> = pcm.iter().map(|&v| f32::from(v) / 32768.0).collect();
+                assert_parity!(&format!("{id}:pcm"), pcm);
+
+                load_save::convert_pcm_to_float_buffer(&mut data, "samples").expect("to float");
+                assert_artifact!(&id, "float.json", data.dump());
+                let floats = base64::decode_f32s(data.get("samples").unwrap().to_str().unwrap());
+                assert_parity!(&format!("{id}:floats"), floats);
+            }
+            "versions" => {
+                let results: Vec<f32> = params["pairs"]
+                    .as_array()
+                    .expect("pairs")
+                    .iter()
+                    .map(|pair| {
+                        load_save::compare_version_strings(
+                            pair[0].as_str().expect("a"),
+                            pair[1].as_str().expect("b"),
+                        ) as f32
+                    })
+                    .collect();
+                assert_parity!(&format!("{id}:results"), results);
+            }
+            other => panic!("unknown kind {other}"),
+        }
+    }
+}
+
+#[test]
+fn line_generator_edit() {
+    for id in case_ids("common/line_generator_edit/") {
+        let case = ModuleCase::load(&id);
+        let params = case.params();
+        let resolution = params["resolution"]
+            .as_u64()
+            .unwrap_or(LineGenerator::DEFAULT_RESOLUTION as u64) as usize;
+        let mut generator = LineGenerator::new(resolution);
+        match params["init"].as_str().unwrap_or("linear") {
+            "linear" => generator.init_linear(),
+            "triangle" => generator.init_triangle(),
+            "square" => generator.init_square(),
+            "sin" => generator.init_sin(),
+            "saw_up" => generator.init_saw_up(),
+            "saw_down" => generator.init_saw_down(),
+            other => panic!("unknown init {other}"),
+        }
+        let empty = Vec::new();
+        for op in params["ops"].as_array().unwrap_or(&empty) {
+            let index = || op["index"].as_u64().expect("index") as usize;
+            let point = || {
+                (
+                    op["x"].as_f64().expect("x") as f32,
+                    op["y"].as_f64().expect("y") as f32,
+                )
+            };
+            match op["op"].as_str().expect("op") {
+                "add_point" => generator.add_point(index(), point()),
+                "add_middle_point" => generator.add_middle_point(index()),
+                "remove_point" => generator.remove_point(index()),
+                "flip_horizontal" => generator.flip_horizontal(),
+                "flip_vertical" => generator.flip_vertical(),
+                "set_point" => generator.set_point(index(), point()),
+                "set_power" => {
+                    generator.set_power(index(), op["power"].as_f64().expect("power") as f32)
+                }
+                "set_num_points" => {
+                    generator.set_num_points(op["count"].as_u64().expect("count") as usize)
+                }
+                "set_smooth" => generator.set_smooth(op["value"].as_bool().expect("value")),
+                "set_loop" => generator.set_loop(op["value"].as_bool().expect("value")),
+                other => panic!("unknown op {other}"),
+            }
+        }
+        generator.render();
+
+        assert_parity!(
+            &format!("{id}:buffer"),
+            generator.cubic_interpolation_buffer().to_vec()
+        );
+        let values: Vec<f32> = (0..=40)
+            .map(|i| generator.value_at_phase(i as f32 / 40.0))
+            .collect();
+        assert_parity!(&format!("{id}:value_at_phase"), values);
+        let state = vec![
+            f32::from(u8::from(generator.is_linear())),
+            generator.num_points() as f32,
+        ];
+        assert_parity!(&format!("{id}:state"), state);
+        if params["saved_json"].as_bool().unwrap_or(true) {
+            assert_artifact!(&id, "saved.json", generator.to_json().dump());
+        }
+    }
+}
+
+#[test]
+fn json_accessors() {
+    use json::Value;
+    let id = "common/json_accessors/conversions";
+    let case = ModuleCase::load(id);
+    let params = case.params();
+    let or_null = |value: Option<Value>| value.unwrap_or(Value::Null);
+
+    let values = json::parse(params["values"].as_str().expect("values")).expect("values JSON");
+    let mut conversions = Value::Array(Vec::new());
+    for value in values.iter_values() {
+        let mut result = Value::Null;
+        result.set("bool", or_null(value.to_bool().ok().map(Value::Bool)));
+        result.set("double", or_null(value.to_f64().ok().map(Value::Float)));
+        result.set(
+            "float",
+            or_null(value.to_f32().ok().map(|v| Value::Float(f64::from(v)))),
+        );
+        result.set(
+            "int",
+            or_null(value.to_i32().ok().map(|v| Value::Int(i64::from(v)))),
+        );
+        result.set("int64", or_null(value.to_i64().ok().map(Value::Int)));
+        result.set(
+            "string",
+            or_null(value.to_str().ok().map(|v| Value::String(v.to_string()))),
+        );
+        conversions.push(result);
+    }
+    assert_artifact!(id, "conversions.json", conversions.dump());
+
+    let enum_values =
+        json::parse(params["enum_values"].as_str().expect("enum_values")).expect("enum JSON");
+    let mut enums = Value::Array(Vec::new());
+    for value in enum_values.iter_values() {
+        enums.push(or_null(
+            value.to_enum().ok().map(|v| Value::Int(i64::from(v))),
+        ));
+    }
+    assert_artifact!(id, "enums.json", enums.dump());
 }
 
 /// The value generator of `migration/reference/src/modules/common/json.cpp`.
