@@ -1,0 +1,600 @@
+{
+ "description": "RandomLfoModule: RandomLfo wired to registry controls with the tempo-sync frequency switch, at its default audio rate. Control values are the normalized parameter values set after init(). Each case sets the RandomGenerator seed counter.",
+ "module": "random_lfo_module",
+ "cases": {
+  "defaults": {
+   "seed": 501,
+   "params": {
+    "prefix": "random_1"
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "free_perlin": {
+   "seed": 502,
+   "params": {
+    "prefix": "random_2",
+    "controls": {
+     "random_2_sync": 0.0,
+     "random_2_frequency": 4.5,
+     "random_2_style": 0.0,
+     "random_2_stereo": 1.0
+    }
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "free_sample_and_hold": {
+   "seed": 503,
+   "params": {
+    "prefix": "random_2",
+    "controls": {
+     "random_2_sync": 0.0,
+     "random_2_frequency": 4.5,
+     "random_2_style": 1.0,
+     "random_2_stereo": 1.0
+    }
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "free_sin": {
+   "seed": 504,
+   "params": {
+    "prefix": "random_2",
+    "controls": {
+     "random_2_sync": 0.0,
+     "random_2_frequency": 4.5,
+     "random_2_style": 2.0,
+     "random_2_stereo": 1.0
+    }
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "free_frequency_extremes": {
+   "seed": 506,
+   "params": {
+    "prefix": "random_3",
+    "controls": {
+     "random_3_sync": 0.0,
+     "random_3_frequency": 9.0,
+     "random_3_style": 1.0
+    }
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "free_frequency_min": {
+   "seed": 507,
+   "params": {
+    "prefix": "random_3",
+    "controls": {
+     "random_3_sync": 0.0,
+     "random_3_frequency": -7.0,
+     "random_3_style": 2.0,
+     "random_3_stereo": 1.0
+    }
+   },
+   "num_samples": 22050,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "tempo_free_running": {
+   "seed": 508,
+   "params": {
+    "prefix": "random_4",
+    "beats_per_second": 2.5,
+    "controls": {
+     "random_4_sync": 1.0,
+     "random_4_tempo": 10.0,
+     "random_4_style": 0.0
+    }
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "tempo_sync_type": {
+   "seed": 509,
+   "params": {
+    "prefix": "random_4",
+    "beats_per_second": 2.5,
+    "clock_start_seconds": 1.25,
+    "controls": {
+     "random_4_sync": 1.0,
+     "random_4_tempo": 10.0,
+     "random_4_style": 1.0,
+     "random_4_sync_type": 1.0,
+     "random_4_stereo": 1.0
+    }
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "dotted_free_running": {
+   "seed": 510,
+   "params": {
+    "prefix": "random_4",
+    "beats_per_second": 2.5,
+    "controls": {
+     "random_4_sync": 2.0,
+     "random_4_tempo": 10.0,
+     "random_4_style": 0.0
+    }
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "dotted_sync_type": {
+   "seed": 511,
+   "params": {
+    "prefix": "random_4",
+    "beats_per_second": 2.5,
+    "clock_start_seconds": 1.25,
+    "controls": {
+     "random_4_sync": 2.0,
+     "random_4_tempo": 10.0,
+     "random_4_style": 1.0,
+     "random_4_sync_type": 1.0,
+     "random_4_stereo": 1.0
+    }
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "triplet_free_running": {
+   "seed": 512,
+   "params": {
+    "prefix": "random_4",
+    "beats_per_second": 2.5,
+    "controls": {
+     "random_4_sync": 3.0,
+     "random_4_tempo": 10.0,
+     "random_4_style": 0.0
+    }
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "triplet_sync_type": {
+   "seed": 513,
+   "params": {
+    "prefix": "random_4",
+    "beats_per_second": 2.5,
+    "clock_start_seconds": 1.25,
+    "controls": {
+     "random_4_sync": 3.0,
+     "random_4_tempo": 10.0,
+     "random_4_style": 1.0,
+     "random_4_sync_type": 1.0,
+     "random_4_stereo": 1.0
+    }
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "keytrack_low_band": {
+   "seed": 515,
+   "params": {
+    "prefix": "random_2",
+    "controls": {
+     "random_2_sync": 4.0,
+     "random_2_keytrack_transpose": -48.0,
+     "random_2_keytrack_tune": 0.37,
+     "random_2_style": 2.0,
+     "random_2_stereo": 1.0
+    }
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "midi": {
+     "value": [
+      24.0,
+      24.0,
+      40.0,
+      40.0
+     ]
+    },
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      },
+      {
+       "sample": 30500,
+       "value": "voice_on",
+       "voices": "1"
+      }
+     ]
+    }
+   }
+  },
+  "free_lorenz_low_frequency": {
+   "seed": 599,
+   "params": {
+    "prefix": "random_2",
+    "controls": {
+     "random_2_sync": 0.0,
+     "random_2_frequency": -7.0,
+     "random_2_style": 3.0,
+     "random_2_stereo": 1.0
+    }
+   },
+   "num_samples": 44100,
+   "inputs": {
+    "note_trigger": {
+     "trigger": [
+      {
+       "sample": 0,
+       "value": "voice_on"
+      },
+      {
+       "sample": 9000,
+       "value": "voice_on",
+       "voices": "1"
+      },
+      {
+       "sample": 21000,
+       "value": "voice_on",
+       "voices": "0"
+      },
+      {
+       "sample": 30000,
+       "value": "voice_on"
+      }
+     ]
+    }
+   }
+  }
+ }
+}

@@ -31,12 +31,18 @@ pub use sas_dsp_core;
 pub mod envelope;
 pub mod envelope_module;
 pub mod lfo_module;
+pub mod random_lfo;
+pub mod random_lfo_module;
 pub mod synth_lfo;
+pub mod trigger_random;
 
 pub use envelope::Envelope;
 pub use envelope_module::EnvelopeModule;
 pub use lfo_module::LfoModule;
+pub use random_lfo::RandomLfo;
+pub use random_lfo_module::RandomLfoModule;
 pub use synth_lfo::SynthLfo;
+pub use trigger_random::TriggerRandom;
 
 /// Milestone in `migration/PLAN.md` that ports this crate.
 pub const MILESTONE: &str = "M3";
@@ -51,6 +57,12 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/src/synthesis/modulators/synth_lfo.cpp",
     "vital/src/synthesis/modules/lfo_module.h",
     "vital/src/synthesis/modules/lfo_module.cpp",
+    "vital/src/synthesis/modulators/random_lfo.h",
+    "vital/src/synthesis/modulators/random_lfo.cpp",
+    "vital/src/synthesis/modulators/trigger_random.h",
+    "vital/src/synthesis/modulators/trigger_random.cpp",
+    "vital/src/synthesis/modules/random_lfo_module.h",
+    "vital/src/synthesis/modules/random_lfo_module.cpp",
 ];
 
 #[cfg(test)]

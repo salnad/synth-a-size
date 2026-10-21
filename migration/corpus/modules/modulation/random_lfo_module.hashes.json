@@ -1,0 +1,31 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "defaults:value": "5c2fa461df21cbff",
+        "dotted_free_running:value": "340332ddf156f87f",
+        "dotted_sync_type:value": "f48d63398ea6ab33",
+        "free_frequency_extremes:value": "e1da0c675f5a2977",
+        "free_frequency_min:value": "7e00bab820f292aa",
+        "free_lorenz_low_frequency:value": "694b15f05d6b3ad5",
+        "free_perlin:value": "ce259828ab1084b4",
+        "free_sample_and_hold:value": "2b0325d1e0179acc",
+        "free_sin:value": "146619f1bdb88c63",
+        "keytrack_low_band:value": "761e1c81b1c132b5",
+        "tempo_free_running:value": "2d8e277a042306cf",
+        "tempo_sync_type:value": "050d3e305ad712eb",
+        "triplet_free_running:value": "e133a5bd725682eb",
+        "triplet_sync_type:value": "1cfaee979b6abefb"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}
