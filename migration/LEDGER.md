@@ -1864,6 +1864,13 @@ rewritten from this PR's CI artifact): 20 cases × 6 arrays, all **bit-identical
 (max abs error 0). A deliberate bug (local pitch bend range 48 → 47) fails
 `mpe_expression:voice_values` with max abs error 1.0 and a residual of −33.6 dB.
 
+`tests/voice_handler_routing.rs` checks the router overrides directly:
+- `add_mono_processor` and `add_idle_mono_processor` go to the separate
+  global router (upstream `getMonoRouter()` returns `&global_router_`) and
+  are not forwarded;
+- `add_processor` and `remove_processor` are forwarded to the voice router;
+- only voice-router processors are polyphonic.
+
 **Open / next**
 
 - dsp-core API request (via the coordinator): `RouterHooks` forwarding does
