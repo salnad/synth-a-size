@@ -1993,3 +1993,49 @@ Core Filters (M5a), stacked on PR 4.
   ladder, the diode filter stays within tolerance over the full cutoff
   range: the fast-math reference against the no-fast-math proxy gives the
   same numbers, and nothing needed parking.
+---
+
+## 2026-10-21: wavetable odd lanes checked; libc++ complex division column (A10)
+
+**Odd lanes** (Chain Reviewer, #8):
+- Upstream writes every amplitude and phase twice, at `[2h]` and `[2h + 1]`
+  (`Wavetable::loadFrequencyAmplitudes`/`loadNormalizedFrequencies`), and
+  `postProcess` scales whole `poly_float`s. The captures only read lane
+  `2h`, so the port's odd lanes were unchecked.
+- `wavetable_render` now emits an exact `lanes` array: over all frames,
+  harmonics whose odd lane differs bitwise from the even one (amplitudes,
+  then phases), and non-zero padding floats after harmonic 1024 in all
+  three arrays.
+- The reference gives `[0, 0, 0]` in all 46 cases, and the port matches.
+  A wrong odd lane or padding value fails with an error of at least 1.
+
+**libc++ complex division column (A10, owner decision via the coordinator;
+ARM Reference records the evidence):**
+- The macOS arm64 reference uses libc++. Its `complex<float>` division
+  scales the divisor by `2^-logb(max(|c|, |d|))`, applies the textbook
+  formula in float and scales back. That is LLVM 17's `<complex>`; later
+  libc++ uses the compiler's `__divsc3`, which compiler-rt implements the
+  same way.
+- libgcc's `__divsc3` (x86 reference) computes in double instead.
+- For unit-circle divisors like the phase modifier's `1 / phase_shift`,
+  the two differ by 1 ulp in about 37% of results (C transcription of
+  both, 200k divisors). That is inside the module limits, but it matters
+  for exact arm64 comparisons.
+- `complex::div_libgcc` and `div_libcxx` implement the two columns, and
+  `Complex / Complex` picks one by `sas_common::AARCH64_SEMANTICS`, which
+  `sas-wavetable`'s feature forwards.
+- Unit tests pin both columns on 7 inputs, including scaling-sensitive
+  ones (1e-30 and 1e38 divisors) and infinities. The libc++ values come
+  from a C transcription of LLVM 17's algorithm, built without fast-math
+  or FMA contraction.
+- CI's `aarch64-semantics` job now also runs `sas-wavetable`'s clippy and
+  lib tests with the feature.
+- Chain Reviewer checked `div_libcxx` against real libc++ 18 on 220,736
+  divisions, with 0 differences.
+- **To confirm on the arm64 reference (ARM Reference's probe):**
+  - that its libc++ uses this algorithm;
+  - whether Apple clang's default `-ffp-contract=on` fuses
+    `c * c + d * d` or the numerators into FMAs there. If it does, the
+    column needs `mul_add` at the same sites.
+  - The 7 test vectors in `port/crates/wavetable/src/complex.rs` are ready
+    to compare.
