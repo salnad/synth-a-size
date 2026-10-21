@@ -16,8 +16,9 @@ x86 hashes, dropping x86 coverage too.
   <reason>}}`, and every parked id must be a loaded case, in
   `run_corpus.py` (`load_parked`) and sas-parity (`all_case_ids` via
   `check_parked`).
-- **`reference-arm.yml`:** the macOS proxy compare and both macOS hash
-  checks (official and no-fast-math) pass
+- **`reference-arm.yml`:** the macOS proxy compare (which runs
+  `--justify-nofastmath` for cases declared `macos` since #51) and both
+  macOS hash checks (official and no-fast-math) pass
   `--parked migration/corpus/parked_arm64.json`. No other job does, so x86
   keeps parked cases live, hashed and gated.
 - Documented in migration/AGENTS.md (macOS-only parks) and in the park
