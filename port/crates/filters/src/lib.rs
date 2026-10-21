@@ -19,7 +19,7 @@
 //! estimate instructions, upstream's operation order. Per-ISA behaviour
 //! exists only at the sites of `migration/decisions/reference-arm.md`,
 //! inside `sas-simd` (for example `toInt` in the coefficient lookups); the
-//! `aarch64-semantics` feature forwards to `sas-simd`.
+//! `aarch64-semantics` feature forwards to `sas-dsp-core` and `sas-simd`.
 
 pub use sas_dsp_core;
 
