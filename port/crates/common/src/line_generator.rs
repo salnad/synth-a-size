@@ -218,12 +218,14 @@ impl LineGenerator {
     }
 
     /// `jsonToState(data)`. Reads `min(100, powers.len())` points, keeps
-    /// `num_points` from the data, fills in an empty name and `smooth =
+    /// `num_points` (1 to 100) from the data, fills in an empty name and `smooth =
     /// false` when missing, then re-renders. On error (where upstream would
     /// throw) the generator is left unchanged.
     pub fn from_json(&mut self, data: &Value) -> json::Result<()> {
         let num_points = data.get("num_points")?.to_i32()?;
-        if !(0..=Self::MAX_POINTS as i32).contains(&num_points) {
+        // Upstream's behaviour with no points is undefined (rendering a
+        // looped line reads `points_[-1]`), so it is an error here.
+        if !(1..=Self::MAX_POINTS as i32).contains(&num_points) {
             return Err(json::JsonError(format!(
                 "line generator num_points {num_points} out of range"
             )));
@@ -511,6 +513,11 @@ mod tests {
         )
         .unwrap();
         assert!(generator.from_json(&bad_type).is_err());
+        let no_points =
+            json::parse(r#"{"num_points": 0, "points": [0, 1, 1, 0], "powers": [0, 0]}"#).unwrap();
+        assert!(generator.from_json(&no_points).is_err());
+        generator.set_loop(true);
+        generator.render();
         assert!(!LineGenerator::is_valid_json(
             &json::parse(r#"{"num_points": 2}"#).unwrap()
         ));
