@@ -89,10 +89,13 @@ checker against PR #46's `complex.rs`):
     otherwise) and about 70 % of unit-circle divisions (up to 2 ulp off).
     That holds against the x86 reference too.
 - Consequence: against the official references, the plain float textbook
-  formula matches both targets on every probed input. Against the
-  no-fast-math references, the columns are `div_libgcc` (x86) and the fused
-  compiler-rt form above (macOS, under `aarch64-semantics`), added by
-  Wavetable Creator in #52 (folded into #2).
+  formula matches both targets on every probed input. The no-fast-math
+  references differ (`__divsc3`: libgcc's double form on x86, compiler-rt's
+  fused form on macOS). The owner chose the official form, so the port
+  divides with the plain float formula on every target. #52 (folded into
+  #2) briefly had per-target `__divsc3` columns; the A10 follow-up PR
+  replaced them. No `reference: nofastmath` case reaches this site,
+  because phase modifiers are excluded from those cases (A11).
 
 Attribution in the corpus (`scripts/arm_attribution.py`, macOS 15 arm64
 vs x86, run 39515281713):
@@ -191,15 +194,14 @@ achievable on arm64.
    - In `sas-common` / `sas-wavetable` (Wavetable Creator, #52, folded into
      #2):
      - the `uniform_real_distribution` canonical edge (A9);
-     - complex division in the no-fast-math build (A10: libgcc's double
-       `__divsc3` vs compiler-rt's fused one);
      - the `expf` overload in the warp modifier (A12);
      - merged sin/cos (A11).
 
-   A1–A10 and A12 follow the target. The x86_64 variants are the default on
-   x86_64. The aarch64 variants are used on aarch64, and on x86_64 when the
+   A1–A9 and A12 follow the target. A10 needs no column: the port uses
+   the official builds' shared float formula. The x86_64 variants are the
+   default on x86_64. The aarch64 variants are used on aarch64, and on x86_64 when the
    `aarch64-semantics` feature is enabled, so x86 developers can reproduce
-   the shipping behaviour against macOS reference renders. A9, A10 and A12
+   the shipping behaviour against macOS reference renders. A9 and A12
    are C++-library differences (libc++ on the macOS reference), not ISA
    ones. They follow the same switch because the shipping target is the
    only libc++ target and their libc++ behaviour can be computed on any
