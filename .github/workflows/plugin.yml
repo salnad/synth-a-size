@@ -1,0 +1,79 @@
+name: Plugin
+
+# The shipping build: an Apple Silicon (arm64) macOS VST3 for FL Studio
+# (port plan, owner decision of 2026-10-20). Builds sas-plugin for
+# aarch64-apple-darwin only, bundles it, signs it ad hoc, checks it is
+# arm64-only, and runs Steinberg's VST3 validator on it. The plugin's Rust
+# tests run with the rest of the workspace in ci.yml (Linux) and in
+# reference-arm.yml (macOS arm64).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: plugin-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # MIT-licensed since 3.8.0; only the validator is built, for CI.
+  VST3_SDK_TAG: v3.8.0_build_66
+
+jobs:
+  vst3-macos-arm64:
+    name: arm64 macOS VST3 (bundle, ad-hoc signature, VST3 validator)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: port
+          key: plugin-aarch64-apple-darwin
+      - name: Toolchain info
+        run: |
+          uname -m
+          sw_vers
+          rustup toolchain install || rustup show
+          cargo --version
+      - name: Build, bundle and sign the arm64 VST3
+        run: port/crates/plugin/scripts/bundle.sh build/plugin
+      - name: Bundle exports the VST3 entry points
+        run: |
+          binary=build/plugin/synth-a-size.vst3/Contents/MacOS/synth-a-size
+          file "$binary"
+          for symbol in GetPluginFactory bundleEntry bundleExit; do
+            nm -gU "$binary" | grep -q " _$symbol\$" || { echo "missing $symbol"; exit 1; }
+          done
+      - name: Cache the VST3 validator
+        id: validator-cache
+        uses: actions/cache@v4
+        with:
+          path: build/vst3-validator
+          key: vst3-validator-macos-15-arm64-${{ env.VST3_SDK_TAG }}
+      - name: Build the VST3 validator
+        if: steps.validator-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch "$VST3_SDK_TAG" https://github.com/steinbergmedia/vst3sdk build/vst3sdk
+          git -C build/vst3sdk submodule update --init --depth 1 base pluginterfaces public.sdk cmake
+          cmake -S build/vst3sdk -B build/vst3sdk/build -DCMAKE_BUILD_TYPE=Release \
+            -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF \
+            -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF -DSMTG_RUN_VST_VALIDATOR=OFF
+          cmake --build build/vst3sdk/build --target validator --config Release -j "$(sysctl -n hw.ncpu)"
+          mkdir -p build/vst3-validator
+          cp "$(find build/vst3sdk/build -type f -name validator -perm -u+x | head -1)" build/vst3-validator/validator
+      - name: VST3 validator (extensive)
+        run: |
+          set -o pipefail
+          build/vst3-validator/validator -e build/plugin/synth-a-size.vst3 | tee build/plugin/validator.log
+      - uses: actions/upload-artifact@v7
+        with:
+          name: synth-a-size-vst3-arm64-macos
+          path: build/plugin/
+          if-no-files-found: error
+          retention-days: 14
