@@ -16,6 +16,7 @@ use std::rc::Rc;
 use sas_common::RandomGenerator;
 use sas_dsp_core::constants;
 use sas_dsp_core::{Processor, ProcessorImpl, ProcessorRef};
+use sas_simd::conversions::float_to_i32;
 use sas_simd::poly_utils as utils;
 use sas_simd::{futils, PolyFloat, PolyInt, PolyMask};
 
@@ -247,7 +248,7 @@ impl RandomLfo {
 
     fn process_state(&mut self, this: &Processor, slot: StateSlot, num_samples: usize) {
         let style = this.input(Self::STYLE).at(0).get(0);
-        let random_type = style.max(0.0).min(Self::NUM_STYLES as f32 - 1.0).round() as i32;
+        let random_type = float_to_i32(style.max(0.0).min(Self::NUM_STYLES as f32 - 1.0).round());
 
         if random_type == Self::LORENZ_ATTRACTOR {
             self.with_state(slot, |lfo, state| {

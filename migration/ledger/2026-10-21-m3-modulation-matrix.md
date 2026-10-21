@@ -50,33 +50,3 @@
   as approved: `RandomLfo`'s `int random_type_int = std::round(...)` (A3)
   goes through `conversions::float_to_i32`. It is in range (0..3), so the
   captures are unchanged.
-- **Graph Reviewer's changes requested on #37 at f066544, addressed:**
-  - **The destination-scale reset is exercised.** Before, it could never
-    matter: the scale was set once before the first block, and the amount
-    starts at 0.
-    - `modulation_connection.cpp` gained `destination_scale_changes:
-      [{block, scale}]`, applied before the given block. The Rust test
-      mirrors it with the harness's per-block hook. The old `Clocked`
-      wrapper is now a thin layer over that hook.
-    - Four cases were added: `destination_scale_changes_linear_{audio,control}`,
-      `_morphed_audio` and `_remapped_audio`, with scale 1 → 3 → 0.5 → 48
-      over blocks 60, 150 and 151.
-    - A reset that never fires now fails parity, on
-      `destination_scale_changes_linear_audio:modulation_output`.
-    - `modulation_connection` is now 36 cases and 108 outputs. Worst is
-      still 3.8e-5 (`power_min_audio`). The no-fast-math proxy passes all
-      108.
-- **Open / next (for Voice Engine, M7):** mono vs poly modulation routing
-  is not covered here. `sound_engine.cpp` connects each modulation to
-  `poly_destination` or the mono destination, sets `polyphonic_`, and
-  drops the processor and its source to audio rate when both ends are
-  audio-rate. The engine thread must port that and test it in full-patch
-  renders.
-- **macOS arm64 (after #2):**
-  - Hashes for `modulation_connection`, `line_map` come from this PR's `Reference ARM` run 39622667208
-    (`ref-arm64-macos-15`).
-  - All four M3 macOS artifacts agree with the committed hashes.
-  - The macOS no-fast-math proxy passes all 120 of these outputs.
-  - The port built with `aarch64-semantics` (A1 truncating `toInt`, the
-    A9 libc++ RNG column) passes every case against the macOS captures.
-  - The macOS job runs the same parity tests natively.
