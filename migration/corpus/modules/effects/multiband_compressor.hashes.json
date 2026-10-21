@@ -1,0 +1,45 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "high_band_noise:audio": "e136e432537c1503",
+        "high_band_noise:band_input_ms": "c43b493fffb665bf",
+        "high_band_noise:band_output_ms": "8a408f48b72eaf35",
+        "high_band_noise:high_input_ms": "f34349ae121fa16f",
+        "high_band_noise:high_output_ms": "57f6261ea39f0a41",
+        "high_band_noise:low_input_ms": "aa5b1d63823bf683",
+        "high_band_noise:low_output_ms": "aa5b1d63823bf683",
+        "low_band_noise:audio": "db5beb4e8f24ed27",
+        "low_band_noise:band_input_ms": "1d865b579b92332d",
+        "low_band_noise:band_output_ms": "0290693ef4de13f1",
+        "low_band_noise:high_input_ms": "aa5b1d63823bf683",
+        "low_band_noise:high_output_ms": "aa5b1d63823bf683",
+        "low_band_noise:low_input_ms": "f0af5695bac142b9",
+        "low_band_noise:low_output_ms": "27394000c177cfb9",
+        "oversampled_2x_single_band:audio": "d18c1269615c0385",
+        "oversampled_2x_single_band:band_input_ms": "ff9e3f7df583bbbf",
+        "oversampled_2x_single_band:band_output_ms": "4b944113afa774f5",
+        "oversampled_2x_single_band:high_input_ms": "ff9e3f7df583bbbf",
+        "oversampled_2x_single_band:high_output_ms": "adb6cda3287cb035",
+        "oversampled_2x_single_band:low_input_ms": "0a9db68ce63de983",
+        "oversampled_2x_single_band:low_output_ms": "0a9db68ce63de983",
+        "single_band_noise:audio": "7fea756c847ee353",
+        "single_band_noise:band_input_ms": "57042e05e353e287",
+        "single_band_noise:band_output_ms": "792d5d3bba59871f",
+        "single_band_noise:high_input_ms": "57042e05e353e287",
+        "single_band_noise:high_output_ms": "48a157ea5fb8485f",
+        "single_band_noise:low_input_ms": "aa5b1d63823bf683",
+        "single_band_noise:low_output_ms": "aa5b1d63823bf683"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}

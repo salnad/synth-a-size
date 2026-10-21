@@ -1,0 +1,56 @@
+{
+  "description": "MultibandCompressor (120 Hz and 2500 Hz Linkwitz-Riley crossovers, one Compressor per band pair). The full multiband path waits in pending/multiband_compressor.json; interim_* cases are the ones that pass both references.",
+  "module": "multiband_compressor",
+  "cases": {
+    "low_band_noise": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 2
+        },
+        "enabled_bands": 1
+      }
+    },
+    "high_band_noise": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 3
+        },
+        "enabled_bands": 2
+      }
+    },
+    "single_band_noise": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 4
+        },
+        "enabled_bands": 3
+      }
+    },
+    "oversampled_2x_single_band": {
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 14
+        },
+        "enabled_bands": 3
+      }
+    }
+  }
+}
