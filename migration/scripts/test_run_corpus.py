@@ -425,11 +425,16 @@ class LedgerFiles(unittest.TestCase):
         self.assertIn("YYYY-MM-DD-<slug>.md", found[0])
         self.assertIn("must start with \"## 2026-10-22: <title>\"", found[1])
 
-    def test_frozen_ledger_digest_detects_appends(self):
-        before = ledger.frozen_digest(self.root)
-        with open(os.path.join(self.root, "migration", "LEDGER.md"), "a") as handle:
-            handle.write("\n## 2026-10-22: appended\n")
-        self.assertNotEqual(ledger.frozen_digest(self.root), before)
+    def test_frozen_ledger_rejects_any_change_once_the_base_is_frozen(self):
+        frozen = "# Ledger\n\n%s Do not edit.\n\n## 2026-10-20: old\n" % ledger.FROZEN_MARKER
+        self.assertIs(ledger.frozen_violation(frozen, frozen), False)
+        self.assertIs(ledger.frozen_violation(frozen, frozen + "\n## 2026-10-22: appended\n"), True)
+        # The change that introduces the freeze header is allowed.
+        self.assertIsNone(ledger.frozen_violation("# Ledger\n\n## 2026-10-20: old\n", frozen))
+
+    def test_repository_ledger_carries_the_freeze_marker(self):
+        with open(os.path.join(rc.REPO, "migration", "LEDGER.md")) as handle:
+            self.assertIn(ledger.FROZEN_MARKER, handle.read())
 
     def test_repository_ledger_is_valid(self):
         self.assertEqual(ledger.problems(rc.REPO), [])

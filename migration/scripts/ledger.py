@@ -6,8 +6,9 @@ same file.
   python3 migration/scripts/ledger.py           print every entry in date order
   python3 migration/scripts/ledger.py --list    list the entry files
   python3 migration/scripts/ledger.py --check   validate entry names and headings
-  python3 migration/scripts/ledger.py --check-frozen
-                                                fail if LEDGER.md changed
+  python3 migration/scripts/ledger.py --check-frozen --base origin/main
+                                                fail if LEDGER.md differs from the
+                                                base (once the base is frozen)
 
 Each entry file starts with a "## YYYY-MM-DD: <title>" heading whose date
 matches its file name. Entries are ordered by file name (date, then slug).
@@ -16,16 +17,17 @@ The reading order is mirrored in port/crates/parity/src/cases.rs
 """
 
 import argparse
-import hashlib
 import os
 import re
+import subprocess
 import sys
 
 ENTRY_NAME = re.compile(r"(\d{4}-\d{2}-\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*\.md")
 FROZEN = os.path.join("migration", "LEDGER.md")
 ENTRIES = os.path.join("migration", "ledger")
-# SHA-256 of the frozen migration/LEDGER.md.
-FROZEN_SHA256 = "81b592f7d916d365aeb0aebeafc1c1b7ecf0d1e96c2ea46f21ccf046514d06fc"
+# The freeze header in migration/LEDGER.md; the freeze applies to a change
+# whose base already carries it.
+FROZEN_MARKER = "**Frozen on 2026-10-21.**"
 
 
 def default_repo():
@@ -70,16 +72,29 @@ def problems(repo):
     return found
 
 
-def frozen_digest(repo):
-    with open(os.path.join(repo, FROZEN), "rb") as handle:
-        return hashlib.sha256(handle.read()).hexdigest()
+def frozen_violation(base_text, head_text):
+    """True if a frozen LEDGER.md was changed; None if the base is not
+    frozen yet (the change that introduces the freeze)."""
+    if FROZEN_MARKER not in base_text:
+        return None
+    return base_text != head_text
+
+
+def git_show(repo, rev, path):
+    result = subprocess.run(["git", "-C", repo, "show", "%s:%s" % (rev, path)],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if result.returncode != 0:
+        raise SystemExit("cannot read %s at %s: %s" % (path, rev, result.stderr.strip()))
+    return result.stdout
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--list", action="store_true", help="list entry files in date order")
     parser.add_argument("--check", action="store_true", help="validate entry file names and headings")
-    parser.add_argument("--check-frozen", action="store_true", help="fail if migration/LEDGER.md changed")
+    parser.add_argument("--check-frozen", action="store_true",
+                        help="fail if migration/LEDGER.md differs from --base (once the base is frozen)")
+    parser.add_argument("--base", help="git revision for --check-frozen, e.g. origin/main")
     args = parser.parse_args()
     repo = default_repo()
     if args.list:
@@ -87,11 +102,18 @@ def main():
             print(os.path.join(ENTRIES, name))
         return 0
     if args.check_frozen:
-        if frozen_digest(repo) != FROZEN_SHA256:
+        if not args.base:
+            parser.error("--check-frozen needs --base")
+        with open(os.path.join(repo, FROZEN)) as handle:
+            violation = frozen_violation(git_show(repo, args.base, FROZEN), handle.read())
+        if violation is None:
+            print("%s is not frozen at %s yet; skipped" % (FROZEN, args.base))
+        elif violation:
             print("%s is frozen: move your entry to a new file under %s/ (see %s/README.md)"
                   % (FROZEN, ENTRIES, ENTRIES))
             return 1
-        print("%s unchanged" % FROZEN)
+        else:
+            print("%s unchanged" % FROZEN)
         return 0
     if args.check:
         found = problems(repo)

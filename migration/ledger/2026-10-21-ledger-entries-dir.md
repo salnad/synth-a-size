@@ -7,11 +7,11 @@ rebased. With 20+ open PRs this was the biggest source of churn.
 - **New entries** go in `migration/ledger/YYYY-MM-DD-<slug>.md`, one file
   per PR or session. The format is in `migration/ledger/README.md`.
 - **`migration/LEDGER.md` is frozen** as history, with a header pointing
-  here. CI's repo checks fail a pull request that changes it: `ledger.py
-  --check-frozen` compares it with a pinned SHA-256. The check runs on
-  pull requests only, so merging an older PR does not turn main red. If
-  such a merge does append to it, move that entry to a file and re-pin
-  `FROZEN_SHA256`.
+  here. CI's repo checks fail a pull request that changes it once its
+  base carries the freeze header (`ledger.py --check-frozen --base
+  origin/main`). The check runs on pull requests only, so merging an older
+  PR that still appends does not turn main red; move such an entry to a
+  file afterwards.
 - **One ledger for the resolvers:** `run_corpus.py` and sas-parity read
   `LEDGER.md` followed by the entry files in name order
   (`scripts/ledger.py read_text` / `cases::read_ledger_at`).

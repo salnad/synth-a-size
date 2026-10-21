@@ -34,7 +34,7 @@ jobs:
       # not turn main red when it is merged.
       - name: migration/LEDGER.md is frozen (new entries go in migration/ledger/)
         if: github.event_name == 'pull_request'
-        run: python3 migration/scripts/ledger.py --check-frozen
+        run: python3 migration/scripts/ledger.py --check-frozen --base "origin/${{ github.base_ref }}"
       - name: vital/ is an unmodified upstream copy
         run: migration/scripts/verify_upstream.sh
       - name: No upstream names in product metadata
