@@ -1,0 +1,131 @@
+{
+  "description": "PENDING exact comparison against the no-fast-math reference (owner rule, 2026-10-21): the official reference fails module_defaults against its own no-fast-math build here, and the port is bit-identical to that build. See LEDGER.md 2026-10-21 M6 PR 4. Not loaded by the harness (only modules/<area>/*.json is). To re-enable, move these cases into ../flanger_module.json and write hashes.",
+  "module": "flanger_module",
+  "cases": {
+    "defaults_saw": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        }
+      }
+    },
+    "free_frequency_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 2
+        },
+        "flanger_sync": 0,
+        "flanger_frequency": {
+          "signal": "ramp",
+          "from": -5.0,
+          "to": 2.0
+        }
+      }
+    },
+    "dotted_and_triplet": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 3
+        },
+        "beats_per_second": 1.75,
+        "flanger_sync": {
+          "signal": "ramp",
+          "from": 2.0,
+          "to": 3.99
+        },
+        "flanger_tempo": 7
+      }
+    },
+    "center_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "flanger_center": {
+          "signal": "ramp",
+          "from": 8.0,
+          "to": 136.0
+        }
+      }
+    },
+    "feedback_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 82.0,
+          "amp": 0.6
+        },
+        "flanger_feedback": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 1.0
+        }
+      }
+    },
+    "depth_and_phase_offset_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 4
+        },
+        "flanger_mod_depth": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "flanger_phase_offset": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    },
+    "enable_toggle": {
+      "num_samples": 132300,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "on": {
+          "signal": "square",
+          "freq_hz": 1.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "flanger_feedback": 0.8
+      }
+    },
+    "long_tail_full_feedback": {
+      "num_samples": 220500,
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 200
+        },
+        "flanger_feedback": 1.0,
+        "flanger_dry_wet": 0.5,
+        "flanger_mod_depth": 0.2
+      }
+    }
+  }
+}

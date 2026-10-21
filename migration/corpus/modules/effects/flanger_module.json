@@ -1,0 +1,77 @@
+{
+  "description": "FlangerModule through effect_module_harness.h (controls set once per block; 'on' toggles enable()). Cases that need the no-fast-math reference are in pending/flanger_module.json.",
+  "module": "flanger_module",
+  "cases": {
+    "tempo_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 165.0,
+          "amp": 0.4
+        },
+        "beats_per_second": 2.5,
+        "flanger_sync": 1,
+        "flanger_tempo": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 10.0
+        }
+      }
+    },
+    "wet_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 220.0,
+          "amp": 0.4
+        },
+        "flanger_dry_wet": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 0.5
+        }
+      }
+    },
+    "rate_48k": {
+      "sample_rate": 48000,
+      "block_size": 128,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "flanger_feedback": 0.7
+      }
+    },
+    "rate_96k": {
+      "sample_rate": 96000,
+      "block_size": 128,
+      "num_samples": 192000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "flanger_feedback": 0.7
+      }
+    },
+    "oversampled_2x": {
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "flanger_feedback": 0.7
+      }
+    }
+  }
+}

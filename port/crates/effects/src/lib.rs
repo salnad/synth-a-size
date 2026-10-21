@@ -20,21 +20,25 @@
 pub use sas_dsp_core;
 pub use sas_filters;
 
+pub mod chorus_module;
 pub mod delay;
 pub mod delay_module;
 pub mod distortion;
 pub mod distortion_module;
 pub mod equalizer_module;
+pub mod flanger_module;
 pub mod phaser;
 pub mod phaser_module;
 pub mod reverb;
 pub mod reverb_module;
 
+pub use chorus_module::ChorusModule;
 pub use delay::{Delay, MultiDelay, StereoDelay};
 pub use delay_module::DelayModule;
 pub use distortion::{Distortion, DistortionType};
 pub use distortion_module::DistortionModule;
 pub use equalizer_module::EqualizerModule;
+pub use flanger_module::FlangerModule;
 pub use phaser::Phaser;
 pub use phaser_module::PhaserModule;
 pub use reverb::Reverb;
@@ -63,8 +67,11 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/src/synthesis/effects/phaser.cpp",
     "vital/src/synthesis/modules/phaser_module.h",
     "vital/src/synthesis/modules/phaser_module.cpp",
-    "vital/src/synthesis/modules/reorderable_effect_chain.cpp",
+    "vital/src/synthesis/modules/chorus_module.h",
     "vital/src/synthesis/modules/chorus_module.cpp",
+    "vital/src/synthesis/modules/flanger_module.h",
+    "vital/src/synthesis/modules/flanger_module.cpp",
+    "vital/src/synthesis/modules/reorderable_effect_chain.cpp",
     "vital/src/synthesis/modules/reverb_module.cpp",
 ];
 

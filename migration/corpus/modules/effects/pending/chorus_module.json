@@ -1,0 +1,257 @@
+{
+  "description": "PENDING exact comparison against the no-fast-math reference (owner rule, 2026-10-21): the official reference fails module_defaults against its own no-fast-math build here, and the port is bit-identical to that build. See LEDGER.md 2026-10-21 M6 PR 4. Not loaded by the harness (only modules/<area>/*.json is). To re-enable, move these cases into ../chorus_module.json and write hashes.",
+  "module": "chorus_module",
+  "cases": {
+    "defaults_saw": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        }
+      }
+    },
+    "voices_1": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 1
+        },
+        "chorus_voices": 1,
+        "chorus_mod_depth": 0.8
+      }
+    },
+    "voices_2": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 2
+        },
+        "chorus_voices": 2,
+        "chorus_mod_depth": 0.8
+      }
+    },
+    "voices_3": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 3
+        },
+        "chorus_voices": 3,
+        "chorus_mod_depth": 0.8
+      }
+    },
+    "voices_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 220.0,
+          "amp": 0.4
+        },
+        "chorus_voices": {
+          "signal": "ramp",
+          "from": 1.0,
+          "to": 4.99
+        }
+      }
+    },
+    "free_frequency_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "chorus_sync": 0,
+        "chorus_frequency": {
+          "signal": "ramp",
+          "from": -6.0,
+          "to": 3.0
+        },
+        "chorus_mod_depth": 1.0
+      }
+    },
+    "tempo_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 165.0,
+          "amp": 0.4
+        },
+        "beats_per_second": 2.5,
+        "chorus_sync": 1,
+        "chorus_tempo": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 10.0
+        }
+      }
+    },
+    "dotted_and_triplet": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 6
+        },
+        "beats_per_second": 1.75,
+        "chorus_sync": {
+          "signal": "ramp",
+          "from": 2.0,
+          "to": 3.99
+        },
+        "chorus_tempo": 6
+      }
+    },
+    "feedback_and_depth_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 82.0,
+          "amp": 0.6
+        },
+        "chorus_feedback": {
+          "signal": "ramp",
+          "from": -0.95,
+          "to": 0.95
+        },
+        "chorus_mod_depth": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    },
+    "delay_time_sweeps": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 7
+        },
+        "chorus_delay_1": {
+          "signal": "ramp",
+          "from": -10.0,
+          "to": -5.64386
+        },
+        "chorus_delay_2": {
+          "signal": "ramp",
+          "from": -5.64386,
+          "to": -10.0
+        }
+      }
+    },
+    "filter_and_wet_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 8
+        },
+        "chorus_cutoff": {
+          "signal": "ramp",
+          "from": 8.0,
+          "to": 136.0
+        },
+        "chorus_spread": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "chorus_dry_wet": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    },
+    "enable_toggle": {
+      "num_samples": 132300,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "on": {
+          "signal": "square",
+          "freq_hz": 1.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "chorus_feedback": 0.8
+      }
+    },
+    "rate_48k": {
+      "sample_rate": 48000,
+      "block_size": 128,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "chorus_feedback": 0.6
+      }
+    },
+    "rate_96k": {
+      "sample_rate": 96000,
+      "block_size": 128,
+      "num_samples": 192000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "chorus_feedback": 0.6
+      }
+    },
+    "oversampled_2x": {
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "chorus_feedback": 0.6
+      }
+    },
+    "long_tail_max_feedback": {
+      "num_samples": 220500,
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 200
+        },
+        "chorus_feedback": 0.95,
+        "chorus_dry_wet": 1.0,
+        "chorus_mod_depth": 1.0
+      }
+    }
+  }
+}
