@@ -382,9 +382,11 @@ fn format_buffer(
 /// Appends `value` formatted exactly as nlohmann/json 3.1.2 `dump_float`
 /// does for a double (`null` for NaN and infinities).
 ///
-/// Upstream builds with `-ffast-math`, which lets GCC fold
-/// `std::signbit(value)` into `value < 0`, so `-0.0` prints as `0.0`. The
-/// reference does the same, and so does this.
+/// Fast-math mirror, pending the owner's byte-exact vs bounded JSON decision
+/// (`migration/LEDGER.md`): upstream's source tests `std::signbit(value)`
+/// (`vital/third_party/json/json.h:8205`), which `-ffast-math` folds into
+/// `value < 0`, so the shipped build prints `-0.0` as `0.0`. This follows
+/// the shipped build.
 pub fn write_f64(out: &mut String, mut value: f64) {
     if !value.is_finite() {
         out.push_str("null");
@@ -424,6 +426,8 @@ mod tests {
     #[test]
     fn formats_like_nlohmann() {
         assert_eq!(fmt(0.0), "0.0");
+        // Pins the pending fast-math mirror choice (see `write_f64`); the
+        // source formula would print "-0.0".
         assert_eq!(fmt(-0.0), "0.0");
         assert_eq!(fmt(1.0), "1.0");
         assert_eq!(fmt(-2.5), "-2.5");

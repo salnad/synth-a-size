@@ -536,9 +536,6 @@ Harness Builder's `sas-parity` helper.)
 
 **Decisions**
 
-- `-0.0` dumps as `0.0`: in upstream's `-ffast-math` builds, GCC folds
-  `std::signbit` to `value < 0`. The port follows the shipped behaviour,
-  which is the only difference from the no-fast-math build.
 - Deliberate deviation for degenerate input: the fast-math reference also
   folds `isfinite`. So it parses `1E400` as infinity and dumps NaN/inf as
   a garbage double, and its DAZ flag makes subnormal doubles dump as
@@ -553,6 +550,8 @@ Harness Builder's `sas-parity` helper.)
   Rust parity tests, once `sas-parity` and per-module captures land.
 - Wavetable state model (creator/group/component/keyframe JSON) and the
   FFT next, then rendering.
+
+---
 
 ## 2026-10-20: M4a `sas-common` parity captures
 
@@ -591,14 +590,20 @@ Harness Builder's `sas-parity` helper.)
   The cause is fast-math reassociation of the phase-to-index arithmetic,
   so one interpolation lands on the other side of a breakpoint. It is 0
   against the no-fast-math build.
-- **Pending owner decision: byte-exact vs bounded JSON.** The `-0.0` case
-  `common/json/negative_zero` is authored in
-  `migration/corpus/modules/common/pending/json.json` (not loaded by the
-  harness). Upstream's fast-math build prints `-0.0` as `0.0` (folded
-  `signbit`) and the no-fast-math build prints `-0.0`, so it cannot pass
-  the calibration job as an exact artifact. The port prints `0.0` like the
-  shipped build; a unit test covers it. To re-enable, move the case into
-  `common/json.json` and write hashes.
+- **Pending owner decision: byte-exact vs bounded JSON. Fast-math mirror
+  site: `json/dtoa.rs` `write_f64`.**
+  - Upstream's source tests `std::signbit(value)`
+    (`vital/third_party/json/json.h:8205`). The fast-math build folds that
+    to `value < 0`, so `-0.0` prints as `0.0`; the no-fast-math build
+    prints `-0.0`.
+  - The port mirrors the fast-math codegen (`value < 0.0`), and the
+    `fmt(-0.0)` unit test pins that pending choice.
+  - The case `common/json/negative_zero` is authored in
+    `migration/corpus/modules/common/pending/json.json` (not loaded by the
+    harness), because no exact artifact can pass the calibration job. To
+    re-enable it, move the case into `common/json.json` and write hashes.
+  - If the owner picks the source formula instead, the mirror becomes
+    `value.is_sign_negative()`.
 - Expected hashes come from CI run 39514821022's `reference-renders`
   artifact. Local hashes are identical for `futils`, `line_generator` and
   `random`. `json` was re-written locally after the `-0.0` change, and the
