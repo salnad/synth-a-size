@@ -72,3 +72,11 @@
   drops the processor and its source to audio rate when both ends are
   audio-rate. The engine thread must port that and test it in full-patch
   renders.
+- **macOS arm64 (after #2):**
+  - Hashes for `modulation_connection`, `line_map` come from this PR's `Reference ARM` run 39622667208
+    (`ref-arm64-macos-15`).
+  - All four M3 macOS artifacts agree with the committed hashes.
+  - The macOS no-fast-math proxy passes all 120 of these outputs.
+  - The port built with `aarch64-semantics` (A1 truncating `toInt`, the
+    A9 libc++ RNG column) passes every case against the macOS captures.
+  - The macOS job runs the same parity tests natively.
