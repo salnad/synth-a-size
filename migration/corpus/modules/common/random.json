@@ -1,0 +1,61 @@
+{
+  "description": "vital::utils::RandomGenerator (std::mt19937 + libstdc++ uniform_real_distribution<float>) after seed(). Ported in port/crates/common.",
+  "module": "random_generator",
+  "cases": {
+    "seed_0": {
+      "params": {
+        "seed": 0,
+        "min": -1.0,
+        "max": 1.0,
+        "count": 4096
+      }
+    },
+    "seed_1": {
+      "params": {
+        "seed": 1,
+        "min": -1.0,
+        "max": 1.0,
+        "count": 4096
+      }
+    },
+    "seed_12345": {
+      "params": {
+        "seed": 12345,
+        "min": -1.0,
+        "max": 1.0,
+        "count": 4096
+      }
+    },
+    "seed_minus_5": {
+      "params": {
+        "seed": -5,
+        "min": -1.0,
+        "max": 1.0,
+        "count": 4096
+      }
+    },
+    "seed_2147483647": {
+      "params": {
+        "seed": 2147483647,
+        "min": -1.0,
+        "max": 1.0,
+        "count": 4096
+      }
+    },
+    "unit_range_seed_7": {
+      "params": {
+        "seed": 7,
+        "min": 0.0,
+        "max": 1.0,
+        "count": 4096
+      }
+    },
+    "pi_range_seed_4242": {
+      "params": {
+        "seed": 4242,
+        "range": "pi",
+        "count": 2048
+      }
+    }
+  }
+}

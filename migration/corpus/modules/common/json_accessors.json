@@ -1,0 +1,12 @@
+{
+  "description": "nlohmann/json 3.1.2 typed conversions (vital/third_party/json/json.h) as upstream reads values: bool, double, float, int, int64_t, string and an unscoped enum. Ported in port/crates/common (Value::to_*).",
+  "module": "json_accessors",
+  "cases": {
+    "conversions": {
+      "params": {
+        "values": "[0, 1, -7, 3.7, -3.7, 2.5, 100000.0, 0.1, 0.001, 16777217, 2147483647, -2147483648, 4294967296, 9007199254740993, 18446744073709551615, -9223372036854775808, true, false, null, \"1\", \"text\", [1], {\"a\": 1}, 1e-300]",
+        "enum_values": "[0, 1, 2, 7, 2.9, 0.5, 4294967295, true, false, null, \"2\", [1]]"
+      }
+    }
+  }
+}

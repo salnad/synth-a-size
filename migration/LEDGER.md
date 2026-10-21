@@ -611,3 +611,209 @@ now has 131 cases, 92 bit-identical. Worst `max_abs_error` is 6.1e-5
 - `RandomGenerator` once `sas-common` merges.
 - arm64 parity for these cases runs in the macOS arm64 job once it has a
   `cargo test` step (ARM Reference).
+
+---
+
+## 2026-10-20: M4a `sas-common` (shared exact helpers)
+
+New dependency-free crate `port/crates/common` (`sas-common`), owned by the
+Wavetable Creator thread until this first PR merges. Core Framework, Preset
+Registry and Modulators reuse it instead of porting these pieces again
+(coordinator decision).
+
+**Added**
+
+- `json`: JSON with nlohmann/json 3.1.2 semantics (sorted keys, typed
+  integers vs. doubles, `f32` stored as double, a line-by-line port of its
+  Grisu2 double formatting, first duplicate key wins, `operator[]`/`get<T>`
+  read rules as `get`/`at`/`to_*` returning errors where upstream throws).
+  Arithmetic conversions follow nlohmann's three paths, checked against
+  the reference: `float`/`int` (`to_f32`/`to_i32`) accept booleans as 0/1;
+  `double`/`int64_t` (`to_f64`/`to_i64`) and `int`-backed enums
+  (`to_enum`) reject them. So `LineGenerator` accepts boolean points,
+  powers and `num_points`, as upstream does (found by Preset Registry).
+- `base64`: JUCE `Base64` (decoding stops at the first invalid character
+  and keeps the bytes decoded so far).
+- `scalar`: single-lane `futils` (`exp2`, `log2`, `exp`, `log`, `pow`,
+  `powerScale`, `tanh`), `utils` (`clamp`, `iclamp`, `ilog2`,
+  `interpolate`, PCM conversions) and the Catmull-Rom weights from
+  `poly_utils`. **These duplicate parts of `futils.h`/`utils.h`**; Core
+  Framework's `PolyFloat` versions must match them bit for bit in every
+  lane (a test comparing the two is welcome once `simd` lands). Note that
+  upstream's `truncToInt` is `_mm_cvtps_epi32` (round to nearest even), so
+  `utils::trunc` is not a truncation; `floor`/`roundToInt` are still exact.
+- `random`: `std::mt19937` plus libstdc++ 13's
+  `uniform_real_distribution<float>` (one draw, `float(u32) / 2^32`, 1.0
+  mapped to `nextafter(1, 0)`), constructed from an explicit seed.
+- `line_generator`: `LineGenerator` with upstream JSON semantics.
+- `load_save`: `compareVersionStrings`, `convertBufferToPcm`,
+  `convertPcmToFloatBuffer` and `VERSION_STRING = "1.0.6"` (the reference
+  build's `ProjectInfo::versionString`), needed by wavetable and preset
+  upgrades.
+
+**Measured** (scratch probe linked against the reference engine library;
+it is not committed. The committed parity captures wait for the
+Harness Builder's `sas-parity` helper.)
+
+- Against the `REF_FAST_MATH=OFF` reference build: **bit-identical** on all
+  checks. That covers 18,580 `exp2`/`tanh` and 9,261 `log2` inputs, 8,181
+  `powerScale` pairs, 36,000 RNG values over 18 seed/range combinations,
+  54 `LineGenerator` cases (9 authored JSONs × resolutions 2048/128/7 ×
+  loop on/off) plus the 6 init shapes, covering buffers, `valueAtPhase`,
+  `stateToJson` dumps and `linear()`, along with 43,922 JSON doubles,
+  parse→dump texts, 225 version comparisons and base64 edge cases.
+- Against the default (fast-math) reference: the RNG, PCM, JSON dumps,
+  versions and base64 are bit-identical. The float helpers differ only by
+  GCC reassociation: `tanh` ≤ 1 ulp, `log2` ≤ 2 ulp, `powerScale` ≤ 1.0e-6
+  absolute, line buffers ≤ 3.0e-7, and `valueAtPhase` ≤ 8.5e-5, the
+  largest on steep segments where the rounded phase index lands on the
+  other side of a breakpoint. For example, fast-math folds the linear
+  ramp's `1 - (1 - t)` into `t`.
+
+**Decisions**
+
+- Deliberate deviation for degenerate input: the fast-math reference also
+  folds `isfinite`. So it parses `1E400` as infinity and dumps NaN/inf as
+  a garbage double, and its DAZ flag makes subnormal doubles dump as
+  `0.0`. The port follows the no-fast-math semantics here, which are
+  nlohmann's documented behaviour: overflow is a parse error, NaN/inf
+  dump as `null` and subnormals print normally. Authored content never
+  hits these cases.
+
+**Open / next**
+
+- Parity captures and tests: done, see the next entry and the review
+  follow-up below.
+- Wavetable state model (creator/group/component/keyframe JSON) and the
+  FFT next, then rendering.
+
+---
+
+## 2026-10-20: M4a `sas-common` parity captures
+
+**Added**
+
+- Artifact-only `ref-module` modules in `migration/reference/src/modules/common/`:
+  - `line_generator`: `jsonToState` → render → `stateToJson`; arrays
+    `buffer` and `value_at_phase`, text `saved.json`;
+  - `random_generator`: `RandomGenerator` after `seed()`; array `values`;
+  - `futils_scalar`: scalar `exp2`/`log2`/`tanh`/`powerScale`/Catmull-Rom
+    over a fixed integer-defined grid. `exp2(e)` is captured as
+    `exp2(e) · 2^-floor(e)`, an exact power-of-two scaling into [1, 2].
+    Raw values reach ~5.7e3, where one float ulp (~4.9e-4) exceeds the
+    1e-4 absolute gate, so only bit-exact references could pass. Every
+    other array in this crate stays below 100;
+  - `json_serializer`: nlohmann `parse` → `dump()`/`dump(2)` of authored
+    texts, and `dump()` of 40,000 generated doubles and floats. These are
+    upstream's own serialization.
+- JSON inputs are string params, so the reference and the port parse the
+  same bytes.
+- Case files `migration/corpus/modules/common/{line_generator,random,futils,json}.json`
+  (37 cases) with their hashes.
+- Parity tests in `port/crates/common/tests/parity.rs`. They loop over
+  every case of each file. Numbers use `assert_parity!` with the default
+  module tolerances (1e-4, −80 dB); saved JSON uses `assert_artifact!`.
+
+**Measured against the official (fast-math) reference**
+
+- All pass with the default module tolerances; no tolerance changes.
+- RNG sequences, every JSON text artifact (`saved.json`, `dump.json`,
+  `pretty.json`, `floats.json`) and the Catmull-Rom outputs are exact.
+- `exp2` (scaled): exact. `tanh`, `log2`: ≤ 2 ulp. `powerScale`: ≤ 1.3e-6
+  (−138 dB). Line buffers: ≤ 3.0e-7 (≤ −144 dB).
+- `valueAtPhase` on `steps`/`steps_loop` (vertical segments): 8.5e-5 and
+  −92 dB. This is the closest to a limit (1.17× under `max_abs_error`).
+  The cause is fast-math reassociation of the phase-to-index arithmetic,
+  so one interpolation lands on the other side of a breakpoint. It is 0
+  against the no-fast-math build.
+- **Pending owner decision: byte-exact vs bounded JSON. Fast-math mirror
+  site: `json/dtoa.rs` `write_f64`.**
+  - Upstream's source tests `std::signbit(value)`
+    (`vital/third_party/json/json.h:8205`). The fast-math build folds that
+    to `value < 0`, so `-0.0` prints as `0.0`; the no-fast-math build
+    prints `-0.0`.
+  - The port mirrors the fast-math codegen (`value < 0.0`), and the
+    `fmt(-0.0)` unit test pins that pending choice.
+  - The case `common/json/negative_zero` is authored in
+    `migration/corpus/modules/common/pending/json.json` (not loaded by the
+    harness), because no exact artifact can pass the calibration job. To
+    re-enable it, move the case into `common/json.json` and write hashes.
+  - If the owner picks the source formula instead, the mirror becomes
+    `value.is_sign_negative()`.
+- Expected hashes come from CI run 39514821022's `reference-renders`
+  artifact. Local hashes are identical for `futils`, `line_generator` and
+  `random`. `json` was re-written locally after the `-0.0` change, and the
+  next CI run confirms it.
+- `common/json/*` cases emit only text artifacts. CI compares them since
+  PR #12 ("run_corpus compare handles artifact-only modules", above).
+- **RNG per target C++ library (owner decision; ARM Reference records it
+  as A9).** libc++'s `generate_canonical<float, 24>` has no clamp to just
+  below 1. For a draw u >= 2^32 - 128 (about 3e-8 per draw) it returns
+  1.0, so `uniform_real_distribution` returns exactly `max`; libstdc++
+  returns `max - (max - min)·2^-24`.
+  - The source comparison is LLVM 17.0.6 and main libc++ against
+    libstdc++ 13.
+  - `random::canonical_from_draw` follows `AARCH64_SEMANTICS`: the libc++
+    column on aarch64, and with the `aarch64-semantics` feature (same name
+    as `sas-simd`'s, which crates forward).
+  - Unit tests cover both columns at the edge draw on every host.
+  - None of the 26,624 draws in `common/random` reach the edge, so its
+    captures are the same on both references.
+
+### Review follow-up (Chain Reviewer, PR #4)
+
+- **x86 `toInt` semantics are no longer public.**
+  `scalar::round_to_i32_sse` and `scalar::poly_trunc` implement only the
+  SSE2 column of A1, so they are now `pub(crate)`. Their public callers,
+  `poly_floor` and `round_to_int` (and `exp2` through them), give the same
+  result on both ISAs for non-NaN |x| < 2^31. A unit test checks both
+  against a truncating (NEON) model over more than 100k inputs.
+- **New captures for the surface that had only probe evidence.** Each is
+  an artifact-only module with its own case file and committed hashes.
+  - `load_save_codecs` (`modules/common/load_save.cpp`, 21 cases):
+    - JUCE `Base64::toBase64` text (6 cases);
+    - `convertFromBase64`, with the returned flag and the bytes kept on
+      early stop: invalid characters, truncated groups, spaces, padding
+      in the middle, URL-safe and non-ASCII characters (13 cases);
+    - `convertBufferToPcm`/`convertPcmToFloatBuffer`: texts `pcm.json`
+      and `float.json` plus the decoded PCM (int16/32768) and floats as
+      arrays, including clamping above ±1;
+    - `compareVersionStrings`: 19 pairs, including whitespace, non-numeric
+      components and overflow.
+  - `line_generator_edit` (`modules/common/line_generator_edit.cpp`, 19
+    cases):
+    - every `init*` shape, with and without loop;
+    - sequences of `addPoint`, `addMiddlePoint`, `removePoint`,
+      `flipHorizontal`, `flipVertical`, `setPoint`, `setPower`,
+      `setNumPoints`, `setSmooth` and `setLoop`;
+    - outputs: arrays buffer, `valueAtPhase` and state (`linear()`, point
+      count), and text `saved.json`.
+  - `futils_scalar` gains `exp` (|x| ≤ 80, the function's float range),
+    `log` and `pow` (8 exponents). Wide-range results are split into an
+    exact mantissa in [1, 2) and an integer exponent.
+  - `json_accessors` (`modules/common/json_accessors.cpp`):
+    - nlohmann's `get<bool/double/float/int/int64_t/std::string>` and an
+      unscoped enum, on 24 values (booleans, null, strings, containers,
+      fractions, int and uint extremes) and 12 enum inputs;
+    - the results are serialized by nlohmann itself, with null where it
+      throws;
+    - inputs avoid undefined conversions (floats outside int range,
+      negative floats into an enum).
+- **Measured against the official reference:**
+  - base64, PCM, version comparison, `exp`/`log`/`pow` and the accessors
+    are exact;
+  - `line_generator_edit` is within 3.9e-7, at or below −135 dB;
+  - every text artifact is byte-identical;
+  - the no-fast-math proxy passes all 205 `common` comparisons.
+- **Pending owner decision: byte-exact vs bounded JSON.**
+  - `flipHorizontal` negates zero powers, so three edit cases save `-0.0`.
+    That hits the same `write_f64` mirror site as `negative_zero` above.
+  - Their numeric arrays stay live, with `saved_json: false` in
+    `line_generator_edit.json`.
+  - Their `saved.json` variants are authored in
+    `migration/corpus/modules/common/pending/line_generator_edit.json`.
+- **Nothing left unchecked.** All of the reviewer's list is now captured.
+  `Value::get`/`at` on non-objects and `to_str` errors are covered by unit
+  tests only; upstream throws there, and the port returns the error.
+- `LineGenerator::from_json` rejects `num_points == 0` with an error.
+  Upstream's behaviour is undefined there; the port used to panic.

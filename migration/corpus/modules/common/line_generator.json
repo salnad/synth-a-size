@@ -1,0 +1,135 @@
+{
+  "description": "LineGenerator (vital/src/common/line_generator.cpp): jsonToState -> render -> stateToJson. Ported in port/crates/common.",
+  "module": "line_generator",
+  "cases": {
+    "linear_default_fields": {
+      "params": {
+        "line": "{\"num_points\": 2, \"points\": [0.0, 1.0, 1.0, 0.0], \"powers\": [0.0, 0.0]}",
+        "resolution": 2048
+      }
+    },
+    "linear_default_fields_loop": {
+      "params": {
+        "line": "{\"num_points\": 2, \"points\": [0.0, 1.0, 1.0, 0.0], \"powers\": [0.0, 0.0]}",
+        "resolution": 2048,
+        "loop": true
+      }
+    },
+    "triangle": {
+      "params": {
+        "line": "{\"name\": \"Tri\", \"num_points\": 3, \"points\": [0.0, 1.0, 0.5, 0.0, 1.0, 1.0], \"powers\": [0.0, 0.0, 0.0], \"smooth\": false}",
+        "resolution": 2048
+      }
+    },
+    "triangle_loop": {
+      "params": {
+        "line": "{\"name\": \"Tri\", \"num_points\": 3, \"points\": [0.0, 1.0, 0.5, 0.0, 1.0, 1.0], \"powers\": [0.0, 0.0, 0.0], \"smooth\": false}",
+        "resolution": 2048,
+        "loop": true
+      }
+    },
+    "smooth_triangle": {
+      "params": {
+        "line": "{\"name\": \"Smooth\", \"num_points\": 3, \"points\": [0.0, 1.0, 0.5, 0.0, 1.0, 1.0], \"powers\": [0.0, 0.0, 0.0], \"smooth\": true}",
+        "resolution": 2048
+      }
+    },
+    "smooth_triangle_loop": {
+      "params": {
+        "line": "{\"name\": \"Smooth\", \"num_points\": 3, \"points\": [0.0, 1.0, 0.5, 0.0, 1.0, 1.0], \"powers\": [0.0, 0.0, 0.0], \"smooth\": true}",
+        "resolution": 2048,
+        "loop": true
+      }
+    },
+    "square_vertical_edges": {
+      "params": {
+        "line": "{\"name\": \"Square\", \"num_points\": 5, \"points\": [0.0, 1.0, 0.0, 0.0, 0.5, 0.0, 0.5, 1.0, 1.0, 1.0], \"powers\": [0, 0, 0, 0, 0]}",
+        "resolution": 2048
+      }
+    },
+    "square_vertical_edges_loop": {
+      "params": {
+        "line": "{\"name\": \"Square\", \"num_points\": 5, \"points\": [0.0, 1.0, 0.0, 0.0, 0.5, 0.0, 0.5, 1.0, 1.0, 1.0], \"powers\": [0, 0, 0, 0, 0]}",
+        "resolution": 2048,
+        "loop": true
+      }
+    },
+    "powers": {
+      "params": {
+        "line": "{\"name\": \"Powers\", \"num_points\": 4, \"points\": [0.0, 0.2, 0.3, 0.9, 0.71, 0.05, 1.0, 0.6], \"powers\": [3.5, -2.25, 0.004, 7], \"smooth\": false}",
+        "resolution": 2048
+      }
+    },
+    "powers_loop": {
+      "params": {
+        "line": "{\"name\": \"Powers\", \"num_points\": 4, \"points\": [0.0, 0.2, 0.3, 0.9, 0.71, 0.05, 1.0, 0.6], \"powers\": [3.5, -2.25, 0.004, 7], \"smooth\": false}",
+        "resolution": 2048,
+        "loop": true
+      }
+    },
+    "smooth_powers": {
+      "params": {
+        "line": "{\"name\": \"PowersSmooth\", \"num_points\": 4, \"points\": [0.0, 0.2, 0.3, 0.9, 0.71, 0.05, 1.0, 0.6], \"powers\": [3.5, -2.25, 0.5, -7], \"smooth\": true}",
+        "resolution": 2048
+      }
+    },
+    "smooth_powers_loop": {
+      "params": {
+        "line": "{\"name\": \"PowersSmooth\", \"num_points\": 4, \"points\": [0.0, 0.2, 0.3, 0.9, 0.71, 0.05, 1.0, 0.6], \"powers\": [3.5, -2.25, 0.5, -7], \"smooth\": true}",
+        "resolution": 2048,
+        "loop": true
+      }
+    },
+    "extra_points_truncated": {
+      "params": {
+        "line": "{\"name\": \"Extra\", \"num_points\": 2, \"points\": [0, 1, 1, 0, 0.5, 0.5], \"powers\": [0, 0, 3]}",
+        "resolution": 2048
+      }
+    },
+    "extra_points_truncated_loop": {
+      "params": {
+        "line": "{\"name\": \"Extra\", \"num_points\": 2, \"points\": [0, 1, 1, 0, 0.5, 0.5], \"powers\": [0, 0, 3]}",
+        "resolution": 2048,
+        "loop": true
+      }
+    },
+    "integers_and_booleans": {
+      "params": {
+        "line": "{\"name\": \"Ints\", \"num_points\": 3, \"points\": [0, true, 1, false, 1, 1], \"powers\": [1, 2, false], \"smooth\": false, \"zzz\": 1}",
+        "resolution": 2048
+      }
+    },
+    "integers_and_booleans_loop": {
+      "params": {
+        "line": "{\"name\": \"Ints\", \"num_points\": 3, \"points\": [0, true, 1, false, 1, 1], \"powers\": [1, 2, false], \"smooth\": false, \"zzz\": 1}",
+        "resolution": 2048,
+        "loop": true
+      }
+    },
+    "steps": {
+      "params": {
+        "line": "{\"name\": \"Steps\", \"num_points\": 6, \"points\": [0.0, 0.0, 0.1, 0.33, 0.1, 0.8, 0.65, 0.8, 0.65, 0.1, 1.0, 0.4], \"powers\": [0.0, 1.5, 0.0, -1.5, 0.0, 0.0]}",
+        "resolution": 2048
+      }
+    },
+    "steps_loop": {
+      "params": {
+        "line": "{\"name\": \"Steps\", \"num_points\": 6, \"points\": [0.0, 0.0, 0.1, 0.33, 0.1, 0.8, 0.65, 0.8, 0.65, 0.1, 1.0, 0.4], \"powers\": [0.0, 1.5, 0.0, -1.5, 0.0, 0.0]}",
+        "resolution": 2048,
+        "loop": true
+      }
+    },
+    "powers_resolution_128": {
+      "params": {
+        "line": "{\"name\": \"Powers\", \"num_points\": 4, \"points\": [0.0, 0.2, 0.3, 0.9, 0.71, 0.05, 1.0, 0.6], \"powers\": [3.5, -2.25, 0.004, 7], \"smooth\": false}",
+        "resolution": 128
+      }
+    },
+    "steps_resolution_7": {
+      "params": {
+        "line": "{\"name\": \"Steps\", \"num_points\": 6, \"points\": [0.0, 0.0, 0.1, 0.33, 0.1, 0.8, 0.65, 0.8, 0.65, 0.1, 1.0, 0.4], \"powers\": [0.0, 1.5, 0.0, -1.5, 0.0, 0.0]}",
+        "resolution": 7
+      }
+    }
+  }
+}

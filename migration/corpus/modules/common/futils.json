@@ -1,0 +1,9 @@
+{
+  "description": "Scalar futils/utils helpers (exp2, log2, tanh, powerScale, Catmull-Rom weights) over a fixed grid. Ported in port/crates/common (scalar.rs).",
+  "module": "futils_scalar",
+  "cases": {
+    "grid": {
+      "params": {}
+    }
+  }
+}

@@ -1,0 +1,21 @@
+[package]
+name = "sas-common"
+description = "Dependency-free shared pieces: JSON with the upstream serializer's exact semantics, base64, scalar math helpers, the engine RNG replica and the line generator."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+# Use the aarch64 reference's semantics (macOS arm64, libc++) on every
+# target, so x86_64 developers can compare against macOS arm64 reference
+# renders. Same name as sas-simd's switch; crates forward both. No-op on
+# aarch64. See `AARCH64_SEMANTICS` and migration/decisions/reference-arm.md.
+aarch64-semantics = []
+
+[dependencies]
+
+[dev-dependencies]
+sas-parity.workspace = true
