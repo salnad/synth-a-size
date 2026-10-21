@@ -2,6 +2,14 @@
   "entries": [
     {
       "hashes": {
+        "interim_192k_short:audio": "c2c894932eda42cc",
+        "interim_48k_short:audio": "68f9d4734bd1f888",
+        "interim_chorus_sweep_short:audio": "6ad9432f3b01453c",
+        "interim_decay_sweep_short:audio": "135767a76efe829f",
+        "interim_filter_sweeps_short:audio": "06d6bac0416a4bdd",
+        "interim_impulse_short_tail:audio": "8080996fd8b0994c",
+        "interim_pre_delay_sweep_short:audio": "82929159ec1aaae6",
+        "interim_size_sweep_short:audio": "3c88c44a3792fa4d",
         "oversampled_2x:audio": "8efe2278f79f219b",
         "pre_delay_clamped:audio": "f8a3721d51030fd6",
         "wet_sweep:audio": "135e11023aecbbf3"

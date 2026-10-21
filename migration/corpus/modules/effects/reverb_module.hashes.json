@@ -5,6 +5,9 @@
         "chorus_sweep:audio": "0c05dcf925a72e6e",
         "defaults_saw:audio": "e6856776891d7bcb",
         "enable_toggle:audio": "6a853ede7b449ad0",
+        "interim_decay_and_size_sweep_short:audio": "6c83bfa8dc718d45",
+        "interim_filter_and_delay_sweep_short:audio": "94283a4025c17e80",
+        "interim_max_decay_short_tail:audio": "2e81d11b588c075f",
         "oversampled_2x:audio": "db00415b46e875be",
         "rate_96k:audio": "8a937d1e295fbcaa"
       },
