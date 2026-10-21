@@ -47,6 +47,7 @@ PR #2. The tools are `scripts/cross_platform_report.py`,
 | A7 | `poly_int::min` (`poly_values.h`) | signed (`_mm_cmpgt_epi32` directly) | unsigned (`vminq_u32`) | `poly_int::max` goes through `greaterThan`, which is unsigned on both (SSE2 XORs the sign bit), so only `min` differs. Through `utils::clamp(v, lo, hi) = max(min(v, hi), lo)`, a *negative* index stays negative on x86, an out-of-bounds read one element before the table, but clamps to `hi` on arm64. This matters only for lookup inputs below about −0.5/scale (`lookup_table.h:40`, `synth_lfo.h:83`, `line_map.cpp:33`, `modulation_connection_processor.cpp:188/229/258`). Not reached by the corpus. |
 | A8 | `anyMask()`: `_mm_movemask_epi8` vs `vpmax_u32` | 16-bit byte mask | maximum lane value | Every call site uses it as a boolean on a comparison mask (`if (reset_mask.anyMask())`, `== 0` asserts, `bool x = ...anyMask()`), where both are non-zero exactly when any lane is set. No behavioural effect in upstream; the numeric value differs. |
 | A9 | `vital::utils::RandomGenerator` → `std::uniform_real_distribution<float>` / `generate_canonical` (implementation-defined): one 32-bit mt19937 draw u, then u / 2^32 in float | libstdc++ (x86 Linux): when u ≥ 2^32 − 128 the quotient rounds to 1.0f and is clamped to 1 − 2^-24, so the result is max − (max − min)·2^-24 | libc++ (macOS): returns exactly 1.0, so the result is exactly max | Source comparison by Wavetable Creator (libc++ 17 vs libstdc++ 13): identical except this edge, about 3e-8 per draw. `ref-rng-probe`: 21 upstream `RandomGenerator` streams (every engine range, distinct seeds, plus `polyVoiceNext`), 2.05e8 draws. The 14 streams with no edge input are bit-identical between x86 and macOS. The 7 with exactly one edge input each differ, and macOS hits exactly max once in each, which x86 never does (CI run 39518725978). No corpus case is known to hit it. |
+| A10 | `std::complex<float>` division: `1.0f / phase_shift` and `1.0f / (current_phase_shift * phase_shift)` (`phase_modifier.cpp:53, 72`) | GCC 13, libstdc++: `-ffast-math` implies `-fcx-limited-range`, so the division is inlined as the textbook formula in float, `((ac + bd) / (c² + d²), (bc − ad) / (c² + d²))`, two `divss`, no `__divsc3` call | Apple clang 17, libc++ 19.1.2 (`_LIBCPP_VERSION 190102`, Xcode 16.4 SDK): `operator/` for `float` is `__lhs.__builtin() / __rhs.__builtin()` (`_Complex` division, `<complex>:814`), compiled with the caller's flags. Under `-ffast-math` that is the same inline textbook formula: `render` has 4 `fdiv`, 0 fused instructions and no `__divsc3` call, and no reference binary imports or defines `__divsc3` | **Not a reference difference.** `ref-complex-probe` (CI run 39526324283): with the reference flags, x86 and macOS both equal the float textbook formula on all 5.2M random divisions (unit circle, near-unit, exponents ±20, full range with subnormals) and all 6,561 special-value pairs, with identical hashes. Upstream's own `render` (spectrum all 1, mix 1, so the odd bins hold its `1.0f / phase_shift`) matches it 64/64 on both, and the phase-modifier render hashes (4 styles × 2 mixes × 64 phases) are identical on both. See the A10 notes below. |
 
 A4–A8 were identified by Core Framework from `poly_values.h`. Like A1–A3,
 they are mirrored per target in `sas-simd` and switched by its
@@ -54,6 +55,37 @@ they are mirrored per target in `sas-simd` and switched by its
 reference: libstdc++; macOS reference: libc++), not an ISA one. It is
 mirrored per target in `sas-common` (Wavetable Creator, PR #4) and
 follows the same feature.
+
+A10 notes (requested by Chain Reviewer and Wavetable Creator; scratch
+checker against PR #46's `complex.rs`):
+
+- The paths that would differ are the non-fast-math ones, which neither
+  reference takes:
+  - libgcc's `__divsc3` (GCC 13): the textbook formula in double, rounded
+    once. The port's `div_libgcc` reproduces it bit for bit on every probe
+    category, special values included.
+  - compiler-rt's `__divsc3` on macOS: statically linked from the compiler's
+    builtins, not imported from libSystem. It is the logb/scalbn algorithm,
+    but it is not bit-equal to that algorithm compiled without contraction:
+    961,157 of 1,048,576 unit-circle results match, and the rest are up to
+    2 ulp off. That fits contraction in the separately compiled builtin
+    (`divsc3.s` in the diagnostics counts its fused instructions).
+- A strict (`-fno-fast-math`) copy of the operator on macOS also gave the
+  textbook result, special values included, so it did not call
+  `__divsc3` either. This is diagnostic only; the engine is built with
+  fast-math.
+- Port, against the macOS reference:
+  - `div_libcxx` is bit-exact on upstream's in-render odd shifts (64/64)
+    and on every normal-range category (5.2M divisions, hashes equal). It
+    differs only at extreme exponents and special values, where it scales
+    and recovers infinities but the reference does neither.
+  - `div_libgcc` matches 45/64 of the in-render shifts (1 ulp off
+    otherwise) and about 70 % of unit-circle divisions (up to 2 ulp off).
+    That holds against the x86 reference too.
+- Consequence: no per-target switch is needed. The plain float textbook
+  formula matches both references on every probed input. `div_libcxx`
+  matches them wherever the divisor is in normal range, which includes
+  every phase-modifier input.
 
 Attribution in the corpus (`scripts/arm_attribution.py`, macOS 15 arm64
 vs x86, run 39515281713):
@@ -138,7 +170,8 @@ achievable on arm64.
 
 ## Consequences for the Rust port
 
-1. **Per-target upstream semantics at the enumerated sites only (A1–A9).**
+1. **Per-target upstream semantics at the enumerated sites only (A1–A9; A10
+   turned out not to differ between the references).**
    They live in one place in `sas-simd`:
    - `to_int` (rounding vs truncation);
    - float→u32 (wrap vs saturate) and float→i32 overflow;
