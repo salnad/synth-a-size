@@ -605,3 +605,16 @@ Harness Builder's `sas-parity` helper.)
   next CI run confirms it.
 - `common/json/*` cases emit only text artifacts. CI compares them since
   PR #12 ("run_corpus compare handles artifact-only modules", above).
+- **RNG per target C++ library (owner decision; ARM Reference records it
+  as A9).** libc++'s `generate_canonical<float, 24>` has no clamp to just
+  below 1. For a draw u >= 2^32 - 128 (about 3e-8 per draw) it returns
+  1.0, so `uniform_real_distribution` returns exactly `max`; libstdc++
+  returns `max - (max - min)·2^-24`.
+  - The source comparison is LLVM 17.0.6 and main libc++ against
+    libstdc++ 13.
+  - `random::canonical_from_draw` follows `AARCH64_SEMANTICS`: the libc++
+    column on aarch64, and with the `aarch64-semantics` feature (same name
+    as `sas-simd`'s, which crates forward).
+  - Unit tests cover both columns at the edge draw on every host.
+  - None of the 26,624 draws in `common/random` reach the edge, so its
+    captures are the same on both references.

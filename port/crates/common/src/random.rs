@@ -3,10 +3,20 @@
 //! GPL-3.0-or-later), a `std::mt19937` drawn through libstdc++'s
 //! `std::uniform_real_distribution<float>`.
 //!
-//! The distribution matches libstdc++ (GCC 13) exactly: `generate_canonical<float, 24>`
-//! takes one 32-bit draw, converts it to `float` (round to nearest), divides
-//! by 2^32, and maps a result of 1.0 to the largest float below 1. The value
-//! is then `canonical * (max - min) + min` in `float`.
+//! The distribution matches the reference's C++ library exactly.
+//! `generate_canonical<float, 24>` takes one 32-bit draw, converts it to
+//! `float` (round to nearest) and divides by 2^32. The value is then
+//! `canonical * (max - min) + min` in `float`. The libraries differ only for
+//! draws u >= 2^32 - 128, which round to 2^32:
+//!
+//! - libstdc++ (GCC 13, the x86_64 Linux reference) maps the resulting 1.0 to
+//!   the largest float below 1, so values stay below `max`;
+//! - libc++ (the macOS arm64 reference) returns 1.0, so the value is `max`.
+//!
+//! A value of exactly `max` can change downstream integer or index results,
+//! so both are ported. The libc++ column is used on aarch64, and on other
+//! targets with the `aarch64-semantics` feature (the switch `sas-simd` uses;
+//! see [`crate::AARCH64_SEMANTICS`] and `migration/decisions/reference-arm.md`).
 //!
 //! Upstream seeds each generator from a global counter
 //! (`RandomGenerator::next_seed_`) in construction order. [`take_next_seed`]
@@ -96,18 +106,42 @@ impl Mt19937 {
     }
 }
 
-/// libstdc++ `std::generate_canonical<float, 24>(mt19937&)`.
+const TWO_POW_32: f32 = 4_294_967_296.0;
+
+/// libstdc++ `std::generate_canonical<float, 24>` for one mt19937 draw.
 #[inline]
-pub fn generate_canonical_f32(engine: &mut Mt19937) -> f32 {
-    const TWO_POW_32: f32 = 4_294_967_296.0;
-    let sum = engine.next_u32() as f32;
-    let ret = sum / TWO_POW_32;
+pub fn canonical_from_draw_libstdcxx(draw: u32) -> f32 {
+    let ret = draw as f32 / TWO_POW_32;
     if ret >= 1.0 {
         // std::nextafter(1.0f, 0.0f)
         f32::from_bits(1.0f32.to_bits() - 1)
     } else {
         ret
     }
+}
+
+/// libc++ `std::generate_canonical<float, 24>` for one mt19937 draw: no
+/// clamp, so draws u >= 2^32 - 128 give exactly 1.0.
+#[inline]
+pub fn canonical_from_draw_libcxx(draw: u32) -> f32 {
+    draw as f32 / TWO_POW_32
+}
+
+/// `std::generate_canonical<float, 24>` for one draw, in this build's column
+/// ([`crate::AARCH64_SEMANTICS`]).
+#[inline]
+pub fn canonical_from_draw(draw: u32) -> f32 {
+    if crate::AARCH64_SEMANTICS {
+        canonical_from_draw_libcxx(draw)
+    } else {
+        canonical_from_draw_libstdcxx(draw)
+    }
+}
+
+/// `std::generate_canonical<float, 24>(mt19937&)`.
+#[inline]
+pub fn generate_canonical_f32(engine: &mut Mt19937) -> f32 {
+    canonical_from_draw(engine.next_u32())
 }
 
 static NEXT_SEED: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
@@ -133,7 +167,8 @@ pub struct RandomGenerator {
 }
 
 impl RandomGenerator {
-    /// A generator returning values in `[min, max)`, seeded with `seed`
+    /// A generator returning values in `[min, max)` (`[min, max]` in the
+    /// libc++ column, see the module docs), seeded with `seed`
     /// (upstream passes `next_seed_++`, an `int`, to `std::mt19937`).
     pub fn new(min: f32, max: f32, seed: i32) -> Self {
         Self {
@@ -208,14 +243,57 @@ mod tests {
         assert_eq!(engine.next_u32(), 4_123_659_995);
     }
 
+    const EDGE: u32 = u32::MAX - 127;
+    const BELOW_ONE: f32 = 1.0 - 1.0 / 16_777_216.0;
+
     #[test]
-    fn canonical_never_reaches_one() {
-        assert!(f32::from_bits(1.0f32.to_bits() - 1) < 1.0);
-        let mut generator = RandomGenerator::new(-1.0, 1.0, 0);
-        for _ in 0..10_000 {
-            let v = generator.next();
-            assert!((-1.0..1.0).contains(&v));
+    fn edge_draws_differ_between_the_columns() {
+        for draw in [EDGE, EDGE + 1, u32::MAX - 1, u32::MAX] {
+            assert_eq!(canonical_from_draw_libstdcxx(draw), BELOW_ONE);
+            assert_eq!(canonical_from_draw_libcxx(draw), 1.0);
         }
+        let draw = EDGE - 1;
+        assert_eq!(canonical_from_draw_libstdcxx(draw), BELOW_ONE);
+        assert_eq!(canonical_from_draw_libcxx(draw), BELOW_ONE);
+    }
+
+    #[test]
+    fn edge_draw_reaches_max_only_in_the_libcxx_column() {
+        let map = |canonical: f32| canonical * (1.0f32 - -1.0) + -1.0;
+        assert_eq!(
+            map(canonical_from_draw_libstdcxx(EDGE)),
+            1.0 - 2.0 / 16_777_216.0
+        );
+        assert_eq!(map(canonical_from_draw_libcxx(EDGE)), 1.0);
+    }
+
+    #[test]
+    fn columns_agree_below_the_edge() {
+        let mut engine = Mt19937::new(1);
+        for _ in 0..100_000 {
+            let draw = engine.next_u32().min(EDGE - 1);
+            assert_eq!(
+                canonical_from_draw_libstdcxx(draw),
+                canonical_from_draw_libcxx(draw)
+            );
+        }
+        for draw in [0, 1, 1 << 31, EDGE - 1] {
+            assert_eq!(
+                canonical_from_draw_libstdcxx(draw),
+                canonical_from_draw_libcxx(draw)
+            );
+        }
+    }
+
+    #[test]
+    fn the_build_uses_its_column() {
+        let expected = if cfg!(any(target_arch = "aarch64", feature = "aarch64-semantics")) {
+            1.0
+        } else {
+            BELOW_ONE
+        };
+        assert_eq!(canonical_from_draw(EDGE), expected);
+        assert_eq!(crate::AARCH64_SEMANTICS, expected == 1.0);
     }
 
     #[test]

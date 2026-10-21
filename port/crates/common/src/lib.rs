@@ -6,8 +6,8 @@
 //!   match byte for byte;
 //! - [`base64`]: JUCE's base64, used for buffers inside that JSON;
 //! - [`scalar`]: single-lane versions of the `futils`/`utils` math helpers;
-//! - [`random`]: the engine RNG (`std::mt19937` through libstdc++'s
-//!   `uniform_real_distribution<float>`);
+//! - [`random`]: the engine RNG (`std::mt19937` through
+//!   `uniform_real_distribution<float>`, per target C++ library);
 //! - [`line_generator`]: `LineGenerator` (LFO shapes, remap curves, the
 //!   wavetable Line Source);
 //! - [`load_save`]: version comparison and buffer re-encoding used by JSON
@@ -25,6 +25,13 @@ pub mod scalar;
 
 pub use line_generator::LineGenerator;
 pub use random::RandomGenerator;
+
+/// Whether this build follows the aarch64 reference (macOS arm64, libc++)
+/// where it differs from the x86_64 one: true on aarch64, and on other
+/// targets with the `aarch64-semantics` feature (the same switch as
+/// `sas-simd`). The only such site here is [`random::canonical_from_draw`].
+pub const AARCH64_SEMANTICS: bool =
+    cfg!(any(target_arch = "aarch64", feature = "aarch64-semantics"));
 
 /// Milestone in `migration/PLAN.md` that introduced this crate.
 pub const MILESTONE: &str = "M4";
