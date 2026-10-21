@@ -1754,6 +1754,10 @@ Captures (all under `module_defaults`, no tolerance changes):
   sweeps (period clamped at both ends), feedback −1→1, wet 0→1, filter
   cutoff 8→136 and spread 0→1, damping 0→1, 48/96 kHz, 2× oversampling,
   and two 5 s long tails (feedback 1.0 and 0.97).
+- `effects/stereo_delay/saturate_large_ping_pong` (review): a 6.0-amplitude
+  82 Hz saw into ping pong at feedback 0.95, which drives the loop past the
+  ±5.28 onset of the filtered styles' `saturateLarge` clip. Port 1.9e-6 /
+  −142.8 dB; a ratio 8→4 mutant fails it at −8.7 dB.
 - `effects/multi_delay` (new): per-lane frequencies, chorus-range sweeps
   (12.5 Hz–2 kHz, feedback −0.95→0.95), stereo style and a 3 s tail.
 - `effects/delay_module` (new): defaults, free frequency −2→9 (0.25–512 Hz),
@@ -1761,7 +1765,7 @@ Captures (all under `module_defaults`, no tolerance changes):
   feedback/filter/wet sweeps, enable toggling at 1 Hz, 96 kHz, 2×
   oversampling and a 5 s full-feedback tail.
 
-Metrics (x86_64 reference, port on SSE2): 29 outputs, all pass. Worst
+Metrics (x86_64 reference, port on SSE2): 30 outputs, all pass. Worst
 `max_abs_error` 3.4e-6 (`multi_delay/chorus_frequency_sweep`), worst
 residual −118.8 dB (`multi_delay/long_tail_lanes`); none bit-identical
 (fast-math reference).

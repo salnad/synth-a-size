@@ -13,6 +13,7 @@
         "mono_saw_frequency_sweep:audio": "1fce9f5ff8e9fddf",
         "oversampled_2x:audio": "a8a28a2f14301e96",
         "ping_pong_noise_96k:audio": "163b2ecd64a58c6c",
+        "saturate_large_ping_pong:audio": "67750206af3a28e6",
         "stereo_noise_filter_sweep:audio": "d4694248d3771423",
         "unclamped_unfiltered_negative_feedback:audio": "7d6b419606df2763"
       },

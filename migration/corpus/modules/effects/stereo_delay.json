@@ -243,6 +243,21 @@
         "filter_cutoff": 60.0,
         "filter_spread": 1.0
       }
+    },
+    "saturate_large_ping_pong": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 82.0,
+          "amp": 6.0
+        },
+        "style": 2,
+        "frequency": 8.0,
+        "frequency_aux": 12.0,
+        "feedback": 0.95,
+        "wet": 0.5
+      }
     }
   }
 }
