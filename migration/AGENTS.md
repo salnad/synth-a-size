@@ -155,6 +155,33 @@ none of them edits a shared list.
      example `WavetableCreator::stateToJson().dump()`), never a print you
      formatted yourself. A reduced-precision print such as `%.3f` would
      hide a tolerance inside an "exact" comparison.
+   - *JSON state* (presets, wavetable creator JSON): declare the artifact as
+     JSON so it is compared structurally, with floats held to the
+     owner-approved bound of 4 f32 ulp or 1e-6 absolute, whichever is
+     looser. Name the keys whose strings are base64 little-endian f32 data;
+     they are decoded and compared element-wise. Other strings, including
+     PCM base64, stay exact:
+
+     ```json
+     "artifacts": { "saved.json": "json" },
+     "base64_f32_keys": ["wave_data"]
+     ```
+
+     This applies in sas-parity and in every cross-build `run_corpus.py
+     compare`, including calibration. Determinism compares (`--exact`) and
+     hashes stay byte-exact. `"json_bound"` may only tighten the bound.
+     Details are in `decisions/owner-decisions-json-and-morphs.md`.
+   - *Ill-conditioned content* that the official reference cannot meet
+     against its own no-fast-math build may use `"reference": "nofastmath"`.
+     The case is then compared bit for bit against the `REF_FAST_MATH=OFF`
+     captures. Two conditions apply. First, its id must be listed in the
+     allowlist of `decisions/owner-decisions-json-and-morphs.md`, which
+     only the owner extends. Second, CI's calibration step must show the
+     official reference failing the case's normal limits against that build
+     (`compare --justify-nofastmath`). Such cases cannot set tolerances.
+     Their no-fast-math hashes come from the `parity-captures-nofastmath`
+     artifact:
+     `run_corpus.py hashes <tree> --write --reference nofastmath`.
    - *Render and record hashes*:
 
      ```bash
@@ -216,8 +243,14 @@ none of them edits a shared list.
    - Exact-match artifacts:
      `assert_artifact!("wavetable/creator/init", "saved.json", json)` or
      `case.assert_artifact(name, &bytes)`. These compare byte for byte, with
-     no tolerance and no normalisation; `case.artifact(name)` returns the
-     reference text.
+     no tolerance and no normalisation, unless the case declares the
+     artifact `"json"` (JSON bound above); the mode always comes from the
+     case file. `case.artifact(name)` returns the reference text.
+   - A `"reference": "nofastmath"` case uses the same `assert_parity!` /
+     `assert_artifact!` calls. sas-parity reads its captures from
+     `SAS_PARITY_CAPTURES_NOFASTMATH` (default `build/parity-nofastmath`;
+     rendered on demand from `migration/reference/build-nofastmath`) and
+     requires bit equality.
    - Tolerances come only from the case files. Tests cannot pass, scale or
      override them. The hidden `report()` / `parity_report()` helpers are
      for interactive debugging only. A parity test must call

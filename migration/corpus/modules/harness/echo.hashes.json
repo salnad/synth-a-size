@@ -2,6 +2,8 @@
   "entries": [
     {
       "hashes": {
+        "json_state:artifact/params.json": "16515964fed3d8af",
+        "json_state:ramp": "d82a6f5707ada163",
         "params_and_file:artifact/corpus_file.txt": "f9ae75697c4f35a6",
         "params_and_file:artifact/params.json": "513f3ca04fba4530",
         "params_and_file:ramp": "3ec03466e36fa013"

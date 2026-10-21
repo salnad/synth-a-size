@@ -178,3 +178,121 @@ fn artifact_mismatches_fail_with_the_first_difference() {
     assert!(panic::catch_unwind(|| case.assert_artifact("params.json", &trailing)).is_err());
     assert!(panic::catch_unwind(|| case.assert_artifact("missing.json", "")).is_err());
 }
+
+const JSON_STATE: &str = "harness/echo/json_state";
+
+fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let word = chunk
+            .iter()
+            .enumerate()
+            .fold(0u32, |w, (i, &b)| w | (u32::from(b) << (16 - 8 * i)));
+        for i in 0..4 {
+            out.push(if i <= chunk.len() {
+                ALPHABET[((word >> (18 - 6 * i)) & 63) as usize] as char
+            } else {
+                '='
+            });
+        }
+    }
+    out
+}
+
+fn f32_base64(values: &[f32]) -> String {
+    base64(
+        &values
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect::<Vec<u8>>(),
+    )
+}
+
+fn moved(value: f32, ulps: i32) -> f32 {
+    f32::from_bits((value.to_bits() as i32 + ulps) as u32)
+}
+
+// The samples json_state's wave_data encodes (see harness/echo.json).
+const WAVE: [f32; 4] = [0.25, -6.7, 0.0, 1000.25];
+
+fn json_state_with(edit: impl FnOnce(&mut serde_json::Value)) -> String {
+    let case = ModuleCase::load(JSON_STATE);
+    let mut state: serde_json::Value = serde_json::from_str(&case.artifact("params.json")).unwrap();
+    edit(&mut state);
+    // Compact, so the bytes always differ from nlohmann's dump(2).
+    serde_json::to_string(&state).unwrap()
+}
+
+fn json_state_fails(port: &str) -> Option<String> {
+    let case = ModuleCase::load(JSON_STATE);
+    panic::catch_unwind(|| case.assert_artifact("params.json", port))
+        .err()
+        .map(|e| *e.downcast::<String>().unwrap())
+}
+
+#[test]
+fn declared_json_state_is_compared_under_the_owner_bound() {
+    let case = ModuleCase::load(JSON_STATE);
+    assert_eq!(
+        case.comparison().artifact_mode("params.json"),
+        cases::ArtifactMode::Json
+    );
+    assert_eq!(case.comparison().json_bound, cases::JSON_BOUND);
+    assert_eq!(case.comparison().base64_f32_keys, ["wave_data"]);
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&case.artifact("params.json")).unwrap()
+            ["wave_data"],
+        f32_base64(&WAVE)
+    );
+
+    // Formatting and -0.0 vs 0.0 do not count.
+    assert_eq!(json_state_fails(&json_state_with(|_| {})), None);
+    assert_eq!(
+        json_state_fails(&json_state_with(|s| s["zero"] = serde_json::json!(0.0))),
+        None
+    );
+
+    // A 1-ulp drift in every base64 float passes; 5 ulp on -6.7 fails.
+    let one: Vec<f32> = WAVE.iter().map(|v| moved(*v, 1)).collect();
+    assert_eq!(
+        json_state_fails(&json_state_with(
+            |s| s["wave_data"] = f32_base64(&one).into()
+        )),
+        None
+    );
+    let five = [WAVE[0], moved(WAVE[1], 5), WAVE[2], WAVE[3]];
+    let message = json_state_fails(&json_state_with(|s| {
+        s["wave_data"] = f32_base64(&five).into()
+    }))
+    .unwrap();
+    assert!(
+        message.contains("JSON bound: 4 f32 ulp or 0.000001 absolute"),
+        "{message}"
+    );
+    assert!(message.contains("$.wave_data[1]"), "{message}");
+
+    // A JSON float: 4 ulp passes, 5 ulp fails (1000.25 is above the
+    // absolute floor's range).
+    for (ulps, passes) in [(4, true), (5, false)] {
+        let port = json_state_with(|s| s["gain"] = serde_json::json!(moved(1000.25, ulps)));
+        assert_eq!(json_state_fails(&port).is_none(), passes, "{ulps} ulp");
+    }
+
+    // PCM base64 is not a declared float key: one changed byte fails.
+    let mut pcm: Vec<u8> = [0i16, 1000, -1000, 32767]
+        .iter()
+        .flat_map(|v| v.to_le_bytes())
+        .collect();
+    assert!(
+        json_state_with(|_| {}).contains(&base64(&pcm)),
+        "audio_file encodes the authored PCM"
+    );
+    pcm[2] ^= 1;
+    let message =
+        json_state_fails(&json_state_with(|s| s["audio_file"] = base64(&pcm).into())).unwrap();
+    assert!(message.contains("$.audio_file"), "{message}");
+
+    // Structure stays exact: an integer turned into a float fails.
+    assert!(json_state_fails(&json_state_with(|s| s["count"] = serde_json::json!(3.0))).is_some());
+}

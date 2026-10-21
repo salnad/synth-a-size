@@ -189,6 +189,162 @@ class ToleranceRules(unittest.TestCase):
         self.assertIn("## not a heading", sections[0][1])
 
 
+ALLOWED = "filters/test/morph"
+DECISION = """# Owner decisions
+
+## No-fast-math exact cases (allowlist)
+
+- `%s` (test)
+
+## Something else
+
+- `filters/test/a`
+""" % ALLOWED
+
+
+def f32(value, ulps=0):
+    """value rounded to f32, moved by `ulps` representable steps."""
+    bits = struct.unpack("<I", struct.pack("<f", value))[0] + ulps
+    return struct.unpack("<f", struct.pack("<I", bits))[0]
+
+
+def b64_f32(values):
+    import base64
+    return base64.b64encode(struct.pack("<%df" % len(values), *values)).decode()
+
+
+def json_problems(ref, test, keys=()):
+    return rc.json_bound_problems(json.dumps(ref).encode(), json.dumps(test).encode(), rc.JSON_BOUND, keys)
+
+
+class ComparisonRules(unittest.TestCase):
+    """Owner decisions of 2026-10-21 (JSON bound, no-fast-math exact cases)."""
+
+    def resolve(self, case, file_level=None, allowlist=()):
+        data = dict(file_level or {}, module="filter", cases={"morph": case})
+        return rc.resolve_module_file("filters", "test", "x.json", data, MODULE_DEFAULTS, LEDGER, allowlist)[0]
+
+    def assertCaseError(self, fragment, function, *args, **kwargs):
+        with self.assertRaises(rc.CaseError) as raised:
+            function(*args, **kwargs)
+        self.assertIn(fragment, str(raised.exception))
+
+    def test_undeclared_cases_resolve_as_before(self):
+        entry = self.resolve({"num_samples": 1})
+        self.assertEqual(sorted(entry), ["file", "id", "spec", "tolerances"])
+
+    def test_json_artifacts_get_the_pinned_bound(self):
+        entry = self.resolve({"artifacts": {"saved.json": "json", "notes.txt": "exact"},
+                              "base64_f32_keys": ["wave_data"]})
+        self.assertEqual(entry["artifacts"], {"saved.json": "json", "notes.txt": "exact"})
+        self.assertEqual(entry["json_bound"], {"ulp": 4, "abs": 1e-6})
+        self.assertEqual(entry["base64_f32_keys"], ["wave_data"])
+        tighter = self.resolve({"json_bound": {"ulp": 0, "abs": 0}}, {"artifacts": {"saved.json": "json"}})
+        self.assertEqual(tighter["json_bound"], {"ulp": 0, "abs": 0.0})
+        self.assertNotIn("json_bound", self.resolve({"artifacts": {"saved.json": "exact"}}))
+
+    def test_json_bound_cannot_be_loosened(self):
+        json_artifact = {"artifacts": {"saved.json": "json"}}
+        self.assertCaseError("looser than the approved JSON bound", self.resolve,
+                             dict(json_artifact, json_bound={"ulp": 5}))
+        self.assertCaseError("looser than the approved JSON bound", self.resolve,
+                             dict(json_artifact, json_bound={"abs": 1e-5}))
+        self.assertCaseError("looser than the approved JSON bound", self.resolve,
+                             {"num_samples": 1}, dict(json_artifact, json_bound={"ulp": 96}))
+        self.assertCaseError("json_bound.ulp must be a non-negative integer", self.resolve,
+                             dict(json_artifact, json_bound={"ulp": 2.5}))
+        self.assertCaseError("json_bound must be", self.resolve, dict(json_artifact, json_bound={"rel": 1}))
+        self.assertCaseError("mode must be one of", self.resolve, {"artifacts": {"saved.json": "loose"}})
+
+    def test_nofastmath_needs_the_decision_doc_allowlist(self):
+        self.assertCaseError("only allowed for case ids listed", self.resolve, {"reference": "nofastmath"})
+        self.assertCaseError("only allowed for case ids listed", self.resolve, {"reference": "nofastmath"},
+                             allowlist=["filters/test/morph_2", "filters/test"])
+        entry = self.resolve({"reference": "nofastmath", "artifacts": {"saved.json": "json"}},
+                             {"tolerances": {"residual_db": -120}}, allowlist=[ALLOWED])
+        self.assertEqual(entry["reference"], "nofastmath")
+        # The declared modes stay: they are the normal limits calibration uses.
+        self.assertEqual(entry["json_bound"], rc.JSON_BOUND)
+        # Normal limits are the module defaults; file-level tightening is ignored.
+        self.assertEqual(entry["tolerances"], MODULE_DEFAULTS["tolerances"])
+        self.assertCaseError("cannot set tolerance_exception", self.resolve,
+                             {"reference": "nofastmath", "tolerance_exception": approved({"residual_db": -70})},
+                             allowlist=[ALLOWED])
+        self.assertCaseError("cannot set tolerances", self.resolve,
+                             {"reference": "nofastmath", "tolerances": {"max_abs_error": 1e-12}},
+                             allowlist=[ALLOWED])
+        self.assertCaseError("unknown keys ['reference']", self.resolve, {"num_samples": 1},
+                             {"reference": "nofastmath"}, allowlist=[ALLOWED])
+        self.assertCaseError("reference must be one of", self.resolve, {"reference": "x86"})
+        self.assertEqual(self.resolve({"reference": "official"}).get("reference"), None)
+
+    def test_allowlist_comes_from_its_decision_doc_section(self):
+        self.assertEqual(rc.allowlist_from(DECISION), [ALLOWED])
+
+    def test_repository_allowlist_parses(self):
+        allowlist = rc.read_allowlist()
+        self.assertIn("wavetable/render/wave_linear_freq_disjoint_spectra", allowlist)
+        self.assertEqual(len(allowlist), len(set(allowlist)))
+
+    def test_five_ulp_drift_fails_and_four_passes(self):
+        # Above |x| = 4 the ulp term is the looser one (4 ulp > 1e-6).
+        for value in (1000.3, -6.5, 4.0):
+            self.assertEqual(json_problems({"x": f32(value)}, {"x": f32(value, 4)}), [], value)
+            problems = json_problems({"x": f32(value)}, {"x": f32(value, 5)})
+            self.assertEqual(len(problems), 1, value)
+            self.assertIn("$.x", problems[0])
+
+    def test_absolute_floor_is_looser_below_four(self):
+        # Below |x| = 4 the 1e-6 floor dominates: 5 ulp of 0.3 is 1.5e-7.
+        self.assertEqual(json_problems({"x": f32(0.3)}, {"x": f32(0.3, 5)}), [])
+        self.assertNotEqual(json_problems({"x": f32(0.3)}, {"x": f32(0.3) + 1.01e-6}), [])
+
+    def test_negative_zero_equals_zero(self):
+        self.assertEqual(json_problems({"x": [-0.0, 0.0]}, {"x": [0.0, -0.0]}), [])
+        self.assertEqual(json_problems({"w": b64_f32([-0.0])}, {"w": b64_f32([0.0])}, ["w"]), [])
+
+    def test_absolute_floor_near_zero(self):
+        tiny = 1e-30
+        self.assertEqual(json_problems({"x": tiny}, {"x": tiny + 7.8e-7}), [])
+        self.assertNotEqual(json_problems({"x": tiny}, {"x": tiny + 1.1e-6}), [])
+
+    def test_structure_types_integers_and_strings_are_exact(self):
+        ref = {"a": 1, "b": "s", "c": [1.0, 2.0], "d": True, "e": None}
+        self.assertEqual(json_problems(ref, dict(ref)), [])
+        for change in ({"a": 2}, {"a": 1.0}, {"b": "t"}, {"c": [1.0]}, {"d": False}, {"e": 0}, {"f": 1}):
+            self.assertNotEqual(json_problems(ref, dict(ref, **change)), [], change)
+        self.assertNotEqual(json_problems(ref, {k: v for k, v in ref.items() if k != "a"}), [])
+
+    def test_formatting_and_key_order_do_not_count(self):
+        problems = rc.json_bound_problems(b'{"a": 1, "b": 0.5}', b'{\n  "b": 5e-1,\n  "a": 1\n}\n', rc.JSON_BOUND)
+        self.assertEqual(problems, [])
+        self.assertNotEqual(rc.json_bound_problems(b'{"a": 1}', b'{"a": NaN}', rc.JSON_BOUND), [])
+
+    def test_base64_f32_one_ulp_passes_five_fails(self):
+        values = [0.25, -6.7, 0.3]
+        ref = {"wave_data": b64_f32(values)}
+        self.assertEqual(json_problems(ref, {"wave_data": b64_f32([f32(v, 1) for v in values])}, ["wave_data"]), [])
+        drift = [values[0], f32(values[1], 5), values[2]]
+        problems = json_problems(ref, {"wave_data": b64_f32(drift)}, ["wave_data"])
+        self.assertEqual(len(problems), 1)
+        self.assertIn("$.wave_data[1]", problems[0])
+        self.assertIn("5 ulp", problems[0])
+        shorter = json_problems(ref, {"wave_data": b64_f32(values[:2])}, ["wave_data"])
+        self.assertIn("3 f32 values in the reference, 2 in the port", shorter[0])
+        # Undeclared, the same strings compare exactly.
+        self.assertNotEqual(json_problems(ref, {"wave_data": b64_f32([f32(v, 1) for v in values])}), [])
+
+    def test_changed_pcm_byte_fails(self):
+        import base64
+        pcm = struct.pack("<4h", 0, 1000, -1000, 32767)
+        changed = pcm[:2] + bytes([pcm[2] ^ 1]) + pcm[3:]
+        ref = {"audio_file": base64.b64encode(pcm).decode(), "wave_data": b64_f32([0.5])}
+        test = dict(ref, audio_file=base64.b64encode(changed).decode())
+        problems = json_problems(ref, test, ["wave_data"])
+        self.assertEqual(len(problems), 1)
+        self.assertIn("$.audio_file", problems[0])
+
+
 class Selection(unittest.TestCase):
     # N5: --only matched substrings.
     def test_only_matches_exact_ids_or_path_prefixes(self):
@@ -250,8 +406,8 @@ class ScratchRepo(unittest.TestCase):
             sys.argv = old
         return code, output.getvalue()
 
-    def make_tree(self, identity=None):
-        tree = os.path.join(self.tmp.name, "tree")
+    def make_tree(self, identity=None, name="tree"):
+        tree = os.path.join(self.tmp.name, name)
         renders = os.path.join(tree, "renders")
         module = os.path.join(tree, "modules", "filters", "test", "a")
         os.makedirs(renders, exist_ok=True)
@@ -388,6 +544,201 @@ class ScratchRepo(unittest.TestCase):
         self.assertIn("ERROR harness/textonly/json:extra (missing in reference tree)", output)
         self.assertIn("pass  harness/textonly/json:artifact/saved.json (exact)", output)
         self.assertNotIn("audio-diff should not run", output)
+
+    def make_json_trees(self, test_document):
+        rc.write_json(os.path.join(rc.MODULE_CASES, "filters", "test.json"), {
+            "module": "filter", "artifacts": {"saved.json": "json"}, "base64_f32_keys": ["wave_data"],
+            "cases": {"a": {"num_samples": 4}}})
+        reference = {"gain": f32(0.3), "wave_data": b64_f32([0.25, -6.7, 0.0])}
+        trees = []
+        for name, document in (("ref", reference), ("test", test_document)):
+            case_dir = os.path.join(self.tmp.name, name, "modules", "filters", "test", "a")
+            os.makedirs(case_dir, exist_ok=True)
+            with open(os.path.join(case_dir, "artifact_saved.json"), "w") as handle:
+                json.dump(document, handle, indent=None if name == "ref" else 4)
+            trees.append(os.path.join(self.tmp.name, name))
+        fake_diff = os.path.join(self.tmp.name, "fake-audio-diff")
+        with open(fake_diff, "w") as handle:
+            handle.write("#!/bin/sh\necho audio-diff should not run\nexit 2\n")
+        os.chmod(fake_diff, 0o755)
+        return trees, fake_diff
+
+    def test_compare_declared_json_artifact_uses_the_bound(self):
+        drift = {"gain": f32(0.3, 3), "wave_data": b64_f32([f32(0.25, 1), f32(-6.7, 4), -0.0])}
+        (ref, test), fake_diff = self.make_json_trees(drift)
+        only = ["--audio-diff", fake_diff, "--only", "filters/test"]
+        code, output = self.run_main("compare", ref, test, *only)
+        self.assertEqual(code, 0, output)
+        self.assertIn("pass  filters/test/a:artifact/saved.json (json bound)", output)
+        # Determinism compares stay byte-exact.
+        code, output = self.run_main("compare", ref, test, "--exact", *only)
+        self.assertEqual(code, 1, output)
+        self.assertIn("FAIL  filters/test/a:artifact/saved.json (exact)", output)
+
+        (ref, test), fake_diff = self.make_json_trees(
+            {"gain": f32(0.3), "wave_data": b64_f32([0.25, f32(-6.7, 5), 0.0])})
+        code, output = self.run_main("compare", ref, test, *only)
+        self.assertEqual(code, 1, output)
+        self.assertIn("$.wave_data[1]", output)
+        self.assertIn("FAIL  filters/test/a:artifact/saved.json (json bound)", output)
+
+    # Preset Registry #7: "Tolerances are achievable" failed on every preset
+    # state artifact because the proxy's default-wavetable wave_data differs
+    # by 1 ulp in 4 samples and text artifacts were compared byte for byte.
+    def test_calibration_compare_applies_the_declared_bound_to_nested_wave_data(self):
+        saw = [f32((i - 1024) / 1024.0) for i in range(2048)]
+        proxy_saw = list(saw)
+        for index in (3, 700, 1500, 2047):
+            proxy_saw[index] = f32(saw[index], 1)
+
+        def preset(samples):
+            keyframe = {"position": 0, "wave_data": b64_f32(samples)}
+            group = {"components": [{"type": "Wave Source", "keyframes": [keyframe]}]}
+            return {"settings": {"osc_1_level": 0.7071067690849304,
+                                 "wavetables": [{"name": "Init", "groups": [group]}]}, "synth_version": "1.0.6"}
+
+        case = {"module": "preset_state", "cases": {"init": {}}}
+        os.makedirs(os.path.join(rc.MODULE_CASES, "preset"), exist_ok=True)
+        trees = {}
+        for name, samples in (("ref", saw), ("proxy", proxy_saw)):
+            case_dir = os.path.join(self.tmp.name, name, "modules", "preset", "state", "init")
+            os.makedirs(case_dir)
+            with open(os.path.join(case_dir, "artifact_saved.vital"), "w") as handle:
+                json.dump(preset(samples), handle)
+            trees[name] = os.path.join(self.tmp.name, name)
+        fake_diff = os.path.join(self.tmp.name, "fake-audio-diff")
+        with open(fake_diff, "w") as handle:
+            handle.write("#!/bin/sh\necho audio-diff should not run\nexit 2\n")
+        os.chmod(fake_diff, 0o755)
+        compare = ["compare", trees["ref"], trees["proxy"], "--audio-diff", fake_diff, "--only", "preset/state"]
+
+        # Undeclared: byte-exact, which is the failure #7 hit.
+        rc.write_json(os.path.join(rc.MODULE_CASES, "preset", "state.json"), case)
+        code, output = self.run_main(*compare)
+        self.assertEqual(code, 1, output)
+        self.assertIn("FAIL  preset/state/init:artifact/saved.vital (exact)", output)
+
+        # Declared JSON state with base64-f32 wave_data: the calibration
+        # (cross-build) compare passes under the bound...
+        rc.write_json(os.path.join(rc.MODULE_CASES, "preset", "state.json"),
+                      dict(case, artifacts={"saved.vital": "json"}, base64_f32_keys=["wave_data"]))
+        code, output = self.run_main(*compare)
+        self.assertEqual(code, 0, output)
+        self.assertIn("pass  preset/state/init:artifact/saved.vital (json bound)", output)
+        # ...while the determinism compare (same build twice) stays byte-exact.
+        code, output = self.run_main(*(compare + ["--exact"]))
+        self.assertEqual(code, 1, output)
+        self.assertIn("FAIL  preset/state/init:artifact/saved.vital (exact)", output)
+
+        # 5 ulp on a sample of magnitude >= 4 would still fail; samples in
+        # [-1, 1] are held to the 1e-6 absolute floor.
+        proxy_saw[700] = saw[700] + 1.5e-6
+        with open(os.path.join(trees["proxy"], "modules", "preset", "state", "init", "artifact_saved.vital"),
+                  "w") as handle:
+            json.dump(preset(proxy_saw), handle)
+        code, output = self.run_main(*compare)
+        self.assertEqual(code, 1, output)
+        self.assertIn("$.settings.wavetables[0].groups[0].components[0].keyframes[0].wave_data[700]", output)
+
+    def write_morph_case(self):
+        os.makedirs(os.path.dirname(rc.DECISION_DOC), exist_ok=True)
+        with open(rc.DECISION_DOC, "w") as handle:
+            handle.write(DECISION)
+        rc.write_json(os.path.join(rc.MODULE_CASES, "filters", "test.json"), {
+            "module": "filter", "cases": {"a": {"num_samples": 4}, "morph": {"reference": "nofastmath"}}})
+
+    def add_morph_capture(self, tree, identity, values):
+        case_dir = os.path.join(tree, "modules", "filters", "test", "morph")
+        os.makedirs(case_dir, exist_ok=True)
+        digest = write_npy(os.path.join(case_dir, "out_audio.npy"), values, 4)
+        rc.write_json(os.path.join(case_dir, "capture.json"), {
+            "build": dict(identity), "outputs": {"audio": {"file": "out_audio.npy", "fnv1a64": digest}}})
+        return tree
+
+    def test_compare_nofastmath_case_is_exact_against_the_nofastmath_tree(self):
+        self.write_morph_case()
+        values = [0.5, -0.25, 0.125, 0.0]
+        official = self.add_morph_capture(os.path.join(self.tmp.name, "ref"), IDENTITY, [0.5, -0.25, 0.126, 0.0])
+        proxy = self.add_morph_capture(os.path.join(self.tmp.name, "proxy"), IDENTITY, values)
+        port = self.add_morph_capture(os.path.join(self.tmp.name, "port"), IDENTITY, values)
+        fake_diff = os.path.join(self.tmp.name, "fake-audio-diff")
+        with open(fake_diff, "w") as handle:
+            handle.write("#!/bin/sh\necho audio-diff should not run\nexit 2\n")
+        os.chmod(fake_diff, 0o755)
+        only = ["--only", "filters/test/morph", "--audio-diff", fake_diff]
+
+        code, output = self.run_main("compare", official, port, *only)
+        self.assertEqual(code, 2, output)
+        self.assertIn("pass --reference-nofastmath DIR", output)
+
+        code, output = self.run_main("compare", official, port, "--reference-nofastmath", proxy, *only)
+        self.assertEqual(code, 0, output)
+        self.assertIn("pass  filters/test/morph:audio (nofastmath, bit-exact)", output)
+
+        self.add_morph_capture(port, IDENTITY, [0.5, -0.25, f32(0.125, 1), 0.0])
+        code, output = self.run_main("compare", official, port, "--reference-nofastmath", proxy, *only)
+        self.assertEqual(code, 1, output)
+        self.assertIn("FAIL  filters/test/morph:audio (nofastmath, bit-exact)", output)
+
+    def test_nofastmath_case_must_be_justified_in_calibration(self):
+        self.write_morph_case()
+        official = self.add_morph_capture(os.path.join(self.tmp.name, "ref"), IDENTITY, [0.5, -0.25, 0.126, 0.0])
+        proxy = self.add_morph_capture(os.path.join(self.tmp.name, "proxy"), IDENTITY, [0.5, -0.25, 0.125, 0.0])
+        cmp_diff = os.path.join(self.tmp.name, "cmp-audio-diff")
+        with open(cmp_diff, "w") as handle:
+            handle.write('#!/bin/sh\ncmp -s "$1" "$2" && exit 0\nexit 1\n')
+        os.chmod(cmp_diff, 0o755)
+        only = ["--only", "filters/test/morph", "--audio-diff", cmp_diff, "--justify-nofastmath"]
+
+        code, output = self.run_main("compare", official, proxy, *only)
+        self.assertEqual(code, 0, output)
+        self.assertIn("pass  filters/test/morph (reference \"nofastmath\" justified", output)
+        self.assertIn("in filters/test/morph:audio", output)
+
+        # The official reference passes its limits: the case must use it.
+        self.add_morph_capture(official, IDENTITY, [0.5, -0.25, 0.125, 0.0])
+        code, output = self.run_main("compare", official, proxy, *only)
+        self.assertEqual(code, 2, output)
+        self.assertIn("ERROR filters/test/morph (reference \"nofastmath\" NOT justified", output)
+
+    def test_nofastmath_hashes_use_their_own_identity(self):
+        self.write_morph_case()
+        nofastmath = dict(IDENTITY, fast_math=False, opt_flags="-O3 (no fast-math)")
+        official = self.add_morph_capture(self.make_tree(), IDENTITY, [0.5] * 4)
+        self.write_baseline(official)
+        proxy = self.add_morph_capture(self.make_tree(nofastmath, "proxy"), nofastmath, [0.25] * 4)
+
+        code, output = self.run_main("hashes", official, "--check", "--reference", "nofastmath")
+        self.assertEqual(code, 2, output)
+        self.assertIn("not rendered by a REF_FAST_MATH=OFF build", output)
+
+        code, output = self.run_main("hashes", proxy, "--check", "--reference", "nofastmath",
+                                     "--require-known-identity")
+        self.assertEqual(code, 1, output)
+        self.assertIn("has no hashes for the CI build identity", output)
+        code, output = self.run_main("hashes", proxy, "--write", "--reference", "nofastmath")
+        self.assertEqual(code, 0, output)
+        with open(os.path.join(rc.MODULE_CASES, "filters", "test.hashes.json")) as handle:
+            entries = json.load(handle)["entries"]
+        self.assertEqual([sorted(e["hashes"]) for e in entries],
+                         [["a:artifact/saved.json", "a:audio", "morph:audio"], ["morph:audio"]])
+        self.assertEqual(entries[1]["identity"], nofastmath)
+        code, output = self.run_main("hashes", proxy, "--check", "--reference", "nofastmath",
+                                     "--require-known-identity")
+        self.assertEqual(code, 0, output)
+        code, output = self.run_main("hashes", official, "--check", "--require-known-identity")
+        self.assertEqual(code, 0, output)
+
+        self.add_morph_capture(proxy, nofastmath, [0.375] * 4)
+        code, output = self.run_main("hashes", proxy, "--check", "--reference", "nofastmath")
+        self.assertEqual(code, 1, output)
+        self.assertIn("MISMATCH", output)
+
+        other = dict(nofastmath, compiler="14.2.0")
+        stranger = self.add_morph_capture(self.make_tree(other, "stranger"), other, [0.25] * 4)
+        code, output = self.run_main("hashes", stranger, "--write", "--reference", "nofastmath")
+        self.assertEqual(code, 2, output)
+        self.assertIn("not a known CI identity", output)
 
     # B3: a failed render left stale data plus a new case.json.
     def test_failed_render_leaves_no_stale_capture(self):

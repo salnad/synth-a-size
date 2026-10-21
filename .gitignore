@@ -4,6 +4,7 @@
 
 # Reference harness build tree and local render outputs
 /migration/reference/build/
+/migration/reference/build-nofastmath/
 /build/
 /out/
 

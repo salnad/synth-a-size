@@ -1339,3 +1339,103 @@ router, so the add-time sample rate is overwritten before the first block.
 Where an idle processor lives changes only `isPolyphonic` and ownership,
 which no output exposes. Voice Engine's `SynthVoiceHandler` captures will
 cover it end to end.
+
+## 2026-10-21: owner approval — JSON bound and no-fast-math exact cases
+
+The owner (Salil) approved two decisions. They are recorded in
+`migration/decisions/owner-decisions-json-and-morphs.md` and enforced
+identically by `run_corpus.py` and sas-parity.
+
+- **JSON state is bounded, not byte-exact.**
+  - Text artifacts a case declares `"artifacts": {"<name>": "json"}` must
+    match structurally: keys (order ignored), types (integer ≠ float),
+    strings, integers and array lengths.
+  - Floats must agree within 4 f32 ulp or 1e-6 absolute, whichever is
+    looser; -0.0 equals 0.0. "A few ulp" is applied this way: the floor is
+    needed because source-formula values near zero differ by up to 96 ulp
+    but only 7.8e-7 absolute.
+  - Below |x| = 4 the floor is the looser term. Samples in [-1, 1] are
+    therefore effectively held to 1e-6 absolute, and only magnitudes ≥ 4
+    are held to 4 ulp.
+  - Keys listed in `base64_f32_keys` (e.g. `wave_data`) are decoded as
+    little-endian f32 arrays: same length, each element under the same
+    bound. Other strings stay exact, including PCM `audio_file`.
+  - Undeclared artifacts stay byte-exact. The bound is pinned in both
+    resolvers (`JSON_BOUND`); `"json_bound"` may only tighten it.
+  - It applies in sas-parity (`assert_artifact!` reads the mode from the
+    case) and in every cross-build `run_corpus.py compare`, including the
+    calibration proxy compare. Determinism (`--exact`) and hashes stay
+    byte-exact.
+  - This unblocks Preset Registry #7 (22 preset/state artifacts, where the
+    proxy's default-wavetable `wave_data` differs by 1 ulp in 4 samples)
+    once its case file declares the artifacts. It also unblocks the
+    Shared crate's pending `-0.0` `saved.json` cases.
+- **Ill-conditioned content is exact against the no-fast-math build.**
+  `"reference": "nofastmath"` (case-level only) compares every array and
+  artifact bit for bit against the `REF_FAST_MATH=OFF` captures. A case
+  qualifies only if:
+  - its id is in the decision doc's allowlist (one line per id; the
+    resolvers read it from there); and
+  - CI's calibration step shows the official reference failing the case's
+    normal limits against the no-fast-math build. Normal limits are the
+    module defaults plus the declared artifact modes. Run as
+    `compare build/ref build/proxy --justify-nofastmath`, this is the
+    general rule proposed to the owner (decision pending); both gates are
+    on.
+  - The case cannot set tolerances or a `tolerance_exception`.
+  - Captures: the calibration job uploads `parity-captures-nofastmath`, and
+    the parity job reads it through `SAS_PARITY_CAPTURES_NOFASTMATH`.
+  - Hashes are pinned per no-fast-math identity, for listed cases only
+    (`hashes --reference nofastmath`). That identity is known only as a CI
+    identity with just the fast-math setting changed.
+  - Allowlist: 5 wavetable ids from Wavetable Creator (corrected from 7;
+    `audio_fade_3_phase_1/_2` are well-conditioned after its source-formula
+    fixes):
+    - wavetable/render/wave_linear_freq_disjoint_spectra
+    - wavetable/render/wave_cubic_freq_disjoint_spectra
+    - wavetable/render/multi_group_disjoint_spectra
+    - wavetable/render/wave_folder_at_clamp
+    - wavetable/render/audio_fade_3_phase_0
+  - Comb filter, the 120 Hz crossover at 2× and above, oscillator pitch
+    sweeps and reverb tails are pending the owner.
+- **macOS arm64.** Probe CI run 39521775311 (throwaway branch
+  `cursor/macos-nofastmath-probe-f875`, which combines PR #2 and PR #8)
+  rendered 633 module outputs with no-fast-math builds:
+  - macOS 15: repeat renders are bit-identical.
+  - Same binary on macOS 14: identical except `poly_pow` (Apple `powf`,
+    1 ulp in 110 values); every allowlisted case is identical.
+  - Linux x86_64 vs macOS arm64: 180 outputs differ, including every array
+    of the five allowlisted cases (≤ 1.9e-6). So the Linux no-fast-math
+    captures cannot be the exact target on macOS. A macOS no-fast-math
+    build can be, pinned with its own identity, which includes the macOS
+    version.
+  - Not yet shown: the arm64 port matching it bit for bit. The port of these
+    cases is not on main, and the difference is not attributed yet. Nothing
+    is loosened.
+  - Found on the way: `line_generator.cpp` and `line_generator_edit.cpp`
+    ODR-use `LineGenerator::kDefaultResolution` in `params.value(...)`.
+    Apple clang fails to link that (no out-of-line definition); GCC builds
+    it. The probe used `static_cast<int>(...)`. The fix belongs with PR #2
+    or the Shared crate's harness files.
+- **Harness self-test:** `harness/echo/json_state` declares its
+  `params.json` as JSON, with base64-f32 `wave_data` and PCM `audio_file`.
+  sas-parity checks it against real captures: reformatting and -0.0 pass, a
+  1-ulp drift in every base64 float passes, 5 ulp at 6.7 fails, 4 vs 5 ulp
+  at 1000.25, a changed PCM byte fails, and 3 vs 3.0 fails. Hashes were
+  written from a local tree with the CI build identity.
+  - There is no nofastmath self-test case: a harness case would be
+    identical in both builds, and the calibration gate would rightly reject
+    it. The first end-to-end use is Wavetable Creator's allowlisted cases.
+- **Tests**, in run_corpus.py (`test_run_corpus.py`) and in sas-parity:
+  - loosening the bound (case or file level) is rejected;
+  - `reference: nofastmath` on an unlisted case is rejected, and so are
+    tolerances on a listed one;
+  - a 5-ulp drift fails while 4 passes (|x| ≥ 4);
+  - -0.0 vs 0.0 passes;
+  - base64 f32: 1 ulp passes, 5 ulp fails, a length change fails;
+  - a changed PCM byte fails;
+  - #7's calibration case (nested preset `wave_data`, 4 samples 1 ulp off)
+    fails undeclared, passes declared, and stays byte-exact under `--exact`;
+  - the justification gate passes and rejects as specified;
+  - no-fast-math hashes use their own identity;
+  - the bit-exact comparison flags -0.0 vs 0.0 and a 1-ulp change.

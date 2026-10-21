@@ -6,13 +6,63 @@
 //! capture whose resolution differs from this one, so the two cannot drift
 //! silently.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use audio_diff::Tolerances;
 use serde_json::{Map, Value};
 
+pub use crate::json_bound::JsonBound;
+
 const METRICS: [&str; 4] = ["max_abs_error", "rms_diff_db", "residual_db", "lsd_db"];
+
+/// Owner-approved bound for artifacts declared `"json"`
+/// (migration/decisions/owner-decisions-json-and-morphs.md, LEDGER.md
+/// 2026-10-21): 4 f32 ulp or 1e-6 absolute, whichever is looser. Cases may
+/// only tighten it. Mirrored in run_corpus.py (`JSON_BOUND`).
+pub const JSON_BOUND: JsonBound = JsonBound { ulp: 4, abs: 1e-6 };
+
+/// Heading of the decision doc section that lists the case ids allowed to
+/// use `"reference": "nofastmath"`. Mirrored in run_corpus.py.
+pub const ALLOWLIST_HEADING: &str = "No-fast-math exact cases (allowlist)";
+
+/// Which reference build a case is compared against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Reference {
+    /// The official (fast-math) reference, with the case tolerances.
+    #[default]
+    Official,
+    /// The `REF_FAST_MATH=OFF` build, bit for bit (allowlisted cases only).
+    NoFastMath,
+}
+
+/// How a text artifact is compared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArtifactMode {
+    Exact,
+    Json,
+}
+
+/// How a module case's outputs are compared (beyond its tolerances).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Comparison {
+    pub reference: Reference,
+    /// Declared artifact modes; undeclared artifacts are exact.
+    pub artifact_modes: BTreeMap<String, ArtifactMode>,
+    pub json_bound: JsonBound,
+    pub base64_f32_keys: Vec<String>,
+}
+
+impl Comparison {
+    /// The effective mode of artifact `name`.
+    pub fn artifact_mode(&self, name: &str) -> ArtifactMode {
+        match (self.reference, self.artifact_modes.get(name)) {
+            (Reference::Official, Some(ArtifactMode::Json)) => ArtifactMode::Json,
+            _ => ArtifactMode::Exact,
+        }
+    }
+}
 
 /// Approved render floor (migration/decisions/reference-determinism.md, owner
 /// approval in LEDGER.md 2026-10-20). Mirrored in run_corpus.py.
@@ -45,14 +95,23 @@ const MODULE_DEFAULT_KEYS: [&str; 5] = [
 const RENDER_SETTING_KEYS: [&str; 6] =
     ["sample_rate", "block_size", "tail", "length", "bpm", "seed"];
 
+const COMPARISON_KEYS: [&str; 3] = ["artifacts", "base64_f32_keys", "json_bound"];
+
 fn case_keys() -> Vec<&'static str> {
     let mut keys = SPEC_KEYS.to_vec();
-    keys.extend(["description", "tolerances", "tolerance_exception"]);
+    keys.extend(COMPARISON_KEYS);
+    keys.extend([
+        "description",
+        "tolerances",
+        "tolerance_exception",
+        "reference",
+    ]);
     keys
 }
 
 fn file_keys() -> Vec<&'static str> {
     let mut keys = SPEC_KEYS.to_vec();
+    keys.extend(COMPARISON_KEYS);
     keys.extend(["description", "tolerances", "cases"]);
     keys
 }
@@ -77,6 +136,7 @@ pub struct ResolvedCase {
     /// The full resolved object (compared against the capture's `case.json`).
     pub json: Value,
     pub tolerances: Tolerances,
+    pub comparison: Comparison,
 }
 
 pub fn repo_root() -> PathBuf {
@@ -90,6 +150,10 @@ pub fn corpus_dir() -> PathBuf {
 
 pub fn ledger_path() -> PathBuf {
     repo_root().join("migration/LEDGER.md")
+}
+
+pub fn decision_doc_path() -> PathBuf {
+    repo_root().join("migration/decisions/owner-decisions-json-and-morphs.md")
 }
 
 pub(crate) fn read_json(path: &Path) -> Result<Value, String> {
@@ -335,6 +399,207 @@ pub fn resolve_tolerances(
     Ok((tolerances, Some(exception.clone())))
 }
 
+/// Case ids listed as ``- `<id>` `` under the decision doc's allowlist
+/// heading. The doc is the only place the list lives, so extending it is a
+/// decision-doc edit. Mirrored in run_corpus.py (`allowlist_from`).
+pub fn allowlist_from(text: &str) -> Vec<String> {
+    let mut ids = Vec::new();
+    for (title, body) in ledger_sections(text) {
+        if title != ALLOWLIST_HEADING {
+            continue;
+        }
+        for line in body.lines() {
+            if let Some(rest) = line.strip_prefix("- `") {
+                if let Some((id, _)) = rest.split_once('`') {
+                    if !id.is_empty() {
+                        ids.push(id.to_string());
+                    }
+                }
+            }
+        }
+    }
+    ids
+}
+
+fn read_allowlist() -> Result<Vec<String>, String> {
+    let path = decision_doc_path();
+    if !path.is_file() {
+        return Ok(Vec::new());
+    }
+    let text = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(allowlist_from(&text))
+}
+
+fn is_artifact_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
+}
+
+/// Artifact modes, the JSON bound, base64-f32 keys and the reference of a
+/// module case. Returns the resolved comparison and the entries that differ
+/// from the defaults (exact artifacts, official reference), which are added
+/// to the resolved case. Mirrored in run_corpus.py (`resolve_comparison`).
+pub fn resolve_comparison(
+    case_id: &str,
+    file_level: &Map<String, Value>,
+    case: &Map<String, Value>,
+    allowlist: &[String],
+) -> Result<(Comparison, Map<String, Value>), String> {
+    let layers = [("file", file_level), ("case", case)];
+    let mut modes = BTreeMap::new();
+    for (level, layer) in layers {
+        let Some(artifacts) = layer.get("artifacts") else {
+            continue;
+        };
+        let artifacts = artifacts
+            .as_object()
+            .ok_or_else(|| format!("{case_id} ({level} level): artifacts must be an object"))?;
+        for (name, mode) in artifacts {
+            if !is_artifact_name(name) {
+                return Err(format!(
+                    "{case_id}: artifact name {name:?} must match [A-Za-z0-9_.-]+"
+                ));
+            }
+            let mode = match mode.as_str() {
+                Some("exact") => ArtifactMode::Exact,
+                Some("json") => ArtifactMode::Json,
+                _ => {
+                    return Err(format!(
+                        "{case_id}: artifact {name} mode must be one of [\"exact\", \"json\"], not {mode}"
+                    ))
+                }
+            };
+            modes.insert(name.clone(), mode);
+        }
+    }
+
+    let mut keys: Option<Vec<String>> = None;
+    for (level, layer) in layers {
+        let Some(value) = layer.get("base64_f32_keys") else {
+            continue;
+        };
+        let names: Option<std::collections::BTreeSet<String>> = value.as_array().and_then(|a| {
+            a.iter()
+                .map(|k| k.as_str().filter(|s| !s.is_empty()).map(str::to_string))
+                .collect()
+        });
+        let names = names.ok_or_else(|| {
+            format!("{case_id} ({level} level): base64_f32_keys must be a list of key names")
+        })?;
+        keys = Some(names.into_iter().collect());
+    }
+
+    let mut bound = JSON_BOUND;
+    for (level, layer) in layers {
+        let Some(value) = layer.get("json_bound") else {
+            continue;
+        };
+        let object = value
+            .as_object()
+            .filter(|o| !o.is_empty() && o.keys().all(|k| k == "ulp" || k == "abs"))
+            .ok_or_else(|| {
+                format!("{case_id} ({level} level): json_bound must be {{\"ulp\": <int>, \"abs\": <number>}}")
+            })?;
+        let ulp = match object.get("ulp") {
+            None => None,
+            Some(v) => Some(v.as_u64().ok_or_else(|| {
+                format!("{case_id}: json_bound.ulp must be a non-negative integer")
+            })?),
+        };
+        let abs = match object.get("abs") {
+            None => None,
+            Some(v) => Some(v.as_f64().filter(|a| *a >= 0.0).ok_or_else(|| {
+                format!("{case_id}: json_bound.abs must be a non-negative number")
+            })?),
+        };
+        // Same order as run_corpus.py: "abs" is checked before "ulp".
+        if let Some(abs) = abs.filter(|a| *a > JSON_BOUND.abs) {
+            return Err(format!(
+                "{case_id}: json_bound abs = {abs} is looser than the approved JSON bound {}; the \
+                 bound is pinned in both resolvers and only tightens",
+                JSON_BOUND.abs
+            ));
+        }
+        if let Some(ulp) = ulp.filter(|u| *u > JSON_BOUND.ulp) {
+            return Err(format!(
+                "{case_id}: json_bound ulp = {ulp} is looser than the approved JSON bound {}; the \
+                 bound is pinned in both resolvers and only tightens",
+                JSON_BOUND.ulp
+            ));
+        }
+        bound.ulp = ulp.unwrap_or(bound.ulp);
+        bound.abs = abs.unwrap_or(bound.abs);
+    }
+
+    let reference = match case.get("reference").map(Value::as_str) {
+        None | Some(Some("official")) => Reference::Official,
+        Some(Some("nofastmath")) => Reference::NoFastMath,
+        Some(_) => {
+            return Err(format!(
+                "{case_id}: reference must be one of [\"official\", \"nofastmath\"], not {}",
+                case["reference"]
+            ))
+        }
+    };
+    let mut extra = Map::new();
+    if reference == Reference::NoFastMath {
+        if !allowlist.iter().any(|id| id == case_id) {
+            return Err(format!(
+                "{case_id}: reference \"nofastmath\" is only allowed for case ids listed under \
+                 \"{ALLOWLIST_HEADING}\" in migration/decisions/owner-decisions-json-and-morphs.md"
+            ));
+        }
+        for key in ["tolerances", "tolerance_exception"] {
+            if case.contains_key(key) {
+                return Err(format!(
+                    "{case_id}: a reference \"nofastmath\" case cannot set {key}: it is compared exactly, \
+                     and its normal limits (the module defaults) decide in calibration whether it qualifies"
+                ));
+            }
+        }
+        // Compared bit for bit; the declared artifact modes still define the
+        // normal limits the calibration justification uses.
+        extra.insert("reference".into(), Value::from("nofastmath"));
+    }
+
+    let has_json = modes.values().any(|m| *m == ArtifactMode::Json);
+    if !modes.is_empty() {
+        let object = modes
+            .iter()
+            .map(|(name, mode)| {
+                let mode = match mode {
+                    ArtifactMode::Exact => "exact",
+                    ArtifactMode::Json => "json",
+                };
+                (name.clone(), Value::from(mode))
+            })
+            .collect();
+        extra.insert("artifacts".into(), Value::Object(object));
+    }
+    let keys = keys.unwrap_or_default();
+    if has_json {
+        let mut object = Map::new();
+        object.insert("ulp".into(), Value::from(bound.ulp));
+        object.insert("abs".into(), Value::from(bound.abs));
+        extra.insert("json_bound".into(), Value::Object(object));
+        if !keys.is_empty() {
+            extra.insert(
+                "base64_f32_keys".into(),
+                Value::Array(keys.iter().cloned().map(Value::from).collect()),
+            );
+        }
+    }
+    let comparison = Comparison {
+        reference,
+        artifact_modes: modes,
+        json_bound: bound,
+        base64_f32_keys: if has_json { keys } else { Vec::new() },
+    };
+    Ok((comparison, extra))
+}
+
 fn to_tolerances(map: &Map<String, Value>) -> Tolerances {
     let get = |key: &str| map.get(key).and_then(Value::as_f64);
     Tolerances {
@@ -411,6 +676,7 @@ pub fn render_cases_from(cases_json: &Value, ledger: &str) -> Result<Vec<Resolve
             id,
             json: Value::Object(merged),
             tolerances: typed,
+            comparison: Comparison::default(),
         });
     }
     Ok(resolved)
@@ -426,6 +692,7 @@ pub fn module_cases_from(
     file: &Value,
     module_defaults: &Map<String, Value>,
     ledger: &str,
+    allowlist: &[String],
 ) -> Result<Vec<ResolvedCase>, String> {
     check_name(relative_file, "area", area)?;
     check_name(relative_file, "module", module)?;
@@ -471,8 +738,14 @@ pub fn module_cases_from(
         if !spec.contains_key("module") {
             return Err(format!("{id}: no \"module\" (ref-module registry name)"));
         }
-        let (tolerances, exception) =
-            resolve_tolerances(&id, &default_tolerances, &file_level, case, ledger)?;
+        let (comparison, extra) = resolve_comparison(&id, &file_level, case, allowlist)?;
+        let (tolerances, exception) = if comparison.reference == Reference::NoFastMath {
+            // Normal limits are the module defaults: file-level tightening
+            // must not make the official reference "fail" on purpose.
+            (default_tolerances.clone(), None)
+        } else {
+            resolve_tolerances(&id, &default_tolerances, &file_level, case, ledger)?
+        };
         let typed = to_tolerances(&tolerances);
         let mut entry = Map::new();
         entry.insert("id".into(), Value::String(id.clone()));
@@ -482,10 +755,12 @@ pub fn module_cases_from(
         if let Some(exception) = exception {
             entry.insert("tolerance_exception".into(), exception);
         }
+        entry.extend(extra);
         resolved.push(ResolvedCase {
             id,
             json: Value::Object(entry),
             tolerances: typed,
+            comparison,
         });
     }
     Ok(resolved)
@@ -518,6 +793,7 @@ pub fn load_module_cases() -> Result<Vec<ResolvedCase>, String> {
         .ok_or("cases.json: missing module_defaults")?
         .clone();
     let ledger = read_ledger()?;
+    let allowlist = read_allowlist()?;
 
     let modules_dir = corpus_dir().join("modules");
     let mut files = Vec::new();
@@ -559,6 +835,7 @@ pub fn load_module_cases() -> Result<Vec<ResolvedCase>, String> {
             &read_json(&file)?,
             &module_defaults,
             &ledger,
+            &allowlist,
         )?);
     }
     Ok(resolved)
@@ -587,7 +864,7 @@ mod tests {
         file: Value,
         defaults: Map<String, Value>,
     ) -> Result<Vec<ResolvedCase>, String> {
-        module_cases_from("filters", "test", "x.json", &file, &defaults, LEDGER)
+        module_cases_from("filters", "test", "x.json", &file, &defaults, LEDGER, &[])
     }
 
     fn resolve(file: Value) -> Result<Vec<ResolvedCase>, String> {
@@ -752,6 +1029,7 @@ mod tests {
                                          "tolerances": { "residual_db": -70 } } } } }),
             &defaults(),
             ledger,
+            &[],
         )
         .unwrap_err();
         assert!(err.contains("does not name the case"), "{err}");
@@ -776,8 +1054,8 @@ mod tests {
             ("fil.ters", "svf"),
             ("", "svf"),
         ] {
-            let err =
-                module_cases_from(area, module, "x.json", &ok, &defaults(), LEDGER).unwrap_err();
+            let err = module_cases_from(area, module, "x.json", &ok, &defaults(), LEDGER, &[])
+                .unwrap_err();
             assert!(
                 err.contains("must match [A-Za-z0-9_-]+"),
                 "{area}/{module}: {err}"
@@ -906,6 +1184,181 @@ mod tests {
         assert!(
             sections[0].1.contains('y'),
             "A's section includes its subsection B"
+        );
+    }
+
+    const MORPH: &str = "filters/test/morph";
+
+    fn resolve_morph(
+        case: Value,
+        file_level: Value,
+        allowlist: &[&str],
+    ) -> Result<ResolvedCase, String> {
+        let mut file = file_level;
+        file["module"] = json!("filter");
+        file["cases"] = json!({ "morph": case });
+        let allowlist: Vec<String> = allowlist.iter().map(|s| s.to_string()).collect();
+        module_cases_from(
+            "filters",
+            "test",
+            "x.json",
+            &file,
+            &defaults(),
+            LEDGER,
+            &allowlist,
+        )
+        .map(|mut cases| cases.remove(0))
+    }
+
+    #[test]
+    fn undeclared_cases_resolve_as_before() {
+        let case = resolve_morph(json!({ "num_samples": 1 }), json!({}), &[]).unwrap();
+        let keys: Vec<&String> = case.json.as_object().unwrap().keys().collect();
+        assert_eq!(keys, ["file", "id", "spec", "tolerances"]);
+        assert_eq!(case.comparison, Comparison::default());
+    }
+
+    #[test]
+    fn json_artifacts_get_the_pinned_bound() {
+        let case = resolve_morph(
+            json!({ "artifacts": { "saved.json": "json", "notes.txt": "exact" },
+                    "base64_f32_keys": ["wave_data"] }),
+            json!({}),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(
+            case.json["artifacts"],
+            json!({ "saved.json": "json", "notes.txt": "exact" })
+        );
+        assert_eq!(case.json["json_bound"], json!({ "ulp": 4, "abs": 1e-6 }));
+        assert_eq!(case.json["base64_f32_keys"], json!(["wave_data"]));
+        assert_eq!(
+            case.comparison.artifact_mode("saved.json"),
+            ArtifactMode::Json
+        );
+        assert_eq!(
+            case.comparison.artifact_mode("notes.txt"),
+            ArtifactMode::Exact
+        );
+        assert_eq!(
+            case.comparison.artifact_mode("other.json"),
+            ArtifactMode::Exact
+        );
+
+        let tighter = resolve_morph(
+            json!({ "json_bound": { "ulp": 0, "abs": 0 } }),
+            json!({ "artifacts": { "saved.json": "json" } }),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(tighter.json["json_bound"], json!({ "ulp": 0, "abs": 0.0 }));
+        assert_eq!(
+            tighter.comparison.json_bound,
+            JsonBound { ulp: 0, abs: 0.0 }
+        );
+    }
+
+    #[test]
+    fn json_bound_cannot_be_loosened() {
+        let json_artifact = json!({ "saved.json": "json" });
+        for (case, file) in [
+            (
+                json!({ "artifacts": json_artifact, "json_bound": { "ulp": 5 } }),
+                json!({}),
+            ),
+            (
+                json!({ "artifacts": json_artifact, "json_bound": { "abs": 1e-5 } }),
+                json!({}),
+            ),
+            (
+                json!({ "num_samples": 1 }),
+                json!({ "artifacts": json_artifact, "json_bound": { "ulp": 96 } }),
+            ),
+        ] {
+            let err = resolve_morph(case, file, &[]).unwrap_err();
+            assert!(err.contains("looser than the approved JSON bound"), "{err}");
+        }
+        let err = resolve_morph(
+            json!({ "artifacts": json_artifact, "json_bound": { "ulp": 2.5 } }),
+            json!({}),
+            &[],
+        )
+        .unwrap_err();
+        assert!(
+            err.contains("json_bound.ulp must be a non-negative integer"),
+            "{err}"
+        );
+        let err = resolve_morph(
+            json!({ "artifacts": json_artifact, "json_bound": { "rel": 1 } }),
+            json!({}),
+            &[],
+        )
+        .unwrap_err();
+        assert!(err.contains("json_bound must be"), "{err}");
+        let err = resolve_morph(
+            json!({ "artifacts": { "saved.json": "loose" } }),
+            json!({}),
+            &[],
+        )
+        .unwrap_err();
+        assert!(err.contains("mode must be one of"), "{err}");
+    }
+
+    #[test]
+    fn nofastmath_needs_the_decision_doc_allowlist() {
+        let nofastmath = json!({ "reference": "nofastmath" });
+        for allowlist in [&[][..], &["filters/test/morph_2", "filters/test"][..]] {
+            let err = resolve_morph(nofastmath.clone(), json!({}), allowlist).unwrap_err();
+            assert!(err.contains("only allowed for case ids listed"), "{err}");
+        }
+        let case = resolve_morph(
+            json!({ "reference": "nofastmath", "artifacts": { "saved.json": "json" } }),
+            json!({ "tolerances": { "residual_db": -120 } }),
+            &[MORPH],
+        )
+        .unwrap();
+        assert_eq!(case.comparison.reference, Reference::NoFastMath);
+        assert_eq!(case.json["reference"], "nofastmath");
+        // The declared modes stay (normal limits for calibration), but the
+        // comparison itself is exact.
+        assert_eq!(case.json["json_bound"], json!({ "ulp": 4, "abs": 1e-6 }));
+        assert_eq!(
+            case.comparison.artifact_mode("saved.json"),
+            ArtifactMode::Exact
+        );
+        // Normal limits are the module defaults; file-level tightening is ignored.
+        assert_eq!(case.tolerances.residual_db, Some(-80.0));
+        assert_eq!(case.json["tolerances"], defaults()["tolerances"]);
+
+        for (key, value) in [
+            (
+                "tolerance_exception",
+                approved(json!({ "residual_db": -70 })),
+            ),
+            ("tolerances", json!({ "max_abs_error": 1e-12 })),
+        ] {
+            let mut morph = json!({ "reference": "nofastmath" });
+            morph[key] = value;
+            let err = resolve_morph(morph, json!({}), &[MORPH]).unwrap_err();
+            assert!(err.contains(&format!("cannot set {key}")), "{err}");
+        }
+        let err = resolve_morph(json!({ "num_samples": 1 }), nofastmath, &[MORPH]).unwrap_err();
+        assert!(err.contains("unknown keys"), "{err}");
+        let err = resolve_morph(json!({ "reference": "x86" }), json!({}), &[]).unwrap_err();
+        assert!(err.contains("reference must be one of"), "{err}");
+        let official = resolve_morph(json!({ "reference": "official" }), json!({}), &[]).unwrap();
+        assert!(official.json.get("reference").is_none());
+    }
+
+    #[test]
+    fn allowlist_comes_from_its_decision_doc_section() {
+        let doc = "# Owner decisions\n\n## No-fast-math exact cases (allowlist)\n\n\
+                   - `filters/test/morph` (test)\n\n## Something else\n\n- `filters/test/a`\n";
+        assert_eq!(allowlist_from(doc), [MORPH]);
+        let repository = read_allowlist().unwrap();
+        assert!(
+            repository.contains(&"wavetable/render/wave_linear_freq_disjoint_spectra".to_string())
         );
     }
 
