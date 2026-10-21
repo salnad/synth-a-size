@@ -974,6 +974,94 @@
           "to": 2.0
         }
       }
+    },
+    "k12_oversample_4x_resonance_0_95_from_110": {
+      "sample_rate": 44100,
+      "oversample": 4,
+      "block_size": 512,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi_cutoff": {
+          "signal": "ramp",
+          "from": 110.0,
+          "to": 8.0
+        },
+        "resonance": 0.95,
+        "drive_gain": 3.0,
+        "style": 0,
+        "pass_blend": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 2.0
+        }
+      }
+    },
+    "k12_cutoff_sweep_0_to_134": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi_cutoff": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 134.0
+        },
+        "resonance": 0.8,
+        "drive_gain": 6.0,
+        "style": 0,
+        "pass_blend": 0.5
+      }
+    },
+    "k24_cutoff_sweep_0_to_134": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi_cutoff": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 134.0
+        },
+        "resonance": 0.8,
+        "drive_gain": 6.0,
+        "style": 1,
+        "pass_blend": 0.5
+      }
     }
   }
 }

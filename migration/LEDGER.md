@@ -1995,8 +1995,14 @@ Core Filters (M5a), stacked on PR 6.
   full-range MIDI 0–140 sweeps for notch/pass swap, dual notch/band and
   band/peak/notch, style steps 0→9, per-lane retriggers, 4× oversampling
   (resonance 0.8), 96 kHz and block size 1.
-- Parity, x86_64: 33/33 pass. Worst max_abs_error 9.4e-5 and worst residual
-  −90.2 dB, both `dual_notch_band_cutoff_sweep`.
+- Added after review (interim cases Filter Reviewer measured as
+  well-conditioned): resonant MIDI 0–134 sweeps for 12 dB (2.9e-6 /
+  −116.1 dB) and 24 dB (1.2e-5 / −105.3 dB), and resonance 0.95 at 4× with
+  the cutoff ramp from MIDI 110 (3.5e-5 / −96.4 dB). 36 cases in all.
+- Parity, x86_64: 36/36 pass. Worst max_abs_error 9.4e-5 and worst residual
+  −90.2 dB, both `dual_notch_band_cutoff_sweep` (6% under the gate;
+  `band_peak_notch_cutoff_sweep` is at 8.8e-5). Watch both when the macOS
+  arm64 reference lands.
 - Parked: `migration/corpus/modules/filters/pending/dirty_full_range.json`
   (3 cases). These are the resonant full-range MIDI 0–140 sweeps for 12 and
   24 dB, at max_abs 1.38e-4 and 1.27e-4, and resonance 0.95 at 4×, at
