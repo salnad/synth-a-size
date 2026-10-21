@@ -11,6 +11,8 @@
 //! registry (`sas-preset`), as the reference's `Parameters::getDetails`.
 //! `oscillator_module_pitch` cases capture the module's oscillator's phase
 //! increments times `2^-32` (frequency / sample rate) instead of the audio.
+//! `producers_module` cases can plug filter-on values and schedule control
+//! changes at block starts, and also capture the sampler's phase output.
 //! Every case runs in one test because the seed counter is process-global.
 
 mod support;
@@ -20,7 +22,9 @@ use std::sync::Mutex;
 use sas_common::json::{self, Value};
 use sas_dsp_core::synth_module::{set_parameter_lookup, ParameterDetails, ValueScale};
 use sas_dsp_core::testing::{run_module, DriverInput, DriverSettings, InputRate, TriggerEvent};
-use sas_dsp_core::{Processor, ProcessorImpl, ProcessorRef, SynthModule};
+use sas_dsp_core::{
+    Output, Processor, ProcessorImpl, ProcessorRef, SynthModule, Value as ValueProcessor,
+};
 use sas_oscillators::oscillator_module::{self, OscillatorModule};
 use sas_oscillators::producers_module::{self, ProducersModule};
 use sas_oscillators::{RandomValues, SharedSample, SharedWavetable, SynthOscillator};
@@ -99,8 +103,82 @@ const PRODUCERS_MODULE: ModuleDef = ModuleDef {
         ("to_filter2", producers_module::TO_FILTER2),
         ("raw_out", producers_module::RAW_OUT),
         ("direct_out", producers_module::DIRECT_OUT),
+        ("sample_phase", SAMPLE_PHASE),
     ],
 };
+
+const SAMPLE_PHASE: usize = producers_module::NUM_OUTPUTS;
+
+#[derive(Clone)]
+struct ControlChange {
+    frame: usize,
+    target: ProcessorRef,
+    value: f32,
+}
+
+/// `ProducersProbe`: the module with optional filter-on values, control
+/// changes applied before the first block starting at or after their frame,
+/// and the sampler's phase output copied to output `sample_phase` after each
+/// block.
+#[derive(Clone)]
+struct ProducersProbe {
+    module: ProducersModule,
+    filter_on: [Option<ProcessorRef>; 2],
+    changes: Vec<ControlChange>,
+    next_change: usize,
+    frame: usize,
+}
+
+impl ProducersProbe {
+    fn configure(&mut self, this: &Processor, params: &Json) {
+        let mut targets = this.get_controls();
+        for (i, name) in ["filter1_on", "filter2_on"].into_iter().enumerate() {
+            if let Some(value) = params.get(name) {
+                let on = ValueProcessor::create(value.as_f64().expect("filter on") as f32, false);
+                targets.insert(name.to_string(), on.clone());
+                self.filter_on[i] = Some(on);
+            }
+        }
+        self.module.set_filter1_on(self.filter_on[0].clone());
+        self.module.set_filter2_on(self.filter_on[1].clone());
+
+        let changes = params.get("control_changes").and_then(Json::as_array);
+        for change in changes.into_iter().flatten() {
+            let name = change["name"].as_str().expect("change name");
+            self.changes.push(ControlChange {
+                frame: change["sample"].as_u64().expect("change sample") as usize,
+                target: targets
+                    .get(name)
+                    .unwrap_or_else(|| panic!("no control {name}"))
+                    .clone(),
+                value: change["value"].as_f64().expect("change value") as f32,
+            });
+        }
+        self.changes.sort_by_key(|change| change.frame);
+    }
+}
+
+impl ProcessorImpl for ProducersProbe {
+    sas_dsp_core::processor_boilerplate!();
+
+    fn init(&mut self, this: &Processor) {
+        self.module.init(this);
+    }
+
+    fn process(&mut self, this: &Processor, num_samples: usize) {
+        while let Some(change) = self.changes.get(self.next_change) {
+            if change.frame > self.frame {
+                break;
+            }
+            change.target.set_value(change.value);
+            self.next_change += 1;
+        }
+        self.module.process(this, num_samples);
+        this.output(SAMPLE_PHASE)
+            .set_at(0, self.module.sample_phase_output().at(0));
+        self.frame += num_samples;
+    }
+}
 
 fn install_registry_lookup() {
     set_parameter_lookup(|name| {
@@ -216,20 +294,38 @@ fn create(case: &ModuleCase) -> ProcessorRef {
             module
         }
         "producers_module" => {
-            let module = ProducersModule::create();
+            let kernel = ProducersModule::new();
+            let submodules = kernel.submodules();
+            let probe = ProducersProbe {
+                module: kernel,
+                filter_on: [None, None],
+                changes: Vec::new(),
+                next_change: 0,
+                frame: 0,
+            };
+            let module = SynthModule::create_with(
+                probe,
+                producers_module::NUM_INPUTS,
+                producers_module::NUM_OUTPUTS,
+                false,
+            );
+            module.register_output(Output::new_control_rate());
+            ProducersModule::add_submodules(&module, &submodules);
             module.init();
             let wavetables = params.get("wavetables").unwrap_or(&empty);
             for i in 0..producers_module::NUM_OSCILLATORS {
                 if let Some(spec) = wavetables.get(format!("osc_{}", i + 1)) {
-                    let wavetable = module.with::<ProducersModule, _>(|m, _| m.wavetable(i));
+                    let wavetable =
+                        module.with::<ProducersProbe, _>(|probe, _| probe.module.wavetable(i));
                     render_wavetable(&wavetable, spec);
                 }
             }
             if let Some(spec) = params.get("sample") {
-                let sample = module.with::<ProducersModule, _>(|m, _| m.sample());
+                let sample = module.with::<ProducersProbe, _>(|probe, _| probe.module.sample());
                 load_sample(&sample, spec);
             }
             set_controls(&module, params.get("controls").unwrap_or(&empty));
+            module.with::<ProducersProbe, _>(|probe, this| probe.configure(this, params));
             module
         }
         other => panic!("not a module case: {other}"),

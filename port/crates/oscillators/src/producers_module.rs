@@ -77,31 +77,53 @@ pub struct ProducersModule {
     filter2_on: Option<ProcessorRef>,
 }
 
+impl Default for ProducersModule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ProducersModule {
+    /// The kernel of `ProducersModule()`, with its oscillator and sample
+    /// modules (see [`ProducersModule::create`]).
+    pub fn new() -> Self {
+        Self {
+            oscillators: std::array::from_fn(|i| {
+                OscillatorModule::create(&format!("osc_{}", i + 1))
+            }),
+            oscillator_destinations: [None, None, None],
+            sample_destination: None,
+            sampler: SampleModule::create(),
+            filter1_on: None,
+            filter2_on: None,
+        }
+    }
+
     /// `new ProducersModule()`: adds the oscillator modules and the sample
     /// module as disabled sub-modules (they run in [`ProcessorImpl::process`]).
     pub fn create() -> ProcessorRef {
-        let oscillators: [ProcessorRef; NUM_OSCILLATORS] =
-            std::array::from_fn(|i| OscillatorModule::create(&format!("osc_{}", i + 1)));
-        let sampler = SampleModule::create();
-        let kernel = Self {
-            oscillators: oscillators.clone(),
-            oscillator_destinations: [None, None, None],
-            sample_destination: None,
-            sampler: sampler.clone(),
-            filter1_on: None,
-            filter2_on: None,
-        };
+        let kernel = Self::new();
+        let submodules = kernel.submodules();
         let module = SynthModule::create_with(kernel, NUM_INPUTS, NUM_OUTPUTS, false);
-        for oscillator in &oscillators {
-            module.add_submodule(oscillator);
-            module.add_processor(oscillator);
-            oscillator.enable(false);
-        }
-        module.add_submodule(&sampler);
-        module.add_processor(&sampler);
-        sampler.enable(false);
+        Self::add_submodules(&module, &submodules);
         module
+    }
+
+    /// The oscillator modules, then the sample module.
+    pub fn submodules(&self) -> Vec<ProcessorRef> {
+        let mut submodules = self.oscillators.to_vec();
+        submodules.push(self.sampler.clone());
+        submodules
+    }
+
+    /// Adds [`ProducersModule::submodules`] to the router `module` that runs
+    /// this kernel, disabled, as the constructor does.
+    pub fn add_submodules(module: &ProcessorRef, submodules: &[ProcessorRef]) {
+        for submodule in submodules {
+            module.add_submodule(submodule);
+            module.add_processor(submodule);
+            submodule.enable(false);
+        }
     }
 
     /// `getWavetable(index)`.

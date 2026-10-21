@@ -1,5 +1,5 @@
 {
-  "description": "ProducersModule (vital/src/synthesis/modules/producers_module.cpp, sample_module.cpp): three oscillators and the sampler with their controls, every destination (filter 1/2, dual, effects, direct out, out of range) with the filters on, FM/RM processing order across oscillators (including a dependency cycle, where upstream processes none of the three) and from the sample, the sample module with the default and a loaded sample, single-voice and block size. Constant pitch and unity sample playback ratio only (see the pending cases in LEDGER.md). Ported in port/crates/oscillators.",
+  "description": "ProducersModule (vital/src/synthesis/modules/producers_module.cpp, sample_module.cpp): three oscillators and the sampler with their controls, every destination (filter 1/2, dual, effects, direct out, out of range) with the filters on (unplugged, as the module's own default, and plugged), the filter-on switches (params.filter1_on / filter2_on through setFilter1On / setFilter2On): each filter and both off for filter 1, filter 2 and dual routing, and switched off mid-run, FM/RM processing order across oscillators (including a dependency cycle, where upstream processes none of the three) and from the sample, the sample module with the default and a loaded sample and switched off (and back on) mid-run through params.control_changes, with its phase output captured as sample_phase, single-voice and block size. Constant pitch and unity sample playback ratio only (see the pending cases in LEDGER.md). Ported in port/crates/oscillators.",
   "module": "producers_module",
   "seed": 0,
   "cases": {
@@ -551,6 +551,443 @@
           },
           "osc_3": {
             "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+          }
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      },
+      "block_size": 17
+    },
+    "filter1_off": {
+      "params": {
+        "controls": {
+          "osc_1_on": 1.0,
+          "osc_2_on": 1.0,
+          "osc_3_on": 1.0,
+          "osc_2_wave_frame": 100.0,
+          "osc_3_wave_frame": 200.0,
+          "osc_2_transpose": 12.0,
+          "osc_3_transpose": -12.0,
+          "osc_1_destination": 0.0,
+          "osc_2_destination": 1.0,
+          "osc_3_destination": 2.0,
+          "sample_on": 1.0,
+          "sample_destination": 0.0
+        },
+        "filter1_on": 0.0,
+        "filter2_on": 1.0,
+        "wavetables": {
+          "osc_1": {
+            "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+          },
+          "osc_2": {
+            "preset": "predefined"
+          },
+          "osc_3": {
+            "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+          }
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "filter2_off": {
+      "params": {
+        "controls": {
+          "osc_1_on": 1.0,
+          "osc_2_on": 1.0,
+          "osc_3_on": 1.0,
+          "osc_2_wave_frame": 100.0,
+          "osc_3_wave_frame": 200.0,
+          "osc_2_transpose": 12.0,
+          "osc_3_transpose": -12.0,
+          "osc_1_destination": 1.0,
+          "osc_2_destination": 0.0,
+          "osc_3_destination": 2.0,
+          "sample_on": 1.0,
+          "sample_destination": 1.0
+        },
+        "filter1_on": 1.0,
+        "filter2_on": 0.0,
+        "wavetables": {
+          "osc_1": {
+            "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+          },
+          "osc_2": {
+            "preset": "predefined"
+          },
+          "osc_3": {
+            "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+          }
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "filters_off": {
+      "params": {
+        "controls": {
+          "osc_1_on": 1.0,
+          "osc_2_on": 1.0,
+          "osc_3_on": 1.0,
+          "osc_2_wave_frame": 100.0,
+          "osc_3_wave_frame": 200.0,
+          "osc_2_transpose": 12.0,
+          "osc_3_transpose": -12.0,
+          "osc_1_destination": 0.0,
+          "osc_2_destination": 1.0,
+          "osc_3_destination": 2.0,
+          "sample_on": 1.0,
+          "sample_destination": 2.0
+        },
+        "filter1_on": 0.0,
+        "filter2_on": 0.0,
+        "wavetables": {
+          "osc_1": {
+            "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+          },
+          "osc_2": {
+            "preset": "predefined"
+          },
+          "osc_3": {
+            "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+          }
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "filters_on_plugged": {
+      "params": {
+        "controls": {
+          "osc_1_on": 1.0,
+          "osc_2_on": 1.0,
+          "osc_3_on": 1.0,
+          "osc_2_wave_frame": 100.0,
+          "osc_3_wave_frame": 200.0,
+          "osc_2_transpose": 12.0,
+          "osc_3_transpose": -12.0,
+          "osc_1_destination": 0.0,
+          "osc_2_destination": 1.0,
+          "osc_3_destination": 2.0,
+          "sample_on": 1.0,
+          "sample_destination": 2.0
+        },
+        "filter1_on": 1.0,
+        "filter2_on": 1.0,
+        "wavetables": {
+          "osc_1": {
+            "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+          },
+          "osc_2": {
+            "preset": "predefined"
+          },
+          "osc_3": {
+            "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+          }
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "dual_filter1_off": {
+      "params": {
+        "controls": {
+          "osc_1_on": 1.0,
+          "osc_2_on": 1.0,
+          "osc_3_on": 1.0,
+          "osc_2_wave_frame": 100.0,
+          "osc_3_wave_frame": 200.0,
+          "osc_2_transpose": 12.0,
+          "osc_3_transpose": -12.0,
+          "osc_1_destination": 2.0,
+          "osc_2_destination": 2.0,
+          "osc_3_destination": 0.0,
+          "sample_on": 1.0,
+          "sample_destination": 2.0
+        },
+        "filter1_on": 0.0,
+        "filter2_on": 1.0,
+        "wavetables": {
+          "osc_1": {
+            "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+          },
+          "osc_2": {
+            "preset": "predefined"
+          },
+          "osc_3": {
+            "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+          }
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "dual_filter2_off": {
+      "params": {
+        "controls": {
+          "osc_1_on": 1.0,
+          "osc_2_on": 1.0,
+          "osc_3_on": 1.0,
+          "osc_2_wave_frame": 100.0,
+          "osc_3_wave_frame": 200.0,
+          "osc_2_transpose": 12.0,
+          "osc_3_transpose": -12.0,
+          "osc_1_destination": 2.0,
+          "osc_2_destination": 2.0,
+          "osc_3_destination": 1.0,
+          "sample_on": 1.0,
+          "sample_destination": 2.0
+        },
+        "filter1_on": 1.0,
+        "filter2_on": 0.0,
+        "wavetables": {
+          "osc_1": {
+            "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+          },
+          "osc_2": {
+            "preset": "predefined"
+          },
+          "osc_3": {
+            "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+          }
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "filters_switch_off_mid_run": {
+      "params": {
+        "controls": {
+          "osc_1_on": 1.0,
+          "osc_2_on": 1.0,
+          "osc_3_on": 1.0,
+          "osc_2_wave_frame": 100.0,
+          "osc_3_wave_frame": 200.0,
+          "osc_2_transpose": 12.0,
+          "osc_3_transpose": -12.0,
+          "osc_1_destination": 0.0,
+          "osc_2_destination": 1.0,
+          "osc_3_destination": 2.0,
+          "sample_on": 1.0,
+          "sample_destination": 2.0
+        },
+        "filter1_on": 1.0,
+        "filter2_on": 1.0,
+        "control_changes": [
+          {
+            "sample": 2048,
+            "name": "filter1_on",
+            "value": 0.0
+          },
+          {
+            "sample": 4096,
+            "name": "filter2_on",
+            "value": 0.0
+          }
+        ],
+        "wavetables": {
+          "osc_1": {
+            "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+          },
+          "osc_2": {
+            "preset": "predefined"
+          },
+          "osc_3": {
+            "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+          }
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "sample_off_mid_run": {
+      "params": {
+        "controls": {
+          "osc_1_on": 1.0,
+          "osc_1_distortion_type": 9.0,
+          "osc_1_distortion_amount": 0.5,
+          "osc_1_destination": 1.0,
+          "sample_on": 1.0,
+          "sample_destination": 0.0
+        },
+        "control_changes": [
+          {
+            "sample": 2048,
+            "name": "sample_on",
+            "value": 0.0
+          }
+        ],
+        "wavetables": {
+          "osc_1": {
+            "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+          }
+        },
+        "sample": {
+          "length": 3000,
+          "sample_rate": 44100,
+          "recipe": {
+            "shape": "saw",
+            "period": 300,
+            "slope": 0.00390625,
+            "amp": 0.9
+          }
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "sample_off_on": {
+      "params": {
+        "controls": {
+          "osc_1_on": 1.0,
+          "osc_1_distortion_type": 12.0,
+          "osc_1_distortion_amount": 0.6,
+          "osc_1_destination": 3.0,
+          "sample_on": 1.0,
+          "sample_destination": 4.0
+        },
+        "control_changes": [
+          {
+            "sample": 2048,
+            "name": "sample_on",
+            "value": 0.0
+          },
+          {
+            "sample": 4032,
+            "name": "sample_on",
+            "value": 1.0
+          }
+        ],
+        "wavetables": {
+          "osc_1": {
+            "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+          }
+        }
+      },
+      "num_samples": 6000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        }
+      }
+    },
+    "sample_off_block_size_17": {
+      "params": {
+        "controls": {
+          "osc_1_on": 1.0,
+          "osc_1_distortion_type": 9.0,
+          "osc_1_distortion_amount": 0.5,
+          "osc_1_destination": 2.0,
+          "sample_on": 1.0,
+          "sample_destination": 2.0
+        },
+        "control_changes": [
+          {
+            "sample": 1000,
+            "name": "sample_on",
+            "value": 0.0
+          }
+        ],
+        "wavetables": {
+          "osc_1": {
+            "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+          }
+        },
+        "sample": {
+          "length": 3000,
+          "sample_rate": 44100,
+          "recipe": {
+            "shape": "saw",
+            "period": 300,
+            "slope": 0.00390625,
+            "amp": 0.9
           }
         }
       },

@@ -65,3 +65,40 @@ large scaled detune of `detune_power_range` stays covered only by
 `interim_transpose_quantize` (the snapping control at transpose 0,
 2.4e-7 / −142.5 dB) and `interim_detune_power_range` (detune power −2.5
 and range 24 with detune 0.5 over 3000 samples, 3.6e-7 / −137.9 dB).
+
+**Review fixes (Graph Reviewer, changes requested at `42886d1`):**
+the filter-on switches and the sampler's on→off transition were claimed
+but never exercised.
+- The `producers_module` ref-module now takes `params.filter1_on` and
+  `params.filter2_on`. Each is a `Value` plugged in through
+  `setFilter1On`/`setFilter2On`, as the engine plugs `filter_N_on`.
+  Without them both filters count as on, as before.
+- It also takes `params.control_changes` (`[{sample, name, value}]`),
+  applied before the first block that starts at or after that
+  internal-rate frame, and adds an output `sample_phase` (the sampler's
+  phase output after each block).
+- The Rust test mirrors this with a probe around the `ProducersModule`
+  kernel. `ProducersModule::new`, `submodules` and `add_submodules` split
+  the constructor so the probe can wrap it.
+- 10 new cases (26 in total):
+  - filter 1 off, filter 2 off and both off, across filter 1, filter 2
+    and dual routing (`filter1_off`, `filter2_off`, `filters_off`,
+    `dual_filter1_off`, `dual_filter2_off`);
+  - both filters plugged on (`filters_on_plugged`);
+  - both filters switched off mid-run (`filters_switch_off_mid_run`);
+  - `sample_on` switched off mid-run (`sample_off_mid_run` with FM from
+    the sample, and `sample_off_block_size_17`), and off then back on
+    (`sample_off_on`, with RM from the sample).
+- Mutations, each now caught:
+  - forcing `filter1_on` or `filter2_on` to true (`raw_out` of the off
+    cases);
+  - dropping the `RAW` clear (the FM/RM-from-sample oscillator's
+    output);
+  - dropping the `LEVELLED` clear (the routed sample);
+  - dropping the phase clear (`sample_phase`).
+- Measured: every new output ≤ 3.6e-7 / ≤ −138.7 dB. The official
+  reference passes against no-fast-math on all 26 producers cases (130
+  outputs).
+- `producers_module.hashes.json` gains the new cases' hashes and every
+  case's `sample_phase` hash (CI identity). Existing hashes are
+  unchanged.
