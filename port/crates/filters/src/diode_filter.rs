@@ -30,8 +30,8 @@ pub struct DiodeFilter {
     resonance: PolyFloat,
     drive: PolyFloat,
     post_multiply: PolyFloat,
-    /// Upstream leaves `high_pass_ratio_` and `high_pass_amount_`
-    /// uninitialized until the first `setupFilter`; here they start at zero.
+    /// Not set by `hardReset`: zero until the first `setupFilter`, as
+    /// upstream (`poly_float()` zero-initializes).
     high_pass_ratio: PolyFloat,
     high_pass_amount: PolyFloat,
     high_pass_1: OnePoleFilter,

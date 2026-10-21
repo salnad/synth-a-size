@@ -1920,10 +1920,9 @@ Core Filters (M5a), stacked on PR 4.
   The 12 dB style blends the high-pass in; every other style sweeps the
   high-pass cutoff ratio. Kept from upstream: `reset` does not reset
   `high_pass_feedback_`, and `feedback_high_pass_coefficient_` is unused.
-  `high_pass_ratio_` and `high_pass_amount_` are uninitialized upstream
-  until the first `setupFilter`; the port starts them at zero. Every case
-  resets all lanes in its first block, which loads the new values, so the
-  initial value never reaches the output.
+  `hardReset` does not set `high_pass_ratio_` and `high_pass_amount_`; they
+  are zero until the first `setupFilter`, in upstream (`poly_float()`
+  zero-initializes) and here.
 - `create_filter(Diode)` builds it.
 - New case file `filters/diode`, 20 cases under `module_defaults` (no
   tolerance changes). For 12 dB, 24 dB and dual notch/band: full-range
