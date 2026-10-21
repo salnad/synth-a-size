@@ -30,11 +30,11 @@ file is parsed on its own, so a section never runs into the next file.
 - **Tolerance exceptions:** a `tolerance_exception`'s `approved_in` must be
   the exact text of a dated heading in the ledger, and that section must
   name the case id. The heading can be in `LEDGER.md` or in an entry file.
-- **No-fast-math allowlist:** adding an id to the allowlist in
-  `decisions/owner-decisions-json-and-morphs.md` requires a new entry file
-  in the same change. A dated heading in it must contain "owner approval",
-  and that section must name the id. CI checks this with
-  `run_corpus.py allowlist-approval`.
+- **No-fast-math allowlist:** an id in
+  `decisions/nofastmath/<area>/<module>.md` cites an owner approval key
+  pinned in both resolvers (`SAS-35`). That key's dated heading must exist
+  in the ledger, and its section must name the key. Threads do not add
+  owner-approval entries for these ids (see `decisions/nofastmath/README.md`).
 
 Only a human can approve (migration/AGENTS.md, rule 6).
 

@@ -1,0 +1,118 @@
+# No-fast-math exact cases (allowlist)
+
+A module case may declare `"reference": "nofastmath"` only if its id is
+listed here. Such a case is compared bit for bit against the
+`REF_FAST_MATH=OFF` reference build of each target (x86 Linux and macOS
+arm64), instead of against the official reference with tolerances. The rule
+and its mechanism are described in
+[`../owner-decisions-json-and-morphs.md`](../owner-decisions-json-and-morphs.md).
+The owner's approval is SAS-35, recorded in
+`migration/ledger/2026-10-21-owner-approval-sas-35-sas-36.md`.
+
+## Files
+
+There is one file per module, mirroring the corpus:
+`<area>/<module>.md` lists cases of
+`migration/corpus/modules/<area>/<module>.json` only. Each thread edits only
+its own modules' files, so parallel PRs do not conflict.
+
+Every line that starts with a list marker must be exactly:
+
+```markdown
+- `<area>/<module>/<case>` (SAS-35; <targets>): <why the reference amplifies fast-math noise>
+```
+
+`<targets>` lists the targets whose official reference fails the case's
+normal limits against that target's no-fast-math build: `x86`, `macos`, or
+`x86, macos`. A case qualifies if it fails on at least one target. Each
+target's CI gates the cases that declare it (`compare --justify-nofastmath`
+in `ci.yml` for x86 and in `reference-arm.yml` for macOS). A case declared
+for one target only is still compared exactly against the no-fast-math build
+on both.
+
+Ids are exact, with no globs. Any other text is prose. Both resolvers
+(`run_corpus.py` and sas-parity) reject the following:
+
+- a malformed or indented list line;
+- a missing, unknown or repeated target;
+- an id from another module;
+- an id listed twice;
+- a file not named `<area>/<module>.md`;
+- an approval key not pinned in `NOFASTMATH_APPROVALS`;
+- a pinned approval whose ledger heading is missing.
+
+Only the owner adds approval keys. SAS-35 covers any case where the C++
+reference itself amplifies fast-math noise.
+
+A no-fast-math case must not render a wavetable that contains a Phase Shift
+(phase modifier) component. On macOS that modifier's sin/cos pair is merged
+in the official build but separate in the no-fast-math build, and the port
+follows the official build (A11 in `../reference-arm.md`).
+
+## Re-enabling a parked case
+
+1. **Move the case** from `migration/corpus/modules/<area>/pending/<module>.json`
+   into `migration/corpus/modules/<area>/<module>.json`, unchanged, and add
+   `"reference": "nofastmath"` to it. The case must not set `tolerances`,
+   `tolerance_exception` or `json_bound`, and file-level `tolerances` do not
+   apply to it. Delete the pending file once it is empty.
+2. **List it** in `migration/decisions/nofastmath/<area>/<module>.md`
+   (create the file if needed). Declare the targets where the official
+   reference fails (step 4), and give a one-line reason.
+3. **Build both x86 references and render:**
+
+   ```bash
+   migration/scripts/build_reference.sh
+   REF_BUILD_DIR=build/ref-no-fast-math migration/scripts/build_reference.sh -DREF_FAST_MATH=OFF
+   python3 migration/scripts/run_corpus.py render --out build/parity
+   python3 migration/scripts/run_corpus.py render --out build/proxy \
+     --ref-render build/ref-no-fast-math/ref-render --ref-module build/ref-no-fast-math/ref-module
+   ```
+
+4. **Justify it on x86:**
+
+   ```bash
+   python3 migration/scripts/run_corpus.py compare build/parity build/proxy --justify-nofastmath
+   ```
+
+   - A case declared `x86` must print `justified on x86`. If it prints
+     `NOT justified on x86`, the x86 official reference meets the limits:
+     drop `x86` from its targets.
+   - A case declared `macos` only prints `not gated on x86`. Its macOS
+     justification comes from the `Reference ARM` workflow's macOS 15 job on
+     your PR (step 5), which runs the same check on the macOS trees.
+   - If neither target fails, the case stays on the official reference, and
+     a mismatch is a port bug.
+
+5. **Pin hashes** for both builds on both targets. x86 comes from your
+   local trees, or from CI's `reference-renders` and
+   `parity-captures-nofastmath` artifacts. macOS comes from the macOS 15
+   job's `ref-arm64-macos-15` artifact on your PR:
+
+   ```bash
+   python3 migration/scripts/run_corpus.py hashes build/parity --write
+   python3 migration/scripts/run_corpus.py hashes build/proxy --write --reference nofastmath
+   gh run download <run-id> -n ref-arm64-macos-15 -D build/arm
+   python3 migration/scripts/run_corpus.py hashes build/arm/build/platform/pinned --write
+   python3 migration/scripts/run_corpus.py hashes build/arm/build/platform/proxy --write --reference nofastmath
+   ```
+
+6. **Make the port test exact.** Keep `assert_parity!`/`assert_artifact!`
+   for the case; sas-parity compares a `nofastmath` case bit for bit
+   against the no-fast-math captures, on x86 locally and in `ci.yml`, and on
+   macOS arm64 in the macOS 15 job. Run it locally with
+   `SAS_PARITY_CAPTURES=build/parity SAS_PARITY_CAPTURES_NOFASTMATH=build/proxy
+   cargo test --manifest-path port/Cargo.toml -p <crate>`. A port that is
+   not bit-exact on either target is a port bug; do not add tolerances.
+7. **Check the allowlist change:**
+   `python3 migration/scripts/run_corpus.py allowlist-approval --base origin/main`
+   must list each id as `added <id> (SAS-35; <targets>)` with 0 problems.
+8. **Record it** in a new `migration/ledger/YYYY-MM-DD-<slug>.md`, not in
+   `LEDGER.md`. For each id, give the declared targets with the
+   official-vs-no-fast-math numbers that justify them, and the port's
+   exactness on both targets. Do not write an "owner approval" heading:
+   SAS-35 is the approval.
+
+Removing an id needs no approval: delete its line and drop
+`"reference": "nofastmath"` from the case, which returns it to the official
+reference.
