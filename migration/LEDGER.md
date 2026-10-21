@@ -1451,8 +1451,10 @@ Active cases, port vs fast-math reference: worst `max_abs_error` 9.8e-5
 (`comb_96k_block128`, a cutoff sweep down to −30 at 96 kHz; it passes with
 only 2 % margin by the same mechanism), worst `residual_db` −94.2 dB
 (`out_of_range_controls`), best 3.0e-8 / −133.5 dB (`impulse_ringing`).
-`comb_96k_block128` may miss against the macOS arm64 reference, whose
-fast-math rounding differs.
+**At risk on the arm64 reference:** `comb_96k_block128` may miss against
+the macOS arm64 reference, whose fast-math rounding differs. If it does, it
+is parked under `modules/filters/pending/` like the 7 above (same rule, same
+owner decision); its tolerances are not loosened.
 
 Mechanism: every failing case sweeps or modulates the cutoff into long
 delay periods. The per-sample period `sample_rate / (base_frequency *
