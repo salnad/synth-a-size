@@ -2471,3 +2471,11 @@ is optional (manual dispatch).
   the flags: `module_main.cpp` builds with `-fno-fast-math
   -ffp-contract=off`. GCC already emitted the exact division, so x86 hashes
   are unchanged (224/224 locally). Recorded in `decisions/reference-arm.md` B.
+- Rebased again for #4 + #12 (CI does not run while the PR conflicts, and
+  the macOS hashes must cover `common/*`).
+- #4's `common/line_generator*` harness modules failed to link on macOS:
+  `nlohmann::json::value` takes its default by `const&`, which ODR-uses
+  `LineGenerator::kDefaultResolution` (in-class `constexpr`, no out-of-line
+  definition in C++14). GCC folds it at -O3; Apple clang does not. Fixed by
+  passing `static_cast<int>(...)`. GCC -O0 reproduces it (1 undefined
+  reference per object before, 0 after); x86 hashes unchanged (411/411).
