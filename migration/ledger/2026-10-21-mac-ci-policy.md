@@ -44,5 +44,6 @@ waiting for hosted macOS runners. There is no self-hosted Apple Silicon.
   a missing hash but still fails on a mismatch. `--only-new` adds the missing
   key without re-pinning a deliberately wrong one, which then still fails.
   `sas-parity` has a unit test for the `SAS_PARITY_MISSING_HASHES` values.
-- **Recorded in:** `decisions/reference-arm.md` ("Mac CI policy") and
-  `migration/AGENTS.md`.
+- **Recorded in:** `decisions/reference-arm.md` ("Mac CI policy"),
+  `migration/AGENTS.md`, and a pointer in `migration/DIVERGENCES.md`
+  ("Verification exceptions").

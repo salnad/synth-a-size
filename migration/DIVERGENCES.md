@@ -287,6 +287,7 @@ has its own decision record.
     sin/cos in the phase modifier (A11). So no `reference: nofastmath` case
     may render a phase modifier, whose no-fast-math form would differ. See
     `decisions/nofastmath/README.md`.
+- **macOS CI is advisory (Mac CI policy).** Merges are gated on Linux CI and review; macOS parity runs per PR as advisory and in full on main. See `decisions/reference-arm.md` ("Mac CI policy").
 - **macOS libm drift list.** Cases where Apple libm differs between macOS 14
   and 15 are reported with their metrics instead of failing the same-binary
   check. See `migration/corpus/macos_libm_drift.json` and
