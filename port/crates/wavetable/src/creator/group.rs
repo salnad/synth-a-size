@@ -73,11 +73,8 @@ impl WavetableGroup {
         let mut wave_source = WaveSource::new();
         wave_source.insert_new_keyframe(0);
         let wave_frame = &mut wave_source.keyframes.keyframes[0].data.wave_frame;
-        // The fast-math reference multiplies by the reciprocal of 2047
-        // instead of dividing (4 samples differ by 1 ulp otherwise).
-        const INV_LAST_INDEX: f32 = 1.0 / (WAVEFORM_SIZE as f32 - 1.0);
         for i in 0..WAVEFORM_SIZE {
-            let t = i as f32 * INV_LAST_INDEX;
+            let t = i as f32 / (WAVEFORM_SIZE as f32 - 1.0);
             let half_shift = (i + WAVEFORM_SIZE / 2) % WAVEFORM_SIZE;
             wave_frame.time_domain[half_shift] = 1.0 - 2.0 * t;
         }
