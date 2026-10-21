@@ -1737,6 +1737,9 @@ for the multiband compressor (crossovers at 120 Hz and 2500 Hz,
   the mask take `past_in_`; covered by `dc_filter/retrigger_voices`).
 - New ref-module `linkwitz_riley` (param `cutoff`, outputs `low` and
   `high`). `dc_filter` already had one; it had no cases until now.
+- The generic `filter` ref-module now rejects `model: comb`, so no capture
+  can record `CombFilter(1)`'s undefined output (Parity Reviewer note on
+  PR 1). Existing `filter` captures are unchanged.
 - Cases under `module_defaults`, no tolerance changes. `filters/linkwitz_riley`
   has 13 cases (26 outputs): 120, 2500, 10000 and 20000 Hz with noise and
   impulses, 120 Hz saw at 48 kHz, 120 Hz noise at block size 1, 2500 Hz at
