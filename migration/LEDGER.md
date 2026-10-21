@@ -966,3 +966,50 @@ into the live file and writing hashes:
 - A missing `random_seed` is drawn from the global seed counter, so the
   0.3.6 case sets one explicitly. The counter behaviour stays covered by
   unit tests.
+
+---
+
+## 2026-10-21: `sas-common` scalar helpers cross-checked against `sas-simd`
+
+**Changed**
+
+- `port/crates/simd/tests/common_scalar.rs` (sas-simd gains a dev-dependency
+  on sas-common) compares `sas_common::scalar` with sas-simd bit for bit.
+  The inputs are about 480k floats: special values, a 1/128 grid over ±300,
+  uniform values in ±40, and random bit patterns including NaN, infinities
+  and subnormals. The comparison covers `exp2`, `log2`, `exp`, `log`,
+  `pow` (also every lane of the poly versions), `power_scale` and `tanh`
+  (the `mono_float` overloads), `poly_floor`, `round_to_int`,
+  `pow2_to_float`, `min`, `max`, `clamp`, `iclamp`, `ilog2`, `interpolate`
+  (also the poly version), `interpolate_f64`, the Catmull weights and
+  interpolation, and `PI`.
+- It runs on both columns. CI's `aarch64-semantics` job now also runs it.
+
+**Result**
+
+All 20 helpers that have a sas-simd counterpart are bit-identical. Only
+`float_to_pcm` and `pcm_to_float` have none.
+
+The "upstream differs" list is explicit in the test's docs, and each item
+is pinned by an `upstream_differs_*` test:
+
+- `tanh` and `power_scale`: the mono and poly overloads differ upstream.
+  `tanh` evaluates in a different order; `power_scale`'s pass-through
+  threshold is 0.01 for mono and 0.005 for poly.
+- `min`/`max`: `fmin`/`fmax` against `poly_float::min`/`max` (A5).
+- Rounding for NaN and `|x| >= 2^31`. sas-common implements only the SSE2
+  column of `toInt` (A1), so under `aarch64-semantics` it differs from
+  sas-simd's NEON column there. Examples: `poly_floor(NaN)` gives −2^31
+  instead of 0, and `exp2(2^31)` gives +inf instead of 0.5. Every in-range
+  value agrees.
+
+**Open / next**
+
+- Proposed consolidation, which needs sas-common's owner to agree. sas-simd
+  would depend on sas-common and re-export its scalar helpers as
+  `utils::{min, max, clamp, iclamp, ilog2, interpolate, interpolate_f64}`
+  and `futils::{exp2, log2, exp, log, pow, power_scale, tanh}_mono`, with a
+  single copy. Before that, sas-common's private `round_to_i32_sse` should
+  follow A1 per target (sas-common already has `AARCH64_SEMANTICS`). The
+  single copy would then match upstream's arm64 lane-0 result out of range
+  too. Until then, this test keeps the two copies in step.
