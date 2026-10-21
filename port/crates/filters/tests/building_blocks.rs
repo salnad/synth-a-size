@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Parity for the fixed building blocks: `LinkwitzRileyFilter`
-//! (`filters/linkwitz_riley`) and `DcFilter` (`filters/dc_filter`).
+//! and `DcFilter`: every `filters/*` case of the `linkwitz_riley` and
+//! `dc_filter` ref-modules.
 
 mod support;
 
 use sas_filters::{dc_filter, linkwitz_riley_filter, DcFilter, LinkwitzRileyFilter};
-use support::{check_file, param_f32, Audio, ModuleDef, Trigger};
+use support::{check_module, param_f32, Audio, ModuleDef, Trigger};
 
 /// `filters/linkwitz_riley.cpp`.
 fn linkwitz_riley_module() -> ModuleDef {
@@ -34,10 +35,10 @@ fn dc_filter_module() -> ModuleDef {
 
 #[test]
 fn linkwitz_riley_matches_reference() {
-    check_file("linkwitz_riley", &linkwitz_riley_module());
+    check_module("linkwitz_riley", &linkwitz_riley_module());
 }
 
 #[test]
 fn dc_filter_matches_reference() {
-    check_file("dc_filter", &dc_filter_module());
+    check_module("dc_filter", &dc_filter_module());
 }

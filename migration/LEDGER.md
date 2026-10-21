@@ -1789,4 +1789,18 @@ the outputs are audio, not a large-scale quantity.
 120 Hz at ≥ 88.2 kHz internal (and 2500 Hz at 705.6 kHz), or decide
 another way to cover that range (for example, comparing against the macOS
 arm64 reference once PR #2 lands, if clang does not reassociate there).
-Until then, those cases are not in the corpus.
+Escalated to the owner by the coordinator. The coordinator recommends an
+exact comparison against the no-fast-math reference (a `reference:
+nofastmath` allowlist) rather than a tolerance exception. No tolerance
+exception has been added.
+
+Parked coverage: `migration/corpus/modules/filters/pending/linkwitz_riley_oversampled.json`
+holds 30 cases: 120 Hz with noise and saw at 44.1/48 kHz × 2 and × 4,
+88.2/96 kHz × 1, 2 and 4, and 176.4/192 kHz × 1, 2 and 4 (internal 88.2 to
+768 kHz), plus 2500 Hz at 176.4 kHz × 4. The corpus loaders read only
+`modules/<area>/*.json`, so the file is not rendered or tested. Every case
+has at least one output failing `module_defaults` against the reference
+(best output −89.0 dB, worst −36.6 dB). To re-enable: move the file to
+`modules/filters/`, write its hashes, and apply the decided comparison.
+`tests/building_blocks.rs` selects cases by module name, so it needs no
+edit.

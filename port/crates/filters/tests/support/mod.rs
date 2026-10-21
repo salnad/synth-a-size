@@ -158,14 +158,37 @@ pub fn case_ids(file: &str) -> Vec<String> {
         .collect()
 }
 
+/// The ids of every `filters/*` case whose module is `module`, in any file.
+pub fn module_case_ids(module: &str) -> Vec<String> {
+    sas_parity::cases::load_module_cases()
+        .unwrap_or_else(|e| panic!("sas-parity: {e}"))
+        .into_iter()
+        .filter(|case| case.id.starts_with("filters/") && case.json["spec"]["module"] == module)
+        .map(|case| case.id)
+        .collect()
+}
+
 /// Runs and asserts every case of `filters/<file>.json` against the
-/// reference. Prints per-case metrics (`--nocapture`), then asserts each
-/// output with `assert_parity`, so a failure names its case and metrics.
+/// reference.
 pub fn check_file(file: &str, module: &ModuleDef) {
     let ids = case_ids(file);
     assert!(!ids.is_empty(), "no cases in filters/{file}.json");
+    check_ids(&ids, module);
+}
+
+/// Runs and asserts every `filters/*` case of ref-module `name`, whatever
+/// file it is in.
+pub fn check_module(name: &str, module: &ModuleDef) {
+    let ids = module_case_ids(name);
+    assert!(!ids.is_empty(), "no filters/* cases use module {name:?}");
+    check_ids(&ids, module);
+}
+
+/// Prints per-case metrics (`--nocapture`), then asserts each output with
+/// `assert_parity`, so a failure names its case and metrics.
+pub fn check_ids(ids: &[String], module: &ModuleDef) {
     let mut results = Vec::new();
-    for id in &ids {
+    for id in ids {
         let case = ModuleCase::load(id);
         assert_capture_matches_semantics(id);
         let outputs = run_case(&case, module);

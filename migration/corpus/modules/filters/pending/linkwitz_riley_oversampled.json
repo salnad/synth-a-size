@@ -1,0 +1,501 @@
+{
+  "description": "PARKED (not loaded: the corpus loaders read modules/<area>/*.json only). LinkwitzRileyFilter at the compressor's 120 Hz crossover (and 2500 Hz at 705.6 kHz) at oversampled internal rates, where the fast-math x86 reference's own noise exceeds module_defaults (LEDGER: 'M5a PR 2' open question). To re-enable after the owner's decision, move this file to modules/filters/, write its hashes, and apply the decided comparison; tests/building_blocks.rs picks it up by module name.",
+  "module": "linkwitz_riley",
+  "cases": {
+    "noise_120hz_44_1k_x2": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 44100,
+      "oversample": 2,
+      "block_size": 256,
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 3,
+          "stereo": true
+        }
+      }
+    },
+    "saw_120hz_44_1k_x2": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 44100,
+      "oversample": 2,
+      "block_size": 256,
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 55.0,
+          "amp": 0.8
+        }
+      }
+    },
+    "noise_120hz_48k_x2": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 48000,
+      "oversample": 2,
+      "block_size": 256,
+      "num_samples": 48000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 3,
+          "stereo": true
+        }
+      }
+    },
+    "saw_120hz_48k_x2": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 48000,
+      "oversample": 2,
+      "block_size": 256,
+      "num_samples": 48000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 55.0,
+          "amp": 0.8
+        }
+      }
+    },
+    "noise_120hz_44_1k_x4": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 44100,
+      "oversample": 4,
+      "block_size": 512,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 3,
+          "stereo": true
+        }
+      }
+    },
+    "saw_120hz_44_1k_x4": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 44100,
+      "oversample": 4,
+      "block_size": 512,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 55.0,
+          "amp": 0.8
+        }
+      }
+    },
+    "noise_120hz_48k_x4": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 48000,
+      "oversample": 4,
+      "block_size": 512,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 3,
+          "stereo": true
+        }
+      }
+    },
+    "saw_120hz_48k_x4": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 48000,
+      "oversample": 4,
+      "block_size": 512,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 55.0,
+          "amp": 0.8
+        }
+      }
+    },
+    "noise_120hz_88_2k_x2": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 88200,
+      "oversample": 2,
+      "block_size": 256,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 3,
+          "stereo": true
+        }
+      }
+    },
+    "saw_120hz_88_2k_x2": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 88200,
+      "oversample": 2,
+      "block_size": 256,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 55.0,
+          "amp": 0.8
+        }
+      }
+    },
+    "noise_120hz_96k_x2": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 96000,
+      "oversample": 2,
+      "block_size": 256,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 3,
+          "stereo": true
+        }
+      }
+    },
+    "saw_120hz_96k_x2": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 96000,
+      "oversample": 2,
+      "block_size": 256,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 55.0,
+          "amp": 0.8
+        }
+      }
+    },
+    "noise_120hz_176_4k_x1": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 176400,
+      "oversample": 1,
+      "block_size": 128,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 3,
+          "stereo": true
+        }
+      }
+    },
+    "saw_120hz_176_4k_x1": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 176400,
+      "oversample": 1,
+      "block_size": 128,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 55.0,
+          "amp": 0.8
+        }
+      }
+    },
+    "noise_120hz_192k_x1": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 192000,
+      "oversample": 1,
+      "block_size": 128,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 3,
+          "stereo": true
+        }
+      }
+    },
+    "saw_120hz_192k_x1": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 192000,
+      "oversample": 1,
+      "block_size": 128,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 55.0,
+          "amp": 0.8
+        }
+      }
+    },
+    "noise_120hz_88_2k_x4": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 88200,
+      "oversample": 4,
+      "block_size": 512,
+      "num_samples": 176400,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 3,
+          "stereo": true
+        }
+      }
+    },
+    "saw_120hz_88_2k_x4": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 88200,
+      "oversample": 4,
+      "block_size": 512,
+      "num_samples": 176400,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 55.0,
+          "amp": 0.8
+        }
+      }
+    },
+    "noise_120hz_96k_x4": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 96000,
+      "oversample": 4,
+      "block_size": 512,
+      "num_samples": 192000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 3,
+          "stereo": true
+        }
+      }
+    },
+    "saw_120hz_96k_x4": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 96000,
+      "oversample": 4,
+      "block_size": 512,
+      "num_samples": 192000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 55.0,
+          "amp": 0.8
+        }
+      }
+    },
+    "noise_120hz_176_4k_x2": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 176400,
+      "oversample": 2,
+      "block_size": 256,
+      "num_samples": 176400,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 3,
+          "stereo": true
+        }
+      }
+    },
+    "saw_120hz_176_4k_x2": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 176400,
+      "oversample": 2,
+      "block_size": 256,
+      "num_samples": 176400,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 55.0,
+          "amp": 0.8
+        }
+      }
+    },
+    "noise_120hz_192k_x2": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 192000,
+      "oversample": 2,
+      "block_size": 256,
+      "num_samples": 192000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 3,
+          "stereo": true
+        }
+      }
+    },
+    "saw_120hz_192k_x2": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 192000,
+      "oversample": 2,
+      "block_size": 256,
+      "num_samples": 192000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 55.0,
+          "amp": 0.8
+        }
+      }
+    },
+    "noise_120hz_176_4k_x4": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 176400,
+      "oversample": 4,
+      "block_size": 512,
+      "num_samples": 352800,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 3,
+          "stereo": true
+        }
+      }
+    },
+    "saw_120hz_176_4k_x4": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 176400,
+      "oversample": 4,
+      "block_size": 512,
+      "num_samples": 352800,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 55.0,
+          "amp": 0.8
+        }
+      }
+    },
+    "noise_120hz_192k_x4": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 192000,
+      "oversample": 4,
+      "block_size": 512,
+      "num_samples": 384000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 3,
+          "stereo": true
+        }
+      }
+    },
+    "saw_120hz_192k_x4": {
+      "params": {
+        "cutoff": 120.0
+      },
+      "sample_rate": 192000,
+      "oversample": 4,
+      "block_size": 512,
+      "num_samples": 384000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 55.0,
+          "amp": 0.8
+        }
+      }
+    },
+    "noise_2500hz_176_4k_x4": {
+      "params": {
+        "cutoff": 2500.0
+      },
+      "sample_rate": 176400,
+      "oversample": 4,
+      "block_size": 512,
+      "num_samples": 352800,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 3,
+          "stereo": true
+        }
+      }
+    },
+    "saw_2500hz_176_4k_x4": {
+      "params": {
+        "cutoff": 2500.0
+      },
+      "sample_rate": 176400,
+      "oversample": 4,
+      "block_size": 512,
+      "num_samples": 352800,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 55.0,
+          "amp": 0.8
+        }
+      }
+    }
+  }
+}
