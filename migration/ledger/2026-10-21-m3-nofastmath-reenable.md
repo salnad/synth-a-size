@@ -32,7 +32,24 @@ random_lfo,random_lfo_module}.md`.
   form, in `lfo_module_frequency`.
 - **Port exactness on x86:** all 11 cases (17 outputs) are bit-identical
   to the x86 no-fast-math captures (`SAS_PARITY_CAPTURES_NOFASTMATH`).
-- **Hashes:** official and no-fast-math, x86 from local CI-identity trees.
-  macOS from this PR's `ref-arm64-macos-15` artifact.
+- **Justification on macOS** (this PR's Reference ARM run 39667063716,
+  macOS 15 job): every id prints `justified on macos`, so the `x86, macos`
+  declarations stand. Official against no-fast-math on macOS:
+  - the keytrack cases: `value` 4.22e-3 to 4.65e-3 (−56.7 to −57.5 dB), and
+    `osc_phase` 0.90 (−29.6 dB) on the two sweeps;
+  - the Lorenz cases match x86 exactly: the macOS captures are
+    bit-identical to the x86 ones in both builds (pure arithmetic), with
+    `value` 0.857 to 0.924 (−5.5 to −6.5 dB), `free_lorenz` 2.27e-4
+    (−87.5 dB) and `tempo_extremes` 0.187 (−28.7 dB);
+  - the keytrack captures differ bitwise between the platforms, with the
+    same miss.
+- **Port exactness on macOS:** with `aarch64-semantics`, the port is
+  bit-identical to the macOS no-fast-math captures on all 11 cases. The
+  macOS job runs the same sas-parity check natively; it is non-gating by
+  owner policy.
+- **Hashes:** official and no-fast-math on both targets. x86 comes from
+  local CI-identity trees. macOS comes from the `ref-arm64-macos-15`
+  artifact of run 39667063716 (`pinned`, and `proxy` with
+  `--reference nofastmath`).
 - `allowlist-approval --base origin/main` lists all 11 ids as
   `added <id> (SAS-35; x86, macos)`, with 0 problems.
