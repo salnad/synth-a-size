@@ -55,6 +55,62 @@
         "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
         "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
       }
+    },
+    {
+      "hashes": {
+        "analog_cutoff_blend:audio": "7747d7df7af4406b",
+        "analog_on_toggle:audio": "59308a0f0636a373",
+        "analog_style1_resonance_drive:audio": "63d4c3ef6c1d6a7f",
+        "comb_blend_transpose:audio": "b5d4710980146ebb",
+        "comb_cutoff_blend:audio": "579c6799a2b6170b",
+        "comb_style1_resonance_drive:audio": "467046149199a74b",
+        "digital_cutoff_blend:audio": "55ad6f5ed34dd83b",
+        "digital_keytrack_midi:audio": "3d549e6542ab725b",
+        "digital_retrigger_voices:audio": "aaa244dac69344a1",
+        "digital_style1_resonance_drive:audio": "351bf034800cb1fb",
+        "diode_cutoff_blend:audio": "b9fe21c1e55ac133",
+        "diode_style1_resonance_drive:audio": "44cc28397b33fb5f",
+        "dirty_cutoff_blend:audio": "8d37eebf2a58bf9b",
+        "dirty_oversample_2x:audio": "e29aaef7e41cf7db",
+        "dirty_style1_resonance_drive:audio": "652284b80d16a9a3",
+        "formant_controls:audio": "5be77282ea334643",
+        "formant_cutoff_blend:audio": "369a7090a3b3e6f3",
+        "formant_style1_resonance_drive:audio": "badd77ddf9c671df",
+        "formant_vocal_tract:audio": "d1677530ff701d03",
+        "ladder_cutoff_blend:audio": "6a83edfc6751c4ab",
+        "ladder_mix_ramp:audio": "258c8a8c3c4c8043",
+        "ladder_style1_resonance_drive:audio": "861fecd70a7bc667",
+        "model_steps_0_to_7:audio": "bc538cfd424d3ad3",
+        "mono_digital:audio": "2095f28808efb4eb",
+        "mono_formant:audio": "a936907ac1f964bb",
+        "phase_cutoff_blend:audio": "c1305638fc5b387b",
+        "phase_style1_resonance_drive:audio": "ca571d6b2af70aeb",
+        "phaser_blend_transpose:audio": "b5629228f068ef0f",
+        "sallen_key_48k_block_128:audio": "d2908194993177db"
+      },
+      "identity": {
+        "arch": "aarch64",
+        "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+        "fast_math": true,
+        "glibc": null,
+        "libm_variants": "Apple libm (macOS 15.7.9)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    },
+    {
+      "hashes": {
+        "comb_style1_resonance_drive:audio": "c48360eaba8176cb"
+      },
+      "identity": {
+        "arch": "aarch64",
+        "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+        "fast_math": false,
+        "glibc": null,
+        "libm_variants": "Apple libm (macOS 15.7.9)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
     }
   ]
 }
