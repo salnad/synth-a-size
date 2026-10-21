@@ -2114,3 +2114,75 @@ Core Filters (M5a), stacked on PR 6.
   bit-identical to the no-fast-math reference on `k12_cutoff_sweep`, the
   one failing case checked through the Rust test. Same open question as
   the crossover.
+
+## 2026-10-21: M7 PR 1, `sas-engine` voice handler (Voice, VoiceHandler, NoteHandler)
+
+**What changed**
+
+- `port/crates/engine/src/voice_handler.rs` ports `framework/voice_handler.{h,cpp}`
+  and `note_handler.h`: voice allocation, `voice_priority` (newest, oldest,
+  highest, lowest, round robin), `voice_override` (kill, steal), legato,
+  sustain and sostenuto (per channel and channel ranges), all-notes and
+  all-sounds off, per-channel MPE pitch bend, pressure, slide and zoned pitch
+  wheel, mod wheel, and the per-voice-pair router copies with accumulated and
+  last-voice outputs. The upstream router overrides are installed as
+  dsp-core `RouterHooks`. `addProcessor`/`addIdleProcessor`/`registerOutput`
+  are free functions generic over kernels that embed a `VoiceHandler`
+  (`HasVoiceHandler`), for `SynthVoiceHandler` later.
+- `slot_queue.rs`: a storage-slot replica of `CircularQueue`. Upstream walks
+  `active_voices_` with range-for loops whose bodies remove and push voices
+  (`noteOff` with stealing), and `grabNextUnplayedPressedNote` can read the
+  stale slot at `end()`. Both depend on raw slot positions, which
+  `sas_dsp_core::CircularQueue` does not expose.
+- `tuning.rs`: the `Tuning` table that `convertMidiNote` reads (default,
+  constant, `loadScale`, reference note). File loading is the next PR.
+- Faithful upstream quirks kept: `Voice::clearSlideEvent` clears the
+  aftertouch sample; `noteOff`'s stealing path applies the channel's bend,
+  pressure and slide to the released voice rather than the new one.
+- `aarch64-semantics` forwards to `sas-simd`, `sas-dsp-core` (#40) and `sas-filters`.
+
+**Reference capture**
+
+- `migration/reference/src/modules/engine/voice_handler.cpp`, an artifact-only
+  module. It builds an upstream `VoiceHandler(0, kMaxPolyphony)` with a probe
+  of the 18 per-voice outputs in the voice router. The probe's envelope is
+  the voice killer and an accumulated output, and a
+  `cr::Multiply(note, 1/127)` is a last-voice output. The module replays
+  `params.events` and emits:
+  - `voice_values`, `voice_masks`, `voice_offsets`: each probed output's
+    trigger value, mask and offset, 4 lanes, one row per aggregate-voice
+    process call;
+  - `block_state`: active voices, pressed notes, last active note and
+    current voice mask, per block;
+  - `audio` and `note_percent`, per frame.
+  The length is `params.num_samples`, not the spec key, because rows are not
+  frames (the harness self-check ties spec `num_samples` to output frames).
+- `migration/corpus/modules/engine/voice_handler.json`: 20 authored cases.
+  They cover round robin; every priority under both kill and steal (polyphony
+  3, six held notes released in scrambled order); mono legato; mono
+  retrigger; duo legato with steal; sustain and sostenuto; MPE on four
+  member channels with ranges; per-channel, global and range all-off; a
+  polyphony drop with held voices; oversample 2 (block 128); and block 128.
+
+**Metrics** (x86_64; the committed hashes equal those written from CI run
+39522994531's `reference-renders` artifact, with no diff): 20 cases × 6 arrays, all **bit-identical**
+(max abs error 0). A deliberate bug (local pitch bend range 48 → 47) fails
+`mpe_expression:voice_values` with max abs error 1.0 and a residual of −33.6 dB.
+
+`tests/voice_handler_routing.rs` checks the router overrides directly:
+- `add_mono_processor` and `add_idle_mono_processor` go to the separate
+  global router (upstream `getMonoRouter()` returns `&global_router_`) and
+  are not forwarded;
+- `add_processor` and `remove_processor` are forwarded to the voice router;
+- only voice-router processors are polyphonic.
+
+**Open / next**
+
+- The `RouterHooks` request (forward `addIdleProcessor`, set the sample
+  rate before forwarding) merged as #26. What remains open is its end-to-end
+  coverage, which the `SynthVoiceHandler` captures provide (M7 PR 3).
+- The polyphony input's `static_cast<int>(std::roundf(...))` goes through
+  `sas_simd::conversions::float_to_i32` (an A3 site), like dsp-core's casts.
+- `MidiManager` (and its MPE zone parsing) calls `SoundEngine` directly, so
+  its parity comes with the engine PR, through engine-level captures and
+  authored MPE MIDI renders.

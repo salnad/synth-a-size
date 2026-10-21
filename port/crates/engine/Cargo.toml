@@ -8,9 +8,23 @@ repository.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[features]
+# Upstream's aarch64 (NEON) semantics on every target; see
+# migration/decisions/reference-arm.md.
+aarch64-semantics = [
+    "sas-simd/aarch64-semantics",
+    "sas-dsp-core/aarch64-semantics",
+    "sas-filters/aarch64-semantics",
+]
+
 [dependencies]
+sas-simd.workspace = true
 sas-dsp-core.workspace = true
 sas-oscillators.workspace = true
 sas-filters.workspace = true
 sas-effects.workspace = true
 sas-modulation.workspace = true
+
+[dev-dependencies]
+sas-parity.workspace = true
+serde_json = "1"
