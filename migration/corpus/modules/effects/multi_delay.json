@@ -1,0 +1,122 @@
+{
+  "description": "Delay<Memory> (MultiDelay), as ChorusModule uses it: four independent lanes.",
+  "module": "multi_delay",
+  "params": {
+    "size": 3841
+  },
+  "cases": {
+    "chorus_lanes_saw": {
+      "sample_rate": 48000,
+      "num_samples": 48000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "style": 0,
+        "frequency": {
+          "value": [
+            100.0,
+            120.0,
+            140.0,
+            160.0
+          ]
+        },
+        "feedback": 0.4,
+        "wet": 1.0
+      }
+    },
+    "chorus_frequency_sweep": {
+      "sample_rate": 48000,
+      "block_size": 128,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 5
+        },
+        "style": 0,
+        "frequency": {
+          "signal": "ramp",
+          "from": 12.5,
+          "to": 2000.0
+        },
+        "feedback": {
+          "signal": "ramp",
+          "from": -0.95,
+          "to": 0.95
+        },
+        "wet": 1.0,
+        "filter_cutoff": {
+          "signal": "ramp",
+          "from": 8.0,
+          "to": 136.0
+        },
+        "filter_spread": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    },
+    "stereo_style_lanes": {
+      "sample_rate": 44100,
+      "num_samples": 44100,
+      "params": {
+        "size": 8821
+      },
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 220.0,
+          "amp": 0.4
+        },
+        "style": 1,
+        "frequency": {
+          "value": [
+            30.0,
+            40.0,
+            50.0,
+            60.0
+          ]
+        },
+        "frequency_aux": {
+          "value": [
+            70.0,
+            80.0,
+            90.0,
+            100.0
+          ]
+        },
+        "feedback": 0.8,
+        "wet": 0.7
+      }
+    },
+    "long_tail_lanes": {
+      "sample_rate": 48000,
+      "num_samples": 144000,
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 10
+        },
+        "style": 0,
+        "frequency": {
+          "value": [
+            25.0,
+            33.0,
+            41.0,
+            57.0
+          ]
+        },
+        "feedback": 0.95,
+        "wet": 1.0,
+        "filter_cutoff": 70.0,
+        "filter_spread": 0.5
+      }
+    }
+  }
+}

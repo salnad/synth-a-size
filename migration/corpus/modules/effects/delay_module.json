@@ -1,0 +1,221 @@
+{
+  "description": "DelayModule through effect_module_harness.h (controls set once per block; 'on' toggles enable()).",
+  "module": "delay_module",
+  "cases": {
+    "defaults_saw": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        }
+      }
+    },
+    "free_frequency_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "delay_sync": 0,
+        "delay_frequency": {
+          "signal": "ramp",
+          "from": -2.0,
+          "to": 9.0
+        },
+        "delay_feedback": 0.6,
+        "delay_dry_wet": 0.5
+      }
+    },
+    "tempo_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 2
+        },
+        "beats_per_second": 2.5,
+        "delay_sync": 1,
+        "delay_tempo": {
+          "signal": "ramp",
+          "from": 4.0,
+          "to": 12.0
+        },
+        "delay_feedback": 0.5,
+        "delay_dry_wet": 0.5
+      }
+    },
+    "dotted_and_triplet_stereo": {
+      "sample_rate": 48000,
+      "block_size": 128,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 165.0,
+          "amp": 0.4
+        },
+        "beats_per_second": 1.75,
+        "delay_style": 1,
+        "delay_sync": 2,
+        "delay_tempo": 8,
+        "delay_aux_sync": 3,
+        "delay_aux_tempo": 10,
+        "delay_feedback": 0.7,
+        "delay_dry_wet": 0.6
+      }
+    },
+    "ping_pong_style": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 440.0,
+          "amp": 0.5
+        },
+        "delay_style": 2,
+        "delay_sync": 0,
+        "delay_frequency": 2.5,
+        "delay_feedback": 0.8,
+        "delay_dry_wet": 0.7
+      }
+    },
+    "mid_ping_pong_style": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 4
+        },
+        "delay_style": 3,
+        "delay_sync": 0,
+        "delay_frequency": 3.0,
+        "delay_aux_sync": 0,
+        "delay_aux_frequency": 1.5,
+        "delay_feedback": 0.8,
+        "delay_dry_wet": 0.7
+      }
+    },
+    "feedback_and_filter_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 73.0,
+          "amp": 0.6
+        },
+        "delay_sync": 0,
+        "delay_frequency": 4.0,
+        "delay_feedback": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 1.0
+        },
+        "delay_filter_cutoff": {
+          "signal": "ramp",
+          "from": 8.0,
+          "to": 136.0
+        },
+        "delay_filter_spread": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
+        "delay_dry_wet": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    },
+    "enable_toggle": {
+      "num_samples": 132300,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "on": {
+          "signal": "square",
+          "freq_hz": 1.0,
+          "amp": 0.5,
+          "offset": 0.5
+        },
+        "delay_feedback": 0.8,
+        "delay_dry_wet": 0.5
+      }
+    },
+    "tempo_sync_bps_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 220.0,
+          "amp": 0.4
+        },
+        "beats_per_second": {
+          "signal": "ramp",
+          "from": 0.5,
+          "to": 4.0
+        },
+        "delay_sync": 1,
+        "delay_tempo": 7,
+        "delay_feedback": 0.6
+      }
+    },
+    "rate_96k": {
+      "sample_rate": 96000,
+      "block_size": 128,
+      "num_samples": 192000,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "delay_style": 1,
+        "delay_feedback": 0.7,
+        "delay_dry_wet": 0.5
+      }
+    },
+    "oversampled_2x": {
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "delay_style": 3,
+        "delay_feedback": 0.7,
+        "delay_dry_wet": 0.5
+      }
+    },
+    "long_tail_full_feedback": {
+      "num_samples": 220500,
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 100
+        },
+        "delay_style": 1,
+        "delay_sync": 0,
+        "delay_frequency": 2.0,
+        "delay_aux_sync": 0,
+        "delay_aux_frequency": 3.0,
+        "delay_feedback": 1.0,
+        "delay_dry_wet": 1.0
+      }
+    }
+  }
+}

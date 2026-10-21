@@ -1723,3 +1723,57 @@ Margin ≥ 3.4× and ≥ 22.5 dB. The port is bit-identical to the
 
 - Switch the test's parameter details to `sas-preset` once it merges.
 - macOS arm64 hashes after PR #2.
+
+---
+
+## 2026-10-21: M6 PR 1, delay family (`sas-effects`)
+
+Ported `effects/delay.{h,cpp}` (`Delay<MemoryType>`: `StereoDelay`,
+`MultiDelay`, all eight styles including the clamped/unfiltered ones the
+flanger and chorus use) and `modules/delay_module.{h,cpp}`. The crate's
+`aarch64-semantics` feature forwards to every direct dependency that has
+it (`sas-dsp-core`, `sas-filters`, `sas-simd`; PR #40's rule). The only
+per-ISA site here is `Memory::get`'s `toInt` read index (A1a), which lives
+in `sas-dsp-core`.
+
+Effect modules are `SynthModule`s with no processor inputs, so
+`migration/reference/src/modules/effects/effect_module_harness.h` drives
+them like the engine does: controls are set once per block from case inputs
+(`control->set(value)`, lane 0), `on` toggles `enable()` as
+`ReorderableEffectChain::processWithInput` does (a disabled effect passes its
+input through), and the module gets a beats-per-second control output.
+`port/crates/effects/tests/common/harness.rs` mirrors it. The parameter
+details the modules read come from a test-only table copied from
+`synth_parameters.cpp` (`tests/common/params.rs`) until `sas-preset` merges.
+
+Captures (all under `module_defaults`, no tolerance changes):
+
+- `effects/stereo_delay`: the M0 case plus 12 new ones: every style
+  (mono, stereo, ping pong, mid ping pong, clamped dampened, clamped
+  unfiltered, unclamped unfiltered), frequency 0.25–512 Hz and 1 Hz–20 kHz
+  sweeps (period clamped at both ends), feedback −1→1, wet 0→1, filter
+  cutoff 8→136 and spread 0→1, damping 0→1, 48/96 kHz, 2× oversampling,
+  and two 5 s long tails (feedback 1.0 and 0.97).
+- `effects/multi_delay` (new): per-lane frequencies, chorus-range sweeps
+  (12.5 Hz–2 kHz, feedback −0.95→0.95), stereo style and a 3 s tail.
+- `effects/delay_module` (new): defaults, free frequency −2→9 (0.25–512 Hz),
+  tempo sync 4→12 and dotted/triplet, beats per second 0.5→4, every style,
+  feedback/filter/wet sweeps, enable toggling at 1 Hz, 96 kHz, 2×
+  oversampling and a 5 s full-feedback tail.
+
+Metrics (x86_64 reference, port on SSE2): 29 outputs, all pass. Worst
+`max_abs_error` 3.4e-6 (`multi_delay/chorus_frequency_sweep`), worst
+residual −118.8 dB (`multi_delay/long_tail_lanes`); none bit-identical
+(fast-math reference).
+
+Hashes for the new cases were written from a local tree with the CI build
+identity; they are re-checked against this PR's `reference-renders`
+artifact. macOS arm64 hashes follow once PR #2 merges.
+
+**Open / next**
+
+- Reverb, distortion, chorus and flanger (stacked on this PR); EQ,
+  compressor, phaser, the distortion module and filter FX after the filter
+  PRs land.
+- Switch `tests/common/params.rs` to the `sas-preset` registry once M2
+  merges.

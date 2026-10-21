@@ -20,6 +20,229 @@
         "feedback": 0.6,
         "style": 2
       }
+    },
+    "mono_saw_frequency_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "style": 0,
+        "frequency": {
+          "signal": "ramp",
+          "from": 0.25,
+          "to": 512.0
+        },
+        "feedback": 0.7,
+        "wet": 0.6
+      }
+    },
+    "stereo_noise_filter_sweep": {
+      "sample_rate": 48000,
+      "block_size": 128,
+      "num_samples": 96000,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 1
+        },
+        "style": 1,
+        "frequency": 3.0,
+        "frequency_aux": 7.0,
+        "feedback": 0.8,
+        "wet": 0.5,
+        "filter_cutoff": {
+          "signal": "ramp",
+          "from": 8.0,
+          "to": 136.0
+        },
+        "filter_spread": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    },
+    "feedback_and_wet_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "square",
+          "freq_hz": 220.0,
+          "amp": 0.3
+        },
+        "style": 0,
+        "frequency": 20.0,
+        "feedback": {
+          "signal": "ramp",
+          "from": -1.0,
+          "to": 1.0
+        },
+        "wet": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    },
+    "mid_ping_pong_sine": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 330.0,
+          "amp": 0.7
+        },
+        "style": 3,
+        "frequency": 4.0,
+        "frequency_aux": 6.0,
+        "feedback": 0.9,
+        "wet": 0.7,
+        "filter_cutoff": 72.0,
+        "filter_spread": 0.4
+      }
+    },
+    "ping_pong_noise_96k": {
+      "sample_rate": 96000,
+      "block_size": 128,
+      "num_samples": 192000,
+      "params": {
+        "size": 384000
+      },
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.4,
+          "stereo": true,
+          "seed": 7
+        },
+        "style": 2,
+        "frequency": 2.5,
+        "frequency_aux": 9.0,
+        "feedback": 0.75,
+        "wet": 0.8
+      }
+    },
+    "clamped_dampened_damping_sweep": {
+      "num_samples": 88200,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 55.0,
+          "amp": 0.8
+        },
+        "style": 5,
+        "frequency": 9.0,
+        "feedback": 0.95,
+        "wet": 0.5,
+        "damping": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        }
+      }
+    },
+    "clamped_unfiltered_saturating": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 82.0,
+          "amp": 0.9
+        },
+        "style": 6,
+        "frequency": 50.0,
+        "feedback": 0.98,
+        "wet": 0.5
+      }
+    },
+    "unclamped_unfiltered_negative_feedback": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "sine",
+          "freq_hz": 440.0,
+          "amp": 0.3
+        },
+        "style": 7,
+        "frequency": 30.0,
+        "feedback": -0.9,
+        "wet": 0.5
+      }
+    },
+    "frequency_clamp_sweep": {
+      "num_samples": 44100,
+      "inputs": {
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "stereo": true,
+          "seed": 3
+        },
+        "style": 6,
+        "frequency": {
+          "signal": "ramp",
+          "from": 1.0,
+          "to": 20000.0
+        },
+        "feedback": 0.5,
+        "wet": 0.5
+      }
+    },
+    "oversampled_2x": {
+      "oversample": 2,
+      "block_size": 128,
+      "num_samples": 88200,
+      "params": {
+        "size": 352800
+      },
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "style": 1,
+        "frequency": 5.0,
+        "frequency_aux": 3.0,
+        "feedback": 0.6,
+        "wet": 0.5
+      }
+    },
+    "long_tail_full_feedback": {
+      "num_samples": 220500,
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 64
+        },
+        "style": 1,
+        "frequency": 6.0,
+        "frequency_aux": 4.0,
+        "feedback": 1.0,
+        "wet": 1.0,
+        "filter_cutoff": 70.0,
+        "filter_spread": 0.3
+      }
+    },
+    "long_tail_ping_pong": {
+      "num_samples": 220500,
+      "inputs": {
+        "audio": {
+          "signal": "impulse",
+          "at": 0
+        },
+        "style": 2,
+        "frequency": 7.0,
+        "feedback": 0.97,
+        "wet": 1.0,
+        "filter_cutoff": 60.0,
+        "filter_spread": 1.0
+      }
     }
   }
 }
