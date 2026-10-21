@@ -22,9 +22,13 @@ pub use sas_filters;
 
 pub mod delay;
 pub mod delay_module;
+pub mod reverb;
+pub mod reverb_module;
 
 pub use delay::{Delay, MultiDelay, StereoDelay};
 pub use delay_module::DelayModule;
+pub use reverb::Reverb;
+pub use reverb_module::ReverbModule;
 
 /// Milestone in `migration/PLAN.md` that ports this crate.
 pub const MILESTONE: &str = "M6";
@@ -36,6 +40,9 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/src/synthesis/effects/delay.cpp",
     "vital/src/synthesis/modules/delay_module.h",
     "vital/src/synthesis/modules/delay_module.cpp",
+    "vital/src/synthesis/effects/reverb.h",
+    "vital/src/synthesis/effects/reverb.cpp",
+    "vital/src/synthesis/modules/reverb_module.h",
     "vital/src/synthesis/modules/reorderable_effect_chain.cpp",
     "vital/src/synthesis/modules/chorus_module.cpp",
     "vital/src/synthesis/modules/reverb_module.cpp",
