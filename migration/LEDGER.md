@@ -2027,13 +2027,14 @@ Core Filters (M5a), stacked on PR 4.
   sample. The parity test
   (`port/crates/oscillators/tests/synth_oscillator_parity.rs`) mirrors it
   and calls `assert_parity!` on both outputs of every case.
-- `migration/corpus/modules/oscillators/synth_oscillator.json`: 67 cases
-  under `module_defaults` (four of them interim, below), at 44.1/48/96 kHz,
+- `migration/corpus/modules/oscillators/synth_oscillator.json`: 69 cases
+  under `module_defaults` (six of them interim, below), at 44.1/48/96 kHz,
   oversample 2 and block sizes 17/64/128. Wavetables are init, predefined
-  and well-conditioned time-interpolated creator content only. **The
-  audio of transpose, tune, transpose snapping and non-integer pitch is
-  not covered by any active case** (see "Parked" below); their pitch is,
-  through `synth_oscillator_pitch`.
+  and well-conditioned time-interpolated creator content only. **Active audio coverage of transpose and tune is limited to the interim
+  constant values below (transpose 7, tune 0.3, both 0); transpose snapping
+  with a non-zero transpose and swept or other non-integer pitch have no
+  active audio case** (see "Parked" below). Their pitch is covered through
+  `synth_oscillator_pitch`.
 - `ref-module` module `synth_oscillator_pitch` (same file) and
   `migration/corpus/modules/oscillators/synth_oscillator_pitch.json`
   (15 cases): the same oscillator, capturing the block's per-sample phase
@@ -2049,7 +2050,7 @@ Core Filters (M5a), stacked on PR 4.
 **Measured** (x86_64, all within the default module limits, no tolerance
 changes)
 
-- Audio (`raw` and `levelled`, 134 outputs). Worst: `distortion_4`
+- Audio (`raw` and `levelled`, 138 outputs). Worst: `distortion_4`
   (bend) 3.0e-5 / −113.0 dB, `distortion_4_spread` 1.7e-5 / −116.2 dB,
   `distortion_3_spread` (quantize) 2.1e-5 / −119.6 dB. Everything else is
   ≤ 7.3e-6 and ≤ −130 dB, including random phase (A2 on x86: negative
@@ -2093,19 +2094,26 @@ the reviewer measured, port bit-identical to no-fast-math):
 | `oscillators/synth_oscillator/probe_quantize_global_high_note` (quantize 6837, transpose 23.2, note 84) | 3.5e-3 / −58.4 dB |
 
 Mechanism: the base frequency (`midiNoteToFrequency`, a `powf` of a
-quotient) and the per-sample ratio `exp2((midi − base_midi) / 12)` are
-rounded differently under fast-math whenever the pitch is not an integer
-MIDI note or is moving, and the 32-bit phase accumulator integrates the
-ulp into a phase drift that grows over the render. Earlier text here
-said constant-pitch cases are unaffected; that was wrong for constant
-non-integer pitch (the probes above). Integer notes with transpose and
-tune at 0 are unaffected.
+quotient) and the per-sample ratio `exp2((midi − base_midi) / 12)` can
+round differently under fast-math when the pitch moves or is a
+non-integer MIDI note, and the 32-bit phase accumulator integrates the
+ulp into a phase drift that grows over the render. Whether a given
+constant pitch rounds the same in both builds depends on the value: the
+probes above differ by up to 5.4e-3, while constant transpose 7 and
+constant tune 0.3 round the same and pass (interim cases below; Graph
+Reviewer measured them at about 1.8e-7 and 2.4e-7 official vs
+no-fast-math too). Earlier text here said constant-pitch cases are
+unaffected; that is wrong in general (the probes).
 
 **Interim cases** (named `interim_*`; stand-ins that stay within the
 limits, the parked cases unchanged):
 
 - `interim_transpose_quantize_local` and `_global`: snapping with
   transpose 0 at an integer note (2.4e-7 / −139.2 dB, 3.0e-7 / −139.4 dB);
+- `interim_transpose_constant` and `interim_tune_constant`: the
+  audio-rate inputs at transpose 7 and tune 0.3 (1.8e-7 / −143.3 dB,
+  2.4e-7 / −142.6 dB). The review-fix commit dropped them on the wrong
+  assumption that they passed by rounding luck; they are restored;
 - `interim_transpose_tune_zero`: the audio-rate transpose and tune inputs
   at 0 (2.4e-7 / −143.3 dB);
 - `interim_note_ramp_short`: MIDI 48 → 72 over 1024 samples
