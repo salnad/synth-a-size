@@ -5,18 +5,43 @@
     "flange_with_resets": {
       "num_samples": 22050,
       "inputs": {
-        "audio": { "signal": "noise", "amp": 0.5, "seed": 21, "stereo": true },
+        "audio": {
+          "signal": "noise",
+          "amp": 0.5,
+          "seed": 21,
+          "stereo": true
+        },
         "reset": {
           "trigger": [
-            { "sample": 0, "value": "voice_on" },
-            { "sample": 6000, "value": "voice_on", "voices": "1" },
-            { "sample": 15011, "value": "voice_on", "voices": "0" }
+            {
+              "sample": 0,
+              "value": "voice_on"
+            },
+            {
+              "sample": 6000,
+              "value": "voice_on",
+              "voices": "1"
+            },
+            {
+              "sample": 15011,
+              "value": "voice_on",
+              "voices": "0"
+            }
           ]
         },
-        "midi_cutoff": { "signal": "sine", "freq_hz": 1.0, "amp": 50.0, "offset": 70.0 },
+        "midi_cutoff": {
+          "signal": "sine",
+          "freq_hz": 1.0,
+          "amp": 50.0,
+          "offset": 70.0
+        },
         "midi_blend_transpose": 42.0,
         "filter_cutoff_blend": 1.0,
-        "resonance": { "signal": "ramp", "from": 0.0, "to": 1.0 },
+        "resonance": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 1.0
+        },
         "style": 2
       }
     },
@@ -24,14 +49,117 @@
       "description": "Interim (Parity Reviewer, #19): well-conditioned coverage while the full-range case is parked in pending/; cutoff kept high so the delay period stays short. Additional to, not a replacement for, the parked case. Covers module routing for every style.",
       "num_samples": 22050,
       "inputs": {
-        "audio": { "signal": "saw", "freq_hz": 110.0, "amp": 0.5 },
-        "reset": { "trigger": [ { "sample": 0, "value": "voice_on" } ] },
-        "midi_cutoff": { "signal": "ramp", "from": 70.0, "to": 130.0 },
-        "midi_blend_transpose": { "signal": "ramp", "from": 0.0, "to": 84.0 },
-        "filter_cutoff_blend": { "signal": "ramp", "from": 2.0, "to": 0.0 },
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi_cutoff": {
+          "signal": "ramp",
+          "from": 70.0,
+          "to": 130.0
+        },
+        "midi_blend_transpose": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 84.0
+        },
+        "filter_cutoff_blend": {
+          "signal": "ramp",
+          "from": 2.0,
+          "to": 0.0
+        },
         "resonance": 0.8,
-        "style": { "signal": "ramp", "from": 0.0, "to": 5.99 }
+        "style": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 5.99
+        }
       }
+    },
+    "comb_style_sweep": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 110.0,
+          "amp": 0.5
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi_cutoff": {
+          "signal": "ramp",
+          "from": -40.0,
+          "to": 150.0
+        },
+        "midi_blend_transpose": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 84.0
+        },
+        "filter_cutoff_blend": {
+          "signal": "ramp",
+          "from": 2.0,
+          "to": 0.0
+        },
+        "resonance": 0.8,
+        "style": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 5.99
+        }
+      },
+      "reference": "nofastmath"
+    },
+    "band_spread_full_range": {
+      "num_samples": 22050,
+      "inputs": {
+        "audio": {
+          "signal": "saw",
+          "freq_hz": 73.4,
+          "amp": 0.7
+        },
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi_cutoff": {
+          "signal": "ramp",
+          "from": 136.0,
+          "to": 8.0
+        },
+        "midi_blend_transpose": {
+          "signal": "ramp",
+          "from": 84.0,
+          "to": 0.0
+        },
+        "filter_cutoff_blend": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 2.0
+        },
+        "resonance": 0.95,
+        "style": 3
+      },
+      "reference": "nofastmath"
     }
   }
 }
