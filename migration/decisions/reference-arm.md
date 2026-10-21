@@ -247,8 +247,8 @@ achievable on arm64.
   same binary there; the probe makes that a one-step check.
 - Apple libm changes with macOS releases (`powf` already differs between 14
   and 15). Keep the runner image pinned, and re-baseline the hashes
-  deliberately when moving to a new macOS, recording the reason in
-  LEDGER.md.
+  deliberately when moving to a new macOS, recording the reason in a new
+  `migration/ledger/` entry.
 - The reference pins contraction off and the fallback FFT, while
   upstream's real Mac binaries fuse and use vDSP. Both effects are measured
   at −91 dB and −127 dB, far below every tolerance.
