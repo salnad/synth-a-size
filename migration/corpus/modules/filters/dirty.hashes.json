@@ -1,0 +1,53 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "band_peak_notch_blend_sweep:audio": "4fab49eefbc4d783",
+        "band_peak_notch_cutoff_sweep:audio": "bd57f4441d153593",
+        "band_peak_notch_cutoff_sweep_0_to_130:audio": "8639f737503e11ab",
+        "band_peak_notch_cutoff_sweep_no_resonance:audio": "dc7070973ee1a4fb",
+        "band_peak_notch_drive_sweep:audio": "847f9cc048f1e2eb",
+        "band_peak_notch_resonance_sweep:audio": "db66854f3b50b68b",
+        "dual_notch_band_blend_sweep:audio": "a3192f77450afd63",
+        "dual_notch_band_cutoff_sweep:audio": "b100b09c7b9de43b",
+        "dual_notch_band_cutoff_sweep_0_to_130:audio": "9d006f7b885561cb",
+        "dual_notch_band_cutoff_sweep_no_resonance:audio": "81a72aa9f043d07b",
+        "dual_notch_band_drive_sweep:audio": "958e3c0298c4a38b",
+        "dual_notch_band_resonance_sweep:audio": "55a1d70d8978f5e3",
+        "k12_blend_sweep:audio": "5d8e5c009b42e153",
+        "k12_block_1:audio": "be609f65adafe7bb",
+        "k12_cutoff_sweep_0_to_130:audio": "274c2212ceb6496b",
+        "k12_cutoff_sweep_0_to_134:audio": "3c05bff2dd9e4c7b",
+        "k12_cutoff_sweep_no_resonance:audio": "977b185a4457e573",
+        "k12_drive_sweep:audio": "2dadc551c6ee8b43",
+        "k12_oversample_4x:audio": "bfd8c0c0bca855db",
+        "k12_oversample_4x_resonance_0_95_from_110:audio": "40a970a184f8e883",
+        "k12_resonance_sweep:audio": "52c2bbf696918b43",
+        "k24_96k_block_128:audio": "88a704064550028b",
+        "k24_blend_sweep:audio": "86c73e5ba651bf57",
+        "k24_cutoff_sweep_0_to_130:audio": "192c64242ed4cd33",
+        "k24_cutoff_sweep_0_to_134:audio": "494133d15aa19a7b",
+        "k24_cutoff_sweep_no_resonance:audio": "706723a89116dfb3",
+        "k24_drive_sweep:audio": "9cf518654762c8a3",
+        "k24_resonance_sweep:audio": "2bf62a336590a7f3",
+        "k24_retrigger_voices:audio": "0874463fdc1b223c",
+        "notch_pass_swap_blend_sweep:audio": "23707a2fe82f12c7",
+        "notch_pass_swap_cutoff_sweep:audio": "ae885c17db61438b",
+        "notch_pass_swap_cutoff_sweep_0_to_130:audio": "fb102560a5688afb",
+        "notch_pass_swap_cutoff_sweep_no_resonance:audio": "6140729bd81e15fb",
+        "notch_pass_swap_drive_sweep:audio": "1545fb247647d7cb",
+        "notch_pass_swap_resonance_sweep:audio": "3f53b5563527e22b",
+        "style_steps_0_to_9:audio": "7b3f31062b4f1bf7"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}

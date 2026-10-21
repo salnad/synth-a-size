@@ -219,6 +219,6 @@ pub fn create_filter(model: FilterModel) -> Option<ProcessorRef> {
         FilterModel::Ladder => Some(crate::ladder_filter::LadderFilter::create()),
         FilterModel::Diode => Some(crate::diode_filter::DiodeFilter::create()),
         FilterModel::Analog => Some(crate::sallen_key_filter::SallenKeyFilter::create()),
-        FilterModel::Dirty => None,
+        FilterModel::Dirty => Some(crate::dirty_filter::DirtyFilter::create()),
     }
 }
