@@ -11,6 +11,17 @@
 //! arithmetic (see `tests/futils_mono_vs_poly.rs` for the list), including
 //! `db_to_magnitude_mono`, which scales by `log2(e)` where the poly version
 //! does not.
+//!
+//! The mono overloads `sas-common` already ports (`exp2`, `log2`, `exp`,
+//! `log`, `pow`, `power_scale`, `tanh`) are re-exported from
+//! [`sas_common::scalar`] under their `_mono` names rather than duplicated;
+//! `tests/common_scalar.rs` checks them against every lane of the poly
+//! versions where upstream's arithmetic is the same.
+
+pub use sas_common::scalar::{
+    exp as exp_mono, exp2 as exp2_mono, log as log_mono, log2 as log2_mono, pow as pow_mono,
+    power_scale as power_scale_mono, tanh as tanh_mono,
+};
 
 use crate::common::{MIDI_0_FREQUENCY, NOTES_PER_OCTAVE};
 use crate::poly_utils as utils;
@@ -90,36 +101,9 @@ pub fn cheap_log2(value: PolyFloat) -> PolyFloat {
     utils::to_float(floored_log2) + interpolate
 }
 
-/// Lane 0 of the poly [`exp2`].
-#[inline(always)]
-pub fn exp2_mono(value: f32) -> f32 {
-    exp2(splat(value)).get(0)
-}
-
-/// Lane 0 of the poly [`log2`].
-#[inline(always)]
-pub fn log2_mono(value: f32) -> f32 {
-    log2(splat(value)).get(0)
-}
-
-#[inline(always)]
-pub fn exp_mono(exponent: f32) -> f32 {
-    exp2_mono(exponent * EXP_CONVERSION_MULT)
-}
-
-#[inline(always)]
-pub fn log_mono(value: f32) -> f32 {
-    log2_mono(value) * LOG_CONVERSION_MULT
-}
-
 #[inline(always)]
 pub fn exp_half_mono(exponent: f32) -> f32 {
     exp2_mono(-exponent)
-}
-
-#[inline(always)]
-pub fn pow_mono(base: f32, exponent: f32) -> f32 {
-    exp2_mono(log2_mono(base) * exponent)
 }
 
 /// Applies a scalar function to each lane.
@@ -297,21 +281,6 @@ pub fn tanh(value: PolyFloat) -> PolyFloat {
 }
 
 #[inline(always)]
-pub fn tanh_mono(value: f32) -> f32 {
-    let abs_value = value.abs();
-    let square = value * value;
-
-    let num = value
-        * (2.455_507_507_029_56
-            + 2.455_507_507_029_56 * abs_value
-            + square * (0.893_229_853_513_558 + 0.821_226_666_969_744 * abs_value));
-    let den = 2.445_066_346_522_99
-        + (2.445_066_346_522_99 + square)
-            * (value + 0.814_642_734_961_073 * value * abs_value).abs();
-    num / den
-}
-
-#[inline(always)]
 pub fn hard_tanh(value: PolyFloat) -> PolyFloat {
     const HARDNESS_CONSTANT: f32 = 0.66;
     const HARDNESS_CONSTANT_INV: f32 = 1.0 - HARDNESS_CONSTANT;
@@ -400,19 +369,6 @@ pub fn pan_amplitude(pan: PolyFloat) -> PolyFloat {
 #[inline(always)]
 pub fn equal_power_fade_inverse(t: PolyFloat) -> PolyFloat {
     sin1((t + 1.0) * 0.25)
-}
-
-#[inline(always)]
-pub fn power_scale_mono(value: f32, power: f32) -> f32 {
-    const MIN_POWER: f32 = 0.01;
-
-    if power.abs() < MIN_POWER {
-        return value;
-    }
-
-    let numerator = exp_mono(power * value) - 1.0;
-    let denominator = exp_mono(power) - 1.0;
-    numerator / denominator
 }
 
 #[inline(always)]
