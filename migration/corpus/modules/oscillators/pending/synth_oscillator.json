@@ -1,8 +1,108 @@
 {
-  "description": "SynthOscillator (vital/src/synthesis/producers/synth_oscillator.cpp) on rendered wavetables. Wavetables are init, predefined and well-conditioned creator content only (no frequency-domain keyframe interpolation between disjoint spectra). Ported in port/crates/oscillators. Parked under the coordinator's pending proposal, not yet an owner decision (see LEDGER.md, M4b SynthOscillator): pitch sweeps whose official reference differs from the no-fast-math reference beyond the module tolerances (phase drift from fast-math rounding of the frequency ratio). The port matches the no-fast-math reference. Not loaded by the harness while under pending/.",
+  "description": "SynthOscillator (vital/src/synthesis/producers/synth_oscillator.cpp) on rendered wavetables. Wavetables are init, predefined and well-conditioned creator content only (no frequency-domain keyframe interpolation between disjoint spectra). Ported in port/crates/oscillators. Parked pending an owner decision on the noisy-reference proposal (SAS-35; not decided; see LEDGER.md, M4b SynthOscillator): pitch sweeps, snapped transposes and constant non-integer pitches (probe_*: the Graph Reviewer's probes on PR #28) whose official audio differs from the no-fast-math reference beyond the module tolerances: fast-math rounds the base frequency and the frequency ratio differently, and the phase accumulator integrates it. The port matches the no-fast-math reference bit for bit. Their pitch is compared, active, in synth_oscillator_pitch.json. Not loaded by the harness while under pending/.",
   "module": "synth_oscillator",
   "seed": 0,
   "cases": {
+    "probe_transpose_tune_constant": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        }
+      },
+      "num_samples": 8000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose": 7.3,
+        "tune": 0.37
+      }
+    },
+    "probe_transpose_constant_negative": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        }
+      },
+      "num_samples": 8000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose": -19.6
+      }
+    },
+    "probe_quantize_local_transpose": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        }
+      },
+      "num_samples": 8000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose_quantize": 2741.0,
+        "transpose": 5.4
+      }
+    },
+    "probe_quantize_global_transpose": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        }
+      },
+      "num_samples": 8000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose_quantize": 6837.0,
+        "transpose": -10.7
+      }
+    },
+    "probe_quantize_global_high_note": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        }
+      },
+      "num_samples": 8000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose_quantize": 6837.0,
+        "transpose": 23.2,
+        "midi_note": 84.0
+      }
+    },
     "note_ramp": {
       "params": {
         "wavetable": {

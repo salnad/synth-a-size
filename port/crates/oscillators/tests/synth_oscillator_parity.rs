@@ -7,9 +7,11 @@
 //! Mirrors `migration/reference/src/modules/oscillators/synth_oscillator.cpp`:
 //! the wavetable is rendered from `params.wavetable`, then the oscillator is
 //! constructed (after the seed counter is set, as `ref-module` does), and the
-//! extra `modulation` input is what the FM/RM distortion types read. Every
-//! case runs in one test because the seed counter is process-global. Run
-//! with `--nocapture` for per-case metrics.
+//! extra `modulation` input is what the FM/RM distortion types read. Cases
+//! of the `synth_oscillator_pitch` module capture the block's phase
+//! increments times `2^-32` (frequency / sample rate) instead of the audio.
+//! Every case runs in one test because the seed counter is process-global.
+//! Run with `--nocapture` for per-case metrics.
 
 mod support;
 
@@ -68,10 +70,21 @@ const INPUTS: &[(&str, usize, InputRate)] = &[
     ("modulation", MODULATION, Audio),
 ];
 
-const OUTPUTS: &[(&str, usize)] = &[("raw", osc::RAW), ("levelled", osc::LEVELLED)];
+const PHASE_INC: usize = osc::NUM_OUTPUTS;
 
-/// `OscillatorProbe`: the oscillator plus the `modulation` input wired as
-/// its FM/RM sources.
+const OUTPUTS: &[(&str, usize)] = &[("raw", osc::RAW), ("levelled", osc::LEVELLED)];
+const PITCH_OUTPUTS: &[(&str, usize)] = &[("phase_inc", PHASE_INC)];
+
+fn outputs(case: &ModuleCase) -> &'static [(&'static str, usize)] {
+    match case.module() {
+        "synth_oscillator_pitch" => PITCH_OUTPUTS,
+        _ => OUTPUTS,
+    }
+}
+
+/// `OscillatorProbe` / `OscillatorPitchProbe`: the oscillator plus the
+/// `modulation` input wired as its FM/RM sources, and output `phase_inc`
+/// (written in every case; read for `synth_oscillator_pitch`).
 #[derive(Clone)]
 struct OscillatorProbe {
     oscillator: SynthOscillator,
@@ -96,6 +109,14 @@ impl ProcessorImpl for OscillatorProbe {
             .set_second_oscillator_output(modulation.clone());
         self.oscillator.set_sample_output(modulation);
         self.oscillator.process(this, num_samples);
+        let phase_inc = this.output_buffer(PHASE_INC);
+        for (dest, &increment) in phase_inc
+            .iter()
+            .zip(self.oscillator.phase_increments())
+            .take(num_samples)
+        {
+            dest.set(increment * (1.0 / 4_294_967_296.0));
+        }
     }
 }
 
@@ -126,7 +147,7 @@ fn create(case: &ModuleCase) -> ProcessorRef {
     Processor::new(
         OscillatorProbe { oscillator },
         osc::NUM_INPUTS + 1,
-        osc::NUM_OUTPUTS,
+        osc::NUM_OUTPUTS + 1,
         false,
         1,
     )
@@ -169,8 +190,8 @@ fn run_case(case: &ModuleCase) -> Vec<Vec<[f32; 4]>> {
         block_size: case.block_size(),
         num_samples: case.num_samples(),
     };
-    let outputs: Vec<usize> = OUTPUTS.iter().map(|&(_, index)| index).collect();
-    run_module(&processor, &inputs, &settings, &outputs)
+    let indices: Vec<usize> = outputs(case).iter().map(|&(_, index)| index).collect();
+    run_module(&processor, &inputs, &settings, &indices)
 }
 
 /// Captures must come from a reference of the ISA whose semantics this build
@@ -198,7 +219,12 @@ fn synth_oscillator_matches_reference() {
     let ids: Vec<String> = sas_parity::all_case_ids()
         .into_iter()
         .filter(|id| id.starts_with("oscillators/"))
-        .filter(|id| ModuleCase::load(id).module() == "synth_oscillator")
+        .filter(|id| {
+            matches!(
+                ModuleCase::load(id).module(),
+                "synth_oscillator" | "synth_oscillator_pitch"
+            )
+        })
         .collect();
     assert!(!ids.is_empty());
 
@@ -210,8 +236,8 @@ fn synth_oscillator_matches_reference() {
     for id in &ids {
         let case = ModuleCase::load(id);
         assert_capture_matches_semantics(id);
-        let outputs = run_case(&case);
-        for (&(name, _), data) in OUTPUTS.iter().zip(&outputs) {
+        let results = run_case(&case);
+        for (&(name, _), data) in outputs(&case).iter().zip(&results) {
             let label = format!("{id}:{name}");
             let report = case.report(name, data);
             println!(
@@ -228,7 +254,7 @@ fn synth_oscillator_matches_reference() {
                 failures.push(label.clone());
             }
         }
-        checked.push((id.clone(), outputs));
+        checked.push((id.clone(), results));
     }
     println!(
         "{} cases; worst max_abs_error {:.3e} ({}), worst residual {:.1} dB ({})",
@@ -242,8 +268,9 @@ fn synth_oscillator_matches_reference() {
     if !failures.is_empty() {
         eprintln!("failing outputs: {failures:?}");
     }
-    for (id, outputs) in &checked {
-        for (&(name, _), data) in OUTPUTS.iter().zip(outputs) {
+    for (id, results) in &checked {
+        let case = ModuleCase::load(id);
+        for (&(name, _), data) in outputs(&case).iter().zip(results) {
             assert_parity!(&format!("{id}:{name}"), data);
         }
     }

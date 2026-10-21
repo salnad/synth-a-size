@@ -1,0 +1,32 @@
+{
+  "entries": [
+    {
+      "hashes": {
+        "no_midi_track_transpose:phase_inc": "f16d9e150cb63183",
+        "note_ramp:phase_inc": "b4b19cd3aa4853bb",
+        "oversample_2_transpose:phase_inc": "4434882993e729ab",
+        "probe_quantize_global_high_note:phase_inc": "41a74841ec444583",
+        "probe_quantize_global_transpose:phase_inc": "5fc072a799537583",
+        "probe_quantize_local_transpose:phase_inc": "703bbbbf43dcd183",
+        "probe_transpose_constant_negative:phase_inc": "c3f072bff68dc383",
+        "probe_transpose_tune_constant:phase_inc": "413779186a269583",
+        "reset_offsets_transpose:phase_inc": "42f10f0168c8e807",
+        "sample_rate_96000_tune:phase_inc": "2297717fe0f64783",
+        "transpose_quantize_global:phase_inc": "2869112bb2c523d3",
+        "transpose_quantize_local:phase_inc": "e2d803ba8404e09b",
+        "transpose_tune_audio:phase_inc": "f1a5ce10a22ce75b",
+        "tune_audio_sine:phase_inc": "eb857045ceaf4d5b",
+        "voice_1_transpose:phase_inc": "cceeff1519d7a383"
+      },
+      "identity": {
+        "arch": "x86_64",
+        "compiler": "13.3.0",
+        "fast_math": true,
+        "glibc": "2.39",
+        "libm_variants": "baseline (GLIBC_TUNABLES glibc.cpu.hwcaps=-AVX,-AVX2,-FMA,-FMA4)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
+    }
+  ]
+}

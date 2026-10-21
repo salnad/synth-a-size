@@ -2027,27 +2027,51 @@ Core Filters (M5a), stacked on PR 4.
   sample. The parity test
   (`port/crates/oscillators/tests/synth_oscillator_parity.rs`) mirrors it
   and calls `assert_parity!` on both outputs of every case.
-- `migration/corpus/modules/oscillators/synth_oscillator.json`: 69 cases
-  under `module_defaults`, covering the features above at 44.1/48/96 kHz,
+- `migration/corpus/modules/oscillators/synth_oscillator.json`: 67 cases
+  under `module_defaults` (four of them interim, below), at 44.1/48/96 kHz,
   oversample 2 and block sizes 17/64/128. Wavetables are init, predefined
-  and well-conditioned time-interpolated creator content only.
+  and well-conditioned time-interpolated creator content only. **The
+  audio of transpose, tune, transpose snapping and non-integer pitch is
+  not covered by any active case** (see "Parked" below); their pitch is,
+  through `synth_oscillator_pitch`.
+- `ref-module` module `synth_oscillator_pitch` (same file) and
+  `migration/corpus/modules/oscillators/synth_oscillator_pitch.json`
+  (15 cases): the same oscillator, capturing the block's per-sample phase
+  increment `phase_inc_buffer_` times 2^-32, i.e. frequency / sample rate,
+  the normalized form the oscillator's phase accumulator consumes (the
+  large-scale rule in `migration/AGENTS.md`). `phase_inc_buffer_` is
+  private upstream; the harness reads it through an explicit template
+  instantiation (exempt from access checks), and the port exposes it as
+  `SynthOscillator::phase_increments()`. The cases are the inputs of all
+  nine parked audio cases plus tune as audio-rate sine, single-voice
+  swap, reset offsets, no MIDI tracking, 96 kHz and oversampling.
 
-**Measured** (x86_64, `raw` and `levelled`, 138 outputs, all within the
-default module limits, no tolerance changes)
+**Measured** (x86_64, all within the default module limits, no tolerance
+changes)
 
-- Worst: `distortion_4` (bend) 3.0e-5 / −113.0 dB, `distortion_4_spread`
-  1.7e-5 / −116.2 dB, `distortion_3_spread` (quantize) 2.1e-5 /
-  −119.6 dB. Everything else is ≤ 7.3e-6 and ≤ −130 dB, including random
-  phase (A2 on x86: negative draws wrap), wave-frame sweeps (A1b) and
-  every FM/RM variant.
-- Against the `REF_FAST_MATH=OFF` reference: all cases ≤ 3e-7 and
-  ≤ −146 dB.
+- Audio (`raw` and `levelled`, 134 outputs). Worst: `distortion_4`
+  (bend) 3.0e-5 / −113.0 dB, `distortion_4_spread` 1.7e-5 / −116.2 dB,
+  `distortion_3_spread` (quantize) 2.1e-5 / −119.6 dB. Everything else is
+  ≤ 7.3e-6 and ≤ −130 dB, including random phase (A2 on x86: negative
+  draws wrap), wave-frame sweeps (A1b) and every FM/RM variant.
+- Pitch (`phase_inc`, 15 outputs): worst `note_ramp` 1.8e-7 / −128.6 dB;
+  the reviewer's probes ≤ 2.2e-8 and ≤ −129.0 dB. The official reference
+  also passes against its no-fast-math build on every pitch case (the
+  tolerance-calibration comparison).
+- Against the `REF_FAST_MATH=OFF` reference: all audio cases ≤ 3e-7 and
+  ≤ −146 dB (Graph Reviewer: bit-identical on all of them, the parked
+  and probe cases included).
 
-**Pitch sweeps parked pending a decision (not deleted or narrowed)**
+**Parked pending an owner decision (not deleted or narrowed)**
 
+Exact comparison against the no-fast-math reference is an owner decision
+only for the wavetable-morph case ids listed in
+owner-decisions-json-and-morphs.md. For other cases whose official
+reference fails the limits against its own no-fast-math build, it is a
+pending proposal (SAS-35), not decided. Until it is,
 `migration/corpus/modules/oscillators/pending/synth_oscillator.json`
-holds four authored cases that the harness does not load while they sit
-under `pending/`:
+holds these nine authored audio cases, which the harness does not load
+while they sit under `pending/`:
 
 | Case | Port vs official | Port vs no-fast-math | Official vs no-fast-math |
 |---|---|---|---|
@@ -2056,28 +2080,39 @@ under `pending/`:
 | `oscillators/synth_oscillator/transpose_tune_audio` | 5.8e-4 / −82.5 dB | ≤ 3e-7 / ≤ −146 dB | 5.8e-4 |
 | `oscillators/synth_oscillator/transpose_quantize_global` | 2.5e-4 / −93.2 dB | 1.2e-7 / −152.6 dB | 2.5e-4 |
 
-The official reference fails the limits against its own no-fast-math
-build on these cases, so CI's tolerance-calibration job would fail on
-them independently of the port. When pitch moves, the per-sample ratio
-`exp2((midi − base_midi) / 12)` is no longer exactly 1, fast-math moves it
-by an ulp, and the 32-bit phase accumulator integrates the difference.
-Constant-pitch cases are unaffected. Coordinator's pending proposal (2026-10-21; not yet an owner decision):
-compare such cases exactly against the no-fast-math reference through an
-allowlist. They stay parked until it is decided and the mechanism exists.
+and, as candidates for the same decision, the Graph Reviewer's constant
+probes on PR #28 (8000 samples, init table; official vs no-fast-math as
+the reviewer measured, port bit-identical to no-fast-math):
 
-**Interim cases** (named `interim_*`; well-conditioned stand-ins for the
-features the parked cases covered, which stay unchanged), all within the
-default limits:
+| Case (constant inputs) | Official vs no-fast-math |
+|---|---|
+| `oscillators/synth_oscillator/probe_transpose_tune_constant` (transpose 7.3, tune 0.37) | 4.8e-3 / −66.5 dB |
+| `oscillators/synth_oscillator/probe_transpose_constant_negative` (transpose −19.6) | 1.6e-3 / −81.5 dB |
+| `oscillators/synth_oscillator/probe_quantize_local_transpose` (quantize 2741, transpose 5.4) | 5.4e-3 / −66.0 dB |
+| `oscillators/synth_oscillator/probe_quantize_global_transpose` (quantize 6837, transpose −10.7) | 3.4e-3 / −73.6 dB |
+| `oscillators/synth_oscillator/probe_quantize_global_high_note` (quantize 6837, transpose 23.2, note 84) | 3.5e-3 / −58.4 dB |
+
+Mechanism: the base frequency (`midiNoteToFrequency`, a `powf` of a
+quotient) and the per-sample ratio `exp2((midi − base_midi) / 12)` are
+rounded differently under fast-math whenever the pitch is not an integer
+MIDI note or is moving, and the 32-bit phase accumulator integrates the
+ulp into a phase drift that grows over the render. Earlier text here
+said constant-pitch cases are unaffected; that was wrong for constant
+non-integer pitch (the probes above). Integer notes with transpose and
+tune at 0 are unaffected.
+
+**Interim cases** (named `interim_*`; stand-ins that stay within the
+limits, the parked cases unchanged):
 
 - `interim_transpose_quantize_local` and `_global`: snapping with
-  transpose 0 (2.4e-7 / −139.2 dB, 3.0e-7 / −139.4 dB);
-- `interim_transpose_constant`, `interim_tune_constant`,
-  `interim_transpose_tune_zero`: the audio-rate transpose and tune inputs
-  at constant values (≤ 2.4e-7, ≤ −142.6 dB);
+  transpose 0 at an integer note (2.4e-7 / −139.2 dB, 3.0e-7 / −139.4 dB);
+- `interim_transpose_tune_zero`: the audio-rate transpose and tune inputs
+  at 0 (2.4e-7 / −143.3 dB);
 - `interim_note_ramp_short`: MIDI 48 → 72 over 1024 samples
   (3.1e-6 / −130.2 dB).
 
-**Hashes:** `synth_oscillator.hashes.json` is written from this PR's CI
+**Hashes:** `synth_oscillator.hashes.json` and
+`synth_oscillator_pitch.hashes.json` are written from this PR's CI
 `reference-renders` artifact. macOS arm64 hashes follow once PR #2 (macOS
 arm64 CI) merges.
 

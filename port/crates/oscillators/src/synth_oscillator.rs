@@ -1369,6 +1369,13 @@ impl SynthOscillator {
         &self.wavetable
     }
 
+    /// `phase_inc_buffer_`: the per-sample phase increments of the last
+    /// processed block (`frequency * 2^32 / sampleRate`, voice-swapped for a
+    /// single active voice).
+    pub fn phase_increments(&self) -> &[PolyFloat] {
+        &self.phase_inc_buffer
+    }
+
     fn buffer_slice(&self, buffer: WaveBuffer) -> &[f32] {
         match buffer {
             WaveBuffer::Null => &ZERO_WAVEFORM,

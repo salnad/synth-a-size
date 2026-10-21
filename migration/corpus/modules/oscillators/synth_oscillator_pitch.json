@@ -1,0 +1,352 @@
+{
+  "description": "SynthOscillator pitch (vital/src/synthesis/producers/synth_oscillator.cpp, setPhaseIncBufferSnap): the per-sample phase increment / 2^32 (frequency / sample rate), the normalized form the oscillator consumes. Covers MIDI sweeps, transpose and tune (constant, swept, audio-rate), local and global transpose snapping, non-integer pitch, single-voice swap, reset offsets, no MIDI tracking, 96 kHz and oversampling. Includes the inputs of every parked synth_oscillator audio case (pending/synth_oscillator.json), whose audio drifts in the official reference. Ported in port/crates/oscillators.",
+  "module": "synth_oscillator_pitch",
+  "seed": 0,
+  "cases": {
+    "probe_transpose_tune_constant": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        }
+      },
+      "num_samples": 8000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose": 7.3,
+        "tune": 0.37
+      }
+    },
+    "probe_transpose_constant_negative": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        }
+      },
+      "num_samples": 8000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose": -19.6
+      }
+    },
+    "probe_quantize_local_transpose": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        }
+      },
+      "num_samples": 8000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose_quantize": 2741.0,
+        "transpose": 5.4
+      }
+    },
+    "probe_quantize_global_transpose": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        }
+      },
+      "num_samples": 8000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose_quantize": 6837.0,
+        "transpose": -10.7
+      }
+    },
+    "probe_quantize_global_high_note": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        }
+      },
+      "num_samples": 8000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose_quantize": 6837.0,
+        "transpose": 23.2,
+        "midi_note": 84.0
+      }
+    },
+    "note_ramp": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        }
+      },
+      "num_samples": 12000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi_note": {
+          "signal": "ramp",
+          "from": 0.0,
+          "to": 127.0
+        }
+      }
+    },
+    "transpose_quantize_local": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        }
+      },
+      "num_samples": 8000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose_quantize": 2741.0,
+        "transpose": {
+          "signal": "ramp",
+          "from": -24.0,
+          "to": 24.0
+        }
+      }
+    },
+    "transpose_quantize_global": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        }
+      },
+      "num_samples": 8000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose_quantize": 6837.0,
+        "transpose": {
+          "signal": "ramp",
+          "from": -24.0,
+          "to": 24.0
+        }
+      }
+    },
+    "transpose_tune_audio": {
+      "params": {
+        "wavetable": {
+          "creator": "{\"version\": \"1.0.6\", \"name\": \"R\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"mix\", \"parts\": [{\"shape\": \"saw\"}, {\"shape\": \"triangle\", \"shift\": 300}], \"weights\": [0.5, 0.375]}}}]}]}]}"
+        }
+      },
+      "num_samples": 8000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose": {
+          "signal": "ramp",
+          "from": -36.0,
+          "to": 36.0
+        },
+        "tune": {
+          "signal": "sine",
+          "freq_hz": 3.0,
+          "amp": 0.5
+        }
+      }
+    },
+    "tune_audio_sine": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        }
+      },
+      "num_samples": 8000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "tune": {
+          "signal": "sine",
+          "freq_hz": 7.0,
+          "amp": 0.9
+        }
+      }
+    },
+    "voice_1_transpose": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        }
+      },
+      "num_samples": 4000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose": 3.7,
+        "active_voices": {
+          "value": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        }
+      }
+    },
+    "reset_offsets_transpose": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        }
+      },
+      "num_samples": 4000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 37,
+              "value": "voice_on",
+              "voices": "0"
+            },
+            {
+              "sample": 2101,
+              "value": "voice_on",
+              "voices": "1"
+            }
+          ]
+        },
+        "transpose": -4.2,
+        "midi_note": {
+          "signal": "ramp",
+          "from": 40.0,
+          "to": 70.0
+        }
+      }
+    },
+    "sample_rate_96000_tune": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        }
+      },
+      "num_samples": 8000,
+      "sample_rate": 96000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "tune": 0.61,
+        "transpose": 11.0
+      }
+    },
+    "oversample_2_transpose": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        }
+      },
+      "num_samples": 8000,
+      "oversample": 2,
+      "block_size": 128,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "transpose": {
+          "signal": "ramp",
+          "from": -48.0,
+          "to": 48.0
+        }
+      }
+    },
+    "no_midi_track_transpose": {
+      "params": {
+        "wavetable": {
+          "preset": "init"
+        }
+      },
+      "num_samples": 4000,
+      "inputs": {
+        "reset": {
+          "trigger": [
+            {
+              "sample": 0,
+              "value": "voice_on"
+            }
+          ]
+        },
+        "midi_track": 0.0,
+        "transpose": 9.9
+      }
+    }
+  }
+}
