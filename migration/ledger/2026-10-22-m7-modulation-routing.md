@@ -31,6 +31,9 @@ Follows slice A (#75). Voice Engine.
   contrasting velocities), from `generate.py`, rendered as
   `render/velocity_filter_poly__overlap` with its x86 CI-identity hash.
   Voices that sound together carry different poly modulation.
+  Every corpus preset needs a load/save case, so `velocity_filter_poly` is
+  also in `modules/preset/state.json` (state and roundtrip artifacts, x86
+  hashes).
 - `tests/voice_handler_routing.rs`: #26's coverage (below).
 - `tests/modulation_routing.rs` and the reload renders: disconnect coverage
   (below). `VoiceHandler::is_nonaccumulated_output_active` (a read-only

@@ -28,6 +28,8 @@
         "upgrade_from_0_4_9_sub:artifact/state.json": "cb153e536e1fac78",
         "upgrade_from_0_4_9_sub_direct:artifact/state.json": "7f9be11879d22c44",
         "upgrade_from_0_6_5:artifact/state.json": "e807e87c34659d72",
+        "velocity_filter_poly:artifact/roundtrip.json": "3511dec581b01876",
+        "velocity_filter_poly:artifact/state.json": "cc74967905a98f5d",
         "version_1_0_9:artifact/state.json": "c7b67482beed33a9"
       },
       "identity": {
