@@ -997,9 +997,26 @@ pub fn render_cases_from(cases_json: &Value, ledger: &[&str]) -> Result<Vec<Reso
                 return Err(format!("{id}: needs {key:?}"));
             }
         }
-        for key in ["tuning", "keyboard_map"] {
-            if case.get(key).is_some_and(|value| !value.is_string()) {
+        // Upstream picks the loader by extension, whichever key names the file.
+        for (key, extensions) in [
+            ("tuning", &[".scl", ".tun"][..]),
+            ("keyboard_map", &[".kbm"][..]),
+        ] {
+            let Some(value) = case.get(key) else {
+                continue;
+            };
+            let Some(path) = value.as_str() else {
                 return Err(format!("{id}: {key:?} must be a corpus path"));
+            };
+            let extension = Path::new(path)
+                .extension()
+                .map(|extension| format!(".{}", extension.to_string_lossy().to_lowercase()))
+                .unwrap_or_default();
+            if !extensions.contains(&extension.as_str()) {
+                return Err(format!(
+                    "{id}: {key:?} must be a {} file",
+                    extensions.join(" or ")
+                ));
             }
         }
         let mut merged: Map<String, Value> = defaults
@@ -1538,6 +1555,27 @@ mod tests {
         let render = json!({ "name": "r", "preset": "p.vital", "midi": "m.mid", "tuning": 1 });
         let err = render_cases_from(&cases_json(floor_tolerances(), render), LEDGER).unwrap_err();
         assert!(err.contains("must be a corpus path"), "{err}");
+        // A keyboard map on the default scale is a real upstream path.
+        for render in [
+            json!({ "name": "r", "preset": "p.vital", "midi": "m.mid", "keyboard_map": "t.KBM" }),
+            json!({ "name": "r", "preset": "p.vital", "midi": "m.mid", "tuning": "t.tun" }),
+        ] {
+            assert!(render_cases_from(&cases_json(floor_tolerances(), render), LEDGER).is_ok());
+        }
+        for (render, message) in [
+            (
+                json!({ "name": "r", "preset": "p.vital", "midi": "m.mid", "tuning": "t.kbm" }),
+                "\"tuning\" must be a .scl or .tun file",
+            ),
+            (
+                json!({ "name": "r", "preset": "p.vital", "midi": "m.mid", "keyboard_map": "t.scl" }),
+                "\"keyboard_map\" must be a .kbm file",
+            ),
+        ] {
+            let err =
+                render_cases_from(&cases_json(floor_tolerances(), render), LEDGER).unwrap_err();
+            assert!(err.contains(message), "{err}");
+        }
     }
 
     #[test]

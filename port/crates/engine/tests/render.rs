@@ -93,6 +93,7 @@ fn load_tuning(synth: &mut Synth, case: &RenderCase) {
     }
     let mut tuning = Tuning::new();
     for path in files {
+        assert!(path.is_file(), "{}: tuning file not found", path.display());
         tuning
             .load_file(&path)
             .unwrap_or_else(|e| panic!("{}: {e}", path.display()));

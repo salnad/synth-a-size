@@ -15,7 +15,11 @@ harness, so it needs Parity Reviewer as well as Graph Reviewer.
 - Render cases take optional `"tuning"` and `"keyboard_map"` corpus paths,
   in `run_corpus.py` (passed to `ref-render`, validated as strings) and
   `sas-parity` (`RenderCase::tuning_path`, `keyboard_map_path`), with a unit
-  test on each side.
+  test on each side. Upstream picks the loader by file extension, whichever
+  key names the file, so both resolvers require `tuning` to be a `.scl` or
+  `.tun` file and `keyboard_map` a `.kbm` file (a keyboard map alone, on the
+  default scale, stays valid). The engine render test asserts each file
+  exists, as `ref-render` does, instead of loading an empty scale.
 - `engine/tests/render.rs`: a case's tuning file, then its keyboard map, are
   loaded into one `Tuning` and given to the synth after the preset.
 - `generate.py` writes `migration/corpus/tunings/`:

@@ -192,6 +192,15 @@ class ToleranceRules(unittest.TestCase):
         self.assertEqual((resolved["tuning"], resolved["keyboard_map"]), ("tunings/t.scl", "tunings/t.kbm"))
         self.assertCaseError("must be a corpus path", rc.resolve_renders,
                              cases_json(render={"name": "r", "preset": "p", "midi": "m", "tuning": 1}), LEDGER)
+        # A keyboard map on the default scale is a real upstream path.
+        rc.resolve_renders(cases_json(render={"name": "r", "preset": "p", "midi": "m", "keyboard_map": "t.KBM"}),
+                           LEDGER)
+        rc.resolve_renders(cases_json(render={"name": "r", "preset": "p", "midi": "m", "tuning": "t.tun"}), LEDGER)
+        self.assertCaseError('"tuning" must be a .scl or .tun file', rc.resolve_renders,
+                             cases_json(render={"name": "r", "preset": "p", "midi": "m", "tuning": "t.kbm"}), LEDGER)
+        self.assertCaseError('"keyboard_map" must be a .kbm file', rc.resolve_renders,
+                             cases_json(render={"name": "r", "preset": "p", "midi": "m", "keyboard_map": "t.scl"}),
+                             LEDGER)
 
     # Parity Reviewer on #50: "approved_in": "Ledger" was accepted, because the
     # "# Ledger" section spans the whole file (and then every entry file).

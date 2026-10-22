@@ -144,6 +144,8 @@ RENDER_DEFAULT_KEYS = RENDER_SETTING_KEYS + ("tolerances",)
 # A tuning file (.scl or .tun) and a keyboard map (.kbm), applied in that
 # order after the preset (ref-render --tuning / --keyboard-map).
 RENDER_TUNING_KEYS = ("tuning", "keyboard_map")
+# Upstream picks the loader by extension, whichever key names the file.
+RENDER_TUNING_EXTENSIONS = {"tuning": (".scl", ".tun"), "keyboard_map": (".kbm",)}
 RENDER_CASE_KEYS = RENDER_SETTING_KEYS + RENDER_TUNING_KEYS + ("name", "preset", "midi", "description",
                                                               "tolerances", "tolerance_exception")
 EXCEPTION_KEYS = ("approved_in", "tolerances")
@@ -521,8 +523,13 @@ def resolve_renders(cases_json, ledger_text):
             if not isinstance(case.get(key), str):
                 raise CaseError("%s: needs %r" % (case_id, key))
         for key in RENDER_TUNING_KEYS:
-            if key in case and not isinstance(case[key], str):
-                raise CaseError("%s: %r must be a corpus path" % (case_id, key))
+            if key not in case:
+                continue
+            if not isinstance(case[key], str):
+                raise CaseError('%s: "%s" must be a corpus path' % (case_id, key))
+            extensions = RENDER_TUNING_EXTENSIONS[key]
+            if os.path.splitext(case[key])[1].lower() not in extensions:
+                raise CaseError('%s: "%s" must be a %s file' % (case_id, key, " or ".join(extensions)))
         merged = {k: v for k, v in defaults.items() if k != "tolerances"}
         merged.update({k: v for k, v in case.items() if k not in ("tolerances", "tolerance_exception")})
         merged["tolerances"], exception = resolve_tolerances(case_id, default_tolerances, {}, case, ledger_text)
