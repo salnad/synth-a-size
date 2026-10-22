@@ -61,6 +61,9 @@ the upstream pin in [UPSTREAM.md](UPSTREAM.md).
      error on an input upstream handles, a `None` or clamp for upstream UB,
      a formula that differs from the source, or a `#[cfg]` fork with no
      matching A-site.
+   - Ideas that go beyond parity (speed, features, nicer handling of bad
+     input) go in [IMPROVEMENTS.md](IMPROVEMENTS.md) as parked ideas, not
+     in code.
    - Per-target emulation that matches upstream on each target is not a
      divergence. Harness comparison policies go under its "Verification
      exceptions".

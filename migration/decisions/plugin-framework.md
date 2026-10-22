@@ -52,6 +52,12 @@ Reasons:
   select their option. Upstream's out-of-range typing (an engine value handed
   to the host as a normalized value) is not replicated. Recorded in
   `migration/ledger/2026-10-21-owner-approval-plugin-text-entry.md`.
+- *Host automation timing (owner decision, 2026-10-22):* automation is
+  applied as upstream does it: the last point of each parameter queue,
+  once, before the block (`SAMPLE_ACCURATE_AUTOMATION = false`, #79).
+  Per-sample automation is parked as an idea in
+  [IMPROVEMENTS.md](../IMPROVEMENTS.md) (I1). Recorded in
+  `migration/ledger/2026-10-22-owner-approval-automation-timing.md`.
 - Turn the `editor` feature on when the GUI crate lands (M10).
 - The RustAudio community has an AI-usage policy
   (<https://rust.audio/community/ai/>). It covers contributions *to* their
