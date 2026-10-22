@@ -67,11 +67,15 @@ impl<E: Engine> SynthPlugin<E> {
     /// from the engine's random seed counter (a draw here would shift every
     /// later one, and the sound with it).
     pub fn new(engine: E) -> SynthPlugin<E> {
-        // The engine's own white noise is not reachable from here, so the
-        // init document's differs until a preset is loaded (see the ledger).
-        let init = InitContent { sample_seed: 0 };
+        // The init state carries the engine's own sample; an engine that
+        // can't report one gets white noise from a local seed, never from
+        // the global counter.
+        let mut document = PresetDocument::init(&InitContent { sample_seed: 0 });
+        if let Some(sample) = engine.engine_sample() {
+            document.state.sample = sample;
+        }
         SynthPlugin {
-            params: Arc::new(SynthParams::new(PresetDocument::init(&init))),
+            params: Arc::new(SynthParams::new(document)),
             processor: BlockProcessor::new(engine),
         }
     }
