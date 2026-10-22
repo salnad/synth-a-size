@@ -23,9 +23,15 @@ held in today's graphs, so the problem was latent.
   sizes are unchanged too (`NULL_SOURCE_SIZE`).
 - The docs of `NULL_BUFFER` and `Input::buffer()` state the contract: an
   unconnected input's buffer is a transient clone; use it, drop it or pass
-  it to `Output::set_buffer`, but never keep it in a graph. The only
-  places that keep buffers are `Output::set_buffer` calls (`ValueSwitch`,
-  `FiltersModule`), and no kernel stores a `Buffer`.
+  it to `Output::set_buffer`, but never keep it in a graph. This PR
+  covers the `Output::set_buffer` redirections (`ValueSwitch`,
+  `FiltersModule`). One kernel still keeps an input's buffer:
+  `sas-filters`' `FilterState::load_settings` (`synth_filter.rs:169`)
+  stores `Some(cutoff.buffer())` in a field that persists on the filter
+  (e.g. `DirtyFilter::filter_state`), so an unconnected cutoff holds the
+  calling thread's null buffer. Graph Reviewer found it in review. It
+  isn't live in the engine, where every cutoff is connected, and Core
+  Filters fixes it in a follow-up PR after this one.
 - `Buffer` stays `Rc<[Cell<PolyFloat>]>`, so no API changes for other
   crates.
 
