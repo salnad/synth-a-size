@@ -5,7 +5,7 @@
 
 use sas_engine::synth::Synth;
 use sas_engine::Tuning;
-use sas_preset::PresetState;
+use sas_preset::{PresetState, SampleState};
 
 use crate::engine::Engine;
 
@@ -17,9 +17,10 @@ pub struct SoundEngineHost {
 
 // SAFETY: `Synth` owns its whole processor graph. Its `Rc`/`RefCell`
 // handles all point inside that graph, and this wrapper's public surface
-// takes and returns only plain values (no method exposes the `Synth` or any
-// graph handle), so moving the wrapper moves every handle together and no
-// two threads can reach the same `Rc`. The graph keeps no thread-local
+// takes and returns only plain values: no method exposes the `Synth` or any
+// graph handle, and `sample_state` returns an owned copy. So moving the
+// wrapper moves every handle together and no two threads can reach the
+// same `Rc`. The graph keeps no thread-local
 // buffers (such as dsp-core's per-thread null buffer), so nothing it holds
 // belongs to the thread that built it. The wrapper is only used from one
 // thread at a time (`Engine` methods take `&mut self`).
@@ -36,6 +37,12 @@ impl SoundEngineHost {
         Self {
             synth: Synth::new(),
         }
+    }
+
+    /// The sample the engine plays (see [`Synth::sample_state`]): the
+    /// engine's own white noise until a preset loads a sample.
+    pub fn sample_state(&self) -> SampleState {
+        self.synth.sample_state()
     }
 }
 
