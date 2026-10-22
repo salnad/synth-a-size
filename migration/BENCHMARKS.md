@@ -4,7 +4,7 @@ How fast the Rust engine renders compared with the C++ reference, on the
 same machine. This measures; it does not optimise. Performance work starts
 at M11 against a passing parity suite ([AGENTS.md](AGENTS.md) rule 5,
 [PLAN.md](PLAN.md) M11). Ideas found here are parked in
-[IMPROVEMENTS.md](IMPROVEMENTS.md).
+[IMPROVEMENTS.md](IMPROVEMENTS.md) (I9–I13).
 
 ## Run it
 

@@ -161,3 +161,99 @@ parity cost), and where it came from.
 - **Source:** `vital/src/synthesis/effects_engine/` (`sound_engine.h`,
   `effects_modulation_handler.h`); `vital/Makefile` (`effects_lv2`,
   `effects_vst`, `effects_vst3`).
+
+## I9. Cross-crate inlining in release builds (LTO)
+
+- **Idea:** build `sas-bench` and the plugin with `lto = "fat"` and
+  `codegen-units = 1`, or mark the small `sas-simd` helpers `#[inline]`.
+  The hot helpers live in `sas-simd` and are called from other crates
+  (`sas-oscillators`, `sas-filters`). Without LTO or `#[inline]`, Rust
+  does not inline a non-generic function across crates.
+- **Why:** measured with the benchmark (48 kHz, 256-sample blocks, this
+  repo's Linux x86_64 VM), fat LTO alone takes the port from 1.40–1.64× to
+  1.14–1.53× the official reference's render time, a gain of 0–12 % by
+  scenario. The output hashes are unchanged in every scenario.
+- **Tradeoff:**
+  - No parity cost: Rust does not reassociate or contract floating point
+    when it inlines, so the output stays bit-identical. The parity suite
+    still has to confirm that per target.
+  - Longer release builds.
+  - It closes only part of the gap; I10 and I11 are the larger,
+    site-specific items.
+- **Source:** `ledger/2026-10-22-perf-benchmark.md`; `migration/BENCHMARKS.md`.
+
+## I10. Keep the oscillator's wavetable interpolation in registers
+
+- **Idea:** make `SynthOscillator`'s per-voice interpolation path
+  (`interpolate_multiple_buffers`, `poly_utils::get_value_matrix_separate`,
+  `get_catmull_interpolation_matrix`, `Matrix::new`) compile to one inlined
+  loop, as GCC does for upstream's `processOscillators`. This means
+  `#[inline]`/`#[inline(always)]` on the helpers and avoiding the
+  intermediate `Matrix` values.
+- **Why:** this is the largest part of the port's gap. In
+  `poly16_unison`, the oscillator outside its FFT takes about 2.4× the
+  C++ time. The two matrix helpers show up as separate out-of-line
+  symbols in `perf`.
+- **Tradeoff:** no parity cost if the arithmetic and its order are kept,
+  and bit-exact parity tests guard it. The cost is more code and more
+  `unsafe`-free SIMD plumbing in `sas-simd`.
+- **Source:** `ledger/2026-10-22-perf-benchmark.md` (perf profiles of
+  `poly16_unison`, Rust and C++).
+
+## I11. Inline the ladder filter's saturator
+
+- **Idea:** inline `futils::algebraic_sat` into `LadderFilter::process`.
+  Today it is an out-of-line call per sample and stage.
+- **Why:** at 8x oversampling, `algebraic_sat` alone is 17 % of the
+  port's render time, and the ladder filter costs about 1.6× upstream's,
+  where GCC inlines the saturator. `oversampling_8x` has the widest
+  Rust ÷ C++ ratio, 1.6–1.9×.
+- **Tradeoff:** no parity cost (same arithmetic). Covered by I9 if LTO is
+  adopted, otherwise one `#[inline]`.
+- **Source:** `ledger/2026-10-22-perf-benchmark.md` (perf profile of
+  `oversampling_8x`).
+
+## I12. Fault in delay memory before the first audio block
+
+- **Idea:** allocate effect delay lines (`MemoryTemplate`, used by the
+  delay, chorus, flanger and reverb) with their pages already touched,
+  for example by writing the zeros at construction as upstream's
+  `std::make_unique<poly_float[]>(n)` does. Today `vec![0.0; n]` takes
+  lazily mapped zero pages from `calloc`.
+- **Why:** the first block after a synth is built costs about 3 ms in the
+  port and 0.7 ms upstream (init patch, 44.1 kHz, 64-sample blocks), and
+  up to 13–19 ms at 8x oversampling. That is 2–10× the block's real-time
+  budget, so it is a likely dropout on the first block after a preset
+  load. 83 % of it is page faults, taken while the effect chain's first
+  `enable` → `hard_reset` → `DelayMemory::clear_all` writes those pages
+  for the first time. Later note-ons do not spike. This is Linux (glibc)
+  behaviour: on the macOS arm64 CI runner the port's first block is no
+  slower than upstream's (0.4 ms vs 0.6 ms), so the shipped Mac plugin is
+  not affected today. A Linux build or another allocator would be.
+- **Tradeoff:**
+  - No audio change.
+  - The memory is committed when the synth is built (as upstream).
+  - The remaining memset in the first block is upstream behaviour: C++
+    pays it too.
+  - Arguably a real-time-safety fix rather than an optimisation, so it may
+    be worth taking before M11 if a Linux build ships.
+- **Source:** `ledger/2026-10-22-perf-benchmark.md` (the "first µs"
+  column; perf of the first block).
+
+## I13. A faster FFT for the oscillators' spectral transforms
+
+- **Idea:** replace the per-block inverse real FFT that every wavetable
+  oscillator voice runs (`spectral_morph::transform_and_wrap_buffer` →
+  `FourierTransform::transform_real_inverse`, a port of JUCE's fallback
+  FFT) with a faster real FFT: split-radix or SIMD, or vDSP on macOS
+  (I2).
+- **Why:** it is the largest single cost in both engines for unison
+  patches: about 34 % of the port's time and 45 % of upstream's in
+  `poly16_unison`. The port's FFT costs about 1.1× the C++ one.
+- **Tradeoff:**
+  - It changes the last bits of every wavetable oscillator's output
+    against the reference, which uses JUCE's fallback FFT. That breaks
+    the bit-exact and SAS-35 comparisons; vDSP measured −127.5 dB (I2).
+  - Needs an owner decision and a recorded divergence.
+- **Source:** `ledger/2026-10-22-perf-benchmark.md` (perf profiles, Rust
+  and C++).
