@@ -9,6 +9,9 @@
         "init_saw__single_note_48k_b128": "834b73744e0ae16f",
         "line_wavetable_fold__velocity": "41e464688075ae5f",
         "mono_legato_glide__legato": "8baac38ee9ed5b6f",
+        "osc_diode_phase__overlap": "de0addf6f81ad58b",
+        "osc_formant_comb__chords": "5a5a83536ed9375b",
+        "osc_stack_serial__arpeggio": "acc310c3f9c552da",
         "unison_pad_fx__chords": "5a9e368be289f87e",
         "velocity_filter_poly__overlap": "b865dbb500418c4f"
       },
@@ -31,6 +34,9 @@
         "init_saw__single_note_48k_b128": "18654d508a22991b",
         "line_wavetable_fold__velocity": "d30482ef1f96af47",
         "mono_legato_glide__legato": "4a36b6c72051fcb3",
+        "osc_diode_phase__overlap": "6bad6fe0016bdc0b",
+        "osc_formant_comb__chords": "22c7be35f6fcced7",
+        "osc_stack_serial__arpeggio": "276a55bed4575bb0",
         "unison_pad_fx__chords": "0807b0c1119d2d3f",
         "velocity_filter_poly__overlap": "f975a5a1103868ff"
       },
