@@ -6,36 +6,34 @@
 //!
 //! Ports `vital/src/synthesis/modules/synth_voice_handler.{h,cpp}`.
 //!
-//! # What is built so far
-//!
-//! `init` builds the parts of the upstream graph whose processors are
-//! ported:
-//!
-//! - `createNoteArticulation`: portamento (`PortamentoSlope`), pitch bend
-//!   with `pitch_bend_range`, local (MPE) pitch bend, `voice_tune` and
-//!   `voice_transpose` into the bent MIDI note, plus the `note` percentage
-//!   and the note relative to the reference (`midi_offset_output`);
-//! - the macros, the `note`/`velocity`/expression modulation sources and
-//!   status outputs, `stereo`, `num_voices`, and the poly modulation
-//!   readouts;
-//! - `noteOn`/`noteOff` with the `note_retrigger` output, and `process`
-//!   (feedback reset, status outputs).
-//!
-//! The producers, the LFOs, envelopes and random sources, the filters, the
-//! voice output stage (whose amplitude is the voice killer) and the
-//! modulation bank are added as the oscillator, modulation, filter and
-//! effect crates merge. Until then no voice killer is set, so released
-//! voices stay active.
+//! `init` builds the whole upstream voice graph in upstream order:
+//! note articulation, producers, modulators (LFOs, envelopes, random
+//! sources, expression sources), filters, the voice output stage (whose
+//! amplitude is the voice killer) and the modulation bank's processors.
+//! The order matters beyond the graph itself: every oscillator, sample
+//! source and random modulator takes the next engine RNG seed when it is
+//! constructed or cloned, so each voice's seeds depend on everything built
+//! before it.
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
+use sas_common::line_generator::LineGenerator;
 use sas_dsp_core::operators::{self, cr};
 use sas_dsp_core::utilities::portamento_slope::PortamentoSlope;
 use sas_dsp_core::{constants, Output, Processor, ProcessorImpl, ProcessorRef, SynthModule, Value};
+use sas_filters::modules::filters_module::FiltersModule;
+use sas_modulation::{
+    EnvelopeModule, LfoModule, ModulationConnectionProcessor, RandomLfoModule, TriggerRandom,
+};
+use sas_oscillators::producers_module::{self, ProducersModule};
+use sas_oscillators::{SharedSample, SharedWavetable};
+use sas_preset::constants::{NUM_ENVELOPES, NUM_LFOS, NUM_RANDOM_LFOS};
 use sas_simd::common::{MIDI_SIZE, MIDI_TRACK_CENTER};
-use sas_simd::PolyMask;
+use sas_simd::{poly_utils, PolyMask};
 
+use crate::modulation_bank::ModulationConnectionBank;
 use crate::voice_handler::{HasVoiceHandler, NoteHandler, VoiceHandler, MAX_POLYPHONY};
 
 /// `kNumMacros`.
@@ -58,14 +56,28 @@ pub struct SynthVoiceHandler {
     accumulated_output: Option<Rc<Output>>,
     accumulated_direct_output: Option<Rc<Output>>,
 
+    producers: Option<ProcessorRef>,
+    lfos: Vec<ProcessorRef>,
+    lfo_sources: Vec<Rc<RefCell<LineGenerator>>>,
+    envelopes: Vec<ProcessorRef>,
+    random: Option<ProcessorRef>,
+    random_lfos: Vec<ProcessorRef>,
+    filters_module: Option<ProcessorRef>,
+    amplitude_envelope: Option<ProcessorRef>,
+    amplitude: Option<ProcessorRef>,
+    modulation_bank: ModulationConnectionBank,
+    enabled_modulation_processors: Vec<ProcessorRef>,
+
     num_voices: Rc<Output>,
     note_retriggered: Rc<Output>,
     poly_readouts: BTreeMap<String, Rc<Output>>,
     last_active_voice_mask: PolyMask,
 
-    /// Upstream's function-local `static const cr::Value`s.
+    /// Upstream's function-local `static const cr::Value`s and
+    /// `constants::kValueOne`.
     max_midi_invert: ProcessorRef,
     reference_adjust: ProcessorRef,
+    value_one: ProcessorRef,
 }
 
 impl SynthVoiceHandler {
@@ -88,12 +100,24 @@ impl SynthVoiceHandler {
             direct_output: operators::Multiply::create(),
             accumulated_output: None,
             accumulated_direct_output: None,
+            producers: None,
+            lfos: Vec::new(),
+            lfo_sources: Vec::new(),
+            envelopes: Vec::new(),
+            random: None,
+            random_lfos: Vec::new(),
+            filters_module: None,
+            amplitude_envelope: None,
+            amplitude: None,
+            modulation_bank: ModulationConnectionBank::new(),
+            enabled_modulation_processors: Vec::new(),
             num_voices: Output::new_default(),
             note_retriggered: Output::new_default(),
             poly_readouts: BTreeMap::new(),
             last_active_voice_mask: PolyMask::zero(),
             max_midi_invert: Value::create_control_rate(1.0 / (MIDI_SIZE - 1) as f32),
             reference_adjust: Value::create_control_rate(-(MIDI_TRACK_CENTER as f32)),
+            value_one: Value::create_control_rate(1.0),
         };
         let node = SynthModule::create_with(kernel, VoiceHandler::NUM_INPUTS, 0, false);
         VoiceHandler::attach(&node, &voice_router, &global_router);
@@ -118,15 +142,40 @@ impl SynthVoiceHandler {
         node
     }
 
-    /// `shouldAccumulate(output)`. The amplitude envelope's outputs are
-    /// excluded upstream; the envelope is not built yet.
+    /// `shouldAccumulate(output)`: the amplitude envelope's outputs are
+    /// never accumulated.
     pub fn should_accumulate(&self, output: &Output) -> bool {
-        VoiceHandler::should_accumulate(output)
+        let from_amplitude_envelope = match (&self.amplitude_envelope, output.owner()) {
+            (Some(envelope), Some(owner)) => Rc::ptr_eq(envelope, &owner),
+            _ => false,
+        };
+        !from_amplitude_envelope && VoiceHandler::should_accumulate(output)
     }
 
     /// `SynthVoiceHandler::init`.
     pub fn init(&mut self, this: &Processor) {
         self.create_note_articulation(this);
+        self.create_producers(this);
+        self.create_modulators(this);
+        let keytrack = self.note_from_reference.output(0);
+        self.create_filters(this, &keytrack);
+        self.create_voice_output(this);
+
+        let producers = self.producers.clone().expect("producers");
+        let amplitude = self.amplitude.clone().expect("amplitude");
+        let voice_sum = operators::Add::create();
+        voice_sum.plug(self.filters_module.as_ref().expect("filters"), 0);
+        voice_sum.plug(producers.output(producers_module::RAW_OUT), 1);
+        self.output.plug(&voice_sum, 0);
+        self.output.plug(&amplitude, 1);
+        self.direct_output
+            .plug(producers.output(producers_module::DIRECT_OUT), 0);
+        self.direct_output.plug(&amplitude, 1);
+
+        this.add_processor(&voice_sum);
+        this.add_processor(&self.output);
+        this.add_processor(&self.direct_output);
+
         let macros: Vec<Rc<Output>> = (0..NUM_MACROS)
             .map(|i| {
                 this.create_mono_mod_control(
@@ -137,9 +186,51 @@ impl SynthVoiceHandler {
                 )
             })
             .collect();
-        self.create_expression_sources(this);
+
+        self.base.set_voice_killer(Some(amplitude.output(0)));
+
+        for i in 0..self.modulation_bank.num_connections() {
+            let processor = self.modulation_bank.at_index(i).processor.clone();
+            processor.plug(
+                self.base.reset_output(),
+                ModulationConnectionProcessor::RESET,
+            );
+
+            let number = i + 1;
+            let amount_name = format!("modulation_{number}_amount");
+            let amount = this.create_poly_mod_control(&amount_name, false, false, None, None);
+            processor.plug(&amount, ModulationConnectionProcessor::MODULATION_AMOUNT);
+            let base_value = this.module_data().borrow().controls[&amount_name].clone();
+            processor.with::<ModulationConnectionProcessor, _>(|kernel, _| {
+                kernel.initialize_base_value(base_value)
+            });
+
+            let power = this.create_poly_mod_control(
+                &format!("modulation_{number}_power"),
+                false,
+                false,
+                None,
+                None,
+            );
+            processor.plug(&power, ModulationConnectionProcessor::MODULATION_POWER);
+
+            this.add_processor(&processor);
+            this.add_submodule(&processor);
+            processor.enable(false);
+        }
 
         VoiceHandler::init(&mut self.base, this);
+        let filters = self.filters_module.clone().expect("filters");
+        let (filter1_on, filter2_on) = filters.with::<FiltersModule, _>(|filters, _| {
+            (
+                filters.get_filter_1_on_value(),
+                filters.get_filter_2_on_value(),
+            )
+        });
+        producers.with::<ProducersModule, _>(|producers, _| {
+            producers.set_filter1_on(filter1_on);
+            producers.set_filter2_on(filter2_on);
+        });
         self.setup_poly_modulation_readouts(this);
 
         for (i, source) in macros.iter().enumerate() {
@@ -148,10 +239,183 @@ impl SynthVoiceHandler {
             this.create_status_output(&name, source);
         }
 
+        for (i, random_lfo) in self.random_lfos.iter().enumerate() {
+            let name = format!("random_{}", i + 1);
+            this.add_modulation_source(&name, &random_lfo.output(0));
+            this.create_status_output(&name, &random_lfo.output(0));
+        }
+
+        let random = self.random.as_ref().expect("random").output(0);
         let stereo = self.stereo.as_ref().expect("stereo source").output(0);
+        this.add_modulation_source("random", &random);
         this.add_modulation_source("stereo", &stereo);
+
+        this.create_status_output("random", &random);
         this.create_status_output("stereo", &stereo);
+        let sample_phase =
+            producers.with::<ProducersModule, _>(|producers, _| producers.sample_phase_output());
+        this.create_status_output("sample_phase", &sample_phase);
         this.create_status_output("num_voices", &self.num_voices);
+
+        for i in 0..self.modulation_bank.num_connections() {
+            let processor = &self.modulation_bank.at_index(i).processor;
+            let number = i + 1;
+            this.create_status_output(
+                &format!("modulation_source_{number}"),
+                &processor.output(ModulationConnectionProcessor::MODULATION_SOURCE),
+            );
+            this.create_status_output(
+                &format!("modulation_amount_{number}"),
+                &processor.output(ModulationConnectionProcessor::MODULATION_PRE_SCALE),
+            );
+        }
+    }
+
+    /// `prepareDestroy()`: takes the bank's processors out of the router.
+    pub fn prepare_destroy(&mut self, this: &Processor) {
+        for i in 0..self.modulation_bank.num_connections() {
+            this.remove_processor(&self.modulation_bank.at_index(i).processor);
+        }
+    }
+
+    fn create_producers(&mut self, this: &Processor) {
+        let producers = ProducersModule::create();
+        producers.plug(self.base.reset_output(), producers_module::RESET);
+        producers.plug(self.base.retrigger(), producers_module::RETRIGGER);
+        producers.plug(
+            self.bent_midi.as_ref().expect("bent midi"),
+            producers_module::MIDI,
+        );
+        producers.plug(self.base.note_count(), producers_module::NOTE_COUNT);
+        producers.plug(self.base.active_mask(), producers_module::ACTIVE_VOICES);
+        this.add_submodule(&producers);
+        this.add_processor(&producers);
+        self.producers = Some(producers);
+    }
+
+    fn create_modulators(&mut self, this: &Processor) {
+        let bent_midi = self.bent_midi.clone().expect("bent midi");
+        for i in 0..NUM_LFOS {
+            let source = Rc::new(RefCell::new(LineGenerator::default()));
+            {
+                let mut source = source.borrow_mut();
+                source.set_loop(false);
+                source.init_triangle();
+            }
+            let prefix = format!("lfo_{}", i + 1);
+            let lfo = LfoModule::create(&prefix, source.clone(), &self.beats_per_second);
+            this.add_submodule(&lfo);
+            this.add_processor(&lfo);
+            lfo.plug(self.base.retrigger(), LfoModule::NOTE_TRIGGER);
+            lfo.plug(self.base.note_count(), LfoModule::NOTE_COUNT);
+            lfo.plug(&bent_midi, LfoModule::MIDI);
+
+            let value = lfo.output(LfoModule::VALUE);
+            this.add_modulation_source(&prefix, &value);
+            this.create_status_output(&prefix, &value);
+            this.create_status_output(
+                &format!("{prefix}_phase"),
+                &lfo.output(LfoModule::OSC_PHASE),
+            );
+            this.create_status_output(
+                &format!("{prefix}_frequency"),
+                &lfo.output(LfoModule::OSC_FREQUENCY),
+            );
+            self.lfos.push(lfo);
+            self.lfo_sources.push(source);
+        }
+
+        for i in 0..NUM_ENVELOPES {
+            let prefix = format!("env_{}", i + 1);
+            let envelope = EnvelopeModule::create(&prefix, i == 0);
+            envelope.plug(self.base.retrigger(), EnvelopeModule::TRIGGER);
+            this.add_submodule(&envelope);
+            this.add_processor(&envelope);
+
+            this.add_modulation_source(&prefix, &envelope.output(0));
+            this.create_status_output(&prefix, &envelope.output(EnvelopeModule::VALUE));
+            this.create_status_output(
+                &format!("{prefix}_phase"),
+                &envelope.output(EnvelopeModule::PHASE),
+            );
+            self.envelopes.push(envelope);
+        }
+
+        let random = TriggerRandom::create();
+        random.plug(self.base.retrigger(), TriggerRandom::RESET);
+        this.add_processor(&random);
+        self.random = Some(random);
+
+        for i in 0..NUM_RANDOM_LFOS {
+            let name = format!("random_{}", i + 1);
+            let random_lfo = RandomLfoModule::create(&name, &self.beats_per_second);
+            random_lfo.plug(self.base.retrigger(), RandomLfoModule::NOTE_TRIGGER);
+            random_lfo.plug(&bent_midi, RandomLfoModule::MIDI);
+            this.add_submodule(&random_lfo);
+            this.add_processor(&random_lfo);
+            self.random_lfos.push(random_lfo);
+        }
+
+        self.create_expression_sources(this);
+    }
+
+    fn create_filters(&mut self, this: &Processor, keytrack: &Rc<Output>) {
+        let filters = FiltersModule::create();
+        this.add_submodule(&filters);
+        this.add_processor(&filters);
+
+        let producers = self.producers.clone().expect("producers");
+        filters.plug(
+            producers.output(producers_module::TO_FILTER1),
+            FiltersModule::FILTER_1_INPUT,
+        );
+        filters.plug(
+            producers.output(producers_module::TO_FILTER2),
+            FiltersModule::FILTER_2_INPUT,
+        );
+        filters.plug(self.base.reset_output(), FiltersModule::RESET);
+        filters.plug(keytrack, FiltersModule::KEYTRACK);
+        filters.plug(
+            self.bent_midi.as_ref().expect("bent midi"),
+            FiltersModule::MIDI,
+        );
+        self.filters_module = Some(filters);
+    }
+
+    fn create_voice_output(&mut self, this: &Processor) {
+        let velocity_track_amount =
+            this.create_poly_mod_control("velocity_track", false, false, None, None);
+        let velocity_track_mult = cr::Interpolate::create();
+        velocity_track_mult.plug(&self.value_one, cr::Interpolate::FROM);
+        velocity_track_mult.plug(self.base.velocity(), cr::Interpolate::TO);
+        velocity_track_mult.plug(&velocity_track_amount, cr::Interpolate::FRACTIONAL);
+        this.add_processor(&velocity_track_mult);
+
+        let voice_amplitude =
+            this.create_poly_mod_control("voice_amplitude", false, false, None, None);
+        let amplitude = cr::Multiply::create();
+        amplitude.plug(&velocity_track_mult, 0);
+        amplitude.plug(&voice_amplitude, 1);
+        this.add_processor(&amplitude);
+
+        let amplitude_envelope = self.envelopes[0].clone();
+        amplitude_envelope.set_control_rate(false);
+
+        let control_amplitude = operators::SmoothMultiply::create();
+        control_amplitude.plug(
+            amplitude_envelope.output(EnvelopeModule::VALUE),
+            operators::smooth_multiply::AUDIO_RATE,
+        );
+        control_amplitude.plug(&amplitude, operators::smooth_multiply::CONTROL_RATE);
+        control_amplitude.plug(self.base.reset_output(), operators::smooth_multiply::RESET);
+
+        let squared = operators::Square::create();
+        squared.plug(&control_amplitude, 0);
+
+        this.add_processor(&control_amplitude);
+        this.add_processor(&squared);
+        self.amplitude_envelope = Some(amplitude_envelope);
+        self.amplitude = Some(squared);
     }
 
     fn create_note_articulation(&mut self, this: &Processor) {
@@ -267,6 +531,75 @@ impl SynthVoiceHandler {
             for status in status_outputs.values() {
                 status.update_masked(self.last_active_voice_mask);
             }
+
+            let mask = self.last_active_voice_mask;
+            for processor in &self.enabled_modulation_processors {
+                let output = processor.output(0);
+                let single = processor.is_control_rate()
+                    || processor.with::<ModulationConnectionProcessor, _>(|kernel, _| {
+                        kernel.is_polyphonic_modulation()
+                    });
+                let count = if single { 1 } else { num_samples };
+                for i in 0..count {
+                    let masked = output.at(i) & mask;
+                    output.set_at(i, masked + poly_utils::swap_voices(masked));
+                }
+            }
+        }
+    }
+
+    /// `enableModulationConnection(processor)`.
+    pub fn enable_modulation_connection(&mut self, processor: &ProcessorRef) {
+        self.enabled_modulation_processors.push(processor.clone());
+    }
+
+    /// `disableModulationConnection(processor)`.
+    pub fn disable_modulation_connection(&mut self, processor: &ProcessorRef) {
+        self.enabled_modulation_processors
+            .retain(|enabled| !Rc::ptr_eq(enabled, processor));
+    }
+
+    /// `enabledModulationConnection()`.
+    pub fn enabled_modulation_connections(&self) -> &[ProcessorRef] {
+        &self.enabled_modulation_processors
+    }
+
+    /// `getModulationBank()`.
+    pub fn modulation_bank(&mut self) -> &mut ModulationConnectionBank {
+        &mut self.modulation_bank
+    }
+
+    /// `getWavetable(index)`.
+    pub fn wavetable(&self, index: usize) -> SharedWavetable {
+        self.producers
+            .as_ref()
+            .expect("producers")
+            .with::<ProducersModule, _>(|producers, _| producers.wavetable(index))
+    }
+
+    /// `getSample()`.
+    pub fn sample(&self) -> SharedSample {
+        self.producers
+            .as_ref()
+            .expect("producers")
+            .with::<ProducersModule, _>(|producers, _| producers.sample())
+    }
+
+    /// `getLfoSource(index)`.
+    pub fn lfo_source(&self, index: usize) -> Rc<RefCell<LineGenerator>> {
+        self.lfo_sources[index].clone()
+    }
+
+    /// `disableModSource(source)`: every source but `env_1` (the amplitude
+    /// envelope).
+    pub fn disable_mod_source(&self, this: &Processor, source: &str) {
+        if source != "env_1" {
+            if let Some(owner) = this
+                .get_modulation_source(source)
+                .and_then(|output| output.owner())
+            {
+                owner.enable(false);
+            }
         }
     }
 
@@ -305,13 +638,32 @@ impl SynthVoiceHandler {
         self.beats_per_second.clone()
     }
 
-    /// `correctToTime(seconds)`: realigns the LFOs and random LFOs, which are
-    /// not built yet.
-    pub fn correct_to_time(&mut self, _seconds: f64) {}
+    /// `correctToTime(seconds)`: realigns the LFOs and random LFOs.
+    pub fn correct_to_time(&mut self, seconds: f64) {
+        for lfo in &self.lfos {
+            lfo.correct_to_time(seconds);
+        }
+        for random_lfo in &self.random_lfos {
+            random_lfo.correct_to_time(seconds);
+        }
+    }
 
     /// `disableUnnecessaryModSources()`: disables the LFOs, envelopes 2–6
-    /// and random sources, which are not built yet.
-    pub fn disable_unnecessary_mod_sources(&mut self) {}
+    /// and random sources.
+    pub fn disable_unnecessary_mod_sources(&mut self) {
+        for lfo in &self.lfos {
+            lfo.enable(false);
+        }
+        for envelope in self.envelopes.iter().skip(1) {
+            envelope.enable(false);
+        }
+        for random_lfo in &self.random_lfos {
+            random_lfo.enable(false);
+        }
+        if let Some(random) = &self.random {
+            random.enable(false);
+        }
+    }
 }
 
 impl NoteHandler for SynthVoiceHandler {

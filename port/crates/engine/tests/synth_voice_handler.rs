@@ -6,11 +6,10 @@
 //!
 //! Mirrors `migration/reference/src/modules/engine/synth_voice_handler.cpp`:
 //! the handler is built and initialised as `SoundEngine` does, the case's
-//! controls are set, and the event script is replayed block by block. The
-//! captured arrays depend only on the parts of the graph ported so far (see
-//! the `synth_voice_handler` module docs). `hold_released_voices` keeps the
-//! upstream amplitude envelope from freeing voices; the port has no voice
-//! killer yet, so it needs no counterpart here.
+//! controls are set, and the event script is replayed block by block.
+//! `hold_released_voices` sets `env_1_release` to its maximum, as the
+//! reference does, so the amplitude envelope frees no released voice within
+//! the case.
 
 use sas_dsp_core::{ProcessorRef, Value};
 use sas_engine::synth_voice_handler::SynthVoiceHandler;
@@ -108,6 +107,16 @@ fn run_case(case: &ModuleCase) -> (Vec<f32>, Vec<f32>) {
     node.set_sample_rate(case.sample_rate() as i32);
 
     let controls = node.get_controls();
+    if params
+        .get("hold_released_voices")
+        .and_then(Json::as_bool)
+        .unwrap_or(false)
+    {
+        let max = sas_preset::lookup("env_1_release")
+            .expect("env_1_release")
+            .max;
+        controls["env_1_release"].set_value(max);
+    }
     if let Some(values) = params.get("controls").and_then(Json::as_object) {
         for (name, value) in values {
             let control = controls

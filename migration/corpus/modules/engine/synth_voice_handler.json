@@ -1,5 +1,5 @@
 {
-  "description": "SynthVoiceHandler (modules/synth_voice_handler.cpp), built and initialised as SoundEngine does, driven by authored note and expression scripts; note articulation (portamento, bend, tune, transpose), note_retrigger, midi_offset_output and status outputs. Ports: port/crates/engine. Cases avoid killed voices: upstream frees them through the amplitude envelope, which the port builds with the modulation crate; the mono retrigger and polyphony overflow cases are parked in pending/synth_voice_handler.json until then (LEDGER).",
+  "description": "SynthVoiceHandler (modules/synth_voice_handler.cpp), built and initialised as SoundEngine does, driven by authored note and expression scripts; note articulation (portamento, bend, tune, transpose), note_retrigger, midi_offset_output and status outputs. Ports: port/crates/engine. mono_retrigger and poly_overflow kill voices, which the amplitude envelope frees.",
   "module": "synth_voice_handler",
   "cases": {
     "chord_bend_tune": {
@@ -1283,6 +1283,318 @@
             "type": "note_on",
             "note": 36,
             "velocity": 0.8,
+            "channel": 0
+          }
+        ]
+      }
+    },
+    "mono_retrigger": {
+      "params": {
+        "num_samples": 8192,
+        "polyphony": 1,
+        "voice_priority": 0,
+        "hold_released_voices": true,
+        "controls": {
+          "portamento_time": -2.5
+        },
+        "events": [
+          {
+            "sample": 100,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 1000,
+            "type": "note_on",
+            "note": 50,
+            "velocity": 0.55,
+            "channel": 0
+          },
+          {
+            "sample": 1300,
+            "type": "note_off",
+            "note": 48,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 1900,
+            "type": "note_on",
+            "note": 52,
+            "velocity": 0.6,
+            "channel": 0
+          },
+          {
+            "sample": 2200,
+            "type": "note_off",
+            "note": 50,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 2800,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.65,
+            "channel": 0
+          },
+          {
+            "sample": 3100,
+            "type": "note_off",
+            "note": 52,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 4000,
+            "type": "note_off",
+            "note": 55,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ]
+      }
+    },
+    "poly_overflow": {
+      "params": {
+        "num_samples": 8192,
+        "polyphony": 2,
+        "hold_released_voices": true,
+        "events": [
+          {
+            "sample": 100,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 600,
+            "type": "note_on",
+            "note": 52,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 1100,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 1600,
+            "type": "note_on",
+            "note": 60,
+            "velocity": 0.8,
+            "channel": 0
+          },
+          {
+            "sample": 3000,
+            "type": "note_off",
+            "note": 52,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 3500,
+            "type": "note_off",
+            "note": 60,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 4000,
+            "type": "note_off",
+            "note": 48,
+            "lift": 0.5,
+            "channel": 0
+          },
+          {
+            "sample": 4500,
+            "type": "note_off",
+            "note": 55,
+            "lift": 0.5,
+            "channel": 0
+          }
+        ]
+      }
+    },
+    "chord_progression_engine_rate": {
+      "oversample": 2,
+      "block_size": 128,
+      "params": {
+        "num_samples": 436590,
+        "polyphony": 8,
+        "events": [
+          {
+            "sample": 0,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 0,
+            "type": "note_on",
+            "note": 52,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 0,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 61740,
+            "type": "note_off",
+            "note": 48,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 61740,
+            "type": "note_off",
+            "note": 52,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 61740,
+            "type": "note_off",
+            "note": 55,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 66150,
+            "type": "note_on",
+            "note": 45,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 66150,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 66150,
+            "type": "note_on",
+            "note": 52,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 127890,
+            "type": "note_off",
+            "note": 45,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 127890,
+            "type": "note_off",
+            "note": 48,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 127890,
+            "type": "note_off",
+            "note": 52,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 132300,
+            "type": "note_on",
+            "note": 41,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 132300,
+            "type": "note_on",
+            "note": 45,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 132300,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 194040,
+            "type": "note_off",
+            "note": 41,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 194040,
+            "type": "note_off",
+            "note": 45,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 194040,
+            "type": "note_off",
+            "note": 48,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 198450,
+            "type": "note_on",
+            "note": 43,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 198450,
+            "type": "note_on",
+            "note": 47,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 198450,
+            "type": "note_on",
+            "note": 50,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 260190,
+            "type": "note_off",
+            "note": 43,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 260190,
+            "type": "note_off",
+            "note": 47,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 260190,
+            "type": "note_off",
+            "note": 50,
+            "lift": 0.5039370078740157,
             "channel": 0
           }
         ]
