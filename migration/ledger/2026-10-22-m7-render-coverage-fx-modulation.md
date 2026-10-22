@@ -42,7 +42,11 @@ bit-identical to the `REF_FAST_MATH=OFF` reference on both.
 reference then missed its own no-fast-math build by far (residual -32.9 dB,
 max error 0.12). Removing one feature at a time put it all on that FM: the
 modulator is oscillator 1, heavily modulated, and FM turns its fast-math
-phase noise into output (still -39.7 dB at FM amount 0.1). Oscillator 3 has
+phase noise into output. On the draft (random LFO 4 still on oscillator 3's
+distortion amount) it stayed at -39.7 dB with FM amount 0.1; on the committed
+preset Graph Reviewer measured -34.0 dB at 0.5, -39.8 dB at 0.3, and at 0.1
+a -53.2 dB residual that still fails the spectral distance (lsd 0.103
+against 0.1). Oscillator 3 has
 no distortion here; FM by oscillator A moves to the MPE case, where its
 modulator is plain and the reference meets its limits (-58.4 dB). The
 random LFOs, including the Lorenz attractor, did not amplify the noise.
