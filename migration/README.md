@@ -9,6 +9,7 @@ to Rust (`/port`) and to prove the port sounds the same.
 | [PLAN.md](PLAN.md) | Milestones M0 to M11 and their exit criteria |
 | [ledger/](ledger/README.md) | Work log, one file per entry (`ledger/YYYY-MM-DD-<slug>.md`); read it all with `scripts/ledger.py` |
 | [LEDGER.md](LEDGER.md) | Work log history up to 2026-10-21 (frozen) |
+| [IMPROVEMENTS.md](IMPROVEMENTS.md) | Parked ideas beyond 1:1 parity (not work to do), each with its tradeoff and source |
 | [DIVERGENCES.md](DIVERGENCES.md) | Every intentional behavioural difference between the port and upstream, with its approval |
 | [UPSTREAM.md](UPSTREAM.md), [UPSTREAM_SHA](UPSTREAM_SHA) | Pinned upstream commit, exclusions, verification |
 | [decisions/](decisions/) | Decision records: [plugin framework](decisions/plugin-framework.md), [reference determinism and tolerance calibration](decisions/reference-determinism.md), [Apple Silicon reference and arm64 parity](decisions/reference-arm.md) |
