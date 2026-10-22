@@ -179,6 +179,36 @@
       "artifacts": {
         "state.json": "json"
       }
+    },
+    "osc_stack_serial": {
+      "params": {
+        "preset": "presets/osc_stack_serial.vital",
+        "roundtrip": true
+      },
+      "artifacts": {
+        "state.json": "json",
+        "roundtrip.json": "json"
+      }
+    },
+    "osc_formant_comb": {
+      "params": {
+        "preset": "presets/osc_formant_comb.vital",
+        "roundtrip": true
+      },
+      "artifacts": {
+        "state.json": "json",
+        "roundtrip.json": "json"
+      }
+    },
+    "osc_diode_phase": {
+      "params": {
+        "preset": "presets/osc_diode_phase.vital",
+        "roundtrip": true
+      },
+      "artifacts": {
+        "state.json": "json",
+        "roundtrip.json": "json"
+      }
     }
   }
 }

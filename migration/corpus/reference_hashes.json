@@ -9,6 +9,9 @@
         "init_saw__single_note_48k_b128": "834b73744e0ae16f",
         "line_wavetable_fold__velocity": "41e464688075ae5f",
         "mono_legato_glide__legato": "8baac38ee9ed5b6f",
+        "osc_diode_phase__overlap": "de0addf6f81ad58b",
+        "osc_formant_comb__chords": "5a5a83536ed9375b",
+        "osc_stack_serial__arpeggio": "acc310c3f9c552da",
         "unison_pad_fx__chords": "5a9e368be289f87e",
         "velocity_filter_poly__overlap": "b865dbb500418c4f"
       },

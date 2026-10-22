@@ -105,6 +105,36 @@ def line_fold_wavetable():
     }
 
 
+# Control values of the enumerated parameters the feature-stacking presets use.
+DISTORTION = {
+    "sync": 1, "formant": 2, "quantize": 3, "bend": 4, "squeeze": 5, "pulse": 6,
+    "fm_a": 7, "fm_b": 8, "fm_sample": 9, "rm_a": 10, "rm_b": 11, "rm_sample": 12,
+}
+MORPH = {
+    "vocode": 1, "form_scale": 2, "harmonic_scale": 3, "inharmonic_scale": 4, "smear": 5,
+    "random_amplitudes": 6, "low_pass": 7, "high_pass": 8, "phase_disperse": 9,
+    "shepard_tone": 10, "skew": 11,
+}
+FILTER_MODEL = {
+    "analog": 0, "dirty": 1, "ladder": 2, "digital": 3, "diode": 4, "formant": 5, "comb": 6, "phase": 7,
+}
+DESTINATION = {"filter_1": 0, "filter_2": 1, "dual_filters": 2, "effects": 3, "direct_out": 4}
+LFO_SYNC = {"time": 0, "tempo": 1, "dotted": 2, "triplet": 3, "keytrack": 4}
+
+
+def oscillator(index, distortion, morph, **controls):
+    """osc_<index>_* controls with a distortion (or None) and a spectral morph."""
+    settings = {
+        "osc_%d_on" % index: 1.0,
+        "osc_%d_random_phase" % index: 0.0,
+        "osc_%d_distortion_type" % index: float(DISTORTION[distortion] if distortion else 0),
+        "osc_%d_spectral_morph_type" % index: float(MORPH[morph]),
+    }
+    for key, value in controls.items():
+        settings["osc_%d_%s" % (index, key)] = float(value)
+    return settings
+
+
 def preset(name, comments, settings, modulations=(), wavetables=None):
     """Build a preset. Unlisted controls load as their parameter defaults;
     omitted wavetables / LFO shapes keep the engine's init state."""
@@ -231,6 +261,126 @@ PRESETS = {
         },
         modulations=[("velocity", "filter_1_cutoff", 0.6)],
     ),
+    # Feature-stacking presets: each stacks engine features that no other
+    # render case reaches, so a full render checks their wiring, preset
+    # plumbing and modulation together.
+    "osc_stack_serial": preset(
+        "osc stack serial",
+        "Three oscillators (sync + vocode, sample FM + inharmonic scale, ring mod by oscillator A + harmonic scale) "
+        "and the sample oscillator; the dirty filter feeds the digital filter in series.",
+        {
+            **oscillator(1, "sync", "vocode", distortion_amount=0.6, spectral_morph_amount=0.4,
+                         unison_voices=3, unison_detune=2.0, destination=DESTINATION["filter_1"]),
+            **oscillator(2, "fm_sample", "inharmonic_scale", transpose=7, distortion_amount=0.45,
+                         spectral_morph_amount=0.6, level=0.5, destination=DESTINATION["filter_1"]),
+            **oscillator(3, "rm_a", "harmonic_scale", transpose=-12, distortion_amount=0.5,
+                         spectral_morph_amount=0.7, level=0.5, destination=DESTINATION["filter_2"]),
+            "sample_on": 1.0,
+            "sample_keytrack": 1.0,
+            "sample_level": 0.4,
+            "sample_destination": float(DESTINATION["filter_2"]),
+            "filter_1_on": 1.0,
+            "filter_1_model": float(FILTER_MODEL["dirty"]),
+            "filter_1_style": 0.0,
+            "filter_1_cutoff": 72.0,
+            "filter_1_resonance": 0.55,
+            "filter_1_drive": 6.0,
+            "filter_2_on": 1.0,
+            "filter_2_model": float(FILTER_MODEL["digital"]),
+            "filter_2_style": 1.0,
+            "filter_2_blend": 1.0,
+            "filter_2_cutoff": 80.0,
+            "filter_2_resonance": 0.4,
+            "filter_2_filter_input": 1.0,
+            "env_1_attack": 0.02,
+            "env_1_release": 0.5,
+            "env_2_attack": 0.3,
+            "env_2_decay": 0.8,
+            "env_2_sustain": 0.2,
+        },
+        modulations=[
+            ("env_2", "osc_1_spectral_morph_amount", 0.45),
+            ("env_2", "filter_1_cutoff", 0.25),
+            ("lfo_1", "osc_2_distortion_amount", 0.3),
+            ("velocity", "osc_3_distortion_amount", 0.3),
+        ],
+    ),
+    "osc_formant_comb": preset(
+        "osc formant comb",
+        "Formant + smear, quantize + random amplitudes and bend + low-pass oscillators; the formant filter feeds the "
+        "comb filter in series, at 8x oversampling.",
+        {
+            **oscillator(1, "formant", "smear", distortion_amount=0.55, spectral_morph_amount=0.5,
+                         level=0.4, destination=DESTINATION["filter_2"]),
+            **oscillator(2, "quantize", "random_amplitudes", transpose=12, distortion_amount=0.4,
+                         spectral_morph_amount=0.6, level=0.3, destination=DESTINATION["filter_2"]),
+            **oscillator(3, "bend", "low_pass", transpose=-12, distortion_amount=0.7,
+                         spectral_morph_amount=0.55, level=0.35, destination=DESTINATION["filter_1"]),
+            "filter_1_on": 1.0,
+            "filter_1_model": float(FILTER_MODEL["comb"]),
+            "filter_1_style": 0.0,
+            "filter_1_blend": 0.6,
+            "filter_1_cutoff": 64.0,
+            "filter_1_resonance": 0.6,
+            "filter_1_filter_input": 1.0,
+            "filter_2_on": 1.0,
+            "filter_2_model": float(FILTER_MODEL["formant"]),
+            "filter_2_formant_x": 0.3,
+            "filter_2_formant_y": 0.7,
+            "filter_2_formant_resonance": 0.8,
+            "filter_2_formant_transpose": 3.0,
+            "filter_2_formant_spread": 0.2,
+            "env_3_attack": 0.4,
+            "env_3_decay": 1.0,
+            "env_3_sustain": 0.3,
+            "env_3_release": 0.4,
+            "lfo_2_sync": float(LFO_SYNC["time"]),
+            "lfo_2_frequency": 2.0,
+            "voice_amplitude": 0.6,
+            "oversampling": 3.0,
+        },
+        modulations=[
+            ("env_3", "filter_2_formant_x", 0.5),
+            ("lfo_2", "filter_1_cutoff", 0.2),
+        ],
+    ),
+    "osc_diode_phase": preset(
+        "osc diode phase",
+        "Squeeze + high-pass, pulse width + phase disperse and FM by oscillator B + Shepard tone oscillators into the "
+        "diode and phaser filters in parallel, with envelope 1 and 3 shaped, at 1x oversampling.",
+        {
+            **oscillator(1, "squeeze", "high_pass", distortion_amount=0.6, spectral_morph_amount=0.35,
+                         destination=DESTINATION["dual_filters"]),
+            **oscillator(2, "pulse", "phase_disperse", transpose=-12, distortion_amount=0.3,
+                         spectral_morph_amount=0.7, level=0.5, destination=DESTINATION["filter_1"]),
+            **oscillator(3, "fm_b", "shepard_tone", transpose=19, distortion_amount=0.1,
+                         spectral_morph_amount=0.5, level=0.35, destination=DESTINATION["filter_2"]),
+            "filter_1_on": 1.0,
+            "filter_1_model": float(FILTER_MODEL["diode"]),
+            "filter_1_style": 1.0,
+            "filter_1_cutoff": 66.0,
+            "filter_1_resonance": 0.7,
+            "filter_1_drive": 8.0,
+            "filter_2_on": 1.0,
+            "filter_2_model": float(FILTER_MODEL["phase"]),
+            "filter_2_cutoff": 70.0,
+            "filter_2_resonance": 0.6,
+            "filter_2_keytrack": 0.5,
+            "env_1_attack": 0.1,
+            "env_1_decay": 0.6,
+            "env_1_sustain": 0.6,
+            "env_1_release": 0.8,
+            "env_3_attack": 0.0,
+            "env_3_decay": 1.5,
+            "env_3_sustain": 0.0,
+            "oversampling": 0.0,
+        },
+        modulations=[
+            ("env_3", "filter_2_cutoff", 0.4),
+            ("note", "filter_1_cutoff", 0.3),
+        ],
+    ),
+
 }
 
 
@@ -571,7 +721,16 @@ def velocity_overlap():
     return events
 
 
+def wide_arpeggio():
+    events = []
+    keys = [36, 48, 55, 64, 72, 79, 67, 60, 43, 52, 71, 84]
+    for index, key in enumerate(keys):
+        events += note(index * 0.22, 0.6, key, 40 + (index * 37) % 81)
+    return events
+
+
 MIDI = {
+    "wide_arpeggio": wide_arpeggio(),
     "single_note_c3": single_note(),
     "chord_progression": chord_progression(),
     "legato_bend_modwheel": legato_bend_modwheel(),
