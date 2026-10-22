@@ -119,7 +119,20 @@ FILTER_MODEL = {
     "analog": 0, "dirty": 1, "ladder": 2, "digital": 3, "diode": 4, "formant": 5, "comb": 6, "phase": 7,
 }
 DESTINATION = {"filter_1": 0, "filter_2": 1, "dual_filters": 2, "effects": 3, "direct_out": 4}
+EFFECTS = ["chorus", "compressor", "delay", "distortion", "eq", "filter_fx", "flanger", "phaser", "reverb"]
+RANDOM_STYLE = {"perlin": 0, "sample_and_hold": 1, "sin_interpolate": 2, "lorenz": 3}
 LFO_SYNC = {"time": 0, "tempo": 1, "dotted": 2, "triplet": 3, "keytrack": 4}
+LFO_SYNC_TYPE = {"trigger": 0, "sync": 1, "envelope": 2, "sustain_envelope": 3, "loop_point": 4, "loop_hold": 5}
+
+
+def effect_order(names):
+    """effect_chain_order for an effect order (encodeOrderToFloat)."""
+    order = [EFFECTS.index(name) for name in names]
+    assert sorted(order) == list(range(len(EFFECTS)))
+    code = 0
+    for i in range(1, len(order)):
+        code = code * (i + 1) + sum(order[i] < order[j] for j in range(i))
+    return float(code)
 
 
 def oscillator(index, distortion, morph, **controls):
@@ -135,18 +148,32 @@ def oscillator(index, distortion, morph, **controls):
     return settings
 
 
-def preset(name, comments, settings, modulations=(), wavetables=None):
+def preset(name, comments, settings, modulations=(), wavetables=None, lfos=None):
     """Build a preset. Unlisted controls load as their parameter defaults;
-    omitted wavetables / LFO shapes keep the engine's init state."""
+    omitted wavetables / LFO shapes keep the engine's init state.
+
+    A modulation is (source, destination, amount) or (source, destination,
+    amount, extras): extras may set the slot's "bipolar", "power" and
+    "stereo" controls and its "line_mapping" (a line())."""
     settings = dict(settings)
     mods = []
-    for index, (source, destination, amount) in enumerate(modulations, start=1):
-        mods.append({"source": source, "destination": destination})
+    for index, modulation in enumerate(modulations, start=1):
+        source, destination, amount = modulation[:3]
+        extras = modulation[3] if len(modulation) > 3 else {}
+        entry = {"source": source, "destination": destination}
+        if "line_mapping" in extras:
+            entry["line_mapping"] = extras["line_mapping"]
+        mods.append(entry)
         settings["modulation_%d_amount" % index] = float(amount)
+        for key in ("bipolar", "power", "stereo"):
+            if key in extras:
+                settings["modulation_%d_%s" % (index, key)] = float(extras[key])
     settings["modulations"] = mods
     settings["sample"] = corpus_sample()
     if wavetables is not None:
         settings["wavetables"] = wavetables
+    if lfos is not None:
+        settings["lfos"] = lfos
     return {
         "synth_version": SYNTH_VERSION,
         "preset_name": name,
@@ -378,6 +405,140 @@ PRESETS = {
         modulations=[
             ("env_3", "filter_2_cutoff", 0.4),
             ("note", "filter_1_cutoff", 0.3),
+        ],
+    ),
+    "fx_chain_reordered": preset(
+        "fx chain reordered",
+        "Every effect on, in a custom order (EQ, filter FX, distortion, multiband compressor, flanger, phaser, chorus, "
+        "delay, reverb), with tempo-synced modulation effects and LFO, at 4x oversampling.",
+        {
+            "osc_1_unison_voices": 4.0,
+            "osc_1_unison_detune": 2.5,
+            "osc_2_on": 1.0,
+            "osc_2_transpose": -12.0,
+            "osc_2_level": 0.4,
+            "env_1_attack": 0.01,
+            "env_1_release": 0.25,
+            "effect_chain_order": effect_order(
+                ["eq", "filter_fx", "distortion", "compressor", "flanger", "phaser", "chorus", "delay", "reverb"]),
+            "eq_on": 1.0,
+            "eq_low_mode": 1.0,
+            "eq_low_cutoff": 36.0,
+            "eq_band_cutoff": 84.0,
+            "eq_band_gain": 6.0,
+            "eq_high_mode": 1.0,
+            "eq_high_cutoff": 110.0,
+            "eq_high_gain": -4.0,
+            "filter_fx_on": 1.0,
+            "filter_fx_model": float(FILTER_MODEL["digital"]),
+            "filter_fx_style": 2.0,
+            "filter_fx_cutoff": 70.0,
+            "filter_fx_resonance": 0.5,
+            "filter_fx_mix": 0.7,
+            "distortion_on": 1.0,
+            "distortion_type": 2.0,
+            "distortion_drive": 4.0,
+            "distortion_mix": 0.5,
+            "compressor_on": 1.0,
+            "compressor_enabled_bands": 0.0,
+            "compressor_low_gain": 6.0,
+            "compressor_band_gain": 4.0,
+            "compressor_high_gain": 6.0,
+            "compressor_attack": 0.3,
+            "compressor_release": 0.6,
+            "compressor_mix": 0.8,
+            "flanger_on": 1.0,
+            "flanger_sync": float(LFO_SYNC["tempo"]),
+            "flanger_tempo": 5.0,
+            "flanger_feedback": 0.6,
+            "flanger_dry_wet": 0.4,
+            "phaser_on": 1.0,
+            "phaser_sync": float(LFO_SYNC["dotted"]),
+            "phaser_tempo": 4.0,
+            "phaser_feedback": 0.6,
+            "phaser_dry_wet": 0.6,
+            "chorus_on": 1.0,
+            "chorus_sync": float(LFO_SYNC["triplet"]),
+            "chorus_tempo": 5.0,
+            "chorus_dry_wet": 0.4,
+            "delay_on": 1.0,
+            "delay_sync": float(LFO_SYNC["tempo"]),
+            "delay_tempo": 7.0,
+            "delay_style": 1.0,
+            "delay_feedback": 0.45,
+            "delay_dry_wet": 0.3,
+            "reverb_on": 1.0,
+            "reverb_dry_wet": 0.25,
+            "reverb_decay_time": -1.0,
+            "lfo_1_sync": float(LFO_SYNC["tempo"]),
+            "lfo_1_tempo": 8.0,
+            "oversampling": 2.0,
+        },
+        modulations=[("lfo_1", "phaser_center", 0.3)],
+    ),
+    "random_macro_shapes": preset(
+        "random macro shapes",
+        "All four random LFO styles, two authored LFO shapes, macros and remapped (bipolar, power, stereo, custom "
+        "line map) modulations over ring mod by the sample + skew, ring mod by oscillator B + form scale and "
+        "vocode oscillators.",
+        {
+            **oscillator(1, "rm_sample", "skew", distortion_amount=0.4, spectral_morph_amount=0.5),
+            **oscillator(2, "rm_b", "form_scale", transpose=5, distortion_amount=0.5,
+                         spectral_morph_amount=0.4, level=0.5),
+            **oscillator(3, None, "vocode", transpose=-7, spectral_morph_amount=0.6, level=0.4),
+            "sample_on": 1.0,
+            "sample_keytrack": 1.0,
+            "sample_level": 0.2,
+            "sample_destination": float(DESTINATION["direct_out"]),
+            "filter_1_on": 1.0,
+            "filter_1_cutoff": 60.0,
+            "filter_1_resonance": 0.5,
+            "random_1_style": float(RANDOM_STYLE["perlin"]),
+            "random_1_sync": float(LFO_SYNC["time"]),
+            "random_1_frequency": 1.5,
+            "random_2_style": float(RANDOM_STYLE["sample_and_hold"]),
+            "random_2_sync": float(LFO_SYNC["tempo"]),
+            "random_2_tempo": 9.0,
+            "random_3_style": float(RANDOM_STYLE["sin_interpolate"]),
+            "random_3_stereo": 1.0,
+            "random_3_sync": float(LFO_SYNC["time"]),
+            "random_3_frequency": 0.5,
+            "random_4_style": float(RANDOM_STYLE["lorenz"]),
+            "random_4_sync": float(LFO_SYNC["time"]),
+            "random_4_frequency": 2.0,
+            "lfo_1_sync": float(LFO_SYNC["tempo"]),
+            "lfo_1_tempo": 6.0,
+            "lfo_1_sync_type": float(LFO_SYNC_TYPE["trigger"]),
+            "lfo_2_sync": float(LFO_SYNC["dotted"]),
+            "lfo_2_tempo": 5.0,
+            "lfo_2_sync_type": float(LFO_SYNC_TYPE["sync"]),
+            "lfo_2_stereo": 0.25,
+            "lfo_3_sync": float(LFO_SYNC["keytrack"]),
+            "macro_control_1": 0.7,
+            "macro_control_2": 0.4,
+            "macro_control_3": 0.5,
+        },
+        modulations=[
+            ("random_1", "osc_1_spectral_morph_amount", 0.4),
+            ("random_2", "filter_1_cutoff", 0.3, {"bipolar": 1}),
+            ("random_3", "osc_2_pan", 0.6, {"stereo": 1}),
+            ("random_4", "osc_3_spectral_morph_amount", 0.4),
+            ("lfo_1", "filter_1_resonance", 0.3, {
+                "power": 2.0,
+                "line_mapping": line([(0.0, 1.0), (0.4, 0.2), (1.0, 0.0)], powers=[1.5, -2.0, 0.0]),
+            }),
+            ("lfo_2", "osc_1_level", 0.25, {"bipolar": 1, "stereo": 1}),
+            ("lfo_3", "osc_2_spectral_morph_amount", 0.2),
+            ("macro_control_1", "filter_1_cutoff", 0.25, {
+                "line_mapping": line([(0.0, 1.0), (0.5, 0.75), (1.0, 0.0)], smooth=True),
+            }),
+            ("macro_control_2", "osc_3_level", 0.3, {"bipolar": 1}),
+            ("macro_control_3", "osc_1_distortion_amount", 0.3, {"power": -3.0}),
+        ],
+        lfos=[
+            line([(0.0, 1.0), (0.2, 0.3), (0.45, 0.8), (0.7, 0.0), (1.0, 1.0)],
+                 powers=[0.0, 3.0, -2.0, 1.0, 0.0], name="corpus steps"),
+            line([(0.0, 0.5), (0.25, 1.0), (0.6, 0.1), (1.0, 0.5)], smooth=True, name="corpus swell"),
         ],
     ),
 
@@ -729,8 +890,19 @@ def wide_arpeggio():
     return events
 
 
+def held_pad():
+    events = []
+    for key in (48, 55, 62):
+        events += note(0.0, 2.0, key, 80)
+    for key in (50, 57, 65):
+        events += note(2.2, 2.0, key, 95)
+    events += note(1.0, 2.5, 74, 60)
+    return events
+
+
 MIDI = {
     "wide_arpeggio": wide_arpeggio(),
+    "held_pad": held_pad(),
     "single_note_c3": single_note(),
     "chord_progression": chord_progression(),
     "legato_bend_modwheel": legato_bend_modwheel(),

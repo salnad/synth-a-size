@@ -16,7 +16,7 @@ use sas_parity::RenderCase;
 use sas_preset::{InitContent, PresetState};
 
 /// Every `renders` case in `migration/corpus/cases.json`.
-const CASES: [&str; 12] = [
+const CASES: [&str; 14] = [
     "render/init_saw__single_note",
     "render/init_saw__chords",
     "render/init_saw__single_note_48k_b128",
@@ -29,6 +29,8 @@ const CASES: [&str; 12] = [
     "render/osc_stack_serial__arpeggio",
     "render/osc_formant_comb__chords",
     "render/osc_diode_phase__overlap",
+    "render/fx_chain_reordered__chords_140bpm",
+    "render/random_macro_shapes__pad_93bpm",
 ];
 
 /// The engine RNG's seed counter is process-wide, so the tests here build
