@@ -93,7 +93,7 @@
 - 40 `sas-plugin` tests; `cargo clippy --workspace --all-targets -D warnings`
   is clean.
 
-**Known gap (follow-up, needs a `sas-engine` accessor).** The plugin can't
+**Known gap (D12 in `migration/DIVERGENCES.md`, temporary; fixed by taking #80's `SoundEngineHost::sample_state`).** The plugin can't
 reach the engine's own init white-noise sample, so the init document's sample
 uses seed 0. An untouched init state therefore saves different white noise
 than the engine plays, until a preset is loaded. This only matters with the
