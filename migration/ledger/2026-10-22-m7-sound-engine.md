@@ -48,8 +48,13 @@ all merged.
   graph is `Rc`/`RefCell`-based and wholly owned, so the host asserts `Send`
   (`unsafe impl`, with the invariant written at the impl): the engine moves
   between threads only as a whole and is used from one thread at a time.
+  Its public surface passes only plain values (no accessor exposes the
+  `Synth` or a graph handle), and the graph keeps no thread-local buffers.
   `SynthASize` still uses `SilentEngine`; switching it is Plugin Wrapper's
   step.
+- `migration/DIVERGENCES.md` D9 (unsupported `clone()` panics) now lists
+  `SynthVoiceHandler` (upstream asserts and returns `nullptr`) and
+  `SoundEngine` (upstream inherits `SynthModule::clone`, which slices it).
 - `aarch64-semantics` also forwards to `sas-modulation` and `sas-common`,
   now direct dependencies that have it.
 
@@ -62,12 +67,15 @@ are GUI-side.
 
 **Parity**
 
-- `render/init_saw__single_note`, `__chords` and `__single_note_48k_b128`
-  pass the render tolerances (`rms_diff_db` 0.01, `residual_db` −50,
-  `lsd_db` 0.1):
-  - `single_note`: max abs error 1.2e-7, residual −135.6 dB;
-  - `single_note_48k_b128`: 1.2e-7, −135.3 dB;
-  - `chords`: 3.1e-3, −69.2 dB.
+- `render/init_saw__single_note`, `__chords`, `__single_note_48k_b128` and
+  `render/unison_pad_fx__chords` pass the render tolerances (`rms_diff_db`
+  0.01, `residual_db` −50, `lsd_db` 0.1):
+  - `init_saw__single_note`: max abs error 1.2e-7, residual −135.6 dB;
+  - `init_saw__single_note_48k_b128`: 1.2e-7, −135.3 dB;
+  - `init_saw__chords`: 3.1e-3, −69.2 dB;
+  - `unison_pad_fx__chords` (second oscillator, unison, chorus, delay and
+    reverb; no modulations): −61.4 dB, the documented proxy level for the
+    case. It is the effect chain's coverage: bypassing the chain fails it.
 - `engine/synth_voice_handler`: 13 cases, bit-identical, including the
   un-parked `mono_retrigger` and `poly_overflow` (they needed the voice
   killer) and the new `chord_progression_engine_rate`, which replays the
@@ -77,11 +85,10 @@ are GUI-side.
 - Dropping `|| !legato()` from `noteOn`'s retrigger condition now fails
   `mono_retrigger` (the gap recorded with #45).
 
-**Open: `init_saw__chords` drift.** The render is within 1e-5 of the
-reference until frame 99457, 232 samples into the fourth chord (notes 43,
-47, 50), and exactly zero again once that chord's release ends. In between
-the difference grows linearly from 1.5e-4 to 3.1e-3, and its spectrum is the
-harmonic series of 293.76 Hz (an octave above note 50): a slow phase drift
-on one voice. Voice allocation matches (above), and flushing denormals made
-no difference. The case passes its tolerances with margin; the cause is
-being followed up with slice B, whose cases exercise more notes.
+**`init_saw__chords` against the official reference.** The 3.1e-3 /
+−69.2 dB is the official reference's own fast-math noise for this case, not
+a port drift: the port is **bit-identical to the `REF_FAST_MATH=OFF`
+reference on all four renders** (checked by Graph Reviewer), and
+`migration/decisions/reference-determinism.md` records exactly this proxy
+noise for `init_saw__chords` (a phase increment rounded differently by the
+fast-math build, drifting from the fourth chord at 2.25 s). No follow-up.

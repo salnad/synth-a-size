@@ -16,10 +16,13 @@ pub struct SoundEngineHost {
 }
 
 // SAFETY: `Synth` owns its whole processor graph. Its `Rc`/`RefCell`
-// handles all point inside that graph and none is ever handed out of this
-// wrapper, so moving the wrapper moves every handle together and no two
-// threads can reach the same `Rc`. The wrapper is only used from one thread
-// at a time (`Engine` methods take `&mut self`).
+// handles all point inside that graph, and this wrapper's public surface
+// takes and returns only plain values (no method exposes the `Synth` or any
+// graph handle), so moving the wrapper moves every handle together and no
+// two threads can reach the same `Rc`. The graph keeps no thread-local
+// buffers (such as dsp-core's per-thread null buffer), so nothing it holds
+// belongs to the thread that built it. The wrapper is only used from one
+// thread at a time (`Engine` methods take `&mut self`).
 unsafe impl Send for SoundEngineHost {}
 
 impl Default for SoundEngineHost {
@@ -39,11 +42,6 @@ impl SoundEngineHost {
     /// `tuning`. Upstream calls this after every preset load.
     pub fn set_tuning(&mut self, tuning: &Tuning) {
         self.synth.set_tuning(tuning);
-    }
-
-    /// The wrapped synth.
-    pub fn synth(&mut self) -> &mut Synth {
-        &mut self.synth
     }
 }
 

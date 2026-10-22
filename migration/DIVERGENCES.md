@@ -222,17 +222,20 @@ What is **not** listed:
 
 ### D9. Unsupported `clone()` panics
 
-- **Differs:** `clone()` on `Upsampler`, `Decimator`, `IirHalfbandDecimator`
-  and `VoiceHandler`.
+- **Differs:** `clone()` on `Upsampler`, `Decimator`, `IirHalfbandDecimator`,
+  `VoiceHandler`, `SynthVoiceHandler` and `SoundEngine`.
 - **Upstream:** `VITAL_ASSERT(false); return nullptr;`. The assert is
-  compiled out of release builds, which return `nullptr`.
+  compiled out of release builds, which return `nullptr`. `SoundEngine` has
+  no override: it inherits `SynthModule::clone`, which copies it as a plain
+  `SynthModule`, slicing off the engine.
 - **Port:** `clone` / `clone_box` panics, with a message naming upstream's
   assert.
 - **Why:** nothing in the engine clones these processors. A `nullptr`
   processor has no Rust equivalent other than a panic or an `Option`, and
   an unreachable path does not justify an `Option` in every caller.
 - **Approved:** #30 (oversampling: `Upsampler`, `Decimator`,
-  `IirHalfbandDecimator`) and #21 (`VoiceHandler`).
+  `IirHalfbandDecimator`), #21 (`VoiceHandler`) and #75 (`SynthVoiceHandler`,
+  `SoundEngine`).
 
 ### D10. No FMA contraction, no estimates, and JUCE's fallback FFT
 

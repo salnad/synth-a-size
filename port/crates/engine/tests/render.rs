@@ -16,10 +16,11 @@ use sas_parity::RenderCase;
 use sas_preset::{InitContent, PresetState};
 
 /// The render cases this crate's engine covers so far.
-const CASES: [&str; 3] = [
+const CASES: [&str; 4] = [
     "render/init_saw__single_note",
     "render/init_saw__chords",
     "render/init_saw__single_note_48k_b128",
+    "render/unison_pad_fx__chords",
 ];
 
 fn render_case(case: &RenderCase) -> Vec<f32> {
@@ -45,7 +46,7 @@ fn render_case(case: &RenderCase) -> Vec<f32> {
 }
 
 #[test]
-fn init_saw_renders_match_reference() {
+fn renders_match_reference() {
     for id in CASES {
         let case = RenderCase::load(id);
         let output = render_case(&case);

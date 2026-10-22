@@ -449,7 +449,7 @@ impl SoundEngine {
 
 impl ProcessorImpl for SoundEngine {
     fn clone_box(&self) -> Box<dyn ProcessorImpl> {
-        panic!("SoundEngine::clone is not supported")
+        panic!("SoundEngine::clone is not supported (upstream's inherited SynthModule::clone slices the engine)")
     }
 
     fn process(&mut self, this: &Processor, num_samples: usize) {
