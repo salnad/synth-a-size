@@ -328,11 +328,7 @@ impl DigitalSvf {
 
         let audio_out = this.output_buffer(0);
         let coefficient_lookup = svf_coefficient_lookup();
-        let midi_cutoff_buffer = self
-            .filter_state
-            .midi_cutoff_buffer
-            .clone()
-            .expect("load_settings ran");
+        let midi_cutoff_buffer = self.filter_state.midi_cutoff_buffer();
         let base_midi = midi_cutoff_buffer[num_samples - 1].get();
         let base_frequency =
             utils::midi_note_to_frequency(base_midi) * (1.0f32 / this.sample_rate() as f32);
@@ -394,11 +390,7 @@ impl DigitalSvf {
 
         let audio_out = this.output_buffer(0);
         let coefficient_lookup = svf_coefficient_lookup();
-        let midi_cutoff_buffer = self
-            .filter_state
-            .midi_cutoff_buffer
-            .clone()
-            .expect("load_settings ran");
+        let midi_cutoff_buffer = self.filter_state.midi_cutoff_buffer();
         let base_midi = midi_cutoff_buffer[num_samples - 1].get();
         let base_frequency =
             utils::midi_note_to_frequency(base_midi) * (1.0f32 / this.sample_rate() as f32);

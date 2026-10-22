@@ -20,9 +20,11 @@
 //! [`create_filter`] is `SynthFilter::createFilter`. The character models
 //! (comb, formant, phaser) are created in [`crate::character::create_filter`].
 
+use std::rc::Rc;
 use std::sync::LazyLock;
 
-use sas_dsp_core::{OneDimLookup, Processor, ProcessorImpl, ProcessorRef};
+use sas_dsp_core::output::NULL_SOURCE_SIZE;
+use sas_dsp_core::{Buffer, Input, OneDimLookup, Processor, ProcessorImpl, ProcessorRef};
 use sas_simd::common::PI;
 use sas_simd::poly_utils as utils;
 use sas_simd::{futils, PolyFloat};
@@ -125,13 +127,27 @@ pub fn coefficient_lookup() -> &'static CoefficientLookup {
     &COEFFICIENT_LOOKUP
 }
 
+/// `FilterState::midi_cutoff_buffer`: the buffer the cutoff input read from.
+#[derive(Clone, Debug, Default)]
+pub enum MidiCutoffBuffer {
+    /// Before [`FilterState::load_settings`] runs (upstream `nullptr`).
+    #[default]
+    Unloaded,
+    /// The null source (`Processor::null_source_`): reads as zeros. Recorded
+    /// as such because the null buffer is a thread-local `Rc` that no graph
+    /// may keep.
+    Null,
+    /// The cutoff source's buffer (audio rate).
+    Source(Buffer),
+}
+
 /// `SynthFilter::FilterState`: the per-block settings read from the inputs.
 #[derive(Clone, Debug)]
 pub struct FilterState {
     pub midi_cutoff: PolyFloat,
-    /// `midi_cutoff_buffer`: the cutoff input's source buffer (audio rate).
-    /// `None` until [`FilterState::load_settings`] runs (upstream `nullptr`).
-    pub midi_cutoff_buffer: Option<sas_dsp_core::Buffer>,
+    /// `midi_cutoff_buffer`. Read it through [`FilterState::midi_cutoff_at`]
+    /// or [`FilterState::midi_cutoff_buffer`].
+    pub midi_cutoff_buffer: MidiCutoffBuffer,
     pub resonance_percent: PolyFloat,
     pub drive: PolyFloat,
     pub drive_percent: PolyFloat,
@@ -147,7 +163,7 @@ impl Default for FilterState {
     fn default() -> Self {
         FilterState {
             midi_cutoff: PolyFloat::splat(1.0),
-            midi_cutoff_buffer: None,
+            midi_cutoff_buffer: MidiCutoffBuffer::Unloaded,
             resonance_percent: PolyFloat::splat(0.0),
             drive: PolyFloat::splat(1.0),
             drive_percent: PolyFloat::splat(0.0),
@@ -166,7 +182,14 @@ impl FilterState {
     pub fn load_settings(&mut self, processor: &Processor) {
         let cutoff = processor.input(input::MIDI_CUTOFF);
         self.midi_cutoff = cutoff.at(0);
-        self.midi_cutoff_buffer = Some(cutoff.buffer());
+        let buffer = cutoff.buffer();
+        // Compared by pointer, not `is_null_source`: a connected output can
+        // itself be redirected to the null source (`ValueSwitch`).
+        self.midi_cutoff_buffer = if Rc::ptr_eq(&buffer, &Input::default().buffer()) {
+            MidiCutoffBuffer::Null
+        } else {
+            MidiCutoffBuffer::Source(buffer)
+        };
         self.resonance_percent = processor.input(input::RESONANCE).at(0);
         let input_drive = utils::clamp(
             processor.input(input::DRIVE_GAIN).at(0),
@@ -190,10 +213,28 @@ impl FilterState {
     /// Before [`FilterState::load_settings`] (upstream dereferences `nullptr`).
     #[inline(always)]
     pub fn midi_cutoff_at(&self, index: usize) -> PolyFloat {
-        self.midi_cutoff_buffer
-            .as_ref()
-            .expect("midi_cutoff_buffer is set by load_settings")[index]
-            .get()
+        match &self.midi_cutoff_buffer {
+            MidiCutoffBuffer::Source(buffer) => buffer[index].get(),
+            MidiCutoffBuffer::Null => {
+                assert!(index < NULL_SOURCE_SIZE);
+                PolyFloat::zero()
+            }
+            MidiCutoffBuffer::Unloaded => panic!("midi_cutoff_buffer is set by load_settings"),
+        }
+    }
+
+    /// `midi_cutoff_buffer` as a buffer. For the null source this is a clone
+    /// of the calling thread's null buffer: use it within the block and drop
+    /// it, don't keep it in the filter.
+    ///
+    /// # Panics
+    /// Before [`FilterState::load_settings`] (upstream dereferences `nullptr`).
+    pub fn midi_cutoff_buffer(&self) -> Buffer {
+        match &self.midi_cutoff_buffer {
+            MidiCutoffBuffer::Source(buffer) => buffer.clone(),
+            MidiCutoffBuffer::Null => Input::default().buffer(),
+            MidiCutoffBuffer::Unloaded => panic!("midi_cutoff_buffer is set by load_settings"),
+        }
     }
 }
 

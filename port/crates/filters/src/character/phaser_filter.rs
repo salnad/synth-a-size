@@ -157,9 +157,7 @@ impl PhaserFilter {
 
         let audio_out = this.output_buffer(0);
         let coefficient_lookup = coefficient_lookup();
-        let midi_cutoff_buffer = filter_state
-            .midi_cutoff_buffer
-            .expect("loadSettings sets the midi cutoff buffer");
+        let midi_cutoff_buffer = filter_state.midi_cutoff_buffer();
         let base_midi = midi_cutoff_buffer[num_samples - 1].get();
         let base_frequency =
             utils::midi_note_to_frequency(base_midi) * (1.0 / this.sample_rate() as f32);
