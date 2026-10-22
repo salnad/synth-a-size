@@ -111,7 +111,12 @@ impl<E: Engine + Default> Plugin for SynthPlugin<E> {
     // Notes, poly and channel pressure, pitch bend and CCs on all 16
     // channels: what upstream's MidiManager reads, MPE included.
     const MIDI_INPUT: MidiConfig = MidiConfig::MidiCCs;
-    const SAMPLE_ACCURATE_AUTOMATION: bool = true;
+    // Upstream's JUCE VST3 wrapper applies only the last point of each
+    // parameter queue, once, before processBlock
+    // (juce_VST3_Wrapper.cpp, processParameterChanges). Without
+    // sample-accurate automation nice-plug applies every point before
+    // `process`, leaving the last, and never splits the block.
+    const SAMPLE_ACCURATE_AUTOMATION: bool = false;
 
     type Editor = ();
     type SysExMessage = ();
@@ -211,6 +216,13 @@ mod tests {
                 assert!(!lower.contains(banned), "{text} contains {banned}");
             }
         }
+    }
+
+    #[test]
+    fn automation_applies_once_per_block_like_upstream() {
+        // Sample-accurate automation would split host blocks at every
+        // automation point and render different audio from upstream.
+        const { assert!(!SynthASize::SAMPLE_ACCURATE_AUTOMATION) };
     }
 
     #[test]

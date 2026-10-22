@@ -25,10 +25,22 @@
   - Preset loads and parameter changes reach the engine at the start of the
     next block even while bypassed, as upstream applies them while bypassed.
     Bypassed blocks still render silence and drop MIDI.
+- *Automation is applied once per block, as upstream* (Chain Reviewer, a
+  divergence inherited from #59). `SAMPLE_ACCURATE_AUTOMATION` is now
+  `false`. With `true`, nice-plug split host blocks at every automation
+  point, which changes the engine's chunking and the values inside the block.
+  Upstream's JUCE VST3 wrapper applies only the last point of each parameter
+  queue, once, before `processBlock` (`juce_VST3_Wrapper.cpp`,
+  `processParameterChanges`). nice-plug now applies every point before
+  `process`, leaving the last value. MIDI CCs, which VST3 delivers as
+  parameters, keep their sample offsets, as in JUCE. Test:
+  `automation_applies_once_per_block_like_upstream`.
 - *`sas-render`* (`port/crates/plugin/src/bin/sas-render.rs`, logic in
-  `src/render.rs`). An offline render CLI with `ref-render`'s options and
-  defaults: `--init`, `--no-midi`, `--sample-rate` (44100), `--block-size`
-  (64), `--length`, `--tail` (2.0), `--bpm` (120) and `--seed`. It seeds the
+  `src/render.rs`). An offline render CLI with a subset of `ref-render`'s
+  options and its defaults: `--init`, `--no-midi`, `--sample-rate` (44100),
+  `--block-size` (64), `--length`, `--tail` (2.0), `--bpm` (120) and
+  `--seed`. It has no `--warmup-samples`, `--format` (always f32), `--meta`
+  or `--dump-state`. It seeds the
   counter, builds the synth, loads the preset, renders `last event + tail`
   through `sas_engine::synth::render` and writes a 32-bit float stereo WAV.
 - *VST3 sound check* (`port/crates/plugin/vst3-smoke/`). A minimal host on
@@ -78,7 +90,7 @@
     The test sets bypass on the controller mid-processing and reads it back.
   - Hosts send parameter changes through `process()`, so bypass in FL Studio
     is unaffected.
-- 39 `sas-plugin` tests; `cargo clippy --workspace --all-targets -D warnings`
+- 40 `sas-plugin` tests; `cargo clippy --workspace --all-targets -D warnings`
   is clean.
 
 **Known gap (follow-up, needs a `sas-engine` accessor).** The plugin can't

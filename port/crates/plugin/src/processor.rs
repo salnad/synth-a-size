@@ -4,9 +4,10 @@
 //! The audio callback: ports `SynthPlugin::processBlock`
 //! (`vital/src/plugin/synth_plugin.cpp`).
 //!
-//! Per host block (nice-plug already splits blocks at parameter changes, so
-//! automation is sample accurate): output silence and drop MIDI if bypassed;
-//! hand any newly restored preset and changed parameters to the engine; read
+//! Per host block (with each parameter at the last value the host sent for
+//! the block, as upstream's JUCE wrapper applies automation): hand any newly
+//! restored preset and changed parameters to the engine; output silence and
+//! drop MIDI if bypassed; read
 //! the tempo and song position; then render in chunks of at most
 //! `MAX_BUFFER_SIZE` samples, each preceded by `correctToTime` and the MIDI
 //! messages that fall inside it.

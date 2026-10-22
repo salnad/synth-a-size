@@ -6,7 +6,9 @@
 //! counter, build the synth, load a preset (or the init state), read a MIDI
 //! file, render `last event + tail` seconds through
 //! [`sas_engine::synth::render`], and write a 32-bit float WAV. The
-//! `sas-render` binary is the command line around [`render_to_wav`].
+//! `sas-render` binary is the command line around [`render_to_wav`]. It
+//! supports a subset of `ref-render`'s options: no `--warmup-samples`,
+//! `--format` (always f32), `--meta` or `--dump-state`.
 
 use std::path::{Path, PathBuf};
 

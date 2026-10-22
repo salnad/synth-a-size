@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! `sas-render`: renders a preset and a MIDI file to a WAV offline, with the
-//! reference harness's `ref-render` options and defaults.
+//! `sas-render`: renders a preset and a MIDI file to a WAV offline, with a
+//! subset of the reference harness's `ref-render` options and its defaults
+//! (no `--warmup-samples`, `--format`, `--meta` or `--dump-state`).
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -22,7 +23,10 @@ const USAGE: &str =
   --tail SECONDS       extra time after the last MIDI event, default 2.0
   --bpm BPM            tempo for tempo-synced modulators, default 120
   --seed N             set the engine's random seed counter before the synth
-                       is built (as ref-render's --seed)";
+                       is built (as ref-render's --seed)
+
+A subset of ref-render's options: no --warmup-samples, --format (always f32),
+--meta or --dump-state.";
 
 fn parse(args: &[String]) -> Result<(RenderOptions, PathBuf), String> {
     let mut options = RenderOptions::default();
