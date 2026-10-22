@@ -104,15 +104,16 @@ covered from both sides:
   inputs, both switches and the poly output's active state are back as
   before the connection, and the connection processor is disabled and at
   control rate. Removing the unplug, either switch reset, the inactive
-  poly output, the disable or the processor's return to control rate each
-  fails it.
+  poly output, the disable, the processor's return to control rate or the
+  source owner's return to control rate each fails it.
 - Upstream behaviour the test follows rather than "switches off": an
   audio-rate poly destination is a `ModulationSum` whose reset input counts
   as connected, so upstream's `poly connectedInputs() == 0` never holds for
   it; its switches stay on and its poly output stays active after a
   disconnect, as `updateAllModulationSwitches` already leaves them. The
   control-rate `voice_tune` and the mono-only `volume` do reset. The
-  source's own rate restore is not asserted structurally: for a module
-  owner (envelope, LFO) upstream's `setControlRate` reaches the inner
-  modulator and leaves the module's flag unchanged; the A→B→A render covers
-  it.
+  source owner's return to control rate is asserted for `lfo_1`:
+  `LfoModule::setControlRate` sets the module's own flag. An envelope
+  module only forwards to its inner envelope, so its owner's flag cannot
+  show the restore. Removing the restore fails the `lfo_1` assertion;
+  inverting it also fails `line_wavetable_fold__velocity`'s A→B→A render.

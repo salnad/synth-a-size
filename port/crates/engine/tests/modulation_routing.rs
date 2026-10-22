@@ -136,11 +136,20 @@ fn disconnect_restores_what_connect_changed() {
             connected.poly_active
         };
         assert_eq!(after.poly_active, expected_active, "{label}: poly output");
-        // The source's rate restore is not asserted here: upstream calls
-        // `setControlRate(true)` on the source's owner, and for a module
-        // owner (an envelope or LFO module) that reaches the inner modulator
-        // while the module's own flag stays as it was. The reload renders
-        // (`tests/render.rs`) catch a broken restore through the audio.
+        // With no other audio-rate connection from the source, upstream sets
+        // the source's owner back to control rate. An LFO module sets its own
+        // flag (`LfoModule::setControlRate`), so the restore shows on its
+        // owner; an envelope module only forwards to its inner envelope, so
+        // its owner's flag cannot show it.
+        if source == "lfo_1" {
+            let owner = synth
+                .engine()
+                .get_modulation_source(source)
+                .unwrap()
+                .owner()
+                .unwrap();
+            assert!(owner.is_control_rate(), "{label}: source owner rate");
+        }
         assert!(!processor.enabled(), "{label}: processor enabled");
         assert!(processor.is_control_rate(), "{label}: processor rate");
     }
