@@ -24,6 +24,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PRESET_DIR = os.path.join(HERE, "presets")
 MIDI_DIR = os.path.join(HERE, "midi")
 PRESET_TEST_DIR = os.path.join(HERE, "preset_tests")
+BENCH_DIR = os.path.join(HERE, "bench")
 
 # Matches ProjectInfo::versionString of the upstream plugin build the reference
 # harness compiles (see migration/reference/juce_config/JuceHeader.h).
@@ -554,6 +555,155 @@ MIDI = {
 
 
 # --------------------------------------------------------------------------
+# Benchmark content (migration/BENCHMARKS.md), written to bench/. Not
+# rendered by the parity corpus. Notes are held past the end of every
+# benchmark render, so each one measures a steady voice count.
+# --------------------------------------------------------------------------
+
+def bench_oversampling(oversampling):
+    """Unison into the ladder filter with distortion; `oversampling` is the
+    control's index (0 = 1x, 1 = 2x, 2 = 4x, 3 = 8x)."""
+    return preset(
+        "bench oversampling %dx" % (1 << oversampling),
+        "Benchmark: four-voice unison into the ladder filter, distortion on, oversampling %dx." % (1 << oversampling),
+        {
+            "oversampling": float(oversampling),
+            "osc_1_unison_voices": 4.0,
+            "osc_1_unison_detune": 2.0,
+            "filter_1_on": 1.0,
+            "filter_1_model": 2.0,
+            "filter_1_cutoff": 70.0,
+            "filter_1_resonance": 0.5,
+            "distortion_on": 1.0,
+            "distortion_type": 2.0,
+            "distortion_drive": 8.0,
+        },
+    )
+
+
+BENCH_PRESETS = {
+    "poly_unison": preset(
+        "bench poly unison",
+        "Benchmark: 32-voice polyphony, oscillator 1 with 8 unison voices and oscillator 2 with 4, into the analog low-pass.",
+        {
+            "polyphony": 32.0,
+            "osc_1_level": 0.3,
+            "osc_1_unison_voices": 8.0,
+            "osc_1_unison_detune": 2.5,
+            "osc_1_stereo_spread": 0.8,
+            "osc_2_on": 1.0,
+            "osc_2_level": 0.2,
+            "osc_2_transpose": -12.0,
+            "osc_2_unison_voices": 4.0,
+            "filter_1_on": 1.0,
+            "filter_1_model": 0.0,
+            "filter_1_cutoff": 70.0,
+            "filter_1_resonance": 0.4,
+            "env_1_attack": 0.02,
+            "env_1_release": 0.5,
+        },
+    ),
+    "heavy_fx": preset(
+        "bench heavy fx",
+        "Benchmark: a four-voice unison patch through all nine effects (chorus, compressor, delay, distortion, EQ, filter, flanger, phaser, reverb).",
+        {
+            "osc_1_unison_voices": 4.0,
+            "osc_1_unison_detune": 2.0,
+            "filter_1_on": 1.0,
+            "filter_1_cutoff": 80.0,
+            "chorus_on": 1.0,
+            "chorus_dry_wet": 0.5,
+            "compressor_on": 1.0,
+            "delay_on": 1.0,
+            "delay_dry_wet": 0.3,
+            "delay_feedback": 0.5,
+            "distortion_on": 1.0,
+            "distortion_type": 1.0,
+            "distortion_drive": 6.0,
+            "distortion_mix": 0.5,
+            "eq_on": 1.0,
+            "eq_low_gain": 3.0,
+            "eq_high_gain": -3.0,
+            "filter_fx_on": 1.0,
+            "filter_fx_model": 1.0,
+            "filter_fx_cutoff": 90.0,
+            "flanger_on": 1.0,
+            "flanger_dry_wet": 0.4,
+            "phaser_on": 1.0,
+            "phaser_dry_wet": 0.4,
+            "reverb_on": 1.0,
+            "reverb_dry_wet": 0.35,
+            "reverb_decay_time": 1.0,
+        },
+    ),
+    "oversampling_1x": bench_oversampling(0),
+    "oversampling_2x": bench_oversampling(1),
+    "oversampling_4x": bench_oversampling(2),
+    "oversampling_8x": bench_oversampling(3),
+    "mod_matrix": preset(
+        "bench mod matrix",
+        "Benchmark: two unison oscillators and both filters under 16 modulation connections from LFOs, envelopes, random LFOs, velocity and note.",
+        {
+            "osc_1_unison_voices": 4.0,
+            "osc_2_on": 1.0,
+            "osc_2_level": 0.4,
+            "osc_2_unison_voices": 2.0,
+            "filter_1_on": 1.0,
+            "filter_1_cutoff": 60.0,
+            "filter_2_on": 1.0,
+            "filter_2_model": 1.0,
+            "filter_2_cutoff": 80.0,
+            "lfo_1_sync": 0.0,
+            "lfo_1_frequency": 1.5,
+            "lfo_2_sync": 0.0,
+            "lfo_2_frequency": 0.3,
+            "lfo_3_sync": 0.0,
+            "lfo_3_frequency": 2.5,
+            "lfo_4_sync": 0.0,
+            "lfo_4_frequency": -1.0,
+            "env_2_attack": 0.5,
+            "env_2_decay": 1.0,
+            "env_3_attack": 1.2,
+        },
+        modulations=[
+            ("lfo_1", "filter_1_cutoff", 0.4),
+            ("lfo_2", "osc_1_wave_frame", 0.6),
+            ("lfo_3", "osc_2_pan", 0.5),
+            ("lfo_4", "osc_1_unison_detune", 0.3),
+            ("env_2", "filter_1_resonance", 0.4),
+            ("env_2", "filter_2_cutoff", -0.3),
+            ("env_3", "osc_2_wave_frame", 0.7),
+            ("random_1", "osc_1_pan", 0.3),
+            ("random_2", "osc_2_tune", 0.1),
+            ("velocity", "osc_1_level", 0.3),
+            ("note", "filter_2_cutoff", 0.2),
+            ("lfo_1", "osc_2_level", 0.2),
+            ("lfo_2", "filter_2_resonance", 0.3),
+            ("lfo_3", "osc_1_spectral_morph_amount", 0.4),
+            ("env_3", "osc_1_unison_detune", 0.2),
+            ("mod_wheel", "filter_1_cutoff", 0.2),
+        ],
+    ),
+}
+
+
+def held_chord(keys, length=60.0, velocity=100):
+    events = []
+    for key in keys:
+        events += note(0.0, length, key, velocity)
+    return events
+
+
+BENCH_MIDI = {
+    "held_note": held_chord([48]),
+    "held_chord_4": held_chord([48, 55, 60, 64]),
+    "held_chord_8": held_chord([36, 43, 48, 52, 55, 60, 64, 67]),
+    "held_chord_16": held_chord([36 + 3 * i for i in range(16)]),
+    "held_chord_32": held_chord([30 + 2 * i for i in range(32)]),
+}
+
+
+# --------------------------------------------------------------------------
 
 def outputs():
     files = {}
@@ -564,6 +714,10 @@ def outputs():
     for name, data in PRESET_TESTS.items():
         path = os.path.join(PRESET_TEST_DIR, name + ".vital")
         files[path] = (json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) + "\n").encode()
+    for name, data in BENCH_PRESETS.items():
+        files[os.path.join(BENCH_DIR, "presets", name + ".vital")] = (json.dumps(data, indent=2, sort_keys=True) + "\n").encode()
+    for name, events in BENCH_MIDI.items():
+        files[os.path.join(BENCH_DIR, "midi", name + ".mid")] = midi_file(events)
     return files
 
 

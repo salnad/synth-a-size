@@ -59,6 +59,22 @@ Format 0, 480 PPQ, 120 BPM.
 | `legato_bend_modwheel` | Overlapping legato line, rising mod wheel (CC1), pitch-bend swell |
 | `velocity_ramp` | Eight repeated MIDI-60 notes, velocity 16 → 121 |
 
+## Benchmark content (`bench/`)
+
+Also written by `generate.py`, for the performance benchmark
+([`../BENCHMARKS.md`](../BENCHMARKS.md)). These are not parity cases: they
+are not rendered by `run_corpus.py`, have no hashes, and are not in
+`modules/preset/state.json`. [`bench/scenarios.json`](bench/scenarios.json)
+pairs them into scenarios (hand-written, like `cases.json`).
+
+| File | Content |
+|---|---|
+| `presets/poly_unison` | 32-voice polyphony; oscillator 1 with 8 unison voices, oscillator 2 with 4; analog low-pass |
+| `presets/heavy_fx` | 4 unison voices through all nine effects |
+| `presets/oversampling_{1,2,4,8}x` | One patch (unison, ladder filter, distortion) at each oversampling setting |
+| `presets/mod_matrix` | Two oscillators and both filters under 16 modulation connections |
+| `midi/held_note`, `midi/held_chord_{4,8,16,32}` | 1 to 32 notes from t = 0, held past the end of every benchmark render |
+
 ## Cases
 
 - **Renders** ([`cases.json`](cases.json) `renders`, ids `render/<name>`):

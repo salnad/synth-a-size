@@ -7,6 +7,8 @@
 #   ref-render  - render a .vital preset + .mid file to a WAV
 #   ref-module  - drive a single engine Processor and dump its buffers (.npy)
 #
+# plus ref-bench, which times ref-render's block loop (migration/BENCHMARKS.md).
+#
 # Linux x86_64 is the supported reference platform (that is what CI uses).
 
 cmake_minimum_required(VERSION 3.16)
@@ -213,6 +215,10 @@ target_link_libraries(harness_common PUBLIC upstream_engine)
 
 add_executable(ref-render src/render_main.cpp)
 target_link_libraries(ref-render PRIVATE harness_common)
+
+# Performance benchmark: times ref-render's block loop (migration/BENCHMARKS.md).
+add_executable(ref-bench src/bench_main.cpp)
+target_link_libraries(ref-bench PRIVATE harness_common)
 
 # One file per module under src/modules/<area>/<module>.cpp; each registers
 # itself (REGISTER_REF_MODULE), so new modules never edit a shared list.

@@ -15,6 +15,7 @@ members = [
     "crates/plugin",
     "crates/parity",
     "crates/common",
+    "crates/bench",
 ]
 
 [workspace.package]

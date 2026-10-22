@@ -1,0 +1,70 @@
+{
+  "comment": "Performance benchmark scenarios (migration/BENCHMARKS.md), run by migration/scripts/bench.py. Paths are relative to migration/corpus; a null preset renders the engine's init state. Presets and MIDI are authored in generate.py (bench/). A scenario with \"needs\" exercises a feature the port may not have yet; bench.py still runs it, and its output-match column shows whether both engines rendered the same audio.",
+  "defaults": {
+    "length": 4.0,
+    "sample_rates": [44100, 48000],
+    "block_sizes": [64, 256, 512],
+    "warmup": 1,
+    "repeats": 3,
+    "seed": 1,
+    "bpm": 120.0
+  },
+  "headline": { "sample_rate": 48000, "block_size": 256 },
+  "scenarios": [
+    {
+      "name": "init_single_voice",
+      "description": "Init patch (engine defaults, 2x oversampling), one held note.",
+      "preset": null,
+      "midi": "bench/midi/held_note.mid"
+    },
+    {
+      "name": "poly16_unison",
+      "description": "16 held voices; oscillator 1 with 8 unison voices, oscillator 2 with 4, analog low-pass.",
+      "preset": "bench/presets/poly_unison.vital",
+      "midi": "bench/midi/held_chord_16.mid"
+    },
+    {
+      "name": "poly32_unison",
+      "description": "32 held voices (the maximum polyphony) on the same patch.",
+      "preset": "bench/presets/poly_unison.vital",
+      "midi": "bench/midi/held_chord_32.mid"
+    },
+    {
+      "name": "heavy_fx",
+      "description": "4 held voices with 4 unison voices each, through all nine effects.",
+      "preset": "bench/presets/heavy_fx.vital",
+      "midi": "bench/midi/held_chord_4.mid"
+    },
+    {
+      "name": "oversampling_1x",
+      "description": "4 held voices, unison, ladder filter and distortion at 1x oversampling.",
+      "preset": "bench/presets/oversampling_1x.vital",
+      "midi": "bench/midi/held_chord_4.mid"
+    },
+    {
+      "name": "oversampling_2x",
+      "description": "The same patch at 2x (the engine default).",
+      "preset": "bench/presets/oversampling_2x.vital",
+      "midi": "bench/midi/held_chord_4.mid"
+    },
+    {
+      "name": "oversampling_4x",
+      "description": "The same patch at 4x.",
+      "preset": "bench/presets/oversampling_4x.vital",
+      "midi": "bench/midi/held_chord_4.mid"
+    },
+    {
+      "name": "oversampling_8x",
+      "description": "The same patch at 8x.",
+      "preset": "bench/presets/oversampling_8x.vital",
+      "midi": "bench/midi/held_chord_4.mid"
+    },
+    {
+      "name": "mod_matrix",
+      "description": "8 held voices, two unison oscillators and both filters under 16 modulation connections.",
+      "preset": "bench/presets/mod_matrix.vital",
+      "midi": "bench/midi/held_chord_8.mid",
+      "needs": "modulation routing (#78)"
+    }
+  ]
+}
