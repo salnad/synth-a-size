@@ -18,7 +18,8 @@ use std::rc::Rc;
 
 use sas_dsp_core::ProcessorRef;
 use sas_oscillators::sas_wavetable::creator::WavetableCreator;
-use sas_preset::{lookup, PresetState};
+use sas_oscillators::Sample;
+use sas_preset::{lookup, PresetState, SampleState};
 
 use crate::midi_file::TimedMessage;
 use crate::midi_manager::MidiManager;
@@ -203,6 +204,26 @@ impl Synth {
         self.check_oversampling();
     }
 
+    /// The sample the engine plays, as a [`SampleState`]: the white noise
+    /// the engine built (and took a seed for) until a preset loads a sample,
+    /// then that sample. Saving an untouched init state needs this, since
+    /// the engine's noise cannot be regenerated without its seed.
+    pub fn sample_state(&self) -> SampleState {
+        let sample = self.with_svh(|svh| svh.sample());
+        let sample = sample.borrow();
+        let data = sample.data();
+        let original = |buffers: &[Vec<f32>]| -> Vec<f32> {
+            let start = Sample::BUFFER_SAMPLES;
+            buffers[Sample::UPSAMPLE_TIMES][start..start + data.length].to_vec()
+        };
+        SampleState {
+            name: sample.name().to_string(),
+            sample_rate: data.sample_rate,
+            left: original(&data.left_buffers),
+            right: data.stereo.then(|| original(&data.right_buffers)),
+        }
+    }
+
     /// `MidiManager::processMidiMessage` for one short message at
     /// `sample_offset` into the next [`process`](Self::process).
     pub fn process_midi(&mut self, message: [u8; 3], sample_offset: i32) {
@@ -327,4 +348,31 @@ pub fn render(synth: &mut Synth, events: &[TimedMessage], settings: &RenderSetti
         block_start += n;
     }
     interleaved
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sas_preset::InitContent;
+
+    #[test]
+    fn sample_state_is_the_engine_noise_until_a_preset_loads_a_sample() {
+        let mut synth = Synth::new();
+        let noise = synth.sample_state();
+        assert_eq!(noise.name, "White Noise");
+        assert_eq!(noise.sample_rate, 44100);
+        assert_eq!(noise.left.len(), 44100);
+        assert!(noise.right.is_none());
+        assert!(noise.left.iter().all(|v| (-0.9..0.9).contains(v)));
+
+        let mut preset = PresetState::new(&InitContent { sample_seed: 1234 });
+        preset.sample = SampleState {
+            name: "authored".to_string(),
+            sample_rate: 48000,
+            left: (0..64).map(|i| i as f32 / 64.0).collect(),
+            right: Some((0..64).map(|i| -(i as f32) / 64.0).collect()),
+        };
+        synth.load_preset(&preset);
+        assert_eq!(synth.sample_state(), preset.sample);
+    }
 }
