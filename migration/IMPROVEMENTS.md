@@ -140,3 +140,24 @@ parity cost), and where it came from.
     race surface.
 - **Source:** `ledger/2026-10-21-m8-plugin-wrapper.md` (follow-ups: "A heavy
   engine load should be prepared off the audio thread and swapped in").
+
+## I8. Effects-only plugin
+
+- **Idea:** port upstream's audio-input effects engine,
+  `vital/src/synthesis/effects_engine/`. It has the full reorderable
+  effect chain, a filter, LFOs, envelopes, random LFOs, macros and the
+  modulation matrix, all driven by MIDI, but no oscillators.
+- **Why:** it would be a second product, an effect plugin, built from blocks
+  that are already ported.
+- **Tradeoff:**
+  - It needs its own plugin wrapper, parameter set, GUI, and a name of its
+    own that is not upstream's.
+  - There is no official reference build. The Makefile's `effects_*`
+    targets build from an `effects/` project folder that is missing from
+    the open-source release. Parity would need a reference built by the
+    harness.
+- **Status:** the owner kept it out of scope as a parked idea (Salil,
+  2026-10-22).
+- **Source:** `vital/src/synthesis/effects_engine/` (`sound_engine.h`,
+  `effects_modulation_handler.h`); `vital/Makefile` (`effects_lv2`,
+  `effects_vst`, `effects_vst3`).

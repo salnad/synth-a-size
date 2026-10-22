@@ -25,6 +25,10 @@ Entries, all taken from existing records (no filler):
   `libm`-crate note.
 - **I7 preparing heavy preset loads off the audio thread.** From the
   m8-plugin-wrapper follow-ups.
+- **I8 effects-only plugin.** The owner (Salil) kept upstream's
+  `src/synthesis/effects_engine/` out of scope as a parked idea. It has no
+  official reference build: the Makefile's `effects/` project folder is
+  missing from the open-source release.
 
 migration/AGENTS.md (rule 5) now says ideas beyond parity go in
 IMPROVEMENTS.md, not in code. migration/README.md lists the file.
