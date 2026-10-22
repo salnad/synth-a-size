@@ -33,6 +33,29 @@ pub const DEFAULT_SAMPLE_RATE: i32 = 44100;
 /// `kNumMidiChannels`.
 pub const NUM_MIDI_CHANNELS: i32 = 16;
 
+/// `vital::modulation_change`: one connection or disconnection, resolved
+/// against the engine (`SynthBase::createModulationChange`).
+#[derive(Clone)]
+pub struct ModulationChange {
+    pub source: Rc<Output>,
+    pub mono_destination: ProcessorRef,
+    pub poly_destination: Option<ProcessorRef>,
+    pub destination_scale: f32,
+    pub mono_modulation_switch: ProcessorRef,
+    pub poly_modulation_switch: Option<ProcessorRef>,
+    pub modulation_processor: ProcessorRef,
+    pub disconnecting: bool,
+    pub num_audio_rate: usize,
+}
+
+impl ModulationChange {
+    fn source_is_polyphonic(&self) -> bool {
+        self.source
+            .owner()
+            .is_some_and(|owner| owner.is_polyphonic())
+    }
+}
+
 /// Kernel of `vital::SoundEngine`.
 pub struct SoundEngine {
     voice_handler: Option<ProcessorRef>,
@@ -263,6 +286,94 @@ impl SoundEngine {
             .set_oversample_amount(oversample);
         self.last_oversampling_amount = oversampling_amount;
         self.last_sample_rate = sample_rate;
+    }
+
+    /// `connectModulation(change)`: plugs the source into the connection's
+    /// processor and the processor into the destination (the poly one when
+    /// the source is polyphonic and the destination has one), drops both
+    /// ends to audio rate when the destination and source are audio-rate,
+    /// and turns the destination's modulation switches on.
+    pub fn connect_modulation(&mut self, change: &ModulationChange) {
+        let processor = &change.modulation_processor;
+        processor.plug(
+            &change.source,
+            ModulationConnectionProcessor::MODULATION_INPUT,
+        );
+        let polyphonic = change.source_is_polyphonic() && change.poly_destination.is_some();
+        processor.with::<ModulationConnectionProcessor, _>(|kernel, _| {
+            kernel.set_destination_scale(change.destination_scale);
+            kernel.set_polyphonic_modulation(polyphonic);
+        });
+        debug_assert!(change.destination_scale.is_finite());
+        self.with_svh(|svh| svh.enable_modulation_connection(processor));
+
+        let mut destination = change.mono_destination.clone();
+        if polyphonic {
+            let poly_destination = change.poly_destination.clone().expect("checked above");
+            let poly_output = poly_destination.output(0);
+            self.with_vh(|vh| vh.set_active_nonaccumulated_output(&poly_output));
+            destination = poly_destination;
+        }
+
+        let source_owner = change.source.owner();
+        if !destination.is_control_rate() && !change.source.is_control_rate() {
+            if let Some(owner) = &source_owner {
+                owner.set_control_rate(false);
+            }
+            processor.set_control_rate(false);
+        }
+        if let Some(owner) = &source_owner {
+            owner.enable(true);
+        }
+        processor.enable(true);
+        destination.plug_next(processor);
+        processor.process(1);
+        destination.process(1);
+
+        change.mono_modulation_switch.set_value(1.0);
+        if let Some(poly_switch) = &change.poly_modulation_switch {
+            poly_switch.set_value(1.0);
+        }
+    }
+
+    /// `disconnectModulation(change)`.
+    pub fn disconnect_modulation(&mut self, change: &ModulationChange) {
+        let processor = &change.modulation_processor;
+        processor.with::<ModulationConnectionProcessor, _>(|kernel, _| {
+            kernel.set_destination_scale(0.0)
+        });
+
+        let destination = match &change.poly_destination {
+            Some(poly_destination) if change.source_is_polyphonic() => poly_destination.clone(),
+            _ => change.mono_destination.clone(),
+        };
+        destination.unplug_processor(processor);
+        self.with_svh(|svh| svh.disable_modulation_connection(processor));
+
+        let poly_unconnected = change
+            .poly_destination
+            .as_ref()
+            .is_none_or(|poly_destination| poly_destination.connected_inputs() == 0);
+        if change.mono_destination.connected_inputs() == 1 && poly_unconnected {
+            change.mono_modulation_switch.set_value(0.0);
+            if let Some(poly_switch) = &change.poly_modulation_switch {
+                poly_switch.set_value(0.0);
+                let poly_output = change
+                    .poly_destination
+                    .as_ref()
+                    .expect("a poly switch has a poly destination")
+                    .output(0);
+                self.with_vh(|vh| vh.set_inactive_nonaccumulated_output(&poly_output));
+            }
+        }
+
+        processor.enable(false);
+        processor.set_control_rate(true);
+        if change.num_audio_rate == 0 {
+            if let Some(owner) = change.source.owner() {
+                owner.set_control_rate(true);
+            }
+        }
     }
 
     /// `getNumPressedNotes()`.

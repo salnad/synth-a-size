@@ -15,12 +15,16 @@ use sas_oscillators::RandomValues;
 use sas_parity::RenderCase;
 use sas_preset::{InitContent, PresetState};
 
-/// The render cases this crate's engine covers so far.
-const CASES: [&str; 4] = [
+/// Every `renders` case in `migration/corpus/cases.json`.
+const CASES: [&str; 8] = [
     "render/init_saw__single_note",
     "render/init_saw__chords",
     "render/init_saw__single_note_48k_b128",
     "render/unison_pad_fx__chords",
+    "render/analog_filter_lfo__chords",
+    "render/analog_filter_lfo__velocity_96k_b512",
+    "render/mono_legato_glide__legato",
+    "render/line_wavetable_fold__velocity",
 ];
 
 fn render_case(case: &RenderCase) -> Vec<f32> {
