@@ -139,6 +139,8 @@ fn render_case_keys() -> Vec<&'static str> {
         "name",
         "preset",
         "midi",
+        "tuning",
+        "keyboard_map",
         "description",
         "tolerances",
         "tolerance_exception",
@@ -995,6 +997,11 @@ pub fn render_cases_from(cases_json: &Value, ledger: &[&str]) -> Result<Vec<Reso
                 return Err(format!("{id}: needs {key:?}"));
             }
         }
+        for key in ["tuning", "keyboard_map"] {
+            if case.get(key).is_some_and(|value| !value.is_string()) {
+                return Err(format!("{id}: {key:?} must be a corpus path"));
+            }
+        }
         let mut merged: Map<String, Value> = defaults
             .iter()
             .filter(|(k, _)| k.as_str() != "tolerances")
@@ -1519,6 +1526,18 @@ mod tests {
         let render = json!({ "name": "r", "preset": "p.vital", "midi": "m.mid", "tolerance": {} });
         let err = render_cases_from(&cases_json(floor_tolerances(), render), LEDGER).unwrap_err();
         assert!(err.contains("unknown keys"), "{err}");
+    }
+
+    #[test]
+    fn render_cases_take_a_tuning_file_and_keyboard_map() {
+        let render = json!({ "name": "r", "preset": "p.vital", "midi": "m.mid",
+                             "tuning": "tunings/t.scl", "keyboard_map": "tunings/t.kbm" });
+        let cases = render_cases_from(&cases_json(floor_tolerances(), render), LEDGER).unwrap();
+        assert_eq!(cases[0].json["tuning"], "tunings/t.scl");
+        assert_eq!(cases[0].json["keyboard_map"], "tunings/t.kbm");
+        let render = json!({ "name": "r", "preset": "p.vital", "midi": "m.mid", "tuning": 1 });
+        let err = render_cases_from(&cases_json(floor_tolerances(), render), LEDGER).unwrap_err();
+        assert!(err.contains("must be a corpus path"), "{err}");
     }
 
     #[test]

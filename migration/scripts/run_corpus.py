@@ -141,8 +141,11 @@ FILE_KEYS = SPEC_KEYS + COMPARISON_KEYS + ("description", "tolerances", "cases")
 MODULE_DEFAULT_KEYS = ("comment", "sample_rate", "block_size", "oversample", "tolerances")
 RENDER_SETTING_KEYS = ("sample_rate", "block_size", "tail", "length", "bpm", "seed")
 RENDER_DEFAULT_KEYS = RENDER_SETTING_KEYS + ("tolerances",)
-RENDER_CASE_KEYS = RENDER_SETTING_KEYS + ("name", "preset", "midi", "description", "tolerances",
-                                          "tolerance_exception")
+# A tuning file (.scl or .tun) and a keyboard map (.kbm), applied in that
+# order after the preset (ref-render --tuning / --keyboard-map).
+RENDER_TUNING_KEYS = ("tuning", "keyboard_map")
+RENDER_CASE_KEYS = RENDER_SETTING_KEYS + RENDER_TUNING_KEYS + ("name", "preset", "midi", "description",
+                                                              "tolerances", "tolerance_exception")
 EXCEPTION_KEYS = ("approved_in", "tolerances")
 IDENTITY_KEYS = ("upstream_sha", "compiler", "glibc", "fast_math", "opt_flags", "arch", "libm_variants")
 
@@ -517,6 +520,9 @@ def resolve_renders(cases_json, ledger_text):
         for key in ("preset", "midi"):
             if not isinstance(case.get(key), str):
                 raise CaseError("%s: needs %r" % (case_id, key))
+        for key in RENDER_TUNING_KEYS:
+            if key in case and not isinstance(case[key], str):
+                raise CaseError("%s: %r must be a corpus path" % (case_id, key))
         merged = {k: v for k, v in defaults.items() if k != "tolerances"}
         merged.update({k: v for k, v in case.items() if k not in ("tolerances", "tolerance_exception")})
         merged["tolerances"], exception = resolve_tolerances(case_id, default_tolerances, {}, case, ledger_text)
@@ -663,6 +669,9 @@ def cmd_render(args):
             "--seed", str(case["seed"]),
         ]
         command += ["--length", str(case["length"])] if "length" in case else ["--tail", str(case["tail"])]
+        for key in RENDER_TUNING_KEYS:
+            if key in case:
+                command += ["--" + key.replace("_", "-"), os.path.join(CORPUS, case[key])]
         code, output = run(command)
         if code == 0:
             write_json(case_json, case)

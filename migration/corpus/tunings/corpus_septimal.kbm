@@ -1,0 +1,26 @@
+! corpus_septimal.kbm
+! map size
+12
+! first and last MIDI note
+0
+127
+! middle note
+62
+! reference note and frequency
+69
+432.0
+! formal octave degree
+7
+! mapping
+0
+x
+1
+2
+x
+3
+4
+5
+x
+6
+x
+x

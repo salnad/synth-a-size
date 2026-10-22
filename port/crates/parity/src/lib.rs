@@ -754,7 +754,7 @@ impl RenderCase {
     }
 
     /// The resolved case (preset, midi, sample_rate, block_size, bpm, seed,
-    /// tail or length, tolerances).
+    /// tail or length, tolerances, and any tuning and keyboard_map).
     pub fn settings(&self) -> &Value {
         &self.resolved.json
     }
@@ -769,6 +769,20 @@ impl RenderCase {
 
     pub fn midi_path(&self) -> PathBuf {
         self.corpus_path("midi")
+    }
+
+    /// The tuning file (`.scl` or `.tun`) the case loads after its preset.
+    pub fn tuning_path(&self) -> Option<PathBuf> {
+        self.settings()
+            .get("tuning")
+            .map(|_| self.corpus_path("tuning"))
+    }
+
+    /// The keyboard map (`.kbm`) the case loads after its tuning file.
+    pub fn keyboard_map_path(&self) -> Option<PathBuf> {
+        self.settings()
+            .get("keyboard_map")
+            .map(|_| self.corpus_path("keyboard_map"))
     }
 
     pub fn sample_rate(&self) -> u32 {

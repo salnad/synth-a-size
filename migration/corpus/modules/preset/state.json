@@ -239,6 +239,16 @@
         "state.json": "json",
         "roundtrip.json": "json"
       }
+    },
+    "tuned_glide": {
+      "params": {
+        "preset": "presets/tuned_glide.vital",
+        "roundtrip": true
+      },
+      "artifacts": {
+        "state.json": "json",
+        "roundtrip.json": "json"
+      }
     }
   }
 }

@@ -11,12 +11,13 @@
 
 use sas_engine::midi_file::read_midi_file;
 use sas_engine::synth::{render, RenderSettings, Synth};
+use sas_engine::Tuning;
 use sas_oscillators::RandomValues;
 use sas_parity::RenderCase;
 use sas_preset::{InitContent, PresetState};
 
 /// Every `renders` case in `migration/corpus/cases.json`.
-const CASES: [&str; 15] = [
+const CASES: [&str; 16] = [
     "render/init_saw__single_note",
     "render/init_saw__chords",
     "render/init_saw__single_note_48k_b128",
@@ -32,6 +33,7 @@ const CASES: [&str; 15] = [
     "render/fx_chain_reordered__chords_140bpm",
     "render/random_macro_shapes__pad_93bpm",
     "render/mpe_expression__expression",
+    "render/tuned_glide__septimal_run",
 ];
 
 /// The engine RNG's seed counter is process-wide, so the tests here build
@@ -66,6 +68,7 @@ fn render_after(case: &RenderCase, earlier: &[std::path::PathBuf]) -> Vec<f32> {
         synth.process_modulation_changes();
     }
     synth.load_preset(&preset_file(&case.preset_path()));
+    load_tuning(&mut synth, case);
 
     let midi = std::fs::read(case.midi_path()).expect("MIDI file");
     let events = read_midi_file(&midi).unwrap_or_else(|e| panic!("{}: {e}", case.id()));
@@ -76,6 +79,25 @@ fn render_after(case: &RenderCase, earlier: &[std::path::PathBuf]) -> Vec<f32> {
         frames: case.frames(),
     };
     render(&mut synth, &events, &settings)
+}
+
+/// `loadTuningFile` for the case's tuning file, then its keyboard map, as
+/// `ref-render` applies them after the preset.
+fn load_tuning(synth: &mut Synth, case: &RenderCase) {
+    let files: Vec<_> = [case.tuning_path(), case.keyboard_map_path()]
+        .into_iter()
+        .flatten()
+        .collect();
+    if files.is_empty() {
+        return;
+    }
+    let mut tuning = Tuning::new();
+    for path in files {
+        tuning
+            .load_file(&path)
+            .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    }
+    synth.set_tuning(&tuning);
 }
 
 #[test]
