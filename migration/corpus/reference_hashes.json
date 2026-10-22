@@ -34,6 +34,9 @@
         "init_saw__single_note_48k_b128": "18654d508a22991b",
         "line_wavetable_fold__velocity": "d30482ef1f96af47",
         "mono_legato_glide__legato": "4a36b6c72051fcb3",
+        "osc_diode_phase__overlap": "6bad6fe0016bdc0b",
+        "osc_formant_comb__chords": "22c7be35f6fcced7",
+        "osc_stack_serial__arpeggio": "276a55bed4575bb0",
         "unison_pad_fx__chords": "0807b0c1119d2d3f",
         "velocity_filter_poly__overlap": "f975a5a1103868ff"
       },
