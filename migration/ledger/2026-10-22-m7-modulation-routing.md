@@ -32,6 +32,12 @@ Follows slice A (#75). Voice Engine.
   `render/velocity_filter_poly__overlap` with its x86 CI-identity hash.
   Voices that sound together carry different poly modulation.
 - `tests/voice_handler_routing.rs`: #26's coverage (below).
+- `tests/modulation_routing.rs` and the reload renders: disconnect coverage
+  (below). `VoiceHandler::is_nonaccumulated_output_active` (a read-only
+  query) supports it.
+- `tests/render.rs` serialises its renders behind one lock: the engine
+  RNG's seed counter is process-wide, and its three tests would otherwise
+  race on it.
 
 **Parity**
 
@@ -74,3 +80,39 @@ neither forward changes any output. What #26 guarantees is structural, so
 
 Reverting the idle forward fails all three; reverting the sample rate fails
 the second.
+
+**Disconnect coverage**
+
+Disconnection runs on every preset change (`clearModulations`), so it is
+covered from both sides:
+
+- **Reload renders** (`tests/render.rs`), each against the case's own
+  reference: A→B, loading `analog_filter_lfo`, `mono_legato_glide`,
+  `line_wavetable_fold` or `velocity_filter_poly` before
+  `init_saw__chords`, `unison_pad_fx__chords` and
+  `analog_filter_lfo__chords` (12 renders); A→B→A, the case's preset, then
+  `init_saw`, then the case's preset again, for all five modulated cases.
+  The earlier presets' modulation changes are applied before the next load,
+  as a block boundary does, so the later load disconnects real connections.
+  All pass. Leaving a disconnected source at audio rate (the control-rate
+  restore) fails `line_wavetable_fold__velocity`'s A→B→A.
+- **Structural** (`tests/modulation_routing.rs`): disconnect zeroes the
+  destination scale first, so these are invisible in audio and asserted
+  directly, for `lfo_1` → `filter_1_cutoff`, `env_2` → `osc_1_level`,
+  `velocity` → `filter_1_cutoff`, `macro_control_1` → `volume` and
+  `lfo_1` → `voice_tune`: after disconnecting, the destinations' connected
+  inputs, both switches and the poly output's active state are back as
+  before the connection, and the connection processor is disabled and at
+  control rate. Removing the unplug, either switch reset, the inactive
+  poly output, the disable or the processor's return to control rate each
+  fails it.
+- Upstream behaviour the test follows rather than "switches off": an
+  audio-rate poly destination is a `ModulationSum` whose reset input counts
+  as connected, so upstream's `poly connectedInputs() == 0` never holds for
+  it; its switches stay on and its poly output stays active after a
+  disconnect, as `updateAllModulationSwitches` already leaves them. The
+  control-rate `voice_tune` and the mono-only `volume` do reset. The
+  source's own rate restore is not asserted structurally: for a module
+  owner (envelope, LFO) upstream's `setControlRate` reaches the inner
+  modulator and leaves the module's flag unchanged; the A→B→A render covers
+  it.
