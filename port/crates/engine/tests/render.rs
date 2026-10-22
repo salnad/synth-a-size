@@ -16,7 +16,7 @@ use sas_parity::RenderCase;
 use sas_preset::{InitContent, PresetState};
 
 /// Every `renders` case in `migration/corpus/cases.json`.
-const CASES: [&str; 8] = [
+const CASES: [&str; 9] = [
     "render/init_saw__single_note",
     "render/init_saw__chords",
     "render/init_saw__single_note_48k_b128",
@@ -25,6 +25,7 @@ const CASES: [&str; 8] = [
     "render/analog_filter_lfo__velocity_96k_b512",
     "render/mono_legato_glide__legato",
     "render/line_wavetable_fold__velocity",
+    "render/velocity_filter_poly__overlap",
 ];
 
 fn render_case(case: &RenderCase) -> Vec<f32> {

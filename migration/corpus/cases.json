@@ -20,7 +20,8 @@
     { "name": "analog_filter_lfo__velocity_96k_b512", "preset": "presets/analog_filter_lfo.vital", "midi": "midi/velocity_ramp.mid", "sample_rate": 96000, "block_size": 512 },
     { "name": "unison_pad_fx__chords", "preset": "presets/unison_pad_fx.vital", "midi": "midi/chord_progression.mid" },
     { "name": "line_wavetable_fold__velocity", "preset": "presets/line_wavetable_fold.vital", "midi": "midi/velocity_ramp.mid" },
-    { "name": "mono_legato_glide__legato", "preset": "presets/mono_legato_glide.vital", "midi": "midi/legato_bend_modwheel.mid" }
+    { "name": "mono_legato_glide__legato", "preset": "presets/mono_legato_glide.vital", "midi": "midi/legato_bend_modwheel.mid" },
+    { "name": "velocity_filter_poly__overlap", "preset": "presets/velocity_filter_poly.vital", "midi": "midi/velocity_overlap.mid" }
   ],
   "module_defaults": {
     "comment": "Defaults for every module case in modules/<area>/<module>.json. A case may set stricter tolerances; looser ones need a tolerance_exception citing a dated heading in the ledger (migration/ledger/, or the frozen migration/LEDGER.md) that records human approval.",
