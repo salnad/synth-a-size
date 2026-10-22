@@ -88,6 +88,8 @@
         "random_macro_shapes:artifact/roundtrip.json": "33f8208b2a023e45",
         "random_macro_shapes:artifact/state.json": "4ca9f3bc96f4f6bc",
         "sub_octave_current:artifact/state.json": "3b01dd9744f0ff59",
+        "tuned_glide:artifact/roundtrip.json": "b97de6a79686ec09",
+        "tuned_glide:artifact/state.json": "866f45a797c2d6f2",
         "unison_pad_fx:artifact/roundtrip.json": "a34bc6869de26af9",
         "unison_pad_fx:artifact/state.json": "6b3acdfcdd095d42",
         "upgrade_from_0_1_0:artifact/state.json": "c418a9d07745f2ab",
