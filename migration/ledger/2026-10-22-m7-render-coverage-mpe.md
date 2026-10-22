@@ -9,8 +9,9 @@ Voice Engine. Third feature-stacking render case (engine-completeness audit,
   `mpe_expression` and the MIDI `mpe_expression`.
 - `render/mpe_expression__expression`, with its x86 CI-identity hash and a
   `preset/state` case:
-  - MIDI: three notes on channels 2–4, each with its own pitch-bend ramp,
-    channel-pressure ramp and slide (CC 74) ramp, released with velocities
+  - MIDI: three notes on channels 2–4, each with its own channel-pressure
+    and slide (CC 74) ramps, the first two with their own pitch-bend ramps
+    (up and down; channel 4's bend stays centred), released with velocities
     100, 15 and 120 (lift); then on channel 1 the sustain pedal holds two
     notes past their note-offs, with polyphonic aftertouch on one and the
     mod wheel rising, until the pedal lifts.
@@ -20,12 +21,23 @@ Voice Engine. Third feature-stacking render case (engine-completeness audit,
     24, oscillator 2 FM by oscillator A (the FM-by-A distortion moved here
     from render coverage 2, see there).
 
-Upstream never enables MPE mode (`SynthBase::setMpeEnabled` has no caller),
-so `MidiManager` takes the non-MPE paths: per-channel pitch wheel
+The case renders `MidiManager`'s paths with MPE mode off (`mpe_enabled` 0,
+the preset default): per-channel pitch wheel
 (`setZonedPitchWheel(value, channel, channel)`), per-channel pressure and
-slide, polyphonic aftertouch per note, sustain per channel. That is what
-per-note expression from an MPE controller exercises in the shipped plugin,
-and what this case renders.
+slide, polyphonic aftertouch per note, sustain per channel.
+
+MPE mode itself is reachable upstream but still in no full render.
+`mpe_enabled` is a preset parameter, and the plugin's editor applies it
+through `SynthBase::setMpeEnabled` (`VoiceSettings` in
+`interface/editor_sections/master_controls_interface.cpp`, on every
+`setAllValues`, so on preset load, and on the MPE button). With it on, a zone
+master channel's pitch bend, pressure, slide, sustain and sostenuto apply to
+the whole zone (`setZonedPitchWheel` over the zone, `setChannelRange*`,
+`sustainOnRange`), and member-channel bends go through
+`setPitchWheel(value, channel)`. `ref-render` loads presets without the
+editor, so it never turns MPE mode on, and the port follows it. Whether the
+GUI-less port should apply `mpe_enabled` itself is an open question for the
+owner.
 
 **Results.** Passes against the official reference; the port is
 bit-identical to the `REF_FAST_MATH=OFF` reference.
