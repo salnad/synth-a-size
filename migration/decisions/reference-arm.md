@@ -280,9 +280,17 @@ waiting for hosted macOS runners. There is no self-hosted Apple Silicon.
   - is strict: `hashes --check --require-known-identity` (pinned and
     no-fast-math) fails on a missing or changed macOS hash;
   - on a failure, opens or updates the issue "Mac full suite failing on main"
-    with the failing steps (`scripts/mac_full_suite_report.py`). When new
-    cases only lack hashes, the issue gives the `macos_hashes.sh` command
-    for the run's patch. The issue closes when main is green again.
+    with the failing steps (`scripts/mac_full_suite_report.py`). The issue
+    closes when main is green again;
+  - backfills missing keys automatically. When the macOS 15 job fails only
+    on missing macOS hash keys (`scripts/mac_missing_only.py`), the
+    `backfill` job opens or updates the hash-only PR from the bot branch
+    `ci/macos-hashes-backfill` and dispatches Linux CI on it
+    (`scripts/mac_hash_backfill.sh`). "Only missing keys" means: every other
+    step passed, there was no mismatch, stale or unrendered hash, no other
+    parity panic, and the run's patch only adds keys to `.hashes.json`
+    files. A human or agent merges the PR on Linux CI. Real mismatches keep
+    failing and keep the issue open.
 
 ## Residual risks
 

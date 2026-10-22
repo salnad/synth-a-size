@@ -52,6 +52,14 @@ def body_for_failure(repo, run_id, url, sha, results, steps, artifacts):
             lines.append("- %s: %s" % (job, ", ".join(names) or "(no step reported)"))
     macos_steps = set().union(*steps.values()) if steps else set()
     lines.append("")
+    backfill = os.environ.get("BACKFILL_PR", "")
+    reason = os.environ.get("MISSING_ONLY_REASON", "")
+    if backfill:
+        lines += ["Missing macOS hash keys only (%s). The backfill PR applies this run's patch, new keys only: "
+                  "%s. Merge it on Linux CI. This issue closes on the next green full suite." % (reason, backfill)]
+        return "\n".join(lines) + "\n"
+    if reason:
+        lines += ["Not a missing-keys-only failure: %s." % reason, ""]
     if "macos-hashes" in artifacts:
         lines += ["New cases on main have no macOS hashes. The run wrote them (new keys only); commit them "
                   "in a fix PR:", "", "```bash", "migration/scripts/macos_hashes.sh %s" % run_id, "```", ""]
