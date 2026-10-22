@@ -13,6 +13,8 @@
 //! - [`engine`]: the engine interface the wrapper drives; [`SilentEngine`]
 //!   stands in until the M7 sound engine lands.
 //! - [`processor`]: the audio callback, MIDI/MPE in.
+//! - [`sound_engine`]: the M7 sound engine ([`SoundEngineHost`]) behind
+//!   [`Engine`].
 //!
 //! The shipping build is an arm64 macOS VST3 (`scripts/bundle.sh`).
 //! CLAP export is kept because it costs nothing, but it is not tested or
@@ -27,11 +29,13 @@ use sas_preset::InitContent;
 pub mod engine;
 pub mod params;
 pub mod processor;
+pub mod sound_engine;
 pub mod state;
 
 pub use engine::{Engine, SilentEngine};
 pub use params::SynthParams;
 pub use processor::{BlockProcessor, Transport};
+pub use sound_engine::SoundEngineHost;
 pub use state::PresetDocument;
 
 /// Milestone in `migration/PLAN.md` that makes this a working instrument.

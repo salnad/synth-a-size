@@ -4,6 +4,8 @@
       "hashes": {
         "chord_bend_tune:block_state": "38d812648d66d4bb",
         "chord_bend_tune:status": "8da0fdd61b57f76b",
+        "chord_progression_engine_rate:block_state": "dbec2d7a979e1783",
+        "chord_progression_engine_rate:status": "be68eea4a0e748bb",
         "mono_legato_glide:block_state": "abaf9a47a2f5998b",
         "mono_legato_glide:status": "853208d8880a0f53",
         "mono_legato_glide_b128:block_state": "3371a35576df83d3",

@@ -1421,6 +1421,184 @@
           }
         ]
       }
+    },
+    "chord_progression_engine_rate": {
+      "oversample": 2,
+      "block_size": 128,
+      "params": {
+        "num_samples": 436590,
+        "polyphony": 8,
+        "events": [
+          {
+            "sample": 0,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 0,
+            "type": "note_on",
+            "note": 52,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 0,
+            "type": "note_on",
+            "note": 55,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 61740,
+            "type": "note_off",
+            "note": 48,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 61740,
+            "type": "note_off",
+            "note": 52,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 61740,
+            "type": "note_off",
+            "note": 55,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 66150,
+            "type": "note_on",
+            "note": 45,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 66150,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 66150,
+            "type": "note_on",
+            "note": 52,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 127890,
+            "type": "note_off",
+            "note": 45,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 127890,
+            "type": "note_off",
+            "note": 48,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 127890,
+            "type": "note_off",
+            "note": 52,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 132300,
+            "type": "note_on",
+            "note": 41,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 132300,
+            "type": "note_on",
+            "note": 45,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 132300,
+            "type": "note_on",
+            "note": 48,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 194040,
+            "type": "note_off",
+            "note": 41,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 194040,
+            "type": "note_off",
+            "note": 45,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 194040,
+            "type": "note_off",
+            "note": 48,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 198450,
+            "type": "note_on",
+            "note": 43,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 198450,
+            "type": "note_on",
+            "note": 47,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 198450,
+            "type": "note_on",
+            "note": 50,
+            "velocity": 0.7086614173228346,
+            "channel": 0
+          },
+          {
+            "sample": 260190,
+            "type": "note_off",
+            "note": 43,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 260190,
+            "type": "note_off",
+            "note": 47,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          },
+          {
+            "sample": 260190,
+            "type": "note_off",
+            "note": 50,
+            "lift": 0.5039370078740157,
+            "channel": 0
+          }
+        ]
+      }
     }
   }
 }

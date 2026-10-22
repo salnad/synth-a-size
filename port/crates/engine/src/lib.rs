@@ -29,9 +29,13 @@ pub use sas_filters;
 pub use sas_modulation;
 pub use sas_oscillators;
 
+pub mod midi_file;
+pub mod midi_manager;
 pub mod modulation_bank;
 pub mod parameters;
 mod slot_queue;
+pub mod sound_engine;
+pub mod synth;
 pub mod synth_voice_handler;
 pub mod tuning;
 pub mod voice_handler;
