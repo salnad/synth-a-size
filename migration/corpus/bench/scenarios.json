@@ -63,8 +63,7 @@
       "name": "mod_matrix",
       "description": "8 held voices, two unison oscillators and both filters under 16 modulation connections.",
       "preset": "bench/presets/mod_matrix.vital",
-      "midi": "bench/midi/held_chord_8.mid",
-      "needs": "modulation routing (#78)"
+      "midi": "bench/midi/held_chord_8.mid"
     }
   ]
 }
