@@ -8,6 +8,9 @@ against:
 - `ref-module`: drives one engine `Processor` and dumps its input and
   output buffers to `.npy`.
 
+It also links `ref-bench`, which times `ref-render`'s block loop for the
+performance benchmark ([`../BENCHMARKS.md`](../BENCHMARKS.md)).
+
 Nothing in `/vital` is modified. All build glue lives here.
 
 ## Build
@@ -273,6 +276,8 @@ of the engine" in `migration/AGENTS.md`.
 | `CMakeLists.txt` | Builds `upstream_engine` (JUCE + unity files) and the two tools |
 | `juce_config/` | JUCE config and module units for the harness |
 | `src/render_main.cpp` | `ref-render` |
+| `src/render_synth.h` | The render loop (`RenderSynth::renderBlock`) and MIDI file reader shared by `ref-render` and `ref-bench` |
+| `src/bench_main.cpp` | `ref-bench`: times the render loop, prints JSON ([`../BENCHMARKS.md`](../BENCHMARKS.md)) |
 | `src/module_main.cpp` | `ref-module` driver (signals, triggers, capture) |
 | `src/module_registry.{h,cpp}` | `REGISTER_REF_MODULE` static registration |
 | `src/modules/<area>/*.cpp` | One file per registered module |

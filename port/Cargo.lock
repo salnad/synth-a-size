@@ -472,6 +472,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sas-bench"
+version = "0.0.1"
+dependencies = [
+ "libc",
+ "sas-common",
+ "sas-engine",
+ "sas-preset",
+ "serde_json",
+]
+
+[[package]]
 name = "sas-common"
 version = "0.0.1"
 dependencies = [

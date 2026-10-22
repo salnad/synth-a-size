@@ -13,11 +13,12 @@ to Rust (`/port`) and to prove the port sounds the same.
 | [DIVERGENCES.md](DIVERGENCES.md) | Every intentional behavioural difference between the port and upstream, with its approval |
 | [UPSTREAM.md](UPSTREAM.md), [UPSTREAM_SHA](UPSTREAM_SHA) | Pinned upstream commit, exclusions, verification |
 | [decisions/](decisions/) | Decision records: [plugin framework](decisions/plugin-framework.md), [reference determinism and tolerance calibration](decisions/reference-determinism.md), [Apple Silicon reference and arm64 parity](decisions/reference-arm.md) |
-| [reference/](reference/) | C++ reference harness: `ref-render` (preset + MIDI → WAV) and `ref-module` (single processor → NPY) |
+| [reference/](reference/) | C++ reference harness: `ref-render` (preset + MIDI → WAV), `ref-module` (single processor → NPY) and `ref-bench` (render timing) |
+| [BENCHMARKS.md](BENCHMARKS.md) | Performance benchmark of the port against the C++ reference: `scripts/bench.py`, scenarios, how to read the report, CI |
 | [`port/crates/parity`](../port/crates/parity) | `sas-parity`: Rust test helper, `assert_parity!("<area>/<module>/<case>", output)` against reference captures |
 | [tools/audio-diff/](tools/audio-diff/) | Rust comparison tool and library: max abs error, RMS dB difference, null residual, spectral distance, tolerances, exit codes |
 | [corpus/](corpus/) | Authored test presets, MIDI files, `cases.json` (renders, defaults) and per-module case files `modules/<area>/<module>.json` |
-| [scripts/](scripts/) | `build_reference.sh`, `run_corpus.py` (render / compare / hashes), `verify_upstream.sh`, `check_names.sh`, `check_fp_determinism.sh`, `machine_info.sh` |
+| [scripts/](scripts/) | `build_reference.sh`, `run_corpus.py` (render / compare / hashes), `verify_upstream.sh`, `check_names.sh`, `check_fp_determinism.sh`, `machine_info.sh`, `bench.py` (performance benchmark) |
 
 ## Quick start
 

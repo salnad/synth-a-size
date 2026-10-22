@@ -1,0 +1,97 @@
+name: Benchmarks
+
+# Engine performance: the Rust port against the C++ reference (official and
+# no-fast-math builds) on the same runner (migration/BENCHMARKS.md).
+# Informational only, never a merge gate:
+# - nightly and on manual dispatch, on Linux x86_64 and on macOS 15 arm64
+#   (the full Mac suite's runner; same nightly slot as reference-arm-main.yml);
+# - on a pull request only when it changes the benchmark itself, so the
+#   harness change shows its numbers.
+# A job fails only when a benchmark binary fails or the output is not
+# finite, never on a slow number. Results: the `bench-<platform>` artifact
+# (results.json, report.md) and the job summary.
+
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+    inputs:
+      quick:
+        description: Headline configuration only (48 kHz, 256-sample blocks), 2 s renders, 1 repeat
+        type: boolean
+        default: false
+      only:
+        description: Space-separated scenario names (default all; see migration/corpus/bench/scenarios.json)
+        type: string
+        default: ""
+  pull_request:
+    paths:
+      - .github/workflows/benchmarks.yml
+      - migration/scripts/bench.py
+      - migration/corpus/bench/**
+      - migration/reference/src/bench_main.cpp
+      - migration/reference/src/render_synth.h
+      - port/crates/bench/**
+
+concurrency:
+  group: benchmarks-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  bench:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64 (Rust vs C++)
+            runner: ubuntu-24.04
+            artifact: bench-linux-x86_64
+            cxx: g++
+          - name: macOS 15 arm64 (Rust vs C++)
+            runner: macos-15
+            artifact: bench-macos-arm64
+            cxx: clang++
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: port
+          key: bench
+      - name: Toolchain info
+        run: |
+          uname -m
+          ${{ matrix.cxx }} --version | head -1
+          cmake --version | head -1
+          rustup toolchain install || rustup show
+          cargo --version
+      - name: Build and run the benchmark
+        env:
+          CXX: ${{ matrix.cxx }}
+          QUICK: ${{ inputs.quick && '--quick' || '' }}
+          ONLY: ${{ inputs.only }}
+        run: |
+          only=()
+          for name in $ONLY; do only+=(--only "$name"); done
+          python3 migration/scripts/bench.py --out build/bench $QUICK "${only[@]}"
+      - name: Job summary
+        if: always()
+        run: |
+          if [ -f build/bench/report.md ]; then
+            { echo "## ${{ matrix.name }}"; echo; cat build/bench/report.md; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ${{ matrix.artifact }}
+          path: build/bench/
+          if-no-files-found: warn
+          retention-days: 30

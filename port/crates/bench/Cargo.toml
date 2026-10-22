@@ -1,0 +1,26 @@
+[package]
+name = "sas-bench"
+description = "Performance benchmark: times the engine's offline render block by block, as the reference harness's ref-bench does."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+# Upstream's aarch64 (NEON) semantics on every target; see
+# migration/decisions/reference-arm.md.
+aarch64-semantics = [
+    "sas-common/aarch64-semantics",
+    "sas-engine/aarch64-semantics",
+    "sas-preset/aarch64-semantics",
+]
+
+[dependencies]
+sas-common.workspace = true
+sas-engine.workspace = true
+sas-preset.workspace = true
+serde_json = "1"
+# Thread CPU time (clock_gettime); already in the tree via nice-plug.
+libc = "0.2"
