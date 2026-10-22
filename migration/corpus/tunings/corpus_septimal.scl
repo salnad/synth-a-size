@@ -1,0 +1,12 @@
+! corpus_septimal.scl
+!
+synth-a-size corpus: seven-note septimal just scale
+ 7
+!
+ 8/7
+ 315.641
+ 4/3
+ 3/2
+ 813.686 cents
+ 7/4
+ 2/1

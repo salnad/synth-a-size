@@ -31,6 +31,8 @@ Options:
   --length SECONDS     total output length; default: last MIDI event + --tail
   --tail SECONDS       extra time after the last MIDI event, default 2.0
   --bpm BPM            tempo for tempo-synced modulators, default 120
+  --tuning PATH        load a .scl or .tun tuning file after the preset
+  --keyboard-map PATH  then load a .kbm keyboard map on top of it
   --seed N             set the engine's global RandomGenerator seed counter
                        before the synth is constructed (default: leave the
                        upstream counter untouched; output is deterministic
@@ -115,6 +117,17 @@ int main(int argc, const char* argv[]) {
       return fail("failed to load preset " + preset_path + ": " + error);
   }
 
+  // SynthBase::loadTuningFile, as the plugin's tuning menu applies a file:
+  // the scale first, then a keyboard map on top of it.
+  for (const char* key : { "tuning", "keyboard-map" }) {
+    if (!args.has(key))
+      continue;
+    File tuning_file = File::getCurrentWorkingDirectory().getChildFile(args.get(key));
+    if (!tuning_file.existsAsFile())
+      return fail(std::string(key) + " file not found: " + args.get(key));
+    synth->loadTuningFile(tuning_file);
+  }
+
   if (args.has("dump-state")) {
     if (!harness::writeTextFile(args.get("dump-state"), synth->state().dump(2) + "\n"))
       return fail("cannot write " + args.get("dump-state"));
@@ -197,6 +210,10 @@ int main(int argc, const char* argv[]) {
   meta["block_size"] = block_size;
   meta["engine_max_sub_block"] = vital::kMaxBufferSize;
   meta["bpm"] = bpm;
+  if (args.has("tuning"))
+    meta["tuning"] = args.get("tuning");
+  if (args.has("keyboard-map"))
+    meta["keyboard_map"] = args.get("keyboard-map");
   meta["seed"] = args.has("seed") ? harness::json(args.getInt("seed", 0)) : harness::json("upstream-default");
   meta["warmup_samples"] = warmup_samples;
   meta["length_seconds"] = length_seconds;

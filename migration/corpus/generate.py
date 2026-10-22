@@ -25,6 +25,7 @@ PRESET_DIR = os.path.join(HERE, "presets")
 MIDI_DIR = os.path.join(HERE, "midi")
 PRESET_TEST_DIR = os.path.join(HERE, "preset_tests")
 BENCH_DIR = os.path.join(HERE, "bench")
+TUNING_DIR = os.path.join(HERE, "tunings")
 
 # Matches ProjectInfo::versionString of the upstream plugin build the reference
 # harness compiles (see migration/reference/juce_config/JuceHeader.h).
@@ -578,7 +579,88 @@ PRESETS = {
         ],
         wavetables=[line_fold_wavetable()],
     ),
+    "tuned_glide": preset(
+        "tuned glide",
+        "Two oscillators gliding through an authored just scale and keyboard map; the filter and LFO 3 keytrack the "
+        "tuned pitch and the note drives the cutoff through a bipolar custom line map. Rendered with "
+        "tunings/corpus_septimal.scl and tunings/corpus_septimal.kbm.",
+        {
+            "osc_1_random_phase": 0.0,
+            "osc_2_on": 1.0,
+            "osc_2_random_phase": 0.0,
+            "osc_2_transpose": 7.0,
+            "osc_2_level": 0.4,
+            "portamento_time": -3.0,
+            "portamento_scale": 1.0,
+            "filter_1_on": 1.0,
+            "filter_1_cutoff": 55.0,
+            "filter_1_resonance": 0.45,
+            "filter_1_keytrack": 0.6,
+            "lfo_3_sync": float(LFO_SYNC["keytrack"]),
+            "lfo_3_keytrack_transpose": -24.0,
+            "env_1_attack": 0.01,
+            "env_1_release": 0.4,
+        },
+        modulations=[
+            ("note", "filter_1_cutoff", 0.4, {
+                "bipolar": 1,
+                "line_mapping": line([(0.0, 1.0), (0.3, 0.6), (0.7, 0.4), (1.0, 0.0)], powers=[2.0, 0.0, -2.0, 0.0]),
+            }),
+            ("lfo_3", "osc_2_tune", 0.1),
+        ],
+    ),
+}
 
+
+# --------------------------------------------------------------------------
+# Tuning files, written to migration/corpus/tunings
+# --------------------------------------------------------------------------
+
+TUNINGS = {
+    # Seven-note septimal just scale; two degrees given in cents, the rest as
+    # ratios, so both Scala pitch forms are read.
+    "corpus_septimal.scl": """! corpus_septimal.scl
+!
+synth-a-size corpus: seven-note septimal just scale
+ 7
+!
+ 8/7
+ 315.641
+ 4/3
+ 3/2
+ 813.686 cents
+ 7/4
+ 2/1
+""",
+    # Twelve keys per period: five unmapped ("x") keys, the scale's middle at
+    # MIDI 62 and A4 (69) at 432 Hz.
+    "corpus_septimal.kbm": """! corpus_septimal.kbm
+! map size
+12
+! first and last MIDI note
+0
+127
+! middle note
+62
+! reference note and frequency
+69
+432.0
+! formal octave degree
+7
+! mapping
+0
+x
+1
+2
+x
+3
+4
+5
+x
+6
+x
+x
+""",
 }
 
 
@@ -947,6 +1029,17 @@ def pitch_bend(channel):
     return lambda value: [0xE0 | channel, value & 0x7F, (value >> 7) & 0x7F]
 
 
+def scale_run():
+    """A chromatic run over the mapped and unmapped keys of the keyboard map,
+    each note overlapping the next so the voices glide, then a chord."""
+    events = []
+    for index, key in enumerate(range(50, 75)):
+        events += note(index * 0.12, 0.16, key, 70 + (index * 13) % 50)
+    for key in (55, 62, 69):
+        events += note(3.2, 1.0, key, 90)
+    return events
+
+
 def mpe_expression():
     """Notes on their own channels with per-channel pitch bend, pressure and
     slide (CC 74) and contrasting release velocities (lift), then a sustain
@@ -975,6 +1068,7 @@ MIDI = {
     "wide_arpeggio": wide_arpeggio(),
     "held_pad": held_pad(),
     "mpe_expression": mpe_expression(),
+    "scale_run": scale_run(),
     "single_note_c3": single_note(),
     "chord_progression": chord_progression(),
     "legato_bend_modwheel": legato_bend_modwheel(),
@@ -1140,6 +1234,8 @@ def outputs():
         files[os.path.join(PRESET_DIR, name + ".vital")] = (json.dumps(data, indent=2, sort_keys=True) + "\n").encode()
     for name, events in MIDI.items():
         files[os.path.join(MIDI_DIR, name + ".mid")] = midi_file(events)
+    for name, text in TUNINGS.items():
+        files[os.path.join(TUNING_DIR, name)] = text.encode()
     for name, data in PRESET_TESTS.items():
         path = os.path.join(PRESET_TEST_DIR, name + ".vital")
         files[path] = (json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) + "\n").encode()
