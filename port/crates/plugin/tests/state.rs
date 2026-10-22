@@ -390,10 +390,22 @@ fn states_and_preset_files_without_a_tuning_keep_the_current_one() {
 }
 
 #[test]
-fn a_tuning_that_is_not_an_object_rejects_the_state() {
+fn a_tuning_that_cannot_load_rejects_the_state() {
     let preset = PresetState::new(&InitContent { sample_seed: 0 });
     let mut data = preset.to_json();
     data.set("tuning", 12);
+    assert!(matches!(
+        state::plugin_state_from_json(&data.dump()),
+        Err(sas_preset::Error::Corrupted(_))
+    ));
+
+    // A keyboard mapping that names a degree past the scale (D6).
+    let past_scale = sas_common::json::parse(
+        r#"{"default":false,"mapping":[0,1,20],"mapping_name":"","reference_midi_note":0.0,"scale":[0.0,1.0,2.0],"scale_start_midi_note":60,"tuning_name":""}"#,
+    )
+    .unwrap();
+    let mut data = preset.to_json();
+    data.set("tuning", past_scale);
     assert!(matches!(
         state::plugin_state_from_json(&data.dump()),
         Err(sas_preset::Error::Corrupted(_))

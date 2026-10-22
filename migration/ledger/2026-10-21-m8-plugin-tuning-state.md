@@ -30,13 +30,16 @@ now a real `sas_engine::Tuning`, using Voice Engine's port of
   A4 = 432 Hz through capture → serde → restore, with an identical table,
   name and JSON;
 - `states_and_preset_files_without_a_tuning_keep_the_current_one`;
-- `a_tuning_that_is_not_an_object_rejects_the_state`.
+- `a_tuning_that_cannot_load_rejects_the_state` (not an object, or a
+  keyboard mapping past its scale).
 
 The Steinberg validator on the Linux dev bundle still gives 537 passed,
 0 failed.
 
 **Deliberate difference (D4 in `migration/DIVERGENCES.md`, extended here).**
-A state whose `"tuning"` is not an object is rejected whole, so
+A state whose `"tuning"` is not an object, or whose tuning
+`sas_engine::Tuning::json_to_state` refuses (a keyboard mapping past its
+scale, D6), is rejected whole, so
 nothing changes, consistent with how the port treats an unloadable preset.
 Upstream applies the preset, then `jsonToState` throws on the bad tuning and
 `setStateInformation` reports the state as corrupted, keeping the preset.

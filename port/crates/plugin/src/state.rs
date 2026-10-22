@@ -48,7 +48,8 @@ fn tuning_to_json(tuning: &Tuning) -> Value {
 
 /// The plugin state's `tuning` object loaded into a fresh copy of `current`
 /// (`Tuning::jsonToState`), or `None` if the state has none. A `tuning` that
-/// is not an object is a corrupted state.
+/// is not an object, or that `Tuning::json_to_state` refuses (a keyboard
+/// mapping past its scale, D6), is a corrupted state (D4).
 fn read_tuning(data: &Value, current: &Tuning) -> Result<Option<Tuning>, Error> {
     if data.count("tuning") == 0 {
         return Ok(None);
@@ -60,7 +61,9 @@ fn read_tuning(data: &Value, current: &Tuning) -> Result<Option<Tuning>, Error> 
     let value: serde_json::Value = serde_json::from_str(&value.dump())
         .map_err(|error| Error::Corrupted(format!("tuning: {error}")))?;
     let mut tuning = current.clone();
-    tuning.json_to_state(&value);
+    tuning
+        .json_to_state(&value)
+        .map_err(|error| Error::Corrupted(format!("tuning: {error}")))?;
     Ok(Some(tuning))
 }
 
