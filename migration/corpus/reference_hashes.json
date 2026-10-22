@@ -9,7 +9,8 @@
         "init_saw__single_note_48k_b128": "834b73744e0ae16f",
         "line_wavetable_fold__velocity": "41e464688075ae5f",
         "mono_legato_glide__legato": "8baac38ee9ed5b6f",
-        "unison_pad_fx__chords": "5a9e368be289f87e"
+        "unison_pad_fx__chords": "5a9e368be289f87e",
+        "velocity_filter_poly__overlap": "b865dbb500418c4f"
       },
       "identity": {
         "arch": "x86_64",
@@ -30,7 +31,8 @@
         "init_saw__single_note_48k_b128": "18654d508a22991b",
         "line_wavetable_fold__velocity": "d30482ef1f96af47",
         "mono_legato_glide__legato": "4a36b6c72051fcb3",
-        "unison_pad_fx__chords": "0807b0c1119d2d3f"
+        "unison_pad_fx__chords": "0807b0c1119d2d3f",
+        "velocity_filter_poly__overlap": "f975a5a1103868ff"
       },
       "identity": {
         "arch": "aarch64",

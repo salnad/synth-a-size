@@ -55,6 +55,16 @@
         "roundtrip.json": "json"
       }
     },
+    "velocity_filter_poly": {
+      "params": {
+        "preset": "presets/velocity_filter_poly.vital",
+        "roundtrip": true
+      },
+      "artifacts": {
+        "state.json": "json",
+        "roundtrip.json": "json"
+      }
+    },
     "unison_pad_fx": {
       "params": {
         "preset": "presets/unison_pad_fx.vital",

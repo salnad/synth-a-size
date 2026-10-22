@@ -1337,6 +1337,14 @@ impl VoiceHandler {
         }
     }
 
+    /// Whether `output` is in the active non-accumulated set
+    /// (`nonaccumulated_outputs_`), i.e. its last voice's value is copied out.
+    pub fn is_nonaccumulated_output_active(&self, output: &Rc<Output>) -> bool {
+        self.nonaccumulated_outputs
+            .iter()
+            .any(|(source, _)| Rc::ptr_eq(source, output))
+    }
+
     /// `setInactiveNonaccumulatedOutput(output)`.
     pub fn set_inactive_nonaccumulated_output(&mut self, output: &Rc<Output>) {
         let Some((_, last)) = self

@@ -216,6 +216,21 @@ PRESETS = {
             ("velocity", "osc_1_level", 0.3),
         ],
     ),
+    "velocity_filter_poly": preset(
+        "velocity filter poly",
+        "Oscillator 1 into the analog low-pass; velocity opens each voice's cutoff, so voices that sound together carry different poly modulation.",
+        {
+            "osc_1_random_phase": 0.0,
+            "filter_1_on": 1.0,
+            "filter_1_model": 0.0,
+            "filter_1_style": 0.0,
+            "filter_1_cutoff": 40.0,
+            "filter_1_resonance": 0.5,
+            "env_1_attack": 0.01,
+            "env_1_release": 0.6,
+        },
+        modulations=[("velocity", "filter_1_cutoff", 0.6)],
+    ),
 }
 
 
@@ -545,11 +560,23 @@ def velocity_ramp():
     return events
 
 
+def velocity_overlap():
+    events = []
+    # A chord whose notes differ only in velocity, then overlapping notes
+    # with contrasting velocities.
+    for key, velocity in ((48, 30), (55, 110), (60, 70)):
+        events += note(0.0, 1.0, key, velocity)
+    for index, (key, velocity) in enumerate(((52, 120), (57, 25), (59, 90), (64, 50))):
+        events += note(1.2 + index * 0.25, 0.8, key, velocity)
+    return events
+
+
 MIDI = {
     "single_note_c3": single_note(),
     "chord_progression": chord_progression(),
     "legato_bend_modwheel": legato_bend_modwheel(),
     "velocity_ramp": velocity_ramp(),
+    "velocity_overlap": velocity_overlap(),
 }
 
 
