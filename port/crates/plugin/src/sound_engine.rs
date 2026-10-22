@@ -4,7 +4,7 @@
 //! The M7 sound engine behind the wrapper's [`Engine`] interface.
 
 use sas_engine::synth::Synth;
-use sas_engine::tuning::Tuning;
+use sas_engine::Tuning;
 use sas_preset::PresetState;
 
 use crate::engine::Engine;
@@ -37,12 +37,6 @@ impl SoundEngineHost {
             synth: Synth::new(),
         }
     }
-
-    /// `SynthBase::setTuning`: the engine converts notes through a copy of
-    /// `tuning`. Upstream calls this after every preset load.
-    pub fn set_tuning(&mut self, tuning: &Tuning) {
-        self.synth.set_tuning(tuning);
-    }
 }
 
 impl Engine for SoundEngineHost {
@@ -57,6 +51,10 @@ impl Engine for SoundEngineHost {
 
     fn load_preset(&mut self, preset: &PresetState) {
         self.synth.load_preset(preset);
+    }
+
+    fn set_tuning(&mut self, tuning: &Tuning) {
+        self.synth.set_tuning(tuning);
     }
 
     fn set_control(&mut self, name: &'static str, value: f32) {

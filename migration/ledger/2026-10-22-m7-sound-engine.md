@@ -44,7 +44,7 @@ all merged.
   each preceded by `correctToTime` and its MIDI, denormals flushed for the
   whole block).
 - `sas-plugin`: `SoundEngineHost` implements the wrapper's `Engine` on
-  `Synth`, plus `set_tuning` (added to the trait itself by #65). `Synth`'s
+  `Synth`, including #65's `set_tuning`. `Synth`'s
   graph is `Rc`/`RefCell`-based and wholly owned, so the host asserts `Send`
   (`unsafe impl`, with the invariant written at the impl): the engine moves
   between threads only as a whole and is used from one thread at a time.
