@@ -31,6 +31,7 @@
       "hashes": {
         "analog_filter_lfo__chords": "6c472245f2d6a64f",
         "analog_filter_lfo__velocity_96k_b512": "acc54eefc3efd453",
+        "fx_chain_reordered__chords_140bpm": "e67958a2f818b3a0",
         "init_saw__chords": "9493f49d197a6f4f",
         "init_saw__single_note": "7833744cebab33c7",
         "init_saw__single_note_48k_b128": "18654d508a22991b",
@@ -39,6 +40,7 @@
         "osc_diode_phase__overlap": "6bad6fe0016bdc0b",
         "osc_formant_comb__chords": "22c7be35f6fcced7",
         "osc_stack_serial__arpeggio": "276a55bed4575bb0",
+        "random_macro_shapes__pad_93bpm": "80328860b3829dd3",
         "unison_pad_fx__chords": "0807b0c1119d2d3f",
         "velocity_filter_poly__overlap": "f975a5a1103868ff"
       },
