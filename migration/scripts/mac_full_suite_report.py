@@ -4,7 +4,9 @@
 Reads the workflow's `needs` context from $NEEDS (JSON). If a suite job
 failed, opens the issue "Mac full suite failing on main", or comments on it
 when it is already open, with the failing jobs and steps and what to do. When
-every job passed, an open issue gets a closing comment and is closed.
+only artifact upload/download steps failed, it says "infrastructure — re-run"
+rather than calling it a real failure. When every job passed, an open issue
+gets a closing comment and is closed.
 
 Needs `gh` with a token that can write issues and read Actions ($GH_TOKEN).
 """
@@ -18,6 +20,16 @@ import tempfile
 TITLE = "Mac full suite failing on main"
 HASH_STEPS = {"Hashes match the committed macOS arm64 identity",
               "arm64 parity tests on the whole workspace (NEON path)"}
+ARTIFACT_STEP_PREFIXES = ("Run actions/download-artifact", "Run actions/upload-artifact")
+
+
+def is_artifact_step(name):
+    return name.startswith(ARTIFACT_STEP_PREFIXES)
+
+
+def infrastructure_only(steps):
+    """Every failed job failed only in artifact transfer steps."""
+    return bool(steps) and all(names and all(is_artifact_step(n) for n in names) for names in steps.values())
 
 
 def gh(*args):
@@ -57,6 +69,11 @@ def body_for_failure(repo, run_id, url, sha, results, steps, artifacts):
     if backfill:
         lines += ["Missing macOS hash keys only (%s). The backfill PR applies this run's patch, new keys only: "
                   "%s. Merge it on Linux CI. This issue closes on the next green full suite." % (reason, backfill)]
+        return "\n".join(lines) + "\n"
+    if infrastructure_only(steps):
+        lines.append("Infrastructure — re-run: only artifact upload/download steps failed, so those jobs compared "
+                     "nothing and this says nothing about the reference. Re-run the failed jobs (or dispatch the "
+                     "workflow); this issue closes on the next green full suite.")
         return "\n".join(lines) + "\n"
     if reason:
         lines += ["Not a missing-keys-only failure: %s." % reason, ""]
