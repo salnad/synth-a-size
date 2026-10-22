@@ -75,6 +75,8 @@
         "modulation_slots:artifact/state.json": "031e23c0a569d96b",
         "mono_legato_glide:artifact/roundtrip.json": "07ee7f75850eb929",
         "mono_legato_glide:artifact/state.json": "7d56b0ba72b93f52",
+        "mpe_expression:artifact/roundtrip.json": "734cf8eb238cbabd",
+        "mpe_expression:artifact/state.json": "1b717e0e93472c4e",
         "osc_diode_phase:artifact/roundtrip.json": "f75f435c53705007",
         "osc_diode_phase:artifact/state.json": "533728c928837328",
         "osc_formant_comb:artifact/roundtrip.json": "13b07b0f991e4e17",
