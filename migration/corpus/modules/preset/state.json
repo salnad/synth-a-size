@@ -209,6 +209,26 @@
         "state.json": "json",
         "roundtrip.json": "json"
       }
+    },
+    "fx_chain_reordered": {
+      "params": {
+        "preset": "presets/fx_chain_reordered.vital",
+        "roundtrip": true
+      },
+      "artifacts": {
+        "state.json": "json",
+        "roundtrip.json": "json"
+      }
+    },
+    "random_macro_shapes": {
+      "params": {
+        "preset": "presets/random_macro_shapes.vital",
+        "roundtrip": true
+      },
+      "artifacts": {
+        "state.json": "json",
+        "roundtrip.json": "json"
+      }
     }
   }
 }

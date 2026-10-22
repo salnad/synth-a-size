@@ -4,6 +4,7 @@
       "hashes": {
         "analog_filter_lfo__chords": "2e459e2c1972166b",
         "analog_filter_lfo__velocity_96k_b512": "174c3e7af8f725f3",
+        "fx_chain_reordered__chords_140bpm": "018015849713c65f",
         "init_saw__chords": "75683e528015996b",
         "init_saw__single_note": "5777e97cdd03d62f",
         "init_saw__single_note_48k_b128": "834b73744e0ae16f",
@@ -12,6 +13,7 @@
         "osc_diode_phase__overlap": "de0addf6f81ad58b",
         "osc_formant_comb__chords": "5a5a83536ed9375b",
         "osc_stack_serial__arpeggio": "acc310c3f9c552da",
+        "random_macro_shapes__pad_93bpm": "5fd38fd1d8a1b148",
         "unison_pad_fx__chords": "5a9e368be289f87e",
         "velocity_filter_poly__overlap": "b865dbb500418c4f"
       },
@@ -29,6 +31,7 @@
       "hashes": {
         "analog_filter_lfo__chords": "6c472245f2d6a64f",
         "analog_filter_lfo__velocity_96k_b512": "acc54eefc3efd453",
+        "fx_chain_reordered__chords_140bpm": "e67958a2f818b3a0",
         "init_saw__chords": "9493f49d197a6f4f",
         "init_saw__single_note": "7833744cebab33c7",
         "init_saw__single_note_48k_b128": "18654d508a22991b",
@@ -37,6 +40,7 @@
         "osc_diode_phase__overlap": "6bad6fe0016bdc0b",
         "osc_formant_comb__chords": "22c7be35f6fcced7",
         "osc_stack_serial__arpeggio": "276a55bed4575bb0",
+        "random_macro_shapes__pad_93bpm": "80328860b3829dd3",
         "unison_pad_fx__chords": "0807b0c1119d2d3f",
         "velocity_filter_poly__overlap": "f975a5a1103868ff"
       },
