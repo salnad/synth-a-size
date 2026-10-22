@@ -2,10 +2,15 @@
 
 //! A filter processed with an unconnected cutoff reads zeros from the null
 //! source without keeping the thread-local null buffer, so no graph holds it.
+//! `DirtyFilter` reads the cutoff through `FilterState::midi_cutoff_at`;
+//! `DigitalSvf` and `PhaserFilter` index the transient buffer from
+//! `FilterState::midi_cutoff_buffer`.
 
 use std::rc::Rc;
 
 use sas_dsp_core::{Input, Output, ProcessorRef};
+use sas_filters::character::phaser_filter::PhaserFilter;
+use sas_filters::digital_svf::DigitalSvf;
 use sas_filters::dirty_filter::DirtyFilter;
 use sas_filters::synth_filter::input;
 use sas_simd::common::MAX_BUFFER_SIZE;
@@ -36,11 +41,10 @@ fn run(filter: &ProcessorRef, audio: &Output) -> Vec<[f32; 4]> {
     out
 }
 
-#[test]
-fn dirty_filter_with_unconnected_cutoff_holds_no_null_buffer() {
+fn check_unconnected_cutoff(create: fn() -> ProcessorRef) {
     let null_holders = Rc::strong_count(&Input::default().buffer());
 
-    let unconnected = DirtyFilter::create();
+    let unconnected = create();
     let audio = Output::new(MAX_BUFFER_SIZE, 1);
     unconnected.plug(&audio, input::AUDIO);
     assert!(unconnected.input(input::MIDI_CUTOFF).is_null_source());
@@ -52,7 +56,7 @@ fn dirty_filter_with_unconnected_cutoff_holds_no_null_buffer() {
         "the filter keeps a clone of the null buffer"
     );
 
-    let zeros = DirtyFilter::create();
+    let zeros = create();
     let audio = Output::new(MAX_BUFFER_SIZE, 1);
     let cutoff = Output::new(MAX_BUFFER_SIZE, 1);
     zeros.plug(&audio, input::AUDIO);
@@ -69,4 +73,20 @@ fn dirty_filter_with_unconnected_cutoff_holds_no_null_buffer() {
         bits(&from_zeros),
         "an unconnected cutoff reads as a zero cutoff"
     );
+}
+
+#[test]
+fn dirty_filter_with_unconnected_cutoff_holds_no_null_buffer() {
+    check_unconnected_cutoff(DirtyFilter::create);
+}
+
+#[test]
+fn digital_svf_with_unconnected_cutoff_holds_no_null_buffer() {
+    check_unconnected_cutoff(DigitalSvf::create);
+}
+
+#[test]
+fn phaser_filters_with_unconnected_cutoff_hold_no_null_buffer() {
+    check_unconnected_cutoff(|| PhaserFilter::create(true));
+    check_unconnected_cutoff(|| PhaserFilter::create(false));
 }

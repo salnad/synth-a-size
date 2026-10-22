@@ -23,8 +23,10 @@ the engine, where every filter's cutoff is connected. Non-blocking.
   of the block.
 - No capture changes. An unconnected cutoff still reads zeros.
 
-**Test.** `tests/null_cutoff.rs` runs a lone `DirtyFilter` with an
-unconnected cutoff for 8 blocks and checks that:
+**Test.** `tests/null_cutoff.rs` runs a lone filter with an unconnected
+cutoff for 8 blocks. It covers `DirtyFilter`, which reads through
+`midi_cutoff_at`, and `DigitalSvf` and both `PhaserFilter`s, which take the
+transient `midi_cutoff_buffer()` path (Graph Reviewer). It checks that:
 - the null buffer's strong count is unchanged afterwards (on the previous
   code it is 3 instead of 2);
 - the output is nonzero, finite, and bit-identical to the same filter with
