@@ -82,18 +82,15 @@ factory content.
 To add one, add its preset or MIDI to `generate.py` (`BENCH_PRESETS`,
 `BENCH_MIDI`), run it, and add an entry to `scenarios.json`.
 
-### Modulation routing (#78)
+### Modulation routing
 
-The port does not connect a preset's modulations until #78 lands. Until
-then `mod_matrix` is not like for like: the C++ engine routes 16
-connections and the port none, so its report row shows **differs** in the
-Output column, and its Rust ÷ C++ ratio understates the port's cost. The
-other scenarios have no modulations, so they compare the same work today.
-
-Once #78 is on main, re-run the same command; nothing needs editing. The
-Output column then shows `mod_matrix` as `same` (and its `needs` note can
-be dropped from `scenarios.json`). The modulation-routing scenarios to
-watch are `mod_matrix` and any preset with modulations added later.
+`mod_matrix` is the scenario that exercises modulation routing (#78): the
+port and the reference both connect its 16 connections, so it compares the
+same work as the others. Its Output column reads `same`. Before #78
+landed it read **differs** (+1.3 dB), because the port connected none of
+them. A scenario can carry a `needs` note in `scenarios.json` to flag a
+feature the port does not have yet; the report shows it in the Note
+column.
 
 ## Reading the report
 
@@ -105,7 +102,7 @@ scenario:
 | ×RT | Realtime factor: seconds of audio rendered per second of wall-clock time, from the median timed repeat. Higher is faster. 1.0 means just real time on one core |
 | Rust ÷ C++ | Rust render time over the official reference's. Above 1 means the port is slower (1.50 = 50 % slower) |
 | Rust ÷ C++ no-fast-math | The same against the no-fast-math build, the like-for-like compiler comparison |
-| Output | The Rust render against the official reference's: residual in dB (RMS of the difference over RMS of the reference, as `audio-diff`). `same` at or below −40 dB means both engines did the same work, so the timing is a fair comparison; **differs** means it is not (see `mod_matrix`). "bit-exact with no-fast-math" means the Rust output hash equals the no-fast-math build's |
+| Output | The Rust render against the official reference's: residual in dB (RMS of the difference over RMS of the reference, as `audio-diff`). `same` at or below −40 dB means both engines did the same work, so the timing is a fair comparison; **differs** means it is not (for example `mod_matrix` before #78; see "Modulation routing" above). "bit-exact with no-fast-math" means the Rust output hash equals the no-fast-math build's |
 
 The second table has every configuration and engine:
 
