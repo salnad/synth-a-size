@@ -200,6 +200,8 @@ pub struct SynthParams {
     /// Control values in here are stale; the parameters hold the live ones.
     document: Mutex<PresetDocument>,
     /// Bumped whenever `document` is replaced, so the audio thread reloads it.
+    /// Starts at 0, the generation the processor starts with: the initial
+    /// document describes the engine as constructed, so it is not loaded.
     pub(crate) document_generation: AtomicU64,
 }
 
@@ -243,7 +245,7 @@ impl SynthParams {
             changes,
             touched,
             document: Mutex::new(document),
-            document_generation: AtomicU64::new(1),
+            document_generation: AtomicU64::new(0),
         }
     }
 

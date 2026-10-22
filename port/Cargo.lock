@@ -576,6 +576,7 @@ dependencies = [
  "nice-plug",
  "sas-common",
  "sas-engine",
+ "sas-parity",
  "sas-preset",
  "serde_json",
 ]

@@ -57,6 +57,9 @@ pub struct BlockProcessor<E: Engine> {
     last_seconds_time: f64,
     /// The `SynthParams::document_generation` last loaded into the engine.
     document_generation: u64,
+    /// Set by [`activate`](Self::activate) until the next block prepares the
+    /// engine: the document generation at activation.
+    pending_prepare: Option<u64>,
 }
 
 impl<E: Engine> BlockProcessor<E> {
@@ -66,6 +69,7 @@ impl<E: Engine> BlockProcessor<E> {
             sample_rate: 44_100.0,
             last_seconds_time: 0.0,
             document_generation: 0,
+            pending_prepare: None,
         }
     }
 
@@ -77,10 +81,21 @@ impl<E: Engine> BlockProcessor<E> {
         &mut self.engine
     }
 
-    /// `SynthPlugin::prepareToPlay`.
+    /// `SynthPlugin::prepareToPlay`, now.
     pub fn set_sample_rate(&mut self, sample_rate: f32) {
         self.sample_rate = sample_rate;
         self.engine.set_sample_rate(sample_rate);
+    }
+
+    /// The host activated the plugin at `sample_rate`. The engine is
+    /// prepared (`prepareToPlay`) at the next block, in upstream's order
+    /// relative to restoring state, which loads synchronously there: a state
+    /// restored before activation loads first and is then prepared (as when
+    /// a host opens a project, and as the reference's offline render does);
+    /// one restored after activation is prepared first and then loads.
+    pub fn activate(&mut self, params: &SynthParams, sample_rate: f32) {
+        self.sample_rate = sample_rate;
+        self.pending_prepare = Some(params.document_generation.load(Ordering::Acquire));
     }
 
     pub fn reset(&mut self) {
@@ -99,6 +114,23 @@ impl<E: Engine> BlockProcessor<E> {
     ) {
         const SECONDS_PER_MINUTE: f64 = 60.0;
 
+        // Upstream applies state and parameter changes as they arrive, bypassed
+        // or not; here they reach the engine at the start of the next block.
+        match self.pending_prepare.take() {
+            Some(generation_at_activation)
+                if params.document_generation.load(Ordering::Acquire)
+                    != generation_at_activation =>
+            {
+                self.engine.set_sample_rate(self.sample_rate);
+                self.sync_parameters(params);
+            }
+            Some(_) => {
+                self.sync_parameters(params);
+                self.engine.set_sample_rate(self.sample_rate);
+            }
+            None => self.sync_parameters(params),
+        }
+
         if params.bypassed() {
             // AudioProcessor::processBlockBypassed with no inputs.
             left.fill(0.0);
@@ -106,8 +138,6 @@ impl<E: Engine> BlockProcessor<E> {
             while next_event().is_some() {}
             return;
         }
-
-        self.sync_parameters(params);
 
         if let Some(bpm) = transport.tempo.filter(|bpm| *bpm > 0.0) {
             self.engine.set_bpm(bpm);
