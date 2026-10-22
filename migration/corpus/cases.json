@@ -26,7 +26,8 @@
     { "name": "osc_formant_comb__chords", "preset": "presets/osc_formant_comb.vital", "midi": "midi/chord_progression.mid" },
     { "name": "osc_diode_phase__overlap", "preset": "presets/osc_diode_phase.vital", "midi": "midi/velocity_overlap.mid" },
     { "name": "fx_chain_reordered__chords_140bpm", "preset": "presets/fx_chain_reordered.vital", "midi": "midi/chord_progression.mid", "bpm": 140 },
-    { "name": "random_macro_shapes__pad_93bpm", "preset": "presets/random_macro_shapes.vital", "midi": "midi/held_pad.mid", "bpm": 93 }
+    { "name": "random_macro_shapes__pad_93bpm", "preset": "presets/random_macro_shapes.vital", "midi": "midi/held_pad.mid", "bpm": 93 },
+    { "name": "mpe_expression__expression", "preset": "presets/mpe_expression.vital", "midi": "midi/mpe_expression.mid" }
   ],
   "module_defaults": {
     "comment": "Defaults for every module case in modules/<area>/<module>.json. A case may set stricter tolerances; looser ones need a tolerance_exception citing a dated heading in the ledger (migration/ledger/, or the frozen migration/LEDGER.md) that records human approval.",

@@ -229,6 +229,16 @@
         "state.json": "json",
         "roundtrip.json": "json"
       }
+    },
+    "mpe_expression": {
+      "params": {
+        "preset": "presets/mpe_expression.vital",
+        "roundtrip": true
+      },
+      "artifacts": {
+        "state.json": "json",
+        "roundtrip.json": "json"
+      }
     }
   }
 }

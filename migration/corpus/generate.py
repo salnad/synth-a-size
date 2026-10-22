@@ -542,6 +542,42 @@ PRESETS = {
             line([(0.0, 0.5), (0.25, 1.0), (0.6, 0.1), (1.0, 0.5)], smooth=True, name="corpus swell"),
         ],
     ),
+    "mpe_expression": preset(
+        "mpe expression",
+        "Per-channel expression: aftertouch opens the ladder filter, slide scans an authored wavetable, lift sets "
+        "the resonance in release, per-channel pitch bend, with the sustain pedal, envelope 3 and FM of oscillator 2 by "
+        "oscillator A in play.",
+        {
+            "osc_1_random_phase": 0.0,
+            "osc_1_wave_frame": 0.0,
+            "osc_2_on": 1.0,
+            "osc_2_random_phase": 0.0,
+            "osc_2_transpose": 12.0,
+            "osc_2_level": 0.3,
+            "osc_2_distortion_type": float(DISTORTION["fm_a"]),
+            "osc_2_distortion_amount": 0.3,
+            "pitch_bend_range": 24.0,
+            "filter_1_on": 1.0,
+            "filter_1_model": float(FILTER_MODEL["ladder"]),
+            "filter_1_cutoff": 50.0,
+            "filter_1_resonance": 0.5,
+            "env_1_attack": 0.02,
+            "env_1_sustain": 0.7,
+            "env_1_release": 1.2,
+            "env_3_attack": 0.5,
+            "env_3_decay": 0.5,
+            "env_3_sustain": 0.5,
+        },
+        modulations=[
+            ("aftertouch", "filter_1_cutoff", 0.5),
+            ("slide", "osc_1_wave_frame", 0.8),
+            ("lift", "filter_1_resonance", 0.4),
+            ("velocity", "osc_1_level", 0.3),
+            ("mod_wheel", "osc_2_level", 0.4),
+            ("env_3", "osc_2_tune", 0.2),
+        ],
+        wavetables=[line_fold_wavetable()],
+    ),
 
 }
 
@@ -901,9 +937,44 @@ def held_pad():
     return events
 
 
+def ramp(seconds, length, steps, start, end, message):
+    """steps + 1 evenly spaced messages from value start to end."""
+    return [(seconds + length * i / steps, message(int(round(start + (end - start) * i / steps))))
+            for i in range(steps + 1)]
+
+
+def pitch_bend(channel):
+    return lambda value: [0xE0 | channel, value & 0x7F, (value >> 7) & 0x7F]
+
+
+def mpe_expression():
+    """Notes on their own channels with per-channel pitch bend, pressure and
+    slide (CC 74) and contrasting release velocities (lift), then a sustain
+    pedal passage with polyphonic aftertouch and the mod wheel."""
+    events = []
+    for channel, key, start, length, bend, release in (
+            (1, 60, 0.0, 1.6, 10000, 100),
+            (2, 64, 0.4, 1.6, 5000, 15),
+            (3, 67, 0.8, 1.6, 8192, 120)):
+        events.append((start, [0x90 | channel, key, 90]))
+        events += ramp(start + 0.2, 0.8, 16, 8192, bend, pitch_bend(channel))
+        events += ramp(start + 0.1, 1.3, 13, 0, 110, lambda v, c=channel: [0xD0 | c, v])
+        events += ramp(start, 1.4, 14, 127 if channel == 2 else 0, 0 if channel == 2 else 127,
+                       lambda v, c=channel: [0xB0 | c, 74, v])
+        events.append((start + length, [0x80 | channel, key, release]))
+    events.append((2.6, [0xB0, 64, 127]))
+    events += note(2.7, 0.3, 48, 100)
+    events += note(2.9, 0.3, 55, 70)
+    events += ramp(2.9, 0.6, 12, 0, 120, lambda v: [0xA0, 55, v])
+    events += ramp(2.6, 1.0, 10, 0, 127, lambda v: [0xB0, 1, v])
+    events.append((3.8, [0xB0, 64, 0]))
+    return events
+
+
 MIDI = {
     "wide_arpeggio": wide_arpeggio(),
     "held_pad": held_pad(),
+    "mpe_expression": mpe_expression(),
     "single_note_c3": single_note(),
     "chord_progression": chord_progression(),
     "legato_bend_modwheel": legato_bend_modwheel(),
