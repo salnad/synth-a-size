@@ -105,7 +105,7 @@ scenario:
 | ×RT | Realtime factor: seconds of audio rendered per second of wall-clock time, from the median timed repeat. Higher is faster. 1.0 means just real time on one core |
 | Rust ÷ C++ | Rust render time over the official reference's. Above 1 means the port is slower (1.50 = 50 % slower) |
 | Rust ÷ C++ no-fast-math | The same against the no-fast-math build, the like-for-like compiler comparison |
-| Output | The Rust render against the official reference's: residual in dB (RMS of the difference over RMS of the reference, as `audio-diff`). `same` at or below −40 dB means both engines did the same work, so the timing is a fair comparison; **differs** means it is not (see `mod_matrix`) |
+| Output | The Rust render against the official reference's: residual in dB (RMS of the difference over RMS of the reference, as `audio-diff`). `same` at or below −40 dB means both engines did the same work, so the timing is a fair comparison; **differs** means it is not (see `mod_matrix`). "bit-exact with no-fast-math" means the Rust output hash equals the no-fast-math build's |
 
 The second table has every configuration and engine:
 

@@ -104,9 +104,10 @@ pub fn percentile(values: &[f64], fraction: f64) -> f64 {
     sorted[index.clamp(1, sorted.len()) - 1]
 }
 
-/// FNV-1a 64 over `bytes` (the harness's `samples_fnv1a64`).
+/// The harness's `samples_fnv1a64` (`harness_io.cpp`): FNV-1a 64 with its
+/// offset basis 1469598103934665603, not the standard one.
 pub fn fnv1a64(bytes: &[u8]) -> u64 {
-    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, &byte| {
+    bytes.iter().fold(1_469_598_103_934_665_603, |hash, &byte| {
         (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
     })
 }
@@ -358,8 +359,9 @@ mod tests {
 
     #[test]
     fn fnv1a64_matches_the_harness() {
-        assert_eq!(fnv1a64(b""), 0xcbf2_9ce4_8422_2325);
-        assert_eq!(fnv1a64(b"a"), 0xaf63_dc4c_8601_ec8c);
+        assert_eq!(fnv1a64(b""), 1_469_598_103_934_665_603);
+        // run_corpus.py's fnv1a64(b"a").
+        assert_eq!(fnv1a64(b"a"), 0x44bd_8ad4_73cd_9906);
     }
 
     #[test]

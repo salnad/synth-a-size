@@ -199,7 +199,10 @@ def match_text(config):
     if value is None:
         return "–"
     verdict = "same" if value <= SAME_AUDIO_DB else "**differs**"
-    return "%s (%s dB)" % (verdict, fmt(value))
+    text = "%s (%s dB)" % (verdict, fmt(value))
+    if config.get("rust_bitexact_nofastmath"):
+        text += ", bit-exact with no-fast-math"
+    return text
 
 
 def report(results):
@@ -222,7 +225,8 @@ def report(results):
     lines.append("- **×RT** (realtime factor) = audio seconds rendered per second of wall-clock time; "
                  "higher is faster. **Rust ÷ C++** = Rust render time over C++ render time; above 1 means "
                  "the port is slower. **Output** compares the Rust render with the official reference "
-                 "(\"same\" at or below %.0f dB residual)." % SAME_AUDIO_DB)
+                 "(\"same\" at or below %.0f dB residual), and says when it is bit-exact with the "
+                 "no-fast-math build (equal output hashes)." % SAME_AUDIO_DB)
     lines.append("")
 
     configs = results["configs"]
@@ -382,6 +386,9 @@ def main():
                         wavs[engine] = wav
                     if "rust" in wavs and "cpp" in wavs:
                         config["rust_vs_cpp_db"] = residual_db(read_wav_f32(wavs["rust"]), read_wav_f32(wavs["cpp"]))
+                    if "rust" in config["engines"] and "cpp-nofastmath" in config["engines"]:
+                        hashes = [config["engines"][e]["raw"]["output"]["samples_fnv1a64"] for e in ("rust", "cpp-nofastmath")]
+                        config["rust_bitexact_nofastmath"] = hashes[0] == hashes[1]
                     if "cpp-nofastmath" in wavs and "cpp" in wavs:
                         config["nofastmath_vs_cpp_db"] = residual_db(read_wav_f32(wavs["cpp-nofastmath"]),
                                                                      read_wav_f32(wavs["cpp"]))
