@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Whether reference-arm-main.yml runs its full Apple Silicon suite.
 
-    mac_full_suite_gate.py --event EVENT [--every N]
+    mac_full_suite_gate.py --event EVENT [--every N] [--before SHA]
 
 Prints `run=true|false` and `reason=...` (append to $GITHUB_OUTPUT).
 
 - schedule and workflow_dispatch: always.
 - push to main: when at least N first-parent commits (merges) have landed
   since the head commit of the last run whose macOS 15 job executed (it
-  finished, or is queued or running), or when there is no such run.
+  finished, or is queued or running), or when there is no such run; also
+  when the push (BEFORE..HEAD) changes this workflow or its scripts, so CI
+  changes are exercised on main at once.
 
 Needs `gh` with a token that can read Actions ($GH_TOKEN), and a full clone.
 """
@@ -21,6 +23,14 @@ import sys
 
 WORKFLOW = "reference-arm-main.yml"
 SUITE_JOB = "macOS 15 arm64 full suite"
+SUITE_FILES = (
+    ".github/workflows/reference-arm-main.yml",
+    "migration/scripts/compare_known_drift.py",
+    "migration/scripts/mac_full_suite_gate.py",
+    "migration/scripts/mac_full_suite_report.py",
+    "migration/scripts/mac_hash_backfill.sh",
+    "migration/scripts/mac_missing_only.py",
+)
 
 
 def gh_api(path):
@@ -46,9 +56,22 @@ def merges_since(sha):
                               stdout=subprocess.PIPE, universal_newlines=True).stdout)
 
 
-def decide(event, every, repo, current_run):
+def suite_files_changed(before):
+    if not before or set(before) == {"0"}:
+        return []
+    diff = subprocess.run(["git", "diff", "--name-only", before, "HEAD"], stdout=subprocess.PIPE,
+                          stderr=subprocess.DEVNULL, universal_newlines=True)
+    if diff.returncode != 0:
+        return []
+    return sorted(set(diff.stdout.split()) & set(SUITE_FILES))
+
+
+def decide(event, every, repo, current_run, before=""):
     if event != "push":
         return True, "%s always runs the full suite" % event
+    changed = suite_files_changed(before)
+    if changed:
+        return True, "this push changes the full suite itself: %s" % ", ".join(changed)
     try:
         sha = last_suite_sha(repo, current_run)
     except subprocess.CalledProcessError as error:
@@ -67,8 +90,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--event", required=True)
     parser.add_argument("--every", type=int, default=6)
+    parser.add_argument("--before", default="", help="the push's previous head (github.event.before)")
     args = parser.parse_args()
-    run, reason = decide(args.event, args.every, os.environ["GITHUB_REPOSITORY"], os.environ.get("GITHUB_RUN_ID", ""))
+    run, reason = decide(args.event, args.every, os.environ["GITHUB_REPOSITORY"], os.environ.get("GITHUB_RUN_ID", ""),
+                         args.before)
     print("run=%s" % ("true" if run else "false"))
     print("reason=%s" % reason)
     return 0

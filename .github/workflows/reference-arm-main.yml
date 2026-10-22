@@ -3,7 +3,8 @@ name: Reference ARM (main, full suite)
 # Mac CI policy (owner approval 2026-10-21; migration/decisions/reference-arm.md,
 # "Mac CI policy"). The full Apple Silicon suite runs on main, not per PR:
 # - nightly, on manual dispatch, and on a push to main once at least 6 merges
-#   have landed since the last run that executed it (the `gate` job;
+#   have landed since the last run that executed it, or when the push changes
+#   this workflow or its scripts (the `gate` job;
 #   migration/scripts/mac_full_suite_gate.py);
 # - jobs: the macOS 15 suite (pinned build, guard, repeat render, attribution
 #   and build variants: vDSP, contraction, no-fast-math; the macOS
@@ -17,7 +18,9 @@ name: Reference ARM (main, full suite)
 #   and dispatches Linux CI on it; a human or agent merges it;
 # - on a failure the `report` job opens or updates the issue "Mac full suite
 #   failing on main" (linking the backfill PR), and closes it when main is
-#   green again. Real mismatches keep failing and keep the issue open.
+#   green again. Real mismatches keep failing and keep the issue open. When
+#   only artifact upload/download steps failed, it says "infrastructure —
+#   re-run" instead.
 
 on:
   schedule:
@@ -57,7 +60,8 @@ jobs:
       - id: decide
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 migration/scripts/mac_full_suite_gate.py --event "${{ github.event_name }}" --every 6 | tee -a "$GITHUB_OUTPUT"
+          BEFORE: ${{ github.event.before }}
+        run: python3 migration/scripts/mac_full_suite_gate.py --event "${{ github.event_name }}" --every 6 --before "$BEFORE" | tee -a "$GITHUB_OUTPUT"
 
   x86:
     name: x86_64 Linux reference (baseline for cross-ISA comparison)
@@ -231,6 +235,22 @@ jobs:
             migration/reference/build/ref-complex-probe
           if-no-files-found: error
           retention-days: 14
+      # Only what the macOS 14 job reads: the binaries and the pinned tree it
+      # compares against. The full artifact also carries every variant tree,
+      # and downloading it on macOS runners has failed after retries.
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ref-arm64-macos-15-binary
+          path: |
+            build/platform/pinned/
+            migration/reference/build/ref-render
+            migration/reference/build/ref-module
+            migration/reference/build/ref-fp-probe
+            migration/reference/build/ref-rng-probe
+            migration/reference/build/ref-complex-probe
+          if-no-files-found: error
+          retention-days: 14
 
   macos-14:
     name: macOS 14 (same binary as macOS 15; Apple clang 15 diagnostics)
@@ -248,7 +268,7 @@ jobs:
           rustup toolchain install || rustup show
       - uses: actions/download-artifact@v8
         with:
-          name: ref-arm64-macos-15
+          name: ref-arm64-macos-15-binary
           path: build/from-macos-15
       - name: Diagnostics for the macOS 15 binary running on macOS 14
         run: |

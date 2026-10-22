@@ -271,8 +271,9 @@ waiting for hosted macOS runners. There is no self-hosted Apple Silicon.
     result goes to the step summary (`scripts/justify_nofastmath_summary.sh`)
     so reviewers can cite it.
 - **Main (`reference-arm-main.yml`, the full suite):**
-  - runs nightly, on manual dispatch, and on a push to main once 6 merges
-    have landed since the last full run (`scripts/mac_full_suite_gate.py`);
+  - runs nightly, on manual dispatch, on a push to main once 6 merges
+    have landed since the last full run, and on a push that changes the
+    workflow or its scripts (`scripts/mac_full_suite_gate.py`);
   - jobs: the macOS 15 suite (guard, repeat render, attribution, the vDSP,
     contraction and no-fast-math variants, the macOS justification gate with
     `--parked`, arm64 parity on the whole workspace), the macOS 14
@@ -280,8 +281,10 @@ waiting for hosted macOS runners. There is no self-hosted Apple Silicon.
   - is strict: `hashes --check --require-known-identity` (pinned and
     no-fast-math) fails on a missing or changed macOS hash;
   - on a failure, opens or updates the issue "Mac full suite failing on main"
-    with the failing steps (`scripts/mac_full_suite_report.py`). The issue
-    closes when main is green again;
+    with the failing steps (`scripts/mac_full_suite_report.py`). When only
+    artifact upload/download steps failed, it says "infrastructure —
+    re-run" instead of calling it a real failure. The issue closes when main
+    is green again;
   - backfills missing keys automatically. When the macOS 15 job fails only
     on missing macOS hash keys (`scripts/mac_missing_only.py`), the
     `backfill` job opens or updates the hash-only PR from the bot branch
