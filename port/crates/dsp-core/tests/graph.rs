@@ -6,11 +6,12 @@
 use std::rc::Rc;
 
 use sas_dsp_core::operators::{self, Add, Negate, VariableAdd};
+use sas_dsp_core::output::NULL_SOURCE_SIZE;
 use sas_dsp_core::synth_module::{set_parameter_lookup, ParameterDetails, ValueScale};
 use sas_dsp_core::utilities::value_switch::ValueSwitch;
 use sas_dsp_core::{
-    Feedback, Processor, ProcessorImpl, ProcessorRef, ProcessorRouter, RouterHooks, SynthModule,
-    Value,
+    Feedback, Input, Output, Processor, ProcessorImpl, ProcessorRef, ProcessorRouter, RouterHooks,
+    SynthModule, Value,
 };
 use sas_simd::PolyFloat;
 
@@ -228,6 +229,59 @@ fn value_switch_redirects_buffer() {
     assert_eq!(switch.output(ValueSwitch::SWITCH).at(0).get(0), 2.0);
     assert!(gated.enabled());
     assert_eq!(switch.output(ValueSwitch::SWITCH).buffer_size(), 128);
+}
+
+/// An output redirected to an unconnected input (`ValueSwitch`,
+/// `FiltersModule`) points at the null source without keeping the
+/// thread-local null buffer, so a graph handed to another thread (the
+/// plugin's audio thread) never touches this thread's `Rc`, and reads the
+/// null source of the thread it runs on.
+#[test]
+fn null_source_redirection_holds_no_thread_local_buffer() {
+    let switch = ValueSwitch::create(0.0);
+    let connected = Value::create(1.0, false);
+    switch.plug_next(&connected);
+    let unconnected = switch.add_input();
+    let output = switch.output(ValueSwitch::SWITCH);
+
+    let null_holders = Rc::strong_count(&unconnected.buffer());
+    switch.set_value(1.0);
+    assert!(Rc::ptr_eq(&output.buffer(), &unconnected.buffer()));
+    assert_eq!(
+        Rc::strong_count(&unconnected.buffer()),
+        null_holders,
+        "the redirected output keeps a clone of the null buffer"
+    );
+    assert!(!output.buffer_is_owned());
+    assert_eq!(output.buffer_size(), NULL_SOURCE_SIZE);
+    assert_eq!(output.at(0).get(0), 0.0);
+
+    // The graph is handed over whole and used by one thread at a time, as
+    // the plugin's `SoundEngineHost` does.
+    struct Handoff(ProcessorRef, Rc<Output>, ProcessorRef, Rc<Input>);
+    // SAFETY: the main thread does not touch any part of the graph until
+    // the spawned thread returns it.
+    unsafe impl Send for Handoff {}
+    let graph = Handoff(switch, output, connected, unconnected);
+    let graph = std::thread::spawn(move || {
+        let graph = graph;
+        let (switch, output, connected, unconnected) = (&graph.0, &graph.1, &graph.2, &graph.3);
+        let this_thread_null = Input::default().buffer();
+        assert!(Rc::ptr_eq(&unconnected.buffer(), &this_thread_null));
+        assert!(Rc::ptr_eq(&output.buffer(), &this_thread_null));
+        assert_eq!(connected.output(0).at(0).get(0), 1.0);
+        assert_eq!(output.at(0).get(0), 0.0);
+        switch.set_value(0.0);
+        assert_eq!(output.at(0).get(0), 1.0);
+        switch.set_value(1.0);
+        assert!(Rc::ptr_eq(&output.buffer(), &this_thread_null));
+        graph
+    })
+    .join()
+    .unwrap();
+
+    let main_thread_null = Input::default().buffer();
+    assert!(Rc::ptr_eq(&graph.1.buffer(), &main_thread_null));
 }
 
 /// The parameter lookup is global; every test installs this same one.

@@ -31,7 +31,19 @@ pub fn new_buffer(size: usize) -> Buffer {
 thread_local! {
     /// Storage read through unconnected inputs (`Processor::null_source_`):
     /// `kMaxBufferSize * kMaxOversample` zeros. Never written by upstream.
+    ///
+    /// Per thread because [`Buffer`] is an `Rc`. No graph holds a clone of
+    /// it: [`Input::buffer`] hands out a transient clone, and
+    /// [`Output::set_buffer`] records a redirection to it as "the null
+    /// source" rather than keeping the clone. A graph moved to another
+    /// thread (the plugin's audio thread) therefore never touches this
+    /// thread's reference count, and reads the null source of the thread it
+    /// runs on, which holds the same zeros.
     static NULL_BUFFER: Buffer = new_buffer(NULL_SOURCE_SIZE);
+}
+
+fn is_null_buffer(buffer: &Buffer) -> bool {
+    NULL_BUFFER.with(|null| Rc::ptr_eq(null, buffer))
 }
 
 /// Buffer size of the null source.
@@ -39,7 +51,8 @@ pub const NULL_SOURCE_SIZE: usize = MAX_BUFFER_SIZE * MAX_OVERSAMPLE;
 
 /// `vital::Output` (and `cr::Output` via [`Output::new_control_rate`]).
 pub struct Output {
-    buffer: RefCell<Buffer>,
+    /// `None` when `buffer` is the null source's storage (see [`NULL_BUFFER`]).
+    buffer: RefCell<Option<Buffer>>,
     owned_buffer: RefCell<Buffer>,
     buffer_size: Cell<usize>,
     trigger_mask: Cell<PolyMask>,
@@ -58,7 +71,7 @@ impl Output {
         let buffer_size = size * max_oversample;
         let owned = new_buffer(buffer_size);
         let output = Output {
-            buffer: RefCell::new(owned.clone()),
+            buffer: RefCell::new(Some(owned.clone())),
             owned_buffer: RefCell::new(owned),
             buffer_size: Cell::new(buffer_size),
             trigger_mask: Cell::new(PolyMask::zero()),
@@ -80,7 +93,7 @@ impl Output {
     pub fn new_control_rate() -> Rc<Output> {
         let trigger_value = new_buffer(1);
         let output = Output {
-            buffer: RefCell::new(trigger_value.clone()),
+            buffer: RefCell::new(Some(trigger_value.clone())),
             owned_buffer: RefCell::new(new_buffer(1)),
             buffer_size: Cell::new(1),
             trigger_mask: Cell::new(PolyMask::zero()),
@@ -93,16 +106,27 @@ impl Output {
         Rc::new(output)
     }
 
-    /// The current buffer (`buffer`). May be another output's storage.
     #[inline]
-    pub fn buffer(&self) -> Buffer {
-        self.buffer.borrow().clone()
+    fn with_buffer<R>(&self, f: impl FnOnce(&Buffer) -> R) -> R {
+        match &*self.buffer.borrow() {
+            Some(buffer) => f(buffer),
+            None => NULL_BUFFER.with(f),
+        }
     }
 
-    /// Points `buffer` at other storage (`output->buffer = ...`).
+    /// The current buffer (`buffer`). May be another output's storage, or
+    /// the calling thread's null source.
+    #[inline]
+    pub fn buffer(&self) -> Buffer {
+        self.with_buffer(Rc::clone)
+    }
+
+    /// Points `buffer` at other storage (`output->buffer = ...`). A
+    /// redirection to the null source is recorded as such, so the output
+    /// never holds the thread-local null buffer.
     #[inline]
     pub fn set_buffer(&self, buffer: Buffer) {
-        *self.buffer.borrow_mut() = buffer;
+        *self.buffer.borrow_mut() = (!is_null_buffer(&buffer)).then_some(buffer);
     }
 
     /// This output's own storage (`owned_buffer`).
@@ -113,19 +137,22 @@ impl Output {
 
     /// True when `buffer` points at the owned storage.
     pub fn buffer_is_owned(&self) -> bool {
-        Rc::ptr_eq(&self.buffer.borrow(), &self.owned_buffer.borrow())
+        self.buffer
+            .borrow()
+            .as_ref()
+            .is_some_and(|buffer| Rc::ptr_eq(buffer, &self.owned_buffer.borrow()))
     }
 
     /// `buffer[index]`.
     #[inline]
     pub fn at(&self, index: usize) -> PolyFloat {
-        self.buffer.borrow()[index].get()
+        self.with_buffer(|buffer| buffer[index].get())
     }
 
     /// `buffer[index] = value`.
     #[inline]
     pub fn set_at(&self, index: usize, value: PolyFloat) {
-        self.buffer.borrow()[index].set(value);
+        self.with_buffer(|buffer| buffer[index].set(value));
     }
 
     #[inline]
@@ -226,7 +253,7 @@ impl Output {
         let owned = new_buffer(new_max_buffer_size);
         *self.owned_buffer.borrow_mut() = owned.clone();
         if buffer_is_original {
-            *self.buffer.borrow_mut() = owned;
+            *self.buffer.borrow_mut() = Some(owned);
         }
         self.clear_buffer();
     }
@@ -269,7 +296,9 @@ impl Input {
             .is_some_and(|s| Rc::ptr_eq(s, output))
     }
 
-    /// `source->buffer`.
+    /// `source->buffer`. For an unconnected input this is a clone of the
+    /// calling thread's null source: use it and drop it, or hand it to
+    /// [`Output::set_buffer`], but don't keep it in a graph.
     #[inline]
     pub fn buffer(&self) -> Buffer {
         match &*self.source.borrow() {
