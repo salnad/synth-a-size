@@ -60,6 +60,10 @@ impl Engine for SoundEngineHost {
         self.synth.load_preset(preset);
     }
 
+    fn engine_sample(&self) -> Option<SampleState> {
+        Some(SoundEngineHost::sample_state(self))
+    }
+
     fn set_tuning(&mut self, tuning: &Tuning) {
         self.synth.set_tuning(tuning);
     }

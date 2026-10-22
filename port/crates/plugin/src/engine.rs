@@ -9,7 +9,7 @@
 //! silence, for tests that need no engine.
 
 use sas_engine::Tuning;
-use sas_preset::PresetState;
+use sas_preset::{PresetState, SampleState};
 
 /// The sound engine as the plugin drives it. Every method is called from the
 /// audio thread.
@@ -49,6 +49,14 @@ pub trait Engine: Send + 'static {
     /// `sample_offset` into the next [`process`](Self::process) call. MPE
     /// arrives as ordinary per-channel messages.
     fn process_midi(&mut self, message: [u8; 3], sample_offset: usize);
+
+    /// The sample the engine plays, if it can report one: as constructed,
+    /// the white noise it generated with a seed from the global counter. The
+    /// plugin's init state saves it, as upstream's `getStateInformation`
+    /// saves the engine's own sample.
+    fn engine_sample(&self) -> Option<SampleState> {
+        None
+    }
 
     /// Renders `left.len()` samples (at most `MAX_BUFFER_SIZE`, 128) of
     /// stereo output (`SynthBase::processAudio`).
