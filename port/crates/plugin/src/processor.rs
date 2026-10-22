@@ -158,6 +158,7 @@ impl<E: Engine> BlockProcessor<E> {
             if let Some(document) = params.try_document() {
                 self.document_generation = params.document_generation.load(Ordering::Acquire);
                 self.engine.load_preset(&document.state);
+                self.engine.set_tuning(&document.tuning);
                 params.changes.drain(|_| {});
                 // Parameters the host changed after the restore.
                 for (index, control) in params.controls().iter().enumerate() {

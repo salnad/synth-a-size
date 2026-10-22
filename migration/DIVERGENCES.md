@@ -89,16 +89,22 @@ What is **not** listed:
 
 ### D4. A preset or host state that fails to load changes nothing
 
-*Merged: preset loading in #7, host state restore in #59.*
+*Merged: preset loading in #7, host state restore in #59, its tuning in #65.*
 
 - **Differs:** loading a corrupted preset, or one from a newer version.
-  This applies to `PresetState` loads and to host state restores.
+  This applies to `PresetState` loads and to host state restores, including
+  a host state whose `"tuning"` is not an object or names a keyboard mapping
+  degree past its scale (D6).
 - **Upstream:** `LoadSave` applies the steps that ran before the failure,
   so the synth is left partially loaded. For a host state, it reports the
-  error and keeps going. Some malformed inputs are undefined behaviour
-  upstream: more than 64 modulations, more than 3 wavetables or 8 LFOs, a
-  modulation without `source` or `destination` (read through a const
-  reference).
+  error and keeps going; a bad `"tuning"` throws in `Tuning::jsonToState`
+  after the preset has loaded, so the preset stays. A host state from a
+  newer version makes `LoadSave::jsonToState` return `false` without
+  throwing, and `setStateInformation` then still applies the state's
+  `"tuning"`: the preset is skipped but the tuning changes. Some malformed
+  inputs are undefined behaviour upstream: more than 64 modulations, more
+  than 3 wavetables or 8 LFOs, a modulation without `source` or
+  `destination` (read through a const reference).
 - **Port:**
   - A failed load leaves the state unchanged. `PresetState` loads into a
     scratch state first.
@@ -106,12 +112,18 @@ What is **not** listed:
     (`port/crates/preset/src/state.rs`).
   - In the plugin, `filter_state` empties a saved state whose preset can't
     load, so restoring it changes nothing (`port/crates/plugin/src/state.rs`).
+    A `"tuning"` that is not an object, or that `Tuning::json_to_state`
+    refuses (D6), counts as a failed load, so the preset doesn't apply
+    either. A newer-version state changes neither the preset nor the
+    tuning. Missing keys inside a tuning object follow
+    `sas_engine::Tuning::json_to_state`, which reads them as defaults.
 - **Why:** a partial load gives a state that matches neither preset.
   Undefined behaviour has no defined output to reproduce. Authored and
   corpus presets never hit these paths: every `error_*` preset fails the
   same way in the reference and the port.
 - **Approved:** #7 (preset loading,
-  `migration/ledger/2026-10-20-m2-preset-registry.md`) and #59 (host state).
+  `migration/ledger/2026-10-20-m2-preset-registry.md`), #59 (host state)
+  and #65 (host state tuning, `migration/ledger/2026-10-21-m8-plugin-tuning-state.md`).
 
 ### D5. `create_filter(Comb)` returns `None`
 
