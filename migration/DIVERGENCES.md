@@ -294,6 +294,27 @@ What is **not** listed:
 - **Approved:** #62 (`migration/ledger/2026-10-21-tuning-kbm-validation.md`),
   reviewed by Graph Reviewer.
 
+### D12. An untouched init state saves other white noise than the engine plays (temporary)
+
+*Merged in #79; to be removed when the plugin takes the engine's sample
+(`SoundEngineHost::sample_state`, #80).*
+
+- **Differs:** the `sample` saved in the plugin state before any preset is
+  loaded.
+- **Upstream:** `getStateInformation` saves the engine's own sample: the
+  white noise `Sample::init` generated, with a seed from the global counter,
+  while the engine was constructed.
+- **Port:** the plugin can't yet read the engine's sample, so the init
+  document's white noise uses seed 0. The engine keeps playing its own noise
+  until a preset or saved state is loaded, and a saved untouched init state
+  restores seed-0 noise. Drawing another seed from the global counter
+  instead would shift every later random draw in the engine, and with it
+  the sound (`migration/ledger/2026-10-22-m8-plugin-sound.md`).
+- **Why:** temporary, until the engine exposes its sample. It is audible only
+  with the sample oscillator on and no preset loaded, and only as a
+  different white noise.
+- **Approved:** coordinator, for #79 (temporary until #80).
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change

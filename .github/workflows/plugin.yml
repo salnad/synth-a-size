@@ -3,7 +3,9 @@ name: Plugin
 # The shipping build: an Apple Silicon (arm64) macOS VST3 for FL Studio
 # (port plan, owner decision of 2026-10-20). Builds sas-plugin for
 # aarch64-apple-darwin only, bundles it, signs it ad hoc, checks it is
-# arm64-only, and runs Steinberg's VST3 validator on it. The plugin's Rust
+# arm64-only, runs Steinberg's VST3 validator on it, and plays a note through
+# it in a minimal VST3 host (port/crates/plugin/vst3-smoke) to check it makes
+# sound. The plugin's Rust
 # tests run with the rest of the workspace in ci.yml (Linux) and in
 # reference-arm.yml (macOS arm64).
 
@@ -22,12 +24,12 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # MIT-licensed since 3.8.0; only the validator is built, for CI.
+  # MIT-licensed since 3.8.0; only CI tools are built from it (validator, sound check).
   VST3_SDK_TAG: v3.8.0_build_66
 
 jobs:
   vst3-macos-arm64:
-    name: arm64 macOS VST3 (bundle, ad-hoc signature, VST3 validator)
+    name: arm64 macOS VST3 (bundle, ad-hoc signature, VST3 validator, sound check)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
@@ -50,30 +52,94 @@ jobs:
           for symbol in GetPluginFactory bundleEntry bundleExit; do
             nm -gU "$binary" | grep -q " _$symbol\$" || { echo "missing $symbol"; exit 1; }
           done
-      - name: Cache the VST3 validator
-        id: validator-cache
+      - name: Cache the VST3 tools
+        id: vst3-tools-cache
         uses: actions/cache@v4
         with:
-          path: build/vst3-validator
-          key: vst3-validator-macos-15-arm64-${{ env.VST3_SDK_TAG }}
-      - name: Build the VST3 validator
-        if: steps.validator-cache.outputs.cache-hit != 'true'
+          path: build/vst3-tools-bin
+          key: vst3-tools-macos-15-arm64-${{ env.VST3_SDK_TAG }}-${{ hashFiles('port/crates/plugin/vst3-smoke/**') }}
+      - name: Build the VST3 validator and sound check
+        if: steps.vst3-tools-cache.outputs.cache-hit != 'true'
         run: |
           git clone --depth 1 --branch "$VST3_SDK_TAG" https://github.com/steinbergmedia/vst3sdk build/vst3sdk
           git -C build/vst3sdk submodule update --init --depth 1 base pluginterfaces public.sdk cmake
-          cmake -S build/vst3sdk -B build/vst3sdk/build -DCMAKE_BUILD_TYPE=Release \
-            -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF \
-            -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF -DSMTG_RUN_VST_VALIDATOR=OFF
-          cmake --build build/vst3sdk/build --target validator --config Release -j "$(sysctl -n hw.ncpu)"
-          mkdir -p build/vst3-validator
-          cp "$(find build/vst3sdk/build -type f -name validator -perm -u+x | head -1)" build/vst3-validator/validator
+          cmake -S port/crates/plugin/vst3-smoke -B build/vst3-tools \
+            -DVST3_SDK_ROOT="$PWD/build/vst3sdk" -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/vst3-tools --target vst3-smoke validator --config Release -j "$(sysctl -n hw.ncpu)"
+          mkdir -p build/vst3-tools-bin
+          cp "$(find build/vst3-tools -type f -name validator -perm -u+x | head -1)" build/vst3-tools-bin/validator
+          cp "$(find build/vst3-tools -type f -name vst3-smoke -perm -u+x | head -1)" build/vst3-tools-bin/vst3-smoke
       - name: VST3 validator (extensive)
         run: |
           set -o pipefail
-          build/vst3-validator/validator -e build/plugin/synth-a-size.vst3 | tee build/plugin/validator.log
+          build/vst3-tools-bin/validator -e build/plugin/synth-a-size.vst3 | tee build/plugin/validator.log
+      # The validator checks API conformance, not audio: load the bundle like
+      # a host, play a note and fail if the output stays silent.
+      - name: VST3 sound check (a note makes sound)
+        run: |
+          set -o pipefail
+          build/vst3-tools-bin/vst3-smoke build/plugin/synth-a-size.vst3 --min-peak 0.01 | tee build/plugin/sound-check.log
       - uses: actions/upload-artifact@v7
         with:
           name: synth-a-size-vst3-arm64-macos
           path: build/plugin/
           if-no-files-found: error
+          retention-days: 14
+
+  # Gating counterpart of the macOS job (macOS CI is non-gating by owner
+  # policy): the same validator and sound check on the x86_64 Linux dev
+  # bundle, which is only for testing and never shipped.
+  vst3-linux-dev:
+    name: Linux dev VST3 (VST3 validator, sound check; not shipped)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: port
+          key: plugin-linux-dev
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install || rustup show
+          cargo --version
+      - name: Build the dev bundle
+        run: port/crates/plugin/scripts/bundle.sh build/plugin
+      - name: Cache the VST3 tools
+        id: vst3-tools-cache
+        uses: actions/cache@v4
+        with:
+          path: build/vst3-tools-bin
+          key: vst3-tools-ubuntu-24.04-${{ env.VST3_SDK_TAG }}-${{ hashFiles('port/crates/plugin/vst3-smoke/**') }}
+      - name: Build the VST3 validator and sound check
+        if: steps.vst3-tools-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch "$VST3_SDK_TAG" https://github.com/steinbergmedia/vst3sdk build/vst3sdk
+          git -C build/vst3sdk submodule update --init --depth 1 base pluginterfaces public.sdk cmake
+          CC=gcc CXX=g++ cmake -S port/crates/plugin/vst3-smoke -B build/vst3-tools \
+            -DVST3_SDK_ROOT="$PWD/build/vst3sdk" -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/vst3-tools --target vst3-smoke validator -j "$(nproc)"
+          mkdir -p build/vst3-tools-bin
+          cp "$(find build/vst3-tools -type f -name validator -perm -u+x | head -1)" build/vst3-tools-bin/validator
+          cp "$(find build/vst3-tools -type f -name vst3-smoke -perm -u+x | head -1)" build/vst3-tools-bin/vst3-smoke
+      - name: VST3 validator (extensive)
+        run: |
+          set -o pipefail
+          build/vst3-tools-bin/validator -e build/plugin/synth-a-size.vst3 | tee build/plugin/validator.log
+      - name: VST3 sound check (a note makes sound)
+        run: |
+          set -o pipefail
+          build/vst3-tools-bin/vst3-smoke build/plugin/synth-a-size.vst3 --min-peak 0.01 | tee build/plugin/sound-check.log
+      - name: sas-render renders a corpus preset
+        run: |
+          cargo run --release --locked -p sas-plugin --bin sas-render --manifest-path port/Cargo.toml -- \
+            migration/corpus/presets/unison_pad_fx.vital migration/corpus/midi/chord_progression.mid \
+            -o build/sas-render/unison_pad_fx__chords.wav --sample-rate 48000 --block-size 128 --seed 1
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: vst3-linux-dev-logs
+          path: |
+            build/plugin/validator.log
+            build/plugin/sound-check.log
+          if-no-files-found: ignore
           retention-days: 14

@@ -4,9 +4,9 @@
 //! What the wrapper needs from the sound engine.
 //!
 //! These are the calls `SynthPlugin` (`vital/src/plugin/synth_plugin.cpp`)
-//! makes on `SynthBase`, its `SoundEngine` and its `MidiManager`. The wrapper
-//! is written against this trait so it can ship before the engine port (M7)
-//! is complete; [`SilentEngine`] stands in until then.
+//! makes on `SynthBase`, its `SoundEngine` and its `MidiManager`. The shipped
+//! plugin runs on [`crate::SoundEngineHost`]; [`SilentEngine`] outputs
+//! silence, for tests that need no engine.
 
 use sas_engine::Tuning;
 use sas_preset::PresetState;
@@ -55,7 +55,7 @@ pub trait Engine: Send + 'static {
     fn process(&mut self, left: &mut [f32], right: &mut [f32]);
 }
 
-/// Placeholder engine until the M7 sound engine lands: outputs silence.
+/// An engine that outputs silence (tests that need no sound engine).
 #[derive(Debug, Default)]
 pub struct SilentEngine;
 

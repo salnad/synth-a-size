@@ -27,3 +27,6 @@ aarch64-semantics = [
     "sas-engine/aarch64-semantics",
     "sas-preset/aarch64-semantics",
 ]
+
+[dev-dependencies]
+sas-parity.workspace = true

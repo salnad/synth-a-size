@@ -132,14 +132,16 @@ fn controls(calls: &[Call]) -> Vec<(&'static str, f32)> {
 }
 
 #[test]
-fn first_block_loads_the_preset_then_only_changes_follow() {
+fn the_constructed_engine_is_the_init_state_then_only_changes_follow() {
     let mut harness = Harness::new();
     assert_eq!(
         harness.processor().engine().calls,
         [Call::SampleRate(48_000.0)]
     );
+    // The engine starts as constructed, which the init document describes
+    // (upstream's plugin never calls loadInitPreset): nothing is loaded.
     let (calls, ..) = harness.run(64, Transport::default(), vec![]);
-    assert_eq!(calls[0], Call::LoadPreset(String::new()));
+    assert!(!calls.iter().any(|call| matches!(call, Call::LoadPreset(_))));
     assert!(
         controls(&calls).is_empty(),
         "the parameters match the preset"
@@ -385,12 +387,66 @@ fn bypass_outputs_silence_and_drops_midi() {
             velocity: 1.0,
         }],
     );
-    assert!(calls.is_empty());
+    // The bypass control still reaches the engine (as upstream's
+    // ValueBridge sets it); nothing is rendered and the MIDI is dropped.
+    assert_eq!(calls, [Call::Control("bypass", 1.0)]);
     assert!(left.iter().chain(&right).all(|&sample| sample == 0.0));
 
     harness.set_bypass(false);
     let (calls, ..) = harness.run(16, Transport::default(), vec![]);
     assert_eq!(controls(&calls), [("bypass", 0.0)]);
+}
+
+#[test]
+fn activation_prepares_the_engine_in_upstreams_order_with_restores() {
+    let restored = || {
+        let mut preset = PresetState::new(&sas_preset::InitContent { sample_seed: 0 });
+        preset.info.preset_name = "restored".to_string();
+        state::plugin_state_from_json(&preset.to_json_string()).unwrap()
+    };
+    let prepared_after_load = [
+        Call::LoadPreset("restored".to_string()),
+        Call::Tuning(String::new()),
+        Call::SampleRate(44_100.0),
+    ];
+
+    // A host opening a project restores the state, then activates: the
+    // preset loads, then the engine is prepared (setStateInformation, then
+    // prepareToPlay).
+    let mut plugin = SynthPlugin::new(Recorder::default());
+    let params = plugin.synth_params().clone();
+    params.restore_state(restored());
+    plugin.processor_mut().activate(&params, 44_100.0);
+    let (mut left, mut right) = (vec![0.0; 16], vec![0.0; 16]);
+    plugin.processor_mut().process(
+        &params,
+        &mut left,
+        &mut right,
+        &Transport::default(),
+        || None::<NoteEvent<()>>,
+    );
+    assert_eq!(plugin.processor().engine().calls[..3], prepared_after_load);
+
+    // A state restored after activation loads into the prepared engine.
+    let mut plugin = SynthPlugin::new(Recorder::default());
+    let params = plugin.synth_params().clone();
+    plugin.processor_mut().activate(&params, 44_100.0);
+    params.restore_state(restored());
+    plugin.processor_mut().process(
+        &params,
+        &mut left,
+        &mut right,
+        &Transport::default(),
+        || None::<NoteEvent<()>>,
+    );
+    assert_eq!(
+        plugin.processor().engine().calls[..3],
+        [
+            Call::SampleRate(44_100.0),
+            Call::LoadPreset("restored".to_string()),
+            Call::Tuning(String::new()),
+        ]
+    );
 }
 
 #[test]

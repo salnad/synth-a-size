@@ -10,11 +10,13 @@
 //!   host bypass parameter.
 //! - [`state`]: host state saved and restored as preset JSON (with the
 //!   upgrade chain), and preset file load/save.
-//! - [`engine`]: the engine interface the wrapper drives; [`SilentEngine`]
-//!   stands in until the M7 sound engine lands.
+//! - [`engine`]: the engine interface the wrapper drives ([`SilentEngine`]
+//!   for tests that need none).
 //! - [`processor`]: the audio callback, MIDI/MPE in.
 //! - [`sound_engine`]: the M7 sound engine ([`SoundEngineHost`]) behind
-//!   [`Engine`].
+//!   [`Engine`]; the shipped plugin, [`SynthASize`], runs on it.
+//! - [`render`]: offline rendering like the reference's `ref-render`, behind
+//!   the `sas-render` binary.
 //!
 //! The shipping build is an arm64 macOS VST3 (`scripts/bundle.sh`).
 //! CLAP export is kept because it costs nothing, but it is not tested or
@@ -29,6 +31,7 @@ use sas_preset::InitContent;
 pub mod engine;
 pub mod params;
 pub mod processor;
+pub mod render;
 pub mod sound_engine;
 pub mod state;
 
@@ -55,15 +58,18 @@ pub struct SynthPlugin<E: Engine> {
 }
 
 /// The plugin as shipped.
-pub type SynthASize = SynthPlugin<SilentEngine>;
+pub type SynthASize = SynthPlugin<SoundEngineHost>;
 
 impl<E: Engine> SynthPlugin<E> {
-    /// A plugin on the init preset (`SynthBase::loadInitPreset`, whose
-    /// white-noise sample takes the next engine seed).
+    /// A plugin around `engine` as constructed. Upstream's `SynthPlugin`
+    /// never calls `loadInitPreset`: the engine starts in its constructed
+    /// state, which the init document describes, and nothing more is drawn
+    /// from the engine's random seed counter (a draw here would shift every
+    /// later one, and the sound with it).
     pub fn new(engine: E) -> SynthPlugin<E> {
-        let init = InitContent {
-            sample_seed: sas_common::random::take_next_seed(),
-        };
+        // The engine's own white noise is not reachable from here, so the
+        // init document's differs until a preset is loaded (see the ledger).
+        let init = InitContent { sample_seed: 0 };
         SynthPlugin {
             params: Arc::new(SynthParams::new(PresetDocument::init(&init))),
             processor: BlockProcessor::new(engine),
@@ -105,7 +111,12 @@ impl<E: Engine + Default> Plugin for SynthPlugin<E> {
     // Notes, poly and channel pressure, pitch bend and CCs on all 16
     // channels: what upstream's MidiManager reads, MPE included.
     const MIDI_INPUT: MidiConfig = MidiConfig::MidiCCs;
-    const SAMPLE_ACCURATE_AUTOMATION: bool = true;
+    // Upstream's JUCE VST3 wrapper applies only the last point of each
+    // parameter queue, once, before processBlock
+    // (juce_VST3_Wrapper.cpp, processParameterChanges). Without
+    // sample-accurate automation nice-plug applies every point before
+    // `process`, leaving the last, and never splits the block.
+    const SAMPLE_ACCURATE_AUTOMATION: bool = false;
 
     type Editor = ();
     type SysExMessage = ();
@@ -125,7 +136,8 @@ impl<E: Engine + Default> Plugin for SynthPlugin<E> {
         buffer_config: &BufferConfig,
         _context: &mut impl ActivateContext<Self>,
     ) -> bool {
-        self.processor.set_sample_rate(buffer_config.sample_rate);
+        self.processor
+            .activate(&self.params, buffer_config.sample_rate);
         true
     }
 
@@ -204,6 +216,13 @@ mod tests {
                 assert!(!lower.contains(banned), "{text} contains {banned}");
             }
         }
+    }
+
+    #[test]
+    fn automation_applies_once_per_block_like_upstream() {
+        // Sample-accurate automation would split host blocks at every
+        // automation point and render different audio from upstream.
+        const { assert!(!SynthASize::SAMPLE_ACCURATE_AUTOMATION) };
     }
 
     #[test]
