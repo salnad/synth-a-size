@@ -1,0 +1,34 @@
+{
+  "description": "A pad built only through the LLM tools: generated three-keyframe wavetable scanned by envelope 2, unison, a low-pass filter swept by a custom LFO shape, a macro on the reverb mix, chorus and reverb.",
+  "base": "presets/init_saw.vital",
+  "calls": [
+    {"tool": "set_wavetable", "args": {"oscillator": 1, "name": "Glass", "frames": [
+      {"position": 0, "shape": "sine"},
+      {"position": 128, "harmonics": [1, 0, 0.45, 0, 0.3, 0, 0.2, 0, 0.12]},
+      {"position": 256, "harmonics": [1, 0.6, 0.4, 0.3, 0.25, 0.2, 0.15, 0.1]}
+    ]}},
+    {"tool": "set_params", "args": {"changes": [
+      {"name": "osc_1_unison_voices", "value": 5},
+      {"name": "osc_1_unison_detune", "value": 2.5},
+      {"name": "osc_1_level", "value": 0.6},
+      {"name": "filter_1_on", "value": "On"},
+      {"name": "filter_1_cutoff", "value": 6},
+      {"name": "filter_1_resonance", "value": 35},
+      {"name": "env_1_attack", "value": "0.6 secs"},
+      {"name": "env_1_release", "value": 1.2},
+      {"name": "env_2_decay", "value": 1.5},
+      {"name": "env_2_sustain", "value": 0.2},
+      {"name": "chorus_on", "value": "On"},
+      {"name": "reverb_on", "value": "On"},
+      {"name": "reverb_dry_wet", "value": 25},
+      {"name": "macro_control_1", "value": 0.5},
+      {"name": "volume", "value": -9}
+    ]}},
+    {"tool": "set_lfo_shape", "args": {"lfo": 1, "points": [[0, 0], [0.3, 1], [0.6, 0.35], [1, 0]], "powers": [2, -2, 0, 0], "name": "Swell"}},
+    {"tool": "connect_modulation", "args": {"source": "lfo_1", "destination": "filter_1_cutoff", "amount": 0.35, "bipolar": true}},
+    {"tool": "connect_modulation", "args": {"source": "env_2", "destination": "osc_1_wave_frame", "amount": 0.8, "bipolar": false}},
+    {"tool": "connect_modulation", "args": {"source": "macro_control_1", "destination": "reverb_dry_wet", "amount": 0.5}},
+    {"tool": "update_modulation", "args": {"source": "lfo_1", "destination": "filter_1_cutoff", "amount": 0.3}},
+    {"tool": "set_preset_info", "args": {"name": "Glass Pad", "author": "synth-a-size corpus", "comments": "Built only through the LLM tools (migration/corpus/llm/sessions/glass_pad.json).", "style": "Pad", "macro_names": ["Space"]}}
+  ]
+}

@@ -12,6 +12,8 @@
 //! - [`controller`]: undo, edits waiting for the user's confirmation, and
 //!   the [`Policy`] behind them.
 //! - [`patch`]: the compact patch description `get_patch` returns.
+//! - [`shapes`]: LFO shapes and generated wavetables in upstream's formats.
+//! - [`library`]: the user's preset folder, the only files the tools touch.
 //!
 //! Every edit is one the upstream GUI can also make, so the engine is
 //! unchanged by this crate. It has no plugin, network or engine dependency.
@@ -20,14 +22,17 @@ use std::fmt;
 
 pub mod catalog;
 pub mod controller;
+pub mod library;
 mod names;
 pub mod patch;
 pub mod session;
+pub mod shapes;
 pub mod tools;
 
 pub use controller::{Controller, Pending, Policy};
+pub use library::PresetLibrary;
 pub use sas_preset;
-pub use session::{Edit, OfflineSession, SynthSession};
+pub use session::{Applied, Edit, OfflineSession, SynthSession};
 pub use tools::{specs, ToolOutput, ToolSpec};
 
 /// Milestone in `migration/PLAN.md` that builds this crate.

@@ -9,7 +9,9 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+sas-common.workspace = true
 sas-preset.workspace = true
+sas-wavetable.workspace = true
 # Tool arguments and results are JSON; both already in the tree via nice-plug.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

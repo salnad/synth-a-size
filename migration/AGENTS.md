@@ -40,7 +40,9 @@ the upstream pin in [UPSTREAM.md](UPSTREAM.md).
 3. **Never ship factory presets.** Do not commit, download, embed or
    generate from upstream factory presets, banks, wavetables or samples,
    in the corpus, tests, fixtures, docs or the product. Test content is
-   authored in `migration/corpus/generate.py`.
+   authored in `migration/corpus/generate.py`, or as scripted LLM tool
+   sessions in `migration/corpus/llm/sessions/`, whose presets the tools
+   generate (`migration/corpus/README.md`).
 4. **Drop Firebase / auth.** No login, account, Firebase, telemetry,
    license-check or "expired build" code in the port. Port engine
    behaviour as upstream builds it with `NO_AUTH=1`.

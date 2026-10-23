@@ -2427,7 +2427,9 @@ dependencies = [
 name = "sas-llm-control"
 version = "0.0.1"
 dependencies = [
+ "sas-common",
  "sas-preset",
+ "sas-wavetable",
  "serde",
  "serde_json",
 ]

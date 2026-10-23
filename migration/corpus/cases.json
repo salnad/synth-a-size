@@ -30,7 +30,8 @@
     { "name": "mpe_expression__expression", "preset": "presets/mpe_expression.vital", "midi": "midi/mpe_expression.mid" },
     { "name": "tuned_glide__septimal_run", "preset": "presets/tuned_glide.vital", "midi": "midi/scale_run.mid", "tuning": "tunings/corpus_septimal.scl", "keyboard_map": "tunings/corpus_septimal.kbm" },
     { "name": "init_saw__live_edits", "preset": "presets/init_saw.vital", "midi": "midi/held_pad.mid", "edits": "edits/live_edits.json" },
-    { "name": "init_saw__live_edits_48k_b512", "preset": "presets/init_saw.vital", "midi": "midi/held_pad.mid", "edits": "edits/live_edits.json", "sample_rate": 48000, "block_size": 512 }
+    { "name": "init_saw__live_edits_48k_b512", "preset": "presets/init_saw.vital", "midi": "midi/held_pad.mid", "edits": "edits/live_edits.json", "sample_rate": 48000, "block_size": 512 },
+    { "name": "llm_glass_pad__chords", "preset": "llm/presets/glass_pad.vital", "midi": "midi/chord_progression.mid" }
   ],
   "module_defaults": {
     "comment": "Defaults for every module case in modules/<area>/<module>.json. A case may set stricter tolerances; looser ones need a tolerance_exception citing a dated heading in the ledger (migration/ledger/, or the frozen migration/LEDGER.md) that records human approval.",
