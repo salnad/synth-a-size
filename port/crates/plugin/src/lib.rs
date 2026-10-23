@@ -165,7 +165,8 @@ impl<E: Engine + Default> Plugin for SynthPlugin<E> {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Self::Editor> {
-        let model = editor::PluginModel::new(self.params.clone(), self.keyboard.clone());
+        let model =
+            editor::PluginModel::new(self.params.clone(), self.telemetry(), self.keyboard.clone());
         sas_gui::create_editor(self.editor_state.clone(), Arc::new(model))
     }
 

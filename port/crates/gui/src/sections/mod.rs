@@ -10,8 +10,11 @@
 //! `SynthSection` does for every control: drawing it, routing its popups to
 //! the interface and its changes to the host.
 
+pub mod bend;
+pub mod keyboard;
 pub mod portamento;
 pub mod voice;
+pub mod volume;
 
 use egui::Ui;
 
@@ -172,6 +175,11 @@ impl<'a, 'b> Panel<'a, 'b> {
             &self.scope,
             bounds,
         );
+    }
+
+    /// A quad drawn with the section's controls.
+    pub fn quad(&mut self, quad: crate::primitives::Quad) {
+        self.layer.quad(quad);
     }
 
     /// Text over the section's controls.

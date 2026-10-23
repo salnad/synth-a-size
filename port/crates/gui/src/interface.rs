@@ -15,18 +15,22 @@
 //! rule 2).
 
 use egui::{Sense, Ui, UiBuilder};
+use sas_engine::telemetry::Telemetry;
 
 use crate::colour::Colour;
 use crate::controls::format;
+use crate::controls::oscilloscope;
 use crate::fonts::Face;
 use crate::host::{Host, HostParam};
 use crate::layout::{FullLayout, Rect};
 use crate::paint::{PixelPainter, RectF};
 use crate::popup::MenuOutcome;
 use crate::scope::Scope;
-use crate::section::{paint_body, paint_border};
+use crate::sections::bend::{self, BendLayout, BendSection};
+use crate::sections::keyboard::{self, KeyboardLayout, PlayingNote};
 use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
 use crate::sections::voice::{self, VoiceLayout, VoiceSection};
+use crate::sections::volume::{PeakLevels, VolumeLayout, VolumeSection};
 use crate::sections::{
     MenuOwner, Overlay, Panel, TextEntry, MENU_DEFAULT_VALUE, MENU_MANUAL_ENTRY,
 };
@@ -60,6 +64,37 @@ pub trait EditorModel: Send + Sync + 'static {
     /// is note n (`isNoteOnForChannels(0xffff, n)`).
     fn held_notes(&self) -> u128 {
         0
+    }
+
+    /// What the playing engine publishes for the editor (meters, the
+    /// oscilloscope, modulation values). None draws them at rest.
+    fn telemetry(&self) -> Option<Telemetry> {
+        None
+    }
+}
+
+/// What the editor copies from the telemetry snapshot each frame.
+struct Live {
+    peaks: PeakLevels,
+    oscilloscope: Vec<[f32; 2]>,
+}
+
+impl Live {
+    fn read(model: &dyn EditorModel) -> Option<Live> {
+        let telemetry = model.telemetry()?;
+        Some(telemetry.read(|snapshot| {
+            let peak = snapshot.status_by_name("peak_meter").unwrap_or_default();
+            let memory = snapshot
+                .status_by_name("peak_meter_memory")
+                .unwrap_or_default();
+            Live {
+                peaks: PeakLevels {
+                    peak: [peak[0], peak[1]],
+                    memory: [memory[0], memory[1]],
+                },
+                oscilloscope: snapshot.oscilloscope().to_vec(),
+            }
+        }))
     }
 }
 
@@ -98,6 +133,9 @@ pub struct Interface {
     tab: Tab,
     voice: VoiceSection,
     portamento: PortamentoSection,
+    volume: VolumeSection,
+    bend: BendSection,
+    playing_note: PlayingNote,
     overlay: Overlay,
 }
 
@@ -114,6 +152,9 @@ impl Interface {
             tab: Tab::Voice,
             voice: VoiceSection::default(),
             portamento: PortamentoSection::default(),
+            volume: VolumeSection::default(),
+            bend: BendSection::default(),
+            playing_note: PlayingNote::default(),
             overlay: Overlay::default(),
         }
     }
@@ -135,6 +176,12 @@ impl Interface {
         &self.overlay
     }
 
+    /// The note the on-screen keyboard is playing, for releasing it when the
+    /// window closes.
+    pub fn playing_note(&self) -> PlayingNote {
+        self.playing_note.clone()
+    }
+
     /// Draws the editor into `ui`'s whole area and handles its input.
     pub fn show(&mut self, ui: &mut Ui, host: &Host) {
         let area = ui.max_rect();
@@ -153,11 +200,72 @@ impl Interface {
         self.paint_background(&pixels, &layout, width, height);
         self.paint_header(&pixels, &layout, host.model());
         self.handle_tabs(ui, &pixels, &layout);
+        let live = Live::read(host.model());
+        if live.is_some() {
+            // The meters and oscilloscope move with the audio.
+            ui.ctx().request_repaint();
+        }
+        self.show_header(ui, host, &pixels, &layout, live.as_ref());
+        self.show_tab(ui, host, &pixels, &layout);
         self.show_sections(ui, host, &pixels, &layout);
         self.show_overlay(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
     }
 
-    /// The Voice and Portamento sections.
+    /// The header's live parts: the volume section and the oscilloscope.
+    fn show_header(
+        &mut self,
+        ui: &mut Ui,
+        host: &Host,
+        pixels: &PixelPainter,
+        layout: &FullLayout,
+        live: Option<&Live>,
+    ) {
+        let header = Scope::top(&self.skin, layout.size_ratio).within(&[Section::Header]);
+
+        let oscilloscope = layout.header.oscilloscope;
+        oscilloscope::paint_background(pixels, &header, oscilloscope);
+        oscilloscope::paint(
+            pixels,
+            &header,
+            oscilloscope,
+            live.map(|live| live.oscilloscope.as_slice()),
+            header.color(ColorId::Background),
+        );
+
+        let volume_layout = VolumeLayout::new(layout.header.volume);
+        self.volume
+            .paint_background(pixels, &header, &volume_layout);
+        let mut panel = Panel::new(
+            ui,
+            host,
+            pixels,
+            header,
+            &mut self.overlay,
+            layout.header.volume,
+        );
+        self.volume
+            .show(&mut panel, &volume_layout, live.map(|live| live.peaks));
+        panel.finish();
+    }
+
+    /// The selected tab's contents (`FullInterface::tabSelected` shows one
+    /// of the synthesis, effects, matrix and master controls interfaces).
+    /// The sections below them show on every tab.
+    fn show_tab(&mut self, ui: &mut Ui, host: &Host, pixels: &PixelPainter, layout: &FullLayout) {
+        let _ = (ui, host, pixels, layout);
+        match self.tab {
+            // G3b: oscillators, sample and filters.
+            Tab::Voice => {}
+            // G6: the effects interface, in `layout.effects`.
+            Tab::Effects => {}
+            // G4: the modulation matrix.
+            Tab::Matrix => {}
+            // G6: the master controls interface, in `layout.main`.
+            Tab::Advanced => {}
+        }
+    }
+
+    /// The Bend, Keyboard, Voice and Portamento sections.
     fn show_sections(
         &mut self,
         ui: &mut Ui,
@@ -172,6 +280,21 @@ impl Interface {
         self.voice.paint_background(pixels, &scope, &voice_layout);
         let mut panel = Panel::new(ui, host, pixels, scope, &mut self.overlay, layout.voice);
         self.voice.show(&mut panel, &voice_layout);
+        panel.finish();
+
+        let scope = top.within(bend::SKIN);
+        let bend_layout = BendLayout::new(&scope, layout.bend);
+        self.bend.paint_background(pixels, &scope, &bend_layout);
+        let mut panel = Panel::new(ui, host, pixels, scope, &mut self.overlay, layout.bend);
+        self.bend.show(&mut panel, &bend_layout);
+        panel.finish();
+
+        let scope = top.within(keyboard::SKIN);
+        let keyboard_layout = KeyboardLayout::new(layout.keyboard);
+        keyboard::paint_background(pixels, &scope, &keyboard_layout);
+        let mut panel = Panel::new(ui, host, pixels, scope, &mut self.overlay, layout.keyboard);
+        let held = host.model().held_notes();
+        keyboard::show(&mut panel, &keyboard_layout, held, &self.playing_note);
         panel.finish();
 
         let scope = top.within(portamento::SKIN);
@@ -251,13 +374,6 @@ impl Interface {
         for bar in layout.bars {
             pixels.fill_rect(bar, header_body);
         }
-
-        // BendSection paints its body and border, KeyboardInterface its body
-        // (both in the Keyboard skin section); their contents come later.
-        let keyboard = top.within(&[Section::Keyboard]);
-        paint_body(pixels, &keyboard, layout.bend);
-        paint_border(pixels, &keyboard, layout.bend);
-        paint_body(pixels, &keyboard, layout.keyboard);
     }
 
     /// `HeaderSection::paintBackground` and its children's paint: the logo

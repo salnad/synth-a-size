@@ -16,6 +16,7 @@ use egui::{Modifiers, PointerButton, Pos2, Sense, Ui};
 use sas_preset::registry::{ParamInfo, ValueScale};
 
 use super::format::{self, Format};
+use super::wheel::{self, WheelColours};
 use crate::colour::Colour;
 use crate::fonts::Face;
 use crate::host::Host;
@@ -59,6 +60,13 @@ pub enum SliderStyle {
     Horizontal,
     /// `LinearBarVertical` (`kVerticalSliderFragment`).
     Vertical,
+    /// `LinearBar` painted as an arrow under the value (`VolumeSlider` in
+    /// `volume_section.cpp`): its tip at `point_y` and base at `end_y`
+    /// pixels below the slider's top.
+    Arrow { point_y: i32, end_y: i32 },
+    /// `LinearBarVertical` painted as a wheel (`ControlWheel`); the pitch
+    /// wheel springs back to 0 on release (`PitchWheel::mouseUp`).
+    Wheel { spring_back: bool },
 }
 
 impl SliderStyle {
@@ -336,6 +344,29 @@ impl Slider {
                 quad.thumb_amount = LINEAR_HANDLE_PERCENT * total_width as f32;
                 layer.quad(quad);
             }
+            SliderStyle::Arrow { point_y, end_y } => {
+                // VolumeSlider::paint at getPositionOfValue: a LinearBar's
+                // value runs across the whole width.
+                let x = bounds.x as f32 + t * bounds.width as f32;
+                let tip = (bounds.y + point_y) as f32;
+                let base = (bounds.y + end_y) as f32;
+                let half = (end_y - point_y) as f32 / 2.0;
+                layer.polygon(
+                    vec![(x, tip), (x + half, base), (x - half, base)],
+                    scope.color(ColorId::LinearSliderThumb),
+                );
+            }
+            SliderStyle::Wheel { .. } => {
+                let colours = WheelColours {
+                    background: scope.color(ColorId::WidgetSecondary1),
+                    line: scope.color(ColorId::WidgetAccent1),
+                    marker: scope.color(ColorId::WidgetPrimary1),
+                    body: scope.color(ColorId::Body),
+                    shadow: scope.color(ColorId::Shadow),
+                };
+                let bounds = RectF::from(bounds);
+                layer.custom(move |pixels| wheel::paint(pixels, bounds, t, colours));
+            }
             SliderStyle::Text => self.paint_text(layer, scope, bounds, value),
             SliderStyle::Curve => self.paint_curve(pixels, scope, bounds, value),
         }
@@ -523,6 +554,13 @@ impl Slider {
             // a second press that was neither a drag nor a long press.
             state.down = false;
             host.end(self.name);
+            if let SliderStyle::Wheel { spring_back: true } = self.style {
+                // PitchWheel::mouseUp: back to the centre after the gesture.
+                // JUCE's setValue sends nothing when the value is unchanged.
+                if host.value(self.name) != 0.0 {
+                    host.set_once(self.name, 0.0);
+                }
+            }
             let long_press = state
                 .last_press
                 .is_some_and(|(time, _)| now - time > LONG_PRESS);
@@ -568,8 +606,8 @@ impl Slider {
                 / (self.sensitivity * multiply)
         };
         let mouse_diff = match self.style {
-            SliderStyle::Horizontal => position.x - state.last.x,
-            SliderStyle::Vertical => state.last.y - position.y,
+            SliderStyle::Horizontal | SliderStyle::Arrow { .. } => position.x - state.last.x,
+            SliderStyle::Vertical | SliderStyle::Wheel { .. } => state.last.y - position.y,
             _ => (position.x - state.last.x) + (state.last.y - position.y),
         };
         (state.proportion + mouse_diff as f64 / full_drag as f64).clamp(0.0, 1.0)

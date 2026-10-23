@@ -22,6 +22,9 @@ struct Instance {
     @location(8) params: vec4<f32>,
     // max_arc, alpha_mult, kind, unused
     @location(9) params2: vec4<f32>,
+    // `setCoordinates`: the bottom left corner's coordinates and their
+    // extent across the quad.
+    @location(10) coordinates: vec4<f32>,
 };
 
 struct Varyings {
@@ -52,12 +55,13 @@ const KIND_HORIZONTAL_SLIDER: u32 = 10u;
 const KIND_VERTICAL_SLIDER: u32 = 11u;
 const KIND_LINEAR_MODULATION: u32 = 12u;
 const KIND_MODULATION_KNOB: u32 = 13u;
+const KIND_GAIN_METER: u32 = 14u;
 
 const PI: f32 = 3.14159265359;
 
-// Upstream's four vertices: (x, y) with coordinates (-1, -1), (x, y + h) with
-// (-1, 1), (x + w, y + h) with (1, 1), (x + w, y) with (1, -1). Drawn here as
-// a triangle strip.
+// Upstream's four vertices: (x, y), (x, y + h), (x + w, y + h), (x + w, y),
+// with coordinates from `setCoordinates` (by default (-1, -1) to (1, 1)).
+// Drawn here as a triangle strip.
 @vertex
 fn vs_main(@builtin(vertex_index) vertex: u32, instance: Instance) -> Varyings {
     var corners = array<vec2<f32>, 4>(
@@ -76,7 +80,7 @@ fn vs_main(@builtin(vertex_index) vertex: u32, instance: Instance) -> Varyings {
         1.0,
     );
     out.dimensions = instance.dimensions;
-    out.coordinates = corner;
+    out.coordinates = instance.coordinates.xy + unit * instance.coordinates.zw;
     out.shader_values = instance.shader_values;
     out.color = instance.color;
     out.alt_color = instance.alt_color;
@@ -308,6 +312,13 @@ fn modulation_knob(v: Varyings) -> vec4<f32> {
     return color;
 }
 
+// kGainMeterFragmentShader: a gradient across the component, whose device
+// x arrives as the coordinates.
+fn gain_meter(v: Varyings) -> vec4<f32> {
+    let t = (v.coordinates.x + 1.0) / 2.0;
+    return v.alt_color * t + v.color * (1.0 - t);
+}
+
 @fragment
 fn fs_main(v: Varyings) -> @location(0) vec4<f32> {
     let kind = u32(v.params2.z);
@@ -325,6 +336,7 @@ fn fs_main(v: Varyings) -> @location(0) vec4<f32> {
         case KIND_VERTICAL_SLIDER: { return vertical_slider(v); }
         case KIND_LINEAR_MODULATION: { return linear_modulation(v); }
         case KIND_MODULATION_KNOB: { return modulation_knob(v); }
+        case KIND_GAIN_METER: { return gain_meter(v); }
         default: { return v.color; }
     }
 }

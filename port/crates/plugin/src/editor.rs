@@ -5,6 +5,7 @@
 use std::sync::{Arc, Mutex};
 
 use sas_engine::keyboard::KeyboardHandle;
+use sas_engine::telemetry::Telemetry;
 use sas_gui::{EditorModel, HostParam};
 
 use crate::params::SynthParams;
@@ -13,19 +14,25 @@ use crate::params::SynthParams;
 pub struct PluginModel {
     params: Arc<SynthParams>,
     keyboard: KeyboardHandle,
+    telemetry: Telemetry,
     /// The preset name and the edit bus revision it was read at, so the
     /// document mirror is read only after it changes.
     preset_name: Mutex<(u64, String)>,
 }
 
 impl PluginModel {
-    pub fn new(params: Arc<SynthParams>, keyboard: KeyboardHandle) -> PluginModel {
+    pub fn new(
+        params: Arc<SynthParams>,
+        telemetry: Telemetry,
+        keyboard: KeyboardHandle,
+    ) -> PluginModel {
         let edits = params.edit_handle();
         let revision = edits.revision();
         let name = edits.with_document(|document| document.state.info.preset_name.clone());
         PluginModel {
             params,
             keyboard,
+            telemetry,
             preset_name: Mutex::new((revision, name)),
         }
     }
@@ -46,6 +53,10 @@ impl EditorModel for PluginModel {
             );
         }
         cached.1.clone()
+    }
+
+    fn telemetry(&self) -> Option<Telemetry> {
+        Some(self.telemetry.clone())
     }
 
     fn param(&self, name: &str) -> Option<HostParam> {
@@ -80,7 +91,8 @@ mod tests {
         let (edits, _consumer) =
             EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
         let params = Arc::new(SynthParams::new(edits));
-        let model = PluginModel::new(params.clone(), keyboard().0);
+        let (_writer, telemetry) = Telemetry::new(Arc::default());
+        let model = PluginModel::new(params.clone(), telemetry, keyboard().0);
         assert_eq!(model.preset_name(), "");
         let edits = params.edit_handle();
         let mut info = edits.with_document(|document| document.state.info.clone());
@@ -94,7 +106,8 @@ mod tests {
         let (edits, _consumer) =
             EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
         let (handle, mut consumer) = keyboard();
-        let model = PluginModel::new(Arc::new(SynthParams::new(edits)), handle);
+        let (_writer, telemetry) = Telemetry::new(Arc::default());
+        let model = PluginModel::new(Arc::new(SynthParams::new(edits)), telemetry, handle);
         model.note_on(60, 0.5);
         assert_eq!(model.held_notes(), 1 << 60);
         model.note_off(60);
