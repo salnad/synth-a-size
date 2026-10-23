@@ -5,7 +5,6 @@
 //! (`vital/src/interface/editor_sections/phaser_section.cpp`).
 
 use super::flanger::modulated_filter_parts;
-use super::title_width;
 use crate::layout::Rect;
 use crate::scope::Scope;
 use crate::skin::ValueId;
@@ -60,7 +59,7 @@ impl PhaserLayout {
             bounds.height - widget_y - widget_margin,
         );
         let (dx, dy) = (bounds.x, bounds.y);
-        let title = title_width(scope);
+        let title = crate::section::title_width(scope) as i32;
         PhaserLayout {
             bounds,
             on: Rect::new(dx, dy, title, title),

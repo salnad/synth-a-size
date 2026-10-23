@@ -4,7 +4,7 @@
 //! The Distortion section. Ports `DistortionSection`
 //! (`vital/src/interface/editor_sections/distortion_section.cpp`).
 
-use super::{divided_area_buffered, divided_area_unbuffered, title_width, with_left};
+use super::{divided_area_buffered, divided_area_unbuffered, with_left};
 use crate::layout::Rect;
 use crate::scope::Scope;
 use crate::section::place_knobs_in_area;
@@ -28,7 +28,7 @@ pub struct DistortionLayout {
 impl DistortionLayout {
     pub fn new(scope: &Scope, bounds: Rect) -> DistortionLayout {
         let widget_margin = scope.widget_margin() as i32;
-        let title = title_width(scope);
+        let title = crate::section::title_width(scope) as i32;
         let section_height = scope.knob_section_height() as i32;
         let (width, height) = (bounds.width, bounds.height);
 
@@ -88,6 +88,7 @@ impl DistortionLayout {
 }
 
 use egui::Ui;
+use sas_preset::strings::StringTable;
 
 use super::{paint_section_background, viewer_corners, Effect};
 use crate::controls::slider::{Slider, SliderStyle};
@@ -96,8 +97,7 @@ use crate::paint::PixelPainter;
 use crate::section::{draw_label, draw_text_component_background};
 use crate::sections::{Overlay, Panel};
 
-/// The section's controls (`DistortionSection`'s constructor). The type
-/// and filter order are text sliders until the shared `TextSelector` lands.
+/// The section's controls (`DistortionSection`'s constructor).
 pub struct DistortionSection {
     kind: Slider,
     filter_order: Slider,
@@ -111,8 +111,14 @@ pub struct DistortionSection {
 impl Default for DistortionSection {
     fn default() -> DistortionSection {
         DistortionSection {
-            kind: Slider::new("distortion_type", SliderStyle::Text),
-            filter_order: Slider::new("distortion_filter_order", SliderStyle::Text),
+            kind: Slider::selector(
+                "distortion_type",
+                Some(StringTable::DistortionType.values()),
+            ),
+            filter_order: Slider::selector(
+                "distortion_filter_order",
+                Some(StringTable::DistortionFilterOrder.values()),
+            ),
             filter_cutoff: Slider::new("distortion_filter_cutoff", SliderStyle::Rotary),
             filter_resonance: Slider::new("distortion_filter_resonance", SliderStyle::Rotary),
             filter_blend: Slider::new("distortion_filter_blend", SliderStyle::Rotary).bipolar(),

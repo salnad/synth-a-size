@@ -4,9 +4,7 @@
 //! The Delay section. Ports `DelaySection`
 //! (`vital/src/interface/editor_sections/delay_section.cpp`).
 
-use super::{
-    divided_area_buffered, divided_area_unbuffered, place_tempo_controls, title_width, with_left,
-};
+use super::{divided_area_buffered, divided_area_unbuffered, place_tempo_controls, with_left};
 use crate::layout::Rect;
 use crate::scope::Scope;
 use crate::section::place_knobs_in_area;
@@ -37,7 +35,7 @@ pub struct DelayLayout {
 impl DelayLayout {
     /// `style` is the `delay_style` value.
     pub fn new(scope: &Scope, bounds: Rect, style: usize) -> DelayLayout {
-        let title = title_width(scope);
+        let title = crate::section::title_width(scope) as i32;
         let knob_section_height = scope.knob_section_height() as i32;
         let widget_margin = scope.widget_margin() as i32;
         let (width, height) = (bounds.width, bounds.height);
@@ -117,6 +115,7 @@ impl DelayLayout {
 }
 
 use egui::Ui;
+use sas_preset::strings::StringTable;
 
 use super::{paint_section_background, viewer_corners, Effect};
 use crate::controls::slider::{Slider, SliderStyle};
@@ -126,8 +125,7 @@ use crate::paint::PixelPainter;
 use crate::section::{draw_label, draw_text_component_background};
 use crate::sections::{Overlay, Panel};
 
-/// The section's controls (`DelaySection`'s constructor). `delay_style` is
-/// a text slider until the shared `TextSelector` lands.
+/// The section's controls (`DelaySection`'s constructor).
 pub struct DelaySection {
     frequency: Slider,
     tempo: Slider,
@@ -155,7 +153,7 @@ impl Default for DelaySection {
             filter_spread: Slider::new("delay_filter_spread", SliderStyle::Rotary),
             feedback: Slider::new("delay_feedback", SliderStyle::Rotary).bipolar(),
             dry_wet: Slider::new("delay_dry_wet", SliderStyle::Rotary),
-            style: Slider::new("delay_style", SliderStyle::Text),
+            style: Slider::selector("delay_style", Some(StringTable::DelayStyle.values())),
         }
     }
 }

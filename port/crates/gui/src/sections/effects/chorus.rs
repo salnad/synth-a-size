@@ -4,7 +4,7 @@
 //! The Chorus section. Ports `ChorusSection`
 //! (`vital/src/interface/editor_sections/chorus_section.cpp`).
 
-use super::{divided_area_buffered, place_tempo_controls, title_width, with_left, with_top};
+use super::{divided_area_buffered, place_tempo_controls, with_left, with_top};
 use crate::layout::Rect;
 use crate::scope::Scope;
 use crate::section::place_knobs_in_area;
@@ -32,7 +32,7 @@ pub struct ChorusLayout {
 impl ChorusLayout {
     pub fn new(scope: &Scope, bounds: Rect) -> ChorusLayout {
         let widget_margin = scope.widget_margin() as i32;
-        let title = title_width(scope);
+        let title = crate::section::title_width(scope) as i32;
         let section_height = scope.knob_section_height() as i32;
         let (width, height) = (bounds.width, bounds.height);
 

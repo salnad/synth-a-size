@@ -4,9 +4,7 @@
 //! The Flanger section. Ports `FlangerSection`
 //! (`vital/src/interface/editor_sections/flanger_section.cpp`).
 
-use super::{
-    divided_area_buffered, divided_area_unbuffered, place_tempo_controls, title_width, with_left,
-};
+use super::{divided_area_buffered, divided_area_unbuffered, place_tempo_controls, with_left};
 use crate::layout::Rect;
 use crate::scope::Scope;
 use crate::section::place_knobs_in_area;
@@ -45,7 +43,7 @@ pub(crate) fn modulated_filter_parts(
     width: i32,
     height: i32,
 ) -> ModulatedFilterParts {
-    let title = title_width(scope);
+    let title = crate::section::title_width(scope) as i32;
     let widget_margin = scope.widget_margin() as i32;
     let area = with_left(Rect::new(0, 0, width, height), title);
     let knobs_area = divided_area_buffered(area, 3, 2, widget_margin);
@@ -102,7 +100,7 @@ impl FlangerLayout {
             bounds.height - 2 * widget_margin,
         );
         let (dx, dy) = (bounds.x, bounds.y);
-        let title = title_width(scope);
+        let title = crate::section::title_width(scope) as i32;
         FlangerLayout {
             bounds,
             on: Rect::new(dx, dy, title, title),

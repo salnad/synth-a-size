@@ -5,7 +5,7 @@
 //! with its power button. Ports `DragDropEffectOrder` and `DraggableEffect`
 //! (`vital/src/interface/editor_components/drag_drop_effect_order.cpp`).
 
-use super::{title_width, NUM_EFFECTS};
+use super::NUM_EFFECTS;
 use crate::layout::Rect;
 use crate::scope::Scope;
 
@@ -29,7 +29,7 @@ impl OrderLayout {
         let padding = scope.size_ratio() * EFFECT_PADDING;
         let mut tiles = [Rect::default(); NUM_EFFECTS];
         let mut power_buttons = [Rect::default(); NUM_EFFECTS];
-        let title = title_width(scope);
+        let title = crate::section::title_width(scope) as i32;
         for (index, &effect) in order.iter().enumerate() {
             let from_y = effect_y(scope, bounds.height, index);
             let to_y = effect_y(scope, bounds.height, index + 1);

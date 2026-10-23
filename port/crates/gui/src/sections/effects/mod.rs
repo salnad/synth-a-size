@@ -205,11 +205,6 @@ pub fn component_shadow_width(scope: &Scope) -> i32 {
     (scope.size_ratio() * 2.0).round() as i32
 }
 
-/// `SynthSection::getTitleWidth`.
-pub fn title_width(scope: &Scope) -> i32 {
-    scope.value(ValueId::TitleWidth) as i32
-}
-
 /// `Rectangle::withLeft`: the same right edge.
 pub fn with_left(rect: Rect, left: i32) -> Rect {
     Rect::new(left, rect.y, (rect.right() - left).max(0), rect.height)
@@ -273,7 +268,7 @@ use self::order::{effect_index_from_y, effect_y, OrderLayout};
 use self::phaser::PhaserSection;
 use super::{Overlay, Panel};
 use crate::colour::Colour;
-use crate::controls::button::TextButton;
+use crate::controls::button::SynthButton;
 use crate::controls::icon::UpstreamIcon;
 use crate::controls::slider::Slider;
 use crate::fonts::Face;
@@ -281,7 +276,7 @@ use crate::host::Host;
 use crate::layout::FullLayout;
 use crate::paint::{PixelPainter, RectF};
 use crate::primitives::{Quad, QuadBatch, QuadKind};
-use crate::section::{paint_body, paint_border};
+use crate::section::{self, paint_border, Heading};
 use crate::skin::ColorId;
 
 /// The `effect_chain_order` control.
@@ -321,7 +316,7 @@ pub struct EffectsTab {
     drag: Option<Drag>,
     /// `currently_hovered_`: the tile under the pointer.
     hovered: Option<usize>,
-    power_buttons: [TextButton; NUM_EFFECTS],
+    power_buttons: [SynthButton; NUM_EFFECTS],
     chorus: ChorusSection,
     delay: DelaySection,
     distortion: DistortionSection,
@@ -335,7 +330,7 @@ impl Default for EffectsTab {
             scroll: 0.0,
             drag: None,
             hovered: None,
-            power_buttons: Effect::ALL.map(|effect| TextButton::new(effect.enable_control(), "")),
+            power_buttons: Effect::ALL.map(|effect| SynthButton::power(effect.enable_control())),
             chorus: ChorusSection::default(),
             delay: DelaySection::default(),
             distortion: DistortionSection::default(),
@@ -544,7 +539,13 @@ impl EffectsTab {
         let clip = pixels.rect(fx.viewport.into());
         let clipped = pixels.painter().with_clip_rect(clip);
         let pixels = PixelPainter::new(&clipped, pixels.area(), pixels.pixels_per_point());
-        let mut child = ui.new_child(UiBuilder::new().max_rect(ui.max_rect()));
+        // Its own id, so the sections' power buttons keep state apart from
+        // the order list's buttons for the same controls.
+        let mut child = ui.new_child(
+            UiBuilder::new()
+                .id_salt("effect sections")
+                .max_rect(ui.max_rect()),
+        );
         child.set_clip_rect(clip);
         let scroll = self.scroll.round() as i32;
         for effect in Effect::ALL {
@@ -604,6 +605,13 @@ impl EffectsTab {
                 // body until then.
                 _ => paint_section_background(&pixels, &scope, effect, bounds, &[], &[]),
             }
+            // SynthSection::setActivator: the power button tops the heading.
+            let mut panel = Panel::new(&mut child, host, &pixels, scope, overlay, fx.viewport);
+            panel.button(
+                &self.power_buttons[index],
+                section::power_button_bounds(&scope, bounds),
+            );
+            panel.finish();
         }
     }
 }
@@ -776,7 +784,8 @@ pub fn paint_section_background(
     knobs: &[(&Slider, Rect)],
     viewers: &[Rect],
 ) {
-    paint_effect_container(pixels, scope, effect, bounds);
+    section::paint_container(pixels, scope, bounds, Heading::Sideways);
+    section::paint_sideways_heading_text(pixels, scope, effect.title(), bounds, true);
     for &(slider, rect) in knobs {
         slider.paint_shadow(pixels, scope, rect);
     }
@@ -806,43 +815,4 @@ pub fn frequency_bounds(frequency: Rect, sync: Rect) -> Rect {
         sync.right() - frequency.x,
         frequency.height,
     )
-}
-
-/// `SynthSection::paintContainer` and `paintHeadingText` (sideways, beside
-/// the power button) for an effect section at `bounds`.
-pub fn paint_effect_container(pixels: &PixelPainter, scope: &Scope, effect: Effect, bounds: Rect) {
-    paint_body(pixels, scope, bounds);
-    let title = title_width(scope);
-    let rounding = scope.value(ValueId::BodyRounding);
-    {
-        let strip = pixels.rect(Rect::new(bounds.x, bounds.y, title, bounds.height).into());
-        let clipped = pixels
-            .painter()
-            .with_clip_rect(strip.intersect(pixels.painter().clip_rect()));
-        let heading = PixelPainter::new(&clipped, pixels.area(), pixels.pixels_per_point());
-        heading.fill_rounded_rect(
-            Rect::new(bounds.x, bounds.y, 2 * title, bounds.height),
-            rounding,
-            scope.color(ColorId::BodyHeading),
-        );
-    }
-    // paintSidewaysHeadingText: rotated a quarter turn anticlockwise, in the
-    // strip below the power button.
-    let height = bounds.height as f32 - title as f32 / 2.0;
-    let font = Face::Light.at(pixels.points(scope.size_ratio() * 14.0));
-    let galley = pixels.painter().layout_no_wrap(
-        effect.title().to_string(),
-        font,
-        scope.color(ColorId::HeadingText).to_egui(),
-    );
-    let centre = pixels.pos(
-        bounds.x as f32 + title as f32 / 2.0,
-        bounds.bottom() as f32 - height / 2.0,
-    );
-    let size = galley.size();
-    let pos = egui::pos2(centre.x - size.y / 2.0, centre.y + size.x / 2.0);
-    pixels.painter().add(
-        egui::epaint::TextShape::new(pos, galley, scope.color(ColorId::HeadingText).to_egui())
-            .with_angle(-std::f32::consts::FRAC_PI_2),
-    );
 }
