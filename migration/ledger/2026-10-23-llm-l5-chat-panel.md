@@ -160,7 +160,12 @@ still pending.
 reach the Keychain, undoing #99's hermetic tests. Fixed as asked: `new` and
 `in_memory()` use the in-memory chat, and only `Default` uses the user's
 files. This follows #99's constructor pattern (`new` / `in_memory` /
-`Default`), so the two PRs conflict only mechanically in `lib.rs`. Also
+`Default`), so the two PRs conflict only mechanically in `lib.rs`. The 16
+test sites that built the plugin through `Default` (`tests/state.rs`, 15;
+`tests/params.rs`, 1) use `SynthASize::in_memory()`, the same conversion #99
+makes. Whichever of #99 and #101 merges second takes the union:
+`new`/`in_memory()` get in-memory MIDI learn and `PluginChat::in_memory`,
+and `Default` gets config-file MIDI learn and `PluginChat::new`. Also
 taken (non-blocking): `provider()` checks `enabled` before reading the key,
 so an off chat never touches the Keychain.
 
