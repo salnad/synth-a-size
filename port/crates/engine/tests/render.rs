@@ -23,11 +23,11 @@ const CASES: [&str; 16] = [
     "render/init_saw__single_note",
     "render/init_saw__chords",
     "render/init_saw__single_note_48k_b128",
-    "render/unison_pad_fx__chords",
     "render/analog_filter_lfo__chords",
     "render/analog_filter_lfo__velocity_96k_b512",
-    "render/mono_legato_glide__legato",
+    "render/unison_pad_fx__chords",
     "render/line_wavetable_fold__velocity",
+    "render/mono_legato_glide__legato",
     "render/velocity_filter_poly__overlap",
     "render/osc_stack_serial__arpeggio",
     "render/osc_formant_comb__chords",
@@ -101,6 +101,19 @@ fn load_tuning(synth: &mut Synth, case: &RenderCase) {
             .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     }
     synth.set_tuning(&tuning);
+}
+
+/// `CASES` is every render case without an edit script, in `cases.json`
+/// order, so a new render case cannot skip port parity unnoticed.
+#[test]
+fn every_render_case_without_edits_is_listed() {
+    let expected: Vec<String> = sas_parity::cases::load_render_cases()
+        .unwrap()
+        .into_iter()
+        .filter(|case| case.json.get("edits").is_none())
+        .map(|case| case.id)
+        .collect();
+    assert_eq!(CASES.to_vec(), expected);
 }
 
 #[test]

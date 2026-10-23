@@ -23,9 +23,10 @@ script, and the port plays the same script through the plugin's edit bus.
   - `lfo_shape`, `wavetable` and `sample` are `LoadSave::loadLfos`,
     `loadWavetables` and `loadSample` for one target, which load onto the
     engine's existing objects.
-  - The metadata records the script, `edits_applied` and
-    `edits_after_end`. Renders without `--edits` are unchanged, metadata
-    included.
+  - The metadata records the script and `edits_applied`. An edit timed
+    after the end of the render fails it, so a case can't silently lose
+    edits (Parity Reviewer). Renders without `--edits` are unchanged,
+    metadata included.
 - Render cases take an optional `"edits"` corpus path (`.json`).
   `run_corpus.py` passes it to `ref-render`, and `sas-parity` validates it
   (`RenderCase::edits_path`). There's a unit test on each side, with the
@@ -45,6 +46,11 @@ script, and the port plays the same script through the plugin's edit bus.
   These are 17 edits.
 - New cases: `render/init_saw__live_edits` (44.1 kHz, block 64) and
   `render/init_saw__live_edits_48k_b512`, where edits fall inside blocks.
+- Each case list asserts it equals the render cases of `cases.json` (via
+  `sas_parity::cases::load_render_cases`) filtered on `edits`, so a new
+  render case can't skip port parity unnoticed (Parity Reviewer). The
+  engine's `tests/render.rs` lists the cases without a script, and the
+  plugin's `tests/live_edit_parity.rs` the cases with one.
 
 **Port test** (`plugin/tests/live_edit_parity.rs`). The script plays through
 `SynthPlugin`:

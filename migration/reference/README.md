@@ -140,8 +140,9 @@ Times must be in order. Each edit makes the same calls as upstream:
 | `wavetable` | `oscillator` (0-based), `wavetable` (`WavetableCreator` JSON) | `LoadSave::loadWavetables` for one oscillator |
 | `sample` | `data` (preset `sample` JSON) | `LoadSave::loadSample` |
 
-The metadata records the script, `edits_applied` and `edits_after_end`
-(edits timed past the end of the render, which are not applied).
+The metadata records the script and `edits_applied`. An edit timed past
+the end of the render (one no block would apply) fails the render, so a
+case can't silently lose edits.
 
 The block size changes the output. On `unison_pad_fx` with the chord
 MIDI, block 64 and block 128 renders differ by a residual of about

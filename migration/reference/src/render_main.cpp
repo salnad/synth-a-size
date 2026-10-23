@@ -35,7 +35,8 @@ Options:
   --keyboard-map PATH  then load a .kbm keyboard map on top of it
   --edits PATH         a JSON edit script: live edits applied while rendering,
                        each at the start of the first host block that starts
-                       at or after its time (see README.md)
+                       at or after its time (see README.md); an edit after
+                       the end of the render is an error
   --seed N             set the engine's global RandomGenerator seed counter
                        before the synth is constructed (default: leave the
                        upstream counter untouched; output is deterministic
@@ -230,6 +231,8 @@ int main(int argc, const char* argv[]) {
     }
   }
   dropped_events = events.size() - event_index;
+  if (edit_index < edits.size())
+    return fail(std::to_string(edits.size() - edit_index) + " edits fall after the end of the render");
 
   size_t non_finite = 0;
   for (float& sample : interleaved) {
@@ -260,7 +263,6 @@ int main(int argc, const char* argv[]) {
   if (args.has("edits")) {
     meta["edits"] = args.get("edits");
     meta["edits_applied"] = edit_index;
-    meta["edits_after_end"] = edits.size() - edit_index;
   }
   meta["seed"] = args.has("seed") ? harness::json(args.getInt("seed", 0)) : harness::json("upstream-default");
   meta["warmup_samples"] = warmup_samples;

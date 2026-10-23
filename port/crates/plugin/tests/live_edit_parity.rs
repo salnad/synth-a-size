@@ -219,6 +219,19 @@ fn render(case: &RenderCase, edits: bool) -> Vec<f32> {
     out
 }
 
+/// `CASES` is every render case with an edit script, in `cases.json`
+/// order, so a new live-edit case cannot skip port parity unnoticed.
+#[test]
+fn every_render_case_with_edits_is_listed() {
+    let expected: Vec<String> = sas_parity::cases::load_render_cases()
+        .unwrap()
+        .into_iter()
+        .filter(|case| case.json.get("edits").is_some())
+        .map(|case| case.id)
+        .collect();
+    assert_eq!(CASES.to_vec(), expected);
+}
+
 #[test]
 fn live_edits_match_reference() {
     for id in CASES {
