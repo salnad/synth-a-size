@@ -5,9 +5,11 @@ Commands:
   build    Configure and build migration/reference/gui (ref-gui).
   layout   Write migration/corpus/gui/layout/<W>x<H>.json: the bounds of the
            components listed in migration/corpus/gui/layout_paths.txt, from
-           upstream's own layout code at each size in SIZES. sas-gui's layout
-           tests compare against these. --check fails if a committed file
-           differs instead of writing it.
+           upstream's own layout code at each size in SIZES. Paths after an
+           "@preset <file>" line are laid out with that preset loaded (from
+           the repository root; authored content only), the rest with the
+           init preset. sas-gui's layout tests compare against these. --check
+           fails if a committed file differs instead of writing it.
   frames   Render every view in migration/corpus/gui/views.json to
            OUT/<name>.png. These show upstream's branding, so they are CI
            artifacts only and are never committed.
@@ -68,25 +70,36 @@ def run_ref_gui(args):
 
 
 def layout_paths():
+    """The checked paths in file order, each with the preset it is laid out
+    with (None for the init preset)."""
     paths = []
+    preset = None
     for line in LAYOUT_PATHS.read_text().splitlines():
         line = line.strip()
-        if line and not line.startswith("#"):
-            paths.append(line)
+        if line.startswith("@preset "):
+            preset = line[len("@preset "):].strip()
+            if not (REPO / preset).is_file():
+                sys.exit(f"gui_reference.py: {LAYOUT_PATHS.name}: no preset {preset}")
+        elif line and not line.startswith("#"):
+            paths.append((line, preset))
     return paths
 
 
-def layout_for(width, height, paths):
+def layout_for(width, height, paths, preset=None):
     with tempfile.TemporaryDirectory() as tmp:
         dump = Path(tmp) / "layout.jsonl"
-        run_ref_gui(["--layout", str(dump), "--width", str(width), "--height", str(height)])
+        args = ["--layout", str(dump), "--width", str(width), "--height", str(height)]
+        if preset:
+            args += ["--preset", str(REPO / preset)]
+        run_ref_gui(args)
         entries = {}
         for line in dump.read_text().splitlines():
             entry = json.loads(line)
             entries.setdefault(entry["path"], entry)
     missing = [path for path in paths if path not in entries]
     if missing:
-        sys.exit(f"gui_reference.py: upstream has no component {missing} at {width}x{height}")
+        with_preset = f" with {preset}" if preset else ""
+        sys.exit(f"gui_reference.py: upstream has no component {missing} at {width}x{height}{with_preset}")
     return {path: {"bounds": entries[path]["bounds"], "visible": entries[path]["visible"]}
             for path in paths}
 
@@ -95,8 +108,13 @@ def layout(check):
     paths = layout_paths()
     LAYOUT_DIR.mkdir(parents=True, exist_ok=True)
     stale = []
+    presets = list(dict.fromkeys(preset for _, preset in paths))
     for width, height in SIZES:
-        components = layout_for(width, height, paths)
+        laid_out = {}
+        for preset in presets:
+            group = [path for path, path_preset in paths if path_preset == preset]
+            laid_out.update(layout_for(width, height, group, preset))
+        components = {path: laid_out[path] for path, _ in paths}
         lines = [f"  {json.dumps(path)}: {json.dumps(entry)}" for path, entry in components.items()]
         text = (f'{{\n "width": {width},\n "height": {height},\n "components": {{\n'
                 + ",\n".join(lines) + "\n }\n}\n")

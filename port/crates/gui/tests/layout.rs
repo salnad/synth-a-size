@@ -21,7 +21,7 @@ fn checked_paths() -> Vec<String> {
         .unwrap()
         .lines()
         .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .filter(|line| !line.is_empty() && !line.starts_with('#') && !line.starts_with('@'))
         .map(str::to_string)
         .collect()
 }

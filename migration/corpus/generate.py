@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Generate the synth-a-size golden test corpus (presets + MIDI files).
 
-Everything in migration/corpus/presets and migration/corpus/midi is produced by
-this script from the definitions below; nothing is copied from any factory or
-third-party preset bank. Re-run after editing and commit the outputs:
+Everything in migration/corpus/presets, migration/corpus/midi and
+migration/corpus/gui/presets is produced by this script from the definitions
+below; nothing is copied from any factory or third-party preset bank. Re-run
+after editing and commit the outputs:
 
     python3 migration/corpus/generate.py
 
@@ -27,6 +28,7 @@ PRESET_TEST_DIR = os.path.join(HERE, "preset_tests")
 BENCH_DIR = os.path.join(HERE, "bench")
 TUNING_DIR = os.path.join(HERE, "tunings")
 EDIT_DIR = os.path.join(HERE, "edits")
+GUI_PRESET_DIR = os.path.join(HERE, "gui", "presets")
 
 # Matches ProjectInfo::versionString of the upstream plugin build the reference
 # harness compiles (see migration/reference/juce_config/JuceHeader.h).
@@ -1288,6 +1290,23 @@ EDITS = {
 
 
 # --------------------------------------------------------------------------
+# GUI layout presets
+# --------------------------------------------------------------------------
+
+# Presets ref-gui lays the interface out with for sas-gui's layout fixtures
+# (migration/corpus/gui/layout_paths.txt, @preset). Upstream lays out only
+# what a preset shows, such as the enabled effects.
+GUI_PRESETS = {
+    "all_effects": preset(
+        "all effects",
+        "Every effect on, in the default order, so the Effects tab lays out each effect section.",
+        {"%s_on" % effect: 1.0 for effect in (
+            "chorus", "compressor", "delay", "distortion", "eq", "filter_fx", "flanger", "phaser", "reverb")},
+    ),
+}
+
+
+# --------------------------------------------------------------------------
 
 def outputs():
     files = {}
@@ -1304,6 +1323,8 @@ def outputs():
         files[path] = (json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) + "\n").encode()
     for name, data in BENCH_PRESETS.items():
         files[os.path.join(BENCH_DIR, "presets", name + ".vital")] = (json.dumps(data, indent=2, sort_keys=True) + "\n").encode()
+    for name, data in GUI_PRESETS.items():
+        files[os.path.join(GUI_PRESET_DIR, name + ".vital")] = (json.dumps(data, indent=2, sort_keys=True) + "\n").encode()
     for name, events in BENCH_MIDI.items():
         files[os.path.join(BENCH_DIR, "midi", name + ".mid")] = midi_file(events)
     return files
