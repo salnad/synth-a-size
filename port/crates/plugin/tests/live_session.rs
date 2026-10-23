@@ -481,3 +481,75 @@ fn an_unreadable_patch_blocks_edits_instead_of_saving_a_stale_undo_step() {
         output.content
     );
 }
+
+#[test]
+fn naming_the_patch_changes_the_save_info_without_a_reload() {
+    let rig = rig();
+    let mut controller = rig.controller();
+    let generation = rig.params.edit_handle().generation();
+    ok(controller.call(
+        "set_params",
+        &json!({"changes": [{"name": "filter_1_on", "value": "On"}]}),
+    ));
+    ok(controller.call(
+        "set_preset_info",
+        &json!({"name": "Glass Pad", "author": "Chat", "macro_names": ["Bloom"]}),
+    ));
+    let state = rig.params.preset_state();
+    assert_eq!(state.info.preset_name, "Glass Pad");
+    assert_eq!(state.info.author, "Chat");
+    assert_eq!(state.info.macros[0], "Bloom");
+    // No reload: the generation is unchanged, so the undo history and the
+    // outside-change tracking stay.
+    assert_eq!(controller.session().writer().reloads.get(), 0);
+    assert_eq!(rig.params.edit_handle().generation(), generation);
+    assert!(!controller.session_mut().take_replaced());
+    // The host's saved state carries the new name.
+    let saved = serde_json::to_string(&rig.params.capture_state().fields).unwrap();
+    assert!(saved.contains("Glass Pad"), "{saved}");
+
+    // Undoing the turn restores the old name and the control, still without
+    // a reload.
+    ok(controller.call("undo", &json!({})));
+    let state = rig.params.preset_state();
+    assert_eq!(state.info.preset_name, "");
+    assert_eq!(rig.value("filter_1_on"), 0.0);
+    assert_eq!(controller.session().writer().reloads.get(), 0);
+}
+
+#[test]
+fn an_undo_whose_batch_is_refused_leaves_the_name_and_shapes_alone() {
+    let mut rig = rig();
+    let mut controller = rig.controller();
+    // One turn: two LFO shapes and a name.
+    ok(controller.call("set_lfo_shape", &json!({"lfo": 1, "shape": "saw_down"})));
+    ok(controller.call("set_lfo_shape", &json!({"lfo": 2, "shape": "square"})));
+    ok(controller.call("set_preset_info", &json!({"name": "Shaped"})));
+    rig.block();
+    let shaped = rig.params.preset_state();
+
+    // Fill the queue with no-op curve edits (slot 1's own mapping) until a
+    // single edit is refused: fewer than the undo batch's two entries remain.
+    let edits = rig.params.edit_handle().clone();
+    let mapping = shaped.modulations()[0].line_mapping.clone();
+    while edits.set_line_mapping(0, mapping.clone()).is_ok() {}
+
+    let output = controller.call("undo", &json!({}));
+    assert!(output.is_error, "{}", output.content);
+    let state = rig.params.preset_state();
+    assert_eq!(
+        state.info.preset_name, "Shaped",
+        "the name did not move alone"
+    );
+    assert_eq!(state.lfos[0].name(), shaped.lfos[0].name());
+    assert_eq!(state.lfos[1].name(), shaped.lfos[1].name());
+    assert_eq!(controller.session().writer().reloads.get(), 0);
+
+    // With room again, the same undo restores both together.
+    rig.block();
+    ok(controller.call("undo", &json!({})));
+    let state = rig.params.preset_state();
+    assert_eq!(state.info.preset_name, "");
+    assert_ne!(state.lfos[0].name(), shaped.lfos[0].name());
+    assert_eq!(controller.session().writer().reloads.get(), 0);
+}
