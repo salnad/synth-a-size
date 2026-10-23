@@ -22,7 +22,8 @@ use sas_gui::chat::{ChatLine, CompareSide, LineKind};
 use sas_gui::{ChatHost, ChatSettingsView, ChatView, FocusMode};
 use sas_llm_agent::settings::{default_dir, SETTINGS_FILE};
 use sas_llm_agent::{
-    Agent, AgentConfig, AgentEvent, ChatSettings, KeyboardFocus, ProviderConfig, Transport,
+    Agent, AgentConfig, AgentError, AgentEvent, ChatSettings, KeyboardFocus, ProviderConfig,
+    StopCheck, Transport,
 };
 use sas_llm_control::{Controller, Policy, PresetLibrary, Side};
 use sas_llm_listen::PreviewEngine;
@@ -43,16 +44,17 @@ const TOOL_TIMEOUT: Duration = Duration::from_secs(10);
 const WORKER_EXIT_WAIT: Duration = Duration::from_secs(2);
 
 /// Builds the transport for a provider: real HTTPS in the macOS plugin.
+/// Builds the transport for a provider, given what stops its requests.
 pub type TransportFactory =
-    Box<dyn Fn(&ProviderConfig) -> Result<Box<dyn Transport>, String> + Send + Sync>;
+    Box<dyn Fn(&ProviderConfig, StopCheck) -> Result<Box<dyn Transport>, String> + Send + Sync>;
 
 /// The shipped transport: HTTPS through the system's TLS on macOS; other
 /// builds have no network code.
 pub fn system_transport() -> TransportFactory {
-    Box::new(|_config| {
+    Box::new(|_config, _stop| {
         #[cfg(target_os = "macos")]
         {
-            sas_llm_agent::HttpTransport::new()
+            sas_llm_agent::HttpTransport::stoppable(_stop)
                 .map(|transport| Box::new(transport) as Box<dyn Transport>)
                 .map_err(|error| error.to_string())
         }
@@ -203,7 +205,7 @@ impl PluginChat {
             params,
             None,
             Box::new(NoKeys),
-            Box::new(|_config| Err("this plugin has no network access".to_string())),
+            Box::new(|_config, _stop| Err("this plugin has no network access".to_string())),
         )
     }
 
@@ -265,13 +267,15 @@ impl PluginChat {
         let mut worker = lock(&self.worker);
         if worker.is_none() {
             let provider = self.provider()?;
-            let transport = (self.transports)(&provider)?;
+            let flags = StopFlags::default();
+            let transport = (self.transports)(&provider, flags.check())?;
             let library = lock(&self.settings).preset_folder().map(PresetLibrary::new);
             *worker = Some(spawn_worker(
                 provider,
                 transport,
                 library,
                 self.shared.clone(),
+                flags,
             ));
         }
         Ok(worker)
@@ -303,28 +307,44 @@ impl PluginChat {
     }
 }
 
+/// What stops a worker's model requests and previews: its shutdown, or the
+/// current message's cancel flag (the user's Stop).
+#[derive(Clone, Default)]
+struct StopFlags {
+    shutdown: Arc<AtomicBool>,
+    /// The cancel flag of the last message sent.
+    cancel: Arc<Mutex<Option<Arc<AtomicBool>>>>,
+}
+
+impl StopFlags {
+    fn check(&self) -> StopCheck {
+        let flags = self.clone();
+        Arc::new(move || {
+            flags.shutdown.load(Ordering::Relaxed)
+                || lock(&flags.cancel)
+                    .as_ref()
+                    .is_some_and(|cancel| cancel.load(Ordering::Relaxed))
+        })
+    }
+}
+
 fn spawn_worker(
     provider: ProviderConfig,
     transport: Box<dyn Transport>,
     library: Option<PresetLibrary>,
     shared: Arc<Shared>,
+    flags: StopFlags,
 ) -> Worker {
     let (commands, receiver) = mpsc::channel::<Command>();
     let (exited_sender, exited) = mpsc::channel::<()>();
     let bridge = ChatBridge::new();
     let waker = shared.clone();
     bridge.set_waker(move || waker.wake());
-    let shutdown = Arc::new(AtomicBool::new(false));
-    let cancel: Arc<Mutex<Option<Arc<AtomicBool>>>> = Arc::default();
-    // The preview engine (the `audition` tool) renders on its own thread and
-    // stops on the user's Stop or the worker's shutdown.
-    let (preview_shutdown, preview_cancel) = (shutdown.clone(), cancel.clone());
-    let preview = PreviewEngine::new().stopped_by(move || {
-        preview_shutdown.load(Ordering::Relaxed)
-            || lock(&preview_cancel)
-                .as_ref()
-                .is_some_and(|cancel| cancel.load(Ordering::Relaxed))
-    });
+    let StopFlags { shutdown, cancel } = flags.clone();
+    // The preview engine (the `audition` tool) renders on its own thread and,
+    // like the transport, stops on the user's Stop or the worker's shutdown.
+    let stop = flags.check();
+    let preview = PreviewEngine::new().stopped_by(move || stop());
     let mut controller = Controller::new(bridge.remote(TOOL_TIMEOUT), Policy::default())
         .with_auditioner(Box::new(preview));
     if let Some(library) = library {
@@ -409,6 +429,9 @@ fn run_command(
                     if let Some(stopped) = report.stopped {
                         shared.push_from(generation, LineKind::Note, format!("({stopped})"));
                     }
+                }
+                Err(AgentError::Stopped) => {
+                    shared.push_from(generation, LineKind::Note, "(stopped by the user)")
                 }
                 Err(error) => shared.push_from(generation, LineKind::Error, error.to_string()),
             }

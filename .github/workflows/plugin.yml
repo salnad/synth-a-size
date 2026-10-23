@@ -52,6 +52,11 @@ jobs:
           for symbol in GetPluginFactory bundleEntry bundleExit; do
             nm -gU "$binary" | grep -q " _$symbol\$" || { echo "missing $symbol"; exit 1; }
           done
+      # The only job that compiles the chat's network code (sas-llm-agent's
+      # `http` feature), so its transport test runs here: a stoppable HTTPS
+      # request against a local listener that never answers. No real API.
+      - name: Chat transport stops a pending HTTPS request
+        run: cargo test --locked --manifest-path port/Cargo.toml -p sas-llm-agent --features http --test stop
       - name: Cache the VST3 tools
         id: vst3-tools-cache
         uses: actions/cache@v4

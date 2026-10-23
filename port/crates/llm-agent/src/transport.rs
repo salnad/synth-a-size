@@ -202,18 +202,50 @@ impl<T: Transport> Transport for RecordingTransport<T> {
 #[cfg(feature = "http")]
 pub struct HttpTransport {
     agent: ureq::Agent,
+    stop: Option<crate::stop::StopCheck>,
 }
 
 #[cfg(feature = "http")]
 impl HttpTransport {
+    /// A transport whose requests run until the provider answers or the
+    /// 120 s limit.
     pub fn new() -> Result<HttpTransport, AgentError> {
         let tls = native_tls::TlsConnector::new()
             .map_err(|e| AgentError::Transport(format!("TLS: {e}")))?;
         let agent = ureq::AgentBuilder::new()
             .tls_connector(std::sync::Arc::new(tls))
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout_connect(std::time::Duration::from_secs(10))
+            .timeout(crate::stop::IDLE)
             .build();
-        Ok(HttpTransport { agent })
+        Ok(HttpTransport { agent, stop: None })
+    }
+
+    /// A transport whose HTTPS requests end within [`crate::stop::POLL`] of
+    /// `stop` returning true while they wait for the provider, however long
+    /// it takes ([`crate::stop`]). Not stoppable: resolving the host name
+    /// (as long as the system's resolver takes), connecting (at most 10 s),
+    /// sending the request (at most 10 s), and plain-HTTP requests (a local
+    /// server), which run to the provider's answer or the 120 s idle limit.
+    pub fn stoppable(stop: crate::stop::StopCheck) -> Result<HttpTransport, AgentError> {
+        let tls = native_tls::TlsConnector::new()
+            .map_err(|e| AgentError::Transport(format!("TLS: {e}")))?;
+        let agent = ureq::AgentBuilder::new()
+            .tls_connector(std::sync::Arc::new(crate::stop::tls::StoppableTls {
+                inner: std::sync::Arc::new(tls),
+                stop: stop.clone(),
+            }))
+            .timeout_connect(std::time::Duration::from_secs(10))
+            .timeout_write(std::time::Duration::from_secs(10))
+            .timeout_read(crate::stop::IDLE)
+            .build();
+        Ok(HttpTransport {
+            agent,
+            stop: Some(stop),
+        })
+    }
+
+    fn stopped(&self) -> bool {
+        self.stop.as_ref().is_some_and(|stop| stop())
     }
 }
 
@@ -226,15 +258,20 @@ impl Transport for HttpTransport {
         }
         match call.send_string(&request.body.to_string()) {
             Ok(response) => {
-                let text = response
-                    .into_string()
-                    .map_err(|e| AgentError::Transport(e.to_string()))?;
+                let text = response.into_string().map_err(|e| {
+                    if self.stopped() {
+                        AgentError::Stopped
+                    } else {
+                        AgentError::Transport(e.to_string())
+                    }
+                })?;
                 serde_json::from_str(&text).map_err(|e| AgentError::Provider(e.to_string()))
             }
             Err(ureq::Error::Status(status, response)) => {
                 let body = response.into_string().unwrap_or_default();
                 Err(AgentError::Http(status, body))
             }
+            Err(_) if self.stopped() => Err(AgentError::Stopped),
             Err(error) => Err(AgentError::Transport(error.to_string())),
         }
     }

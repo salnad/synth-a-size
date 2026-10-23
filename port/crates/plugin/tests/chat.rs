@@ -81,7 +81,7 @@ fn settings_path(name: &str, settings: Option<ChatSettings>) -> PathBuf {
 
 fn scripted(responses: Vec<Value>) -> TransportFactory {
     let responses = Mutex::new(Some(responses));
-    Box::new(move |_config| {
+    Box::new(move |_config, _stop| {
         let responses = responses.lock().unwrap().take().unwrap_or_default();
         Ok(Box::new(ScriptedTransport::new(responses)) as Box<dyn Transport>)
     })
@@ -436,4 +436,90 @@ fn the_model_can_listen_without_touching_the_synth() {
     // Listening is not an edit: nothing to undo, nothing changed.
     assert!(!rig.chat.view().can_undo);
     assert_eq!(rig.value("filter_1_cutoff"), 60.0);
+}
+
+/// A provider that never answers: the request waits until it is stopped,
+/// as `HttpTransport::stoppable` does.
+struct Hanging(sas_llm_agent::StopCheck);
+
+impl Transport for Hanging {
+    fn send(
+        &mut self,
+        _request: &sas_llm_agent::transport::HttpRequest,
+    ) -> Result<Value, sas_llm_agent::AgentError> {
+        while !(self.0)() {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        Err(sas_llm_agent::AgentError::Stopped)
+    }
+}
+
+fn hanging_rig(name: &str) -> Rig {
+    let (edits, _consumer) = EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+    let params = Arc::new(SynthParams::new(edits));
+    let key_reads = Arc::new(AtomicUsize::new(0));
+    let keys = MemoryKeys(Mutex::new(Some("key".into())), key_reads.clone());
+    let chat = PluginChat::with(
+        params.clone(),
+        Some(settings_path(name, Some(on()))),
+        Box::new(keys),
+        Box::new(|_config, stop| Ok(Box::new(Hanging(stop)) as Box<dyn Transport>)),
+    );
+    chat.attach(
+        GuiContext::new(Arc::new(TestGui {
+            params: params.clone(),
+        })),
+        Arc::new(|| {}),
+    );
+    Rig {
+        params,
+        chat,
+        key_reads,
+    }
+}
+
+/// Runs editor frames until the worker is waiting on the provider.
+fn wait_for_the_request(rig: &Rig) {
+    for _ in 0..20 {
+        rig.chat.run_frame();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(rig.chat.view().busy);
+}
+
+#[test]
+fn stop_ends_a_request_the_provider_never_answers() {
+    let rig = hanging_rig("hang-stop");
+    rig.chat.send("hello".into());
+    wait_for_the_request(&rig);
+    let started = Instant::now();
+    rig.chat.stop();
+    rig.settle();
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "{:?}",
+        started.elapsed()
+    );
+    let lines = rig.chat.view().lines;
+    assert_eq!(
+        lines.last().unwrap().text,
+        "(stopped by the user)",
+        "{lines:?}"
+    );
+    assert_eq!(lines.last().unwrap().kind, LineKind::Note);
+}
+
+#[test]
+fn dropping_the_plugin_ends_a_request_the_provider_never_answers() {
+    let rig = hanging_rig("hang-drop");
+    rig.chat.send("hello".into());
+    wait_for_the_request(&rig);
+    let started = Instant::now();
+    drop(rig);
+    // Drop returns early only when the thread has ended.
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "{:?}",
+        started.elapsed()
+    );
 }
