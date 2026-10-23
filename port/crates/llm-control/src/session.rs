@@ -60,8 +60,10 @@ pub enum Applied {
 
 /// A synth state the tools can read and change.
 pub trait SynthSession {
-    /// The whole current state.
-    fn snapshot(&self) -> PresetState;
+    /// The whole current state. Fails if it cannot be read (a remote
+    /// session whose editor does not answer); undo steps and batch
+    /// rollbacks are never built from a stale copy.
+    fn snapshot(&self) -> Result<PresetState, Error>;
 
     /// The current value of control `name`.
     fn control(&self, name: &str) -> Option<f32>;
@@ -155,8 +157,8 @@ pub fn created_slot_values(
 }
 
 impl SynthSession for OfflineSession {
-    fn snapshot(&self) -> PresetState {
-        self.state.clone()
+    fn snapshot(&self) -> Result<PresetState, Error> {
+        Ok(self.state.clone())
     }
 
     fn control(&self, name: &str) -> Option<f32> {

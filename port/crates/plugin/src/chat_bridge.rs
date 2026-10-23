@@ -8,21 +8,39 @@
 //! works on the GUI thread. [`RemoteSession`] is the worker's
 //! `SynthSession`: each call is queued on the [`ChatBridge`] and run by the
 //! editor's frame loop ([`ChatBridge::run_pending`]), and the worker waits
-//! for the result. A call not run within its deadline (the editor closed)
-//! fails, and is dropped rather than run late.
+//! for the result.
+//!
+//! Each call has one atomic state: queued, running, cancelled or done. The
+//! GUI thread runs a call only if it moves it from queued to running; a
+//! worker whose wait times out cancels it only if it is still queued. So a
+//! call either runs and its result reaches the worker (which waits for a
+//! call already running), or never runs and the worker gets an error. An
+//! edit can't be applied while the worker reports it failed.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use sas_llm_control::{Applied, Edit, Error, OutsideChange, SynthSession};
 use sas_preset::PresetState;
 
+const QUEUED: u8 = 0;
+const RUNNING: u8 = 1;
+const CANCELLED: u8 = 2;
+const DONE: u8 = 3;
+
+/// Retries of an edit the synth refused as busy (a full edit queue), and the
+/// wait between them, on the worker. The queue only fills while the audio
+/// thread is not processing.
+const BUSY_RETRIES: usize = 50;
+const BUSY_RETRY_DELAY: Duration = Duration::from_millis(10);
+
 type Run = Box<dyn FnOnce(&mut dyn SynthSession) + Send>;
 
 struct Job {
-    deadline: Instant,
+    state: Arc<AtomicU8>,
     run: Run,
 }
 
@@ -46,7 +64,7 @@ impl ChatBridge {
     }
 
     /// Runs the queued calls on `session` (the GUI thread, once per frame).
-    /// Calls past their deadline are dropped. Returns the calls run.
+    /// Calls their worker gave up on are dropped. Returns the calls run.
     pub fn run_pending(&self, session: &mut dyn SynthSession) -> usize {
         let jobs: Vec<Job> = self
             .jobs
@@ -54,23 +72,27 @@ impl ChatBridge {
             .unwrap_or_else(|p| p.into_inner())
             .drain(..)
             .collect();
-        let now = Instant::now();
         let mut ran = 0;
         for job in jobs {
-            if job.deadline >= now {
+            if job
+                .state
+                .compare_exchange(QUEUED, RUNNING, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
                 (job.run)(session);
+                job.state.store(DONE, Ordering::Release);
                 ran += 1;
             }
         }
         ran
     }
 
-    /// The worker's session, whose calls fail after `timeout`.
+    /// The worker's session, whose calls fail if the GUI thread has not
+    /// started them within `timeout`.
     pub fn remote(self: &Arc<Self>, timeout: Duration) -> RemoteSession {
         RemoteSession {
             bridge: self.clone(),
             timeout,
-            last_snapshot: Mutex::new(None),
         }
     }
 
@@ -80,12 +102,12 @@ impl ChatBridge {
         run: impl FnOnce(&mut dyn SynthSession) -> R + Send + 'static,
     ) -> Result<R, Error> {
         let (sender, receiver) = mpsc::sync_channel(1);
-        let deadline = Instant::now() + timeout;
+        let state = Arc::new(AtomicU8::new(QUEUED));
         self.jobs
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .push_back(Job {
-                deadline,
+                state: state.clone(),
                 run: Box::new(move |session| {
                     let _ = sender.send(run(session));
                 }),
@@ -93,9 +115,43 @@ impl ChatBridge {
         if let Some(wake) = &*self.waker.lock().unwrap_or_else(|p| p.into_inner()) {
             wake();
         }
-        receiver.recv_timeout(timeout).map_err(|_| {
-            Error::Invalid("the synth did not answer; is the plugin window open?".to_string())
-        })
+        match receiver.recv_timeout(timeout) {
+            Ok(result) => Ok(result),
+            Err(_) => {
+                if state
+                    .compare_exchange(QUEUED, CANCELLED, Ordering::AcqRel, Ordering::Acquire)
+                    .is_ok()
+                {
+                    return Err(Error::Invalid(
+                        "the synth did not answer; is the plugin window open?".to_string(),
+                    ));
+                }
+                // Already running (or just done): its result is coming.
+                receiver.recv().map_err(|_| {
+                    Error::Invalid("the synth stopped while running the edit".to_string())
+                })
+            }
+        }
+    }
+
+    /// [`call`](Self::call), retrying on the worker while the synth reports
+    /// [`Error::Busy`].
+    fn call_retrying<R: Send + 'static>(
+        &self,
+        timeout: Duration,
+        run: impl Fn(&mut dyn SynthSession) -> Result<R, Error> + Send + Sync + 'static,
+    ) -> Result<R, Error> {
+        let run = Arc::new(run);
+        for _ in 0..BUSY_RETRIES {
+            let attempt = run.clone();
+            match self.call(timeout, move |session| attempt(session))? {
+                Err(Error::Busy(_)) => std::thread::sleep(BUSY_RETRY_DELAY),
+                result => return result,
+            }
+        }
+        Err(Error::Busy(
+            "the synth is not processing audio, so the edit cannot reach it".to_string(),
+        ))
     }
 }
 
@@ -104,18 +160,12 @@ impl ChatBridge {
 pub struct RemoteSession {
     bridge: Arc<ChatBridge>,
     timeout: Duration,
-    /// The last snapshot read, returned if a later read cannot be answered.
-    last_snapshot: Mutex<Option<PresetState>>,
 }
 
 impl SynthSession for RemoteSession {
-    fn snapshot(&self) -> PresetState {
-        let mut last = self.last_snapshot.lock().unwrap_or_else(|p| p.into_inner());
-        if let Ok(state) = self.bridge.call(self.timeout, |session| session.snapshot()) {
-            *last = Some(state);
-        }
-        last.clone()
-            .unwrap_or_else(|| PresetState::new(&sas_preset::InitContent { sample_seed: 0 }))
+    fn snapshot(&self) -> Result<PresetState, Error> {
+        self.bridge
+            .call(self.timeout, |session| session.snapshot())?
     }
 
     fn control(&self, name: &str) -> Option<f32> {
@@ -129,13 +179,13 @@ impl SynthSession for RemoteSession {
     fn apply(&mut self, edit: &Edit) -> Result<Applied, Error> {
         let edit = edit.clone();
         self.bridge
-            .call(self.timeout, move |session| session.apply(&edit))?
+            .call_retrying(self.timeout, move |session| session.apply(&edit))
     }
 
     fn restore(&mut self, state: &PresetState) -> Result<(), Error> {
         let state = state.clone();
         self.bridge
-            .call(self.timeout, move |session| session.restore(&state))?
+            .call_retrying(self.timeout, move |session| session.restore(&state))
     }
 
     fn take_outside_changes(&mut self) -> Vec<OutsideChange> {

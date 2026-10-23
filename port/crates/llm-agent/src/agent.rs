@@ -199,7 +199,12 @@ impl<S: SynthSession> Agent<S> {
                 changes.join("; ")
             )));
         }
-        let patch = patch::describe(&self.controller.session().snapshot());
+        let state = self
+            .controller
+            .session()
+            .snapshot()
+            .map_err(|error| AgentError::Tool(format!("cannot read the patch: {error}")))?;
+        let patch = patch::describe(&state);
         opening.push(Block::Text(format!("Current patch:\n{patch}")));
         opening.push(Block::Text(text.to_string()));
         let mut turn = vec![Message::user(opening)];

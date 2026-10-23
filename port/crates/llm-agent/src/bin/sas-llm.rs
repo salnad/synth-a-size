@@ -17,7 +17,7 @@ use sas_llm_agent::{
     RecordingTransport, ReplayTransport, Transport,
 };
 use sas_llm_control::sas_preset::{InitContent, PresetState};
-use sas_llm_control::{patch, Controller, OfflineSession, Policy, PresetLibrary, SynthSession};
+use sas_llm_control::{patch, Controller, OfflineSession, Policy, PresetLibrary};
 
 const USAGE: &str = "\
 usage: sas-llm [options]
@@ -193,10 +193,7 @@ fn chat(options: &Options) -> Result<(), String> {
                 None => {}
                 Some("/quit") => break,
                 Some("/patch") => {
-                    print!(
-                        "{}",
-                        patch::describe(&agent.controller().session().snapshot())
-                    )
+                    print!("{}", patch::describe(agent.controller().session().state()))
                 }
                 Some("/undo") => {
                     let steps = words.next().and_then(|n| n.parse().ok()).unwrap_or(1);
@@ -251,7 +248,7 @@ fn run_eval(options: &Options, path: &PathBuf) -> Result<bool, String> {
         let failures: Vec<String> = match result {
             Err(error) => vec![error.to_string()],
             Ok(_) => {
-                let state = agent.controller().session().snapshot();
+                let state = agent.controller().session().state().clone();
                 case.checks
                     .iter()
                     .filter_map(|check| eval::check(&state, &init, check).err())

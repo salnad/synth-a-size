@@ -170,7 +170,10 @@ fn the_live_session_matches_the_offline_one() {
             "{tool}"
         );
     }
-    let (a, b) = (live.session().snapshot(), offline.session().snapshot());
+    let (a, b) = (
+        live.session().snapshot().unwrap(),
+        offline.session().snapshot().unwrap(),
+    );
     assert_eq!(a.controls(), b.controls());
     for (x, y) in a.modulations().iter().zip(b.modulations()) {
         assert_eq!((&x.source, &x.destination), (&y.source, &y.destination));
@@ -344,4 +347,112 @@ fn calls_nobody_runs_time_out_and_are_dropped() {
     // The editor opens later: the stale call does not run.
     assert_eq!(bridge.run_pending(&mut rig.session()), 0);
     assert!((rig.value("volume") - 5473.0404).abs() < 1e-3);
+}
+
+/// A session on the GUI side whose edits take a while, or report busy a
+/// few times first, around a live session.
+struct Slow<'a> {
+    inner: &'a mut LiveSession<TestHost>,
+    delay: Duration,
+    busy: usize,
+    applied: usize,
+}
+
+impl SynthSession for Slow<'_> {
+    fn snapshot(&self) -> Result<sas_preset::PresetState, sas_llm_control::Error> {
+        self.inner.snapshot()
+    }
+    fn control(&self, name: &str) -> Option<f32> {
+        self.inner.control(name)
+    }
+    fn apply(
+        &mut self,
+        edit: &sas_llm_control::Edit,
+    ) -> Result<sas_llm_control::Applied, sas_llm_control::Error> {
+        if self.busy > 0 {
+            self.busy -= 1;
+            return Err(sas_llm_control::Error::Busy("queue full".into()));
+        }
+        std::thread::sleep(self.delay);
+        self.applied += 1;
+        self.inner.apply(edit)
+    }
+    fn restore(&mut self, state: &sas_preset::PresetState) -> Result<(), sas_llm_control::Error> {
+        self.inner.restore(state)
+    }
+}
+
+#[test]
+fn a_call_that_starts_before_the_timeout_is_awaited_not_abandoned() {
+    let rig = rig();
+    let bridge = ChatBridge::new();
+    let mut remote = bridge.remote(Duration::from_millis(200));
+    let worker = std::thread::spawn(move || {
+        remote.apply(&sas_llm_control::Edit::SetControl {
+            name: "osc_1_transpose",
+            value: 5.0,
+        })
+    });
+    // The GUI thread picks the call up at 50 ms; the edit takes 300 ms, past
+    // the worker's 200 ms timeout.
+    std::thread::sleep(Duration::from_millis(50));
+    let mut live = rig.session();
+    let mut slow = Slow {
+        inner: &mut live,
+        delay: Duration::from_millis(300),
+        busy: 0,
+        applied: 0,
+    };
+    assert_eq!(bridge.run_pending(&mut slow), 1);
+    assert_eq!(slow.applied, 1);
+    // The worker waited for it and reports what happened.
+    assert!(worker.join().unwrap().is_ok());
+    assert_eq!(rig.value("osc_1_transpose"), 5.0);
+}
+
+#[test]
+fn busy_edits_are_retried_on_the_worker() {
+    let rig = rig();
+    let bridge = ChatBridge::new();
+    let mut remote = bridge.remote(Duration::from_secs(5));
+    let worker = std::thread::spawn(move || {
+        remote.apply(&sas_llm_control::Edit::SetControl {
+            name: "osc_1_transpose",
+            value: 2.0,
+        })
+    });
+    let mut live = rig.session();
+    let mut slow = Slow {
+        inner: &mut live,
+        delay: Duration::ZERO,
+        busy: 3,
+        applied: 0,
+    };
+    while !worker.is_finished() {
+        bridge.run_pending(&mut slow);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(worker.join().unwrap().is_ok());
+    assert_eq!(slow.applied, 1);
+    assert_eq!(rig.value("osc_1_transpose"), 2.0);
+}
+
+#[test]
+fn an_unreadable_patch_blocks_edits_instead_of_saving_a_stale_undo_step() {
+    let bridge = ChatBridge::new();
+    let remote = bridge.remote(Duration::from_millis(20));
+    let mut controller = Controller::new(remote, Policy::default());
+    controller.begin_turn();
+    let output = controller.call(
+        "set_params",
+        &json!({"changes": [{"name": "osc_1_transpose", "value": 1}]}),
+    );
+    assert!(output.is_error, "{}", output.content);
+    assert_eq!(controller.undo_depth(), 0);
+    let output = controller.call("get_patch", &json!({}));
+    assert!(
+        output.is_error && output.content.contains("cannot read the patch"),
+        "{}",
+        output.content
+    );
 }

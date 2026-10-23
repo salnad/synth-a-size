@@ -50,13 +50,17 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
 pub enum Error {
     Preset(sas_preset::Error),
     Invalid(String),
+    /// The synth cannot take the edit right now (its edit queue is full
+    /// while the audio thread is not processing); nothing was changed, and
+    /// the caller may retry later.
+    Busy(String),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::Preset(error) => write!(f, "{error}"),
-            Error::Invalid(message) => f.write_str(message),
+            Error::Invalid(message) | Error::Busy(message) => f.write_str(message),
         }
     }
 }

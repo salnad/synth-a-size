@@ -290,7 +290,7 @@ struct Replaceable {
 }
 
 impl SynthSession for Replaceable {
-    fn snapshot(&self) -> sas_llm_control::sas_preset::PresetState {
+    fn snapshot(&self) -> Result<sas_llm_control::sas_preset::PresetState, sas_llm_control::Error> {
         self.inner.snapshot()
     }
     fn control(&self, name: &str) -> Option<f32> {

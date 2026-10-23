@@ -22,7 +22,6 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::time::Duration;
 
 use nice_plug::context::gui::GuiContext;
 use nice_plug::plugin::PluginState;
@@ -72,22 +71,16 @@ impl HostWriter for GuiContext {
     }
 }
 
-/// Tries per edit bus call before giving up on a full queue. The queue only
-/// fills while the audio thread is not processing.
-const QUEUE_RETRIES: usize = 50;
-const QUEUE_RETRY_DELAY: Duration = Duration::from_millis(10);
-
-/// Calls `edit` until the bus has room, as `sas_engine::edit_bus` asks.
+/// One edit bus call. A full queue is `Error::Busy`, with nothing changed:
+/// the session runs on the GUI thread, which must not sleep, so the chat
+/// worker backs off and retries (`chat_bridge::RemoteSession`).
 fn with_room<R>(mut edit: impl FnMut() -> Result<R, EditError>) -> Result<R, Error> {
-    for _ in 0..QUEUE_RETRIES {
-        match edit() {
-            Err(EditError::QueueFull) => std::thread::sleep(QUEUE_RETRY_DELAY),
-            result => return result.map_err(|error| Error::Invalid(error.to_string())),
-        }
+    match edit() {
+        Err(EditError::QueueFull) => Err(Error::Busy(
+            "the synth is not processing audio, so the edit cannot reach it".to_string(),
+        )),
+        result => result.map_err(|error| Error::Invalid(error.to_string())),
     }
-    Err(Error::Invalid(
-        "the synth is not processing audio, so the edit cannot reach it".to_string(),
-    ))
 }
 
 /// The tools' session on the plugin's parameters and edit bus.
@@ -196,8 +189,8 @@ fn same_value(name: &str, set: f32, now: f32) -> bool {
 }
 
 impl<W: HostWriter> SynthSession for LiveSession<W> {
-    fn snapshot(&self) -> PresetState {
-        self.params.preset_state()
+    fn snapshot(&self) -> Result<PresetState, Error> {
+        Ok(self.params.preset_state())
     }
 
     fn control(&self, name: &str) -> Option<f32> {
@@ -230,8 +223,8 @@ impl<W: HostWriter> SynthSession for LiveSession<W> {
                 oscillator,
                 creator,
             } => {
-                // Rendered on this thread before the batch, as the bus asks;
-                // again on a retry, since a refused batch drops it.
+                // Rendered before the batch, as the bus asks; a refused
+                // batch drops it, and the worker's retry renders it again.
                 with_room(|| {
                     let prepared = PreparedWavetable::render((**creator).clone())?;
                     edits.batch(|batch| batch.set_prepared_wavetable(*oscillator, prepared))
@@ -239,7 +232,7 @@ impl<W: HostWriter> SynthSession for LiveSession<W> {
             }
             Edit::LoadPreset(preset) => self.replace(preset)?,
             Edit::SetInfo(info) => {
-                let mut preset = self.snapshot();
+                let mut preset = self.params.preset_state();
                 preset.info = (**info).clone();
                 self.replace(&preset)?;
             }
@@ -257,7 +250,7 @@ impl<W: HostWriter> SynthSession for LiveSession<W> {
     /// block); a different routing, sample or save info reloads `state`
     /// whole through the host.
     fn restore(&mut self, target: &PresetState) -> Result<(), Error> {
-        let current = self.snapshot();
+        let current = self.params.preset_state();
         let same_routes = current
             .modulations()
             .iter()
@@ -352,6 +345,12 @@ impl<W: HostWriter> SynthSession for LiveSession<W> {
         changed
     }
 
+    /// Generation bumps count first against the session's own pending
+    /// replacements. A host restore that lands while one of the session's
+    /// own `set_state` calls has not shown up yet is therefore taken for the
+    /// session's own, and the undo history survives it: an undo could then
+    /// bring back a state from before the host's restore. That needs a host
+    /// restore within the few blocks a `set_state` takes to apply.
     fn take_replaced(&mut self) -> bool {
         let generation = self.edits().generation();
         if generation == self.generation {

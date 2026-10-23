@@ -67,7 +67,7 @@ fn replay(name: &str, session: &Session) -> String {
             output.content
         );
     }
-    controller.session().snapshot().to_json_string()
+    controller.session().snapshot().unwrap().to_json_string()
 }
 
 #[test]

@@ -168,7 +168,7 @@ impl<S: SynthSession> Controller<S> {
                 };
                 Compare {
                     before: before.state.clone(),
-                    after: self.session.snapshot(),
+                    after: self.session.snapshot()?,
                     playing: Side::Before,
                 }
             }
@@ -237,9 +237,12 @@ impl<S: SynthSession> Controller<S> {
     fn apply_now(&mut self, edits: &[Edit]) -> Result<Vec<Applied>, Error> {
         self.compare = None;
         if self.needs_snapshot {
-            self.push_snapshot(None);
+            self.push_snapshot(None)?;
         }
-        let before = (edits.len() > 1).then(|| self.session.snapshot());
+        let before = match edits.len() > 1 {
+            true => Some(self.session.snapshot()?),
+            false => None,
+        };
         let mut applied = Vec::with_capacity(edits.len());
         for edit in edits {
             match self.session.apply(edit) {
@@ -289,15 +292,16 @@ impl<S: SynthSession> Controller<S> {
         None
     }
 
-    pub(crate) fn push_snapshot(&mut self, label: Option<String>) {
+    pub(crate) fn push_snapshot(&mut self, label: Option<String>) -> Result<(), Error> {
         self.history.push(Snapshot {
             label,
-            state: self.session.snapshot(),
+            state: self.session.snapshot()?,
         });
         if self.history.len() > self.policy.max_undo {
             self.history.remove(0);
         }
         self.needs_snapshot = false;
+        Ok(())
     }
 
     /// Undoes `steps` steps, or back to the checkpoint `label`. Returns the
