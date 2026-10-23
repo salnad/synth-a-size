@@ -190,6 +190,12 @@ impl Synth {
         self.with_engine(|engine| engine.set_tuning(Some(tuning)));
     }
 
+    /// [`set_tuning`](Self::set_tuning) without allocating: `tuning` takes
+    /// the engine's tuning's place and comes back holding the old one.
+    pub fn swap_tuning(&mut self, tuning: &mut Tuning) {
+        self.with_engine(|engine| engine.swap_tuning(tuning));
+    }
+
     /// `setMpeEnabled(enabled)`.
     pub fn set_mpe_enabled(&mut self, enabled: bool) {
         self.midi_manager.set_mpe_enabled(enabled);

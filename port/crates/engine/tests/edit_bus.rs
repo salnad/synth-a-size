@@ -15,6 +15,7 @@ use sas_engine::edit_bus::{
 use sas_engine::sound_engine::SoundEngine;
 use sas_engine::synth::Synth;
 use sas_engine::synth_voice_handler::SynthVoiceHandler;
+use sas_engine::Tuning;
 use sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_oscillators::sas_wavetable::Wavetable;
 use sas_oscillators::{RandomValues, Sample};
@@ -37,6 +38,7 @@ enum Call {
     LineMapping(usize, String),
     Wavetable(usize, usize),
     Sample(String),
+    Tuning(String),
     Load(String),
 }
 
@@ -70,6 +72,9 @@ impl EditTarget for Recorder {
     }
     fn swap_sample(&mut self, loaded: &mut Sample) {
         self.0.push(Call::Sample(loaded.name().to_string()));
+    }
+    fn swap_tuning(&mut self, tuning: &mut Tuning) {
+        self.0.push(Call::Tuning(tuning.name()));
     }
     fn load_document(&mut self, document: &PresetDocument) {
         self.0
@@ -597,4 +602,64 @@ fn a_reused_slot_does_not_inherit_the_old_route() {
         ],
         [0.5, 0.0, 0.0, 0.0, 0.0]
     );
+}
+
+/// The corpus's septimal Scala scale.
+fn corpus_tuning() -> Tuning {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../migration/corpus/tunings/corpus_septimal.scl");
+    let tuning = Tuning::from_file(&path).unwrap();
+    assert!(!tuning.is_default());
+    tuning
+}
+
+#[test]
+fn tuning_edits_update_the_mirror_and_coalesce() {
+    let (edits, mut consumer) = EditBus::new(init_document());
+    let revision = edits.revision();
+    let mut renamed = corpus_tuning();
+    renamed.set_name("older");
+    edits.set_tuning(renamed).unwrap();
+    edits.set_tuning(corpus_tuning()).unwrap();
+    assert_eq!(edits.revision(), revision + 2);
+    let name = corpus_tuning().name();
+    edits.with_document(|document| assert_eq!(document.tuning.name(), name));
+    let mut recorder = Recorder::default();
+    consumer.drain(&mut recorder);
+    assert_eq!(recorder.0, vec![Call::Tuning(name)]);
+
+    // Rolled back with a failed batch.
+    let result = edits.batch(|batch| {
+        batch.set_tuning(Tuning::new());
+        batch.connect_modulation("nothing", "filter_1_cutoff", DRAG)
+    });
+    assert!(matches!(result, Err(EditError::UnknownSource(_))));
+    edits.with_document(|document| assert!(!document.tuning.is_default()));
+}
+
+/// A tuning sent over the bus plays bit for bit like the same tuning set on
+/// the engine (`Synth::set_tuning`, as upstream's `TuningSelector` loads it).
+#[test]
+fn a_bus_tuning_plays_like_one_set_in_place() {
+    let _rng = ENGINE_RNG.lock().unwrap_or_else(|p| p.into_inner());
+    let mut expected_synth = fresh_synth();
+    expected_synth.set_tuning(&corpus_tuning());
+    let expected = render(&mut expected_synth, &[]);
+
+    let mut synth = fresh_synth();
+    let (edits, mut consumer) = EditBus::new(init_document());
+    edits.set_tuning(corpus_tuning()).unwrap();
+    consumer.drain(&mut synth);
+    let actual = render(&mut synth, &[]);
+    assert!(expected.iter().any(|&sample| sample != 0.0));
+    assert!(
+        expected
+            .iter()
+            .zip(&actual)
+            .all(|(a, b)| a.to_bits() == b.to_bits()),
+        "the bus tuning plays differently"
+    );
+
+    let default = render(&mut fresh_synth(), &[]);
+    assert_ne!(default, expected, "the tuning changes the sound");
 }

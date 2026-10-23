@@ -134,6 +134,7 @@ fn drag(count: usize) -> SlotValues {
 
 fn producer(edits: EditHandle, stop: Arc<AtomicBool>, routing: bool) -> usize {
     let wavetables = preset("line_wavetable_fold").wavetables;
+    let septimal = sas_engine::Tuning::from_file(&corpus("tunings/corpus_septimal.scl")).unwrap();
     let shapes: [fn(&mut LineGenerator); 4] = [
         LineGenerator::init_sin,
         LineGenerator::init_square,
@@ -191,6 +192,14 @@ fn producer(edits: EditHandle, stop: Arc<AtomicBool>, routing: bool) -> usize {
                 right: (count % 120 == 0).then(|| vec![0.25; 2048]),
             };
             retry(|| edits.set_sample(sample.clone()));
+        }
+        if count % 30 == 15 {
+            let tuning = if count % 60 == 15 {
+                septimal.clone()
+            } else {
+                sas_engine::Tuning::new()
+            };
+            retry(|| edits.set_tuning(tuning.clone()));
         }
         if count % 150 == 149 {
             let name = ["unison_pad_fx", "init_saw"][(count / 150) % 2];

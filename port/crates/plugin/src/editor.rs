@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use sas_engine::keyboard::KeyboardHandle;
 use sas_engine::telemetry::Telemetry;
+use sas_engine::Tuning;
 use sas_gui::{EditorModel, HostParam};
 
 use crate::params::SynthParams;
@@ -76,6 +77,24 @@ impl EditorModel for PluginModel {
     fn held_notes(&self) -> u128 {
         self.keyboard.held_notes()
     }
+
+    fn tuning_name(&self) -> String {
+        self.params
+            .edit_handle()
+            .with_document(|document| document.tuning.name())
+    }
+
+    fn tuning(&self) -> Tuning {
+        self.params
+            .edit_handle()
+            .with_document(|document| document.tuning.clone())
+    }
+
+    fn load_tuning(&self, tuning: Tuning) {
+        // A full queue drops the load: the queue only fills while the audio
+        // thread is stalled, and the name shown stays the old one.
+        let _ = self.params.edit_handle().set_tuning(tuning);
+    }
 }
 
 #[cfg(test)]
@@ -99,6 +118,54 @@ mod tests {
         info.preset_name = "Renamed".to_string();
         edits.set_info(info);
         assert_eq!(model.preset_name(), "Renamed");
+    }
+
+    #[test]
+    fn a_loaded_tuning_names_the_tuning() {
+        let (edits, _consumer) =
+            EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+        let (_writer, telemetry) = Telemetry::new(Arc::default());
+        let model = PluginModel::new(Arc::new(SynthParams::new(edits)), telemetry, keyboard().0);
+        let default_name = model.tuning_name();
+        let mut tuning = Tuning::new();
+        tuning.set_name("Septimal");
+        model.load_tuning(tuning);
+        assert_eq!(model.tuning_name(), "Septimal");
+        assert_ne!(default_name, "Septimal");
+    }
+
+    /// `SynthBase::loadTuningFile` loads into the playing tuning, so a
+    /// keyboard map loaded after a scale keeps the scale.
+    #[test]
+    fn a_keyboard_map_layers_on_the_loaded_scale() {
+        let (edits, _consumer) =
+            EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+        let (_writer, telemetry) = Telemetry::new(Arc::default());
+        let model = PluginModel::new(Arc::new(SynthParams::new(edits)), telemetry, keyboard().0);
+        let tunings = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../migration/corpus/tunings");
+        let scale = tunings.join("corpus_septimal.scl");
+        let map = tunings.join("corpus_septimal.kbm");
+
+        let mut tuning = model.tuning();
+        tuning.load_file(&scale).unwrap();
+        model.load_tuning(tuning);
+        let mut tuning = model.tuning();
+        tuning.load_file(&map).unwrap();
+        model.load_tuning(tuning);
+
+        let mut expected = Tuning::new();
+        expected.load_file(&scale).unwrap();
+        expected.load_file(&map).unwrap();
+        assert_eq!(model.tuning().state_to_json(), expected.state_to_json());
+        assert_eq!(model.tuning_name(), expected.name());
+
+        let mut map_only = Tuning::new();
+        map_only.load_file(&map).unwrap();
+        assert_ne!(model.tuning().state_to_json(), map_only.state_to_json());
+        let mut scale_only = Tuning::new();
+        scale_only.load_file(&scale).unwrap();
+        assert_ne!(model.tuning().state_to_json(), scale_only.state_to_json());
     }
 
     #[test]
