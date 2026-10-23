@@ -89,3 +89,41 @@ fn a_stop_before_reading_returns_at_once() {
     assert!(stream.read(&mut [0u8; 16]).is_err());
     assert!(started.elapsed() < POLL);
 }
+
+/// The whole transport against a server that accepts the connection and
+/// never answers the TLS handshake: no TLS server and no real API, but the
+/// `http` feature, which only the macOS plugin job compiles (the Linux jobs
+/// keep building no network code).
+#[cfg(feature = "http")]
+#[test]
+fn a_stoppable_https_request_ends_on_stop_while_the_server_is_silent() {
+    use sas_llm_agent::transport::HttpRequest;
+    use sas_llm_agent::{AgentError, HttpTransport, Transport};
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    thread::spawn(move || {
+        let (server, _) = listener.accept().unwrap();
+        thread::sleep(Duration::from_secs(10));
+        drop(server);
+    });
+    let (stop, check) = flag();
+    let mut transport = HttpTransport::stoppable(check).unwrap();
+    thread::spawn(move || {
+        thread::sleep(Duration::from_millis(200));
+        stop.store(true, Ordering::Relaxed);
+    });
+    let request = HttpRequest {
+        url: format!("https://127.0.0.1:{port}/v1/messages"),
+        headers: Vec::new(),
+        body: serde_json::json!({}),
+    };
+    let started = Instant::now();
+    let error = transport.send(&request).unwrap_err();
+    assert_eq!(error, AgentError::Stopped);
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "{:?}",
+        started.elapsed()
+    );
+}

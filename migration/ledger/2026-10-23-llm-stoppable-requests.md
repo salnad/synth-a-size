@@ -16,8 +16,8 @@ follow-up stacked on #102 (L6), as the coordinator asked.
     overall 120 s limit becomes an idle limit (`IDLE`: no bytes for
     120 s), so a slow answer still arrives.
   - `HttpTransport::stoppable(stop)`: HTTPS connections go through the
-    stream (a `ureq` TLS connector over the system's TLS), with a 10 s
-    connect timeout. A stopped request returns `AgentError::Stopped`, both
+    stream (a `ureq` TLS connector over the system's TLS), with 10 s
+    connect and write timeouts. A stopped request returns `AgentError::Stopped`, both
     while waiting for the response and while reading its body.
     `HttpTransport::new` keeps the old behaviour.
 - `sas-plugin`:
@@ -41,19 +41,28 @@ follow-up stacked on #102 (L6), as the coordinator asked.
 - `cargo test -p sas-plugin --test chat`: 2 new tests with a provider that
   never answers until stopped. Stop ends the message with the note, and
   dropping the plugin returns (with the thread ended) in well under 1 s.
+- With `--features http`, a fifth test sends a stoppable HTTPS request to
+  a local listener that accepts and never answers the TLS handshake (no
+  TLS server, no real API) and checks it returns `Stopped` well under 2 s
+  after a stop at 200 ms. It runs in the arm64 macOS VST3 job
+  (`plugin.yml`), the only job that compiles `http`, so the Linux jobs keep
+  building no network code. Graph Reviewer measured 188 ms from stop to
+  return against a silent TLS listener.
 - Clippy `-D warnings` and rustfmt are clean for the workspace, for
   `sas-llm-agent` with `http`, and for `sas-plugin` on
   `aarch64-apple-darwin`.
 
 **Decisions and follow-ups**
 
-- Plain-HTTP requests (a local OpenAI-compatible server) aren't stoppable:
-  `ureq` 2 offers a hook for TLS connections only. They still end at the
-  provider's answer or the 120 s idle limit. Hosted providers use HTTPS.
-- The `ureq` adapter (`stop::tls`) is compile-checked (the `http` feature
-  and the macOS plugin), but not run end to end in CI, which would need a
-  local TLS server with a certificate. The stream it wraps is tested over
-  real sockets. The FL Studio check covers it with a real provider: press
+- Phases that still can't be stopped:
+  - resolving the host name, which takes as long as the system's resolver
+    (unbounded);
+  - connecting, at most 10 s;
+  - sending the request, at most 10 s;
+  - plain-HTTP requests (a local OpenAI-compatible server): `ureq` 2
+    offers a hook for TLS connections only, so they end at the provider's
+    answer or the 120 s idle limit. Hosted providers use HTTPS.
+- The FL Studio check covers the transport with a real provider: press
   Stop while a reply is pending.
 
 **Blocked:** nothing. Merges after #102, in the held stack.

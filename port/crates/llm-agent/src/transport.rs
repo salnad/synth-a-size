@@ -221,9 +221,11 @@ impl HttpTransport {
     }
 
     /// A transport whose HTTPS requests end within [`crate::stop::POLL`] of
-    /// `stop` returning true, however long the provider takes
-    /// ([`crate::stop`]). Plain-HTTP requests (a local server) still run to
-    /// the provider's answer or the 120 s idle limit.
+    /// `stop` returning true while they wait for the provider, however long
+    /// it takes ([`crate::stop`]). Not stoppable: resolving the host name
+    /// (as long as the system's resolver takes), connecting (at most 10 s),
+    /// sending the request (at most 10 s), and plain-HTTP requests (a local
+    /// server), which run to the provider's answer or the 120 s idle limit.
     pub fn stoppable(stop: crate::stop::StopCheck) -> Result<HttpTransport, AgentError> {
         let tls = native_tls::TlsConnector::new()
             .map_err(|e| AgentError::Transport(format!("TLS: {e}")))?;
@@ -233,6 +235,7 @@ impl HttpTransport {
                 stop: stop.clone(),
             }))
             .timeout_connect(std::time::Duration::from_secs(10))
+            .timeout_write(std::time::Duration::from_secs(10))
             .timeout_read(crate::stop::IDLE)
             .build();
         Ok(HttpTransport {
