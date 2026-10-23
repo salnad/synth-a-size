@@ -69,7 +69,7 @@ audio (the owner's working default). Stacked on #101 (L5).
 
 **Measured**
 
-- `cargo test -p sas-llm-listen`, 19 tests:
+- `cargo test -p sas-llm-listen`, 18 tests:
   - 7 analysis tests on signals with known answers:
     - a 440 Hz sine's pitch (±1 Hz, clarity > 0.99), level, attack,
       release, correlation, centroid and spectrogram band;
