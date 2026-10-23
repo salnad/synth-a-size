@@ -6,8 +6,10 @@ use sas_preset::PresetState;
 
 use crate::catalog::control;
 use crate::library::PresetLibrary;
+use crate::listen::{audition_spec, Auditioner};
 use crate::session::{Applied, Edit, SynthSession};
 use crate::tools::{self, ToolOutput};
+use crate::tools::{specs, ToolSpec};
 use crate::Error;
 
 /// Tunables of the tool layer. Every field is a working default the owner
@@ -64,6 +66,7 @@ pub struct Controller<S: SynthSession> {
     pending: Option<Pending>,
     library: Option<PresetLibrary>,
     compare: Option<Compare>,
+    auditioner: Option<Box<dyn Auditioner>>,
 }
 
 /// Which version an A/B comparison is playing.
@@ -92,6 +95,7 @@ impl<S: SynthSession> Controller<S> {
             pending: None,
             library: None,
             compare: None,
+            auditioner: None,
         }
     }
 
@@ -103,6 +107,26 @@ impl<S: SynthSession> Controller<S> {
 
     pub fn library(&self) -> Option<&PresetLibrary> {
         self.library.as_ref()
+    }
+
+    /// Lets the model listen to the patch (the `audition` tool).
+    pub fn with_auditioner(mut self, auditioner: Box<dyn Auditioner>) -> Controller<S> {
+        self.auditioner = Some(auditioner);
+        self
+    }
+
+    pub(crate) fn auditioner(&mut self) -> Option<&mut (dyn Auditioner + 'static)> {
+        self.auditioner.as_deref_mut()
+    }
+
+    /// The tools this controller offers: [`specs`], and `audition` when it
+    /// has an auditioner.
+    pub fn specs(&self) -> Vec<ToolSpec> {
+        let mut specs = specs();
+        if self.auditioner.is_some() {
+            specs.push(audition_spec());
+        }
+        specs
     }
 
     pub fn session(&self) -> &S {

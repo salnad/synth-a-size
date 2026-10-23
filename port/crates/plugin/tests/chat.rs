@@ -404,3 +404,36 @@ fn a_retired_worker_stays_out_of_the_new_conversation() {
     // Its tool call was dropped with its bridge, unapplied.
     assert_eq!(rig.value("filter_1_cutoff"), 60.0);
 }
+
+#[test]
+fn the_model_can_listen_without_touching_the_synth() {
+    let responses = vec![
+        anthropic(
+            json!([{"type": "tool_use", "id": "t1", "name": "audition",
+                    "input": {"notes": [69], "seconds": 0.3, "release": 0.2}}]),
+            "tool_use",
+        ),
+        anthropic(
+            json!([{"type": "text", "text": "It sits at A4."}]),
+            "end_turn",
+        ),
+    ];
+    let rig = rig("listen", Some(on()), Some("key"), responses);
+    rig.chat.send("how does it sound?".into());
+    rig.settle();
+    let lines = rig.chat.view().lines;
+    assert!(
+        lines.iter().any(|line| line.text.starts_with("audition")),
+        "{lines:?}"
+    );
+    assert!(
+        !lines
+            .iter()
+            .any(|line| line.kind == LineKind::Error || line.text.starts_with("error")),
+        "{lines:?}"
+    );
+    assert_eq!(lines.last().unwrap().text, "It sits at A4.");
+    // Listening is not an edit: nothing to undo, nothing changed.
+    assert!(!rig.chat.view().can_undo);
+    assert_eq!(rig.value("filter_1_cutoff"), 60.0);
+}

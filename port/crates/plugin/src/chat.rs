@@ -25,6 +25,7 @@ use sas_llm_agent::{
     Agent, AgentConfig, AgentEvent, ChatSettings, KeyboardFocus, ProviderConfig, Transport,
 };
 use sas_llm_control::{Controller, Policy, PresetLibrary, Side};
+use sas_llm_listen::PreviewEngine;
 
 use crate::chat_bridge::{ChatBridge, RemoteSession};
 use crate::keys::{KeyStore, NoKeys, SystemKeys};
@@ -312,7 +313,12 @@ fn spawn_worker(
     let bridge = ChatBridge::new();
     let waker = shared.clone();
     bridge.set_waker(move || waker.wake());
-    let mut controller = Controller::new(bridge.remote(TOOL_TIMEOUT), Policy::default());
+    let shutdown = Arc::new(AtomicBool::new(false));
+    // The preview engine (the `audition` tool) builds its synth on first use,
+    // on its own thread, and stops with the worker.
+    let preview = PreviewEngine::new().stopped_by(shutdown.clone());
+    let mut controller = Controller::new(bridge.remote(TOOL_TIMEOUT), Policy::default())
+        .with_auditioner(Box::new(preview));
     if let Some(library) = library {
         controller = controller.with_library(library);
     }
@@ -322,7 +328,6 @@ fn spawn_worker(
         transport,
         AgentConfig::default(),
     );
-    let shutdown = Arc::new(AtomicBool::new(false));
     let stopping = shutdown.clone();
     let generation = shared.worker.fetch_add(1, Ordering::AcqRel) + 1;
     std::thread::Builder::new()
@@ -350,6 +355,9 @@ fn spawn_worker(
                 drop(view);
                 shared.wake();
             }
+            // Before `_exited` signals the end: dropping the agent joins the
+            // preview engine's thread.
+            drop(agent);
         })
         .expect("spawn the chat thread");
     Worker {

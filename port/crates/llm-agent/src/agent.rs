@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use sas_llm_control::{catalog, patch, specs, Controller, SynthSession, ToolOutput};
+use sas_llm_control::{catalog, patch, Controller, SynthSession, ToolOutput};
 
 use crate::message::{Block, ChatRequest, Message, StopReason, Tool, Usage};
 use crate::prompt::system_prompt;
@@ -89,7 +89,8 @@ impl<S: SynthSession> Agent<S> {
         transport: Box<dyn Transport>,
         config: AgentConfig,
     ) -> Agent<S> {
-        let tools = specs()
+        let tools = controller
+            .specs()
             .into_iter()
             .map(|spec| Tool {
                 name: spec.name.to_string(),

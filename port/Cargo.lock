@@ -2649,6 +2649,7 @@ version = "0.0.1"
 dependencies = [
  "native-tls",
  "sas-llm-control",
+ "sas-llm-listen",
  "serde",
  "serde_json",
  "ureq",
@@ -2661,6 +2662,18 @@ dependencies = [
  "sas-common",
  "sas-preset",
  "sas-wavetable",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "sas-llm-listen"
+version = "0.0.1"
+dependencies = [
+ "sas-common",
+ "sas-engine",
+ "sas-llm-control",
+ "sas-preset",
  "serde",
  "serde_json",
 ]
@@ -2707,6 +2720,7 @@ dependencies = [
  "sas-gui",
  "sas-llm-agent",
  "sas-llm-control",
+ "sas-llm-listen",
  "sas-parity",
  "sas-preset",
  "security-framework",

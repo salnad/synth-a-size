@@ -302,8 +302,8 @@ D12: retired (temporary, removed in #82).
 
 *Started in #91 (L1, tool core); extended by #92 (L2: modulation, LFO,
 wavetable and preset tools), #95 (L3: providers, agent loop, `sas-llm`)
-#100 (L4: the tools on the running plugin) and L5 (the chat panel). Later
-LLM milestones (L6–L8) extend this entry.*
+#100 (L4: the tools on the running plugin), #101 (L5: the chat panel) and
+L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
 
 - **Differs:** the port adds a layer that lets a language model read and
   edit the synth by name: the tools in `port/crates/llm-control`, and later a
@@ -353,6 +353,13 @@ LLM milestones (L6–L8) extend this entry.*
     the plugin instance; it is never saved. Its API key is kept in the
     macOS Keychain (or an environment variable), never in a file. Only the
     macOS plugin has network code.
+  - The `audition` tool (`port/crates/llm-listen`) renders a short preview
+    of the current patch on a second synth, on a thread of its own and never
+    the audio thread, and returns compact analysis features, never audio.
+    A preview is at most 6 s of audio at 44.1 kHz, cut short after 3 s of
+    wall-clock rendering.
+    Building the preview synth takes seeds from the process's seed counter,
+    as opening another instance does upstream; nothing sets the counter.
   - Working defaults (owner, 2026-10-22, all reversible): edits apply at
     once with undo; raising master volume above 0 dB waits for the user's
     confirmation (`Policy::confirm_above`); chat history is not saved; the
