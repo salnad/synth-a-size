@@ -320,12 +320,14 @@ fn gain_meter(v: Varyings) -> vec4<f32> {
     return v.alt_color * t + v.color * (1.0 - t);
 }
 
-// kBarFragmentShader (`BarRenderer`): the colour, fading out over the last
-// pixel inside each edge. `corner` runs 0 to 1 across the bar.
+// kBarFragmentShader (`BarRenderer`): the colour, fading out towards each
+// edge. `corner` runs 0 to 1 across the bar; `size` (shader values x and y)
+// is the bar vertex shaders' varying, in pixels.
 fn bar(v: Varyings) -> vec4<f32> {
     let corner = v.coordinates * 0.5 + vec2<f32>(0.5, 0.5);
-    let alpha_x = min(corner.x * v.dimensions.x, (1.0 - corner.x) * v.dimensions.x);
-    let alpha_y = min(corner.y * v.dimensions.y, (1.0 - corner.y) * v.dimensions.y);
+    let size = v.shader_values.xy;
+    let alpha_x = min(corner.x * size.x, (1.0 - corner.x) * size.x);
+    let alpha_y = min(corner.y * size.y, (1.0 - corner.y) * size.y);
     var color = v.color;
     color.a = v.color.a * min(1.0, min(alpha_x, alpha_y));
     return color;

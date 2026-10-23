@@ -46,8 +46,12 @@ pub enum QuadKind {
     /// `kGainMeterFragment` (with `kGainMeterVertex`): `color` to
     /// `alt_color` across the component.
     GainMeter = 14,
-    /// `kBarFragment` (`BarRenderer`'s bars): `color`, fading out over the
-    /// last pixel inside each edge. Additive bars go in
+    /// `kBarFragment` (`BarRenderer`'s bars): `color`, fading out towards
+    /// each edge. `shader_values[0]` and `[1]` are the bar vertex shaders'
+    /// `size` in pixels along x and y: the bar's full thickness across it,
+    /// and half its length × the display scale along it
+    /// (`BarRenderer::setBarSizes`), so the fade spans one pixel across and
+    /// two along at display scale 1. Additive bars go in
     /// [`QuadBatch::additive`].
     Bar = 15,
 }
@@ -511,65 +515,6 @@ mod tests {
         let instance = border.instance([10.0, 10.0]);
         assert_eq!(instance.color[3], 1.0);
         assert_eq!(instance.params2[1], 0.5);
-    }
-
-    /// Renders `batch` on black, `size` pixels at display scale 1, through
-    /// the real pipeline (Mesa's lavapipe in CI).
-    /// Returns the RGBA pixels, row by row.
-    fn render(size: (u32, u32), batch: impl Fn() -> QuadBatch + 'static) -> Vec<u8> {
-        let state = egui_kittest::wgpu::create_render_state(
-            egui_kittest::wgpu::default_wgpu_setup(),
-            egui_wgpu::RendererOptions::PREDICTABLE,
-        );
-        publish_target(&state, 1);
-        let mut harness = egui_kittest::Harness::builder()
-            .with_size((size.0 as f32, size.1 as f32))
-            .with_pixels_per_point(1.0)
-            .renderer(egui_kittest::wgpu::WgpuTestRenderer::from_render_state(
-                state,
-            ))
-            .build_ui(move |ui| {
-                let area = ui.ctx().content_rect();
-                let painter = ui.painter_at(area);
-                let pixels = PixelPainter::new(&painter, area, 1.0);
-                let full = RectF::new(0.0, 0.0, size.0 as f32, size.1 as f32);
-                pixels.fill_rect(full, Colour(0xff000000));
-                batch().paint(&pixels, full);
-            });
-        harness.run_steps(2);
-        let image = harness.render().expect("render");
-        assert_eq!((image.width(), image.height()), size);
-        image.into_raw()
-    }
-
-    #[test]
-    #[ignore = "needs a GPU adapter; CI's GUI reference job runs it"]
-    fn bars_fade_over_their_last_pixel() {
-        let image = render((40, 30), || {
-            let mut batch = QuadBatch::new();
-            batch.push(Quad::new(
-                QuadKind::Bar,
-                RectF::new(10.0, 10.0, 20.0, 8.0),
-                Colour(0xff00ff00),
-            ));
-            batch
-        });
-        let green = |x: usize, y: usize| image[4 * (40 * y + x) + 1];
-        // Inside, more than a pixel from every edge: the full colour.
-        assert_eq!(green(20, 14), 255);
-        // The edge pixels' centres are half a pixel inside: half alpha.
-        for (x, y) in [(10, 14), (29, 14), (20, 10), (20, 17)] {
-            assert!(
-                (green(x, y) as i32 - 128).abs() <= 2,
-                "({x}, {y}): {}",
-                green(x, y)
-            );
-        }
-        // A corner pixel: half a pixel from both edges.
-        assert!((green(10, 10) as i32 - 128).abs() <= 2);
-        // Outside the quad nothing is drawn.
-        assert_eq!(green(9, 14), 0);
-        assert_eq!(green(20, 18), 0);
     }
 
     #[test]

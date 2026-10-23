@@ -21,7 +21,14 @@ serde_json = "1"
 # Adds the keyboard-focus check panel used for the FL Studio spike (G1). Not
 # part of the shipped editor.
 focus-spike = []
+# Builds the tests that render through wgpu (tests/gpu.rs). They need a GPU
+# adapter (Mesa's lavapipe in CI's GUI reference job) and fail without one.
+gpu-tests = []
 
 [dev-dependencies]
 naga = { version = "30.0.1", features = ["wgsl-in"] }
 egui_kittest.workspace = true
+
+[[test]]
+name = "gpu"
+required-features = ["gpu-tests"]
