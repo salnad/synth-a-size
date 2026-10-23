@@ -33,6 +33,10 @@ Options:
   --bpm BPM            tempo for tempo-synced modulators, default 120
   --tuning PATH        load a .scl or .tun tuning file after the preset
   --keyboard-map PATH  then load a .kbm keyboard map on top of it
+  --edits PATH         a JSON edit script: live edits applied while rendering,
+                       each at the start of the first host block that starts
+                       at or after its time (see README.md); an edit after
+                       the end of the render is an error
   --seed N             set the engine's global RandomGenerator seed counter
                        before the synth is constructed (default: leave the
                        upstream counter untouched; output is deterministic
@@ -133,6 +137,32 @@ int main(int argc, const char* argv[]) {
       return fail("cannot write " + args.get("dump-state"));
   }
 
+  struct TimedEdit {
+    long long sample;
+    json edit;
+  };
+  std::vector<TimedEdit> edits;
+  if (args.has("edits")) {
+    File edits_file = File::getCurrentWorkingDirectory().getChildFile(args.get("edits"));
+    if (!edits_file.existsAsFile())
+      return fail("edits file not found: " + args.get("edits"));
+    try {
+      json script = json::parse(edits_file.loadFileAsString().toStdString());
+      long long last_sample = 0;
+      for (const json& edit : script.at("edits")) {
+        double seconds = edit.at("seconds").get<double>();
+        long long sample = static_cast<long long>(std::floor(seconds * sample_rate + 0.5));
+        if (!(seconds >= 0.0) || sample < last_sample)
+          return fail("edit times must be non-negative and in order");
+        last_sample = sample;
+        edits.push_back({ sample, edit });
+      }
+    }
+    catch (const json::exception& e) {
+      return fail(std::string("cannot read edits: ") + e.what());
+    }
+  }
+
   std::vector<TimedMessage> events;
   double last_event_seconds = 0.0;
   if (!no_midi) {
@@ -165,6 +195,7 @@ int main(int argc, const char* argv[]) {
   AudioSampleBuffer buffer(2, block_size);
   size_t event_index = 0;
   size_t dropped_events = 0;
+  size_t edit_index = 0;
 
   for (long long block_start = 0; block_start < total_samples; block_start += block_size) {
     int n = static_cast<int>(std::min<long long>(block_size, total_samples - block_start));
@@ -178,6 +209,31 @@ int main(int argc, const char* argv[]) {
       ++event_index;
     }
 
+    // The port applies a block's edit-bus edits before its host parameters,
+    // upstream in call order: they agree unless a slot's modulation_N_*
+    // control is set before a connection in the same block (which then
+    // overwrites a new slot's values upstream, but not in the port).
+    bool set_modulation_control = false;
+    while (edit_index < edits.size() && edits[edit_index].sample <= block_start) {
+      const json& edit = edits[edit_index].edit;
+      const std::string type = edit.value("type", "");
+      if (type == "set_control" && edit.value("name", "").rfind("modulation_", 0) == 0)
+        set_modulation_control = true;
+      else if (type == "connect_modulation" && set_modulation_control)
+        return fail("edit " + std::to_string(edit_index) + ": a connection follows a modulation_N_* "
+                    "control set in the same block; set the slot's controls after connecting");
+      std::string error;
+      try {
+        error = synth->applyEdit(edits[edit_index].edit);
+      }
+      catch (const json::exception& e) {
+        error = e.what();
+      }
+      if (!error.empty())
+        return fail("edit " + std::to_string(edit_index) + ": " + error);
+      ++edit_index;
+    }
+
     synth->renderBlock(buffer, midi, seconds_time, sample_rate);
 
     for (int i = 0; i < n; ++i) {
@@ -187,6 +243,8 @@ int main(int argc, const char* argv[]) {
     }
   }
   dropped_events = events.size() - event_index;
+  if (edit_index < edits.size())
+    return fail(std::to_string(edits.size() - edit_index) + " edits fall after the end of the render");
 
   size_t non_finite = 0;
   for (float& sample : interleaved) {
@@ -214,6 +272,10 @@ int main(int argc, const char* argv[]) {
     meta["tuning"] = args.get("tuning");
   if (args.has("keyboard-map"))
     meta["keyboard_map"] = args.get("keyboard-map");
+  if (args.has("edits")) {
+    meta["edits"] = args.get("edits");
+    meta["edits_applied"] = edit_index;
+  }
   meta["seed"] = args.has("seed") ? harness::json(args.getInt("seed", 0)) : harness::json("upstream-default");
   meta["warmup_samples"] = warmup_samples;
   meta["length_seconds"] = length_seconds;

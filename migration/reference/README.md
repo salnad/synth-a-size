@@ -76,6 +76,7 @@ ref-render [options] <preset.vital|--init> <input.mid|--no-midi> -o <out.wav>
   --format f32|s16|s24 default f32 (bit-exact float WAV)
   --meta PATH          metadata JSON (default <out>.wav.json)
   --dump-state PATH    write the loaded state back out as preset JSON
+  --edits PATH         a live edit script (below), applied while rendering
 ```
 
 Example:
@@ -107,6 +108,47 @@ playing from t=0:
    placed at sample `floor(seconds * rate + 0.5)` and delivered in the host
    block that contains it, at that offset. Meta and SysEx events are
    skipped.
+
+5. With `--edits`, before each host block, apply in order every edit of
+   the script whose time (placed like a MIDI event, at
+   `floor(seconds * rate + 0.5)`) is at or before the block's first
+   sample, then run steps 3 and 4 for the block.
+
+### Live edit scripts (`--edits`)
+
+A script makes the edits upstream's editor makes while a song plays, so
+the port's edit bus (`sas_engine::edit_bus`) can be parity-tested. It is
+authored in `migration/corpus/generate.py` (`migration/corpus/edits/`),
+and render cases name it with `"edits"`:
+
+```json
+{ "edits": [
+  { "seconds": 0.25, "type": "connect_modulation", "source": "lfo_1", "destination": "filter_1_cutoff" },
+  { "seconds": 0.25, "type": "set_control", "name": "modulation_1_amount", "value": 0.45 }
+] }
+```
+
+Times must be in order. Each edit makes the same calls as upstream:
+
+| `type` | Fields | Upstream calls |
+|---|---|---|
+| `set_control` | `name`, `value` | `SynthPlugin::parameterChanged` (`valueChangedExternal`, without the GUI callback) |
+| `connect_modulation` | `source`, `destination`, optional `bipolar` (a modifier key held; default false) | `ModulationManager::modulationDraggedToComponent`: if not connected, the amount from the destination control's position, `SynthGuiInterface::connectModulation` (with `initModulationValues` for a new slot), then `setModulationValues(amount, bipolar, false, false)` |
+| `disconnect_modulation` | `source`, `destination` | `SynthGuiInterface::disconnectModulation` |
+| `line_mapping` | `slot` (0-based), `line` | the slot's `lineMapGenerator()->jsonToState`, then `render` |
+| `lfo_shape` | `lfo` (0-based), `line` | `LoadSave::loadLfos` for one LFO |
+| `wavetable` | `oscillator` (0-based), `wavetable` (`WavetableCreator` JSON) | `LoadSave::loadWavetables` for one oscillator |
+| `sample` | `data` (preset `sample` JSON) | `LoadSave::loadSample` |
+
+Within one block, a script may not set a `modulation_N_*` control and then
+connect a modulation (`ref-render` rejects it). Upstream applies a block's
+edits in call order, while the port's plugin applies edit-bus edits before
+the block's host parameters, so the two agree only when a slot's controls
+are set after its connection. That's also the order upstream's editor uses.
+
+The metadata records the script and `edits_applied`. An edit timed past
+the end of the render (one no block would apply) fails the render, so a
+case can't silently lose edits.
 
 The block size changes the output. On `unison_pad_fx` with the chord
 MIDI, block 64 and block 128 renders differ by a residual of about

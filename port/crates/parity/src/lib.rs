@@ -754,7 +754,7 @@ impl RenderCase {
     }
 
     /// The resolved case (preset, midi, sample_rate, block_size, bpm, seed,
-    /// tail or length, tolerances, and any tuning and keyboard_map).
+    /// tail or length, tolerances, and any tuning, keyboard_map and edits).
     pub fn settings(&self) -> &Value {
         &self.resolved.json
     }
@@ -783,6 +783,14 @@ impl RenderCase {
         self.settings()
             .get("keyboard_map")
             .map(|_| self.corpus_path("keyboard_map"))
+    }
+
+    /// The live edit script (`ref-render --edits`) the case plays while it
+    /// renders.
+    pub fn edits_path(&self) -> Option<PathBuf> {
+        self.settings()
+            .get("edits")
+            .map(|_| self.corpus_path("edits"))
     }
 
     pub fn sample_rate(&self) -> u32 {

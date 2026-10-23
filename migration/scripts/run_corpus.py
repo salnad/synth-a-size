@@ -144,10 +144,12 @@ RENDER_DEFAULT_KEYS = RENDER_SETTING_KEYS + ("tolerances",)
 # A tuning file (.scl or .tun) and a keyboard map (.kbm), applied in that
 # order after the preset (ref-render --tuning / --keyboard-map).
 RENDER_TUNING_KEYS = ("tuning", "keyboard_map")
-# Upstream picks the loader by extension, whichever key names the file.
-RENDER_TUNING_EXTENSIONS = {"tuning": (".scl", ".tun"), "keyboard_map": (".kbm",)}
-RENDER_CASE_KEYS = RENDER_SETTING_KEYS + RENDER_TUNING_KEYS + ("name", "preset", "midi", "description",
-                                                              "tolerances", "tolerance_exception")
+# A live edit script (ref-render --edits): edits made while the render plays.
+RENDER_FILE_KEYS = RENDER_TUNING_KEYS + ("edits",)
+# Upstream picks the tuning loader by extension, whichever key names the file.
+RENDER_FILE_EXTENSIONS = {"tuning": (".scl", ".tun"), "keyboard_map": (".kbm",), "edits": (".json",)}
+RENDER_CASE_KEYS = RENDER_SETTING_KEYS + RENDER_FILE_KEYS + ("name", "preset", "midi", "description",
+                                                            "tolerances", "tolerance_exception")
 EXCEPTION_KEYS = ("approved_in", "tolerances")
 IDENTITY_KEYS = ("upstream_sha", "compiler", "glibc", "fast_math", "opt_flags", "arch", "libm_variants")
 
@@ -522,12 +524,12 @@ def resolve_renders(cases_json, ledger_text):
         for key in ("preset", "midi"):
             if not isinstance(case.get(key), str):
                 raise CaseError("%s: needs %r" % (case_id, key))
-        for key in RENDER_TUNING_KEYS:
+        for key in RENDER_FILE_KEYS:
             if key not in case:
                 continue
             if not isinstance(case[key], str):
                 raise CaseError('%s: "%s" must be a corpus path' % (case_id, key))
-            extensions = RENDER_TUNING_EXTENSIONS[key]
+            extensions = RENDER_FILE_EXTENSIONS[key]
             if os.path.splitext(case[key])[1].lower() not in extensions:
                 raise CaseError('%s: "%s" must be a %s file' % (case_id, key, " or ".join(extensions)))
         merged = {k: v for k, v in defaults.items() if k != "tolerances"}
@@ -676,7 +678,7 @@ def cmd_render(args):
             "--seed", str(case["seed"]),
         ]
         command += ["--length", str(case["length"])] if "length" in case else ["--tail", str(case["tail"])]
-        for key in RENDER_TUNING_KEYS:
+        for key in RENDER_FILE_KEYS:
             if key in case:
                 command += ["--" + key.replace("_", "-"), os.path.join(CORPUS, case[key])]
         code, output = run(command)
