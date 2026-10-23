@@ -3,7 +3,7 @@
 
 //! VST3 instrument wrapper, built on nice-plug (the maintained community fork
 //! of nih-plug; see `migration/decisions/plugin-framework.md`). Ports the
-//! behaviour of `vital/src/plugin/synth_plugin.cpp` (no editor yet).
+//! behaviour of `vital/src/plugin/synth_plugin.cpp`; the editor is `sas-gui`.
 //!
 //! - [`params`]: one host parameter per engine control of the `sas-preset`
 //!   registry, with the registry name as stable ID, and `bypass` as the
@@ -17,6 +17,7 @@
 //!   [`Engine`]; the shipped plugin, [`SynthASize`], runs on it.
 //! - [`render`]: offline rendering like the reference's `ref-render`, behind
 //!   the `sas-render` binary.
+//! - [`editor`]: what the `sas-gui` editor reads from the plugin.
 //!
 //! The shipping build is an arm64 macOS VST3 (`scripts/bundle.sh`).
 //! CLAP export is kept because it costs nothing, but it is not tested or
@@ -28,6 +29,7 @@ use std::sync::Arc;
 use nice_plug::prelude::*;
 use sas_preset::InitContent;
 
+pub mod editor;
 pub mod engine;
 pub mod params;
 pub mod processor;
@@ -55,6 +57,8 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
 pub struct SynthPlugin<E: Engine> {
     params: Arc<SynthParams>,
     processor: BlockProcessor<E>,
+    /// The editor window's size, kept while the window is closed.
+    editor_state: Arc<sas_gui::nice_plug_egui::EguiEditorState>,
 }
 
 /// The plugin as shipped.
@@ -77,6 +81,7 @@ impl<E: Engine> SynthPlugin<E> {
         SynthPlugin {
             params: Arc::new(SynthParams::new(document)),
             processor: BlockProcessor::new(engine),
+            editor_state: sas_gui::default_state(),
         }
     }
 
@@ -122,12 +127,17 @@ impl<E: Engine + Default> Plugin for SynthPlugin<E> {
     // `process`, leaving the last, and never splits the block.
     const SAMPLE_ACCURATE_AUTOMATION: bool = false;
 
-    type Editor = ();
+    type Editor = sas_gui::Editor;
     type SysExMessage = ();
     type BackgroundTask = ();
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
+    }
+
+    fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Self::Editor> {
+        let model = editor::PluginModel::new(self.params.clone());
+        sas_gui::create_editor(self.editor_state.clone(), Arc::new(model))
     }
 
     fn filter_state(state: &mut PluginState) {

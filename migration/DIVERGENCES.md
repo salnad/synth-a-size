@@ -334,6 +334,49 @@ entry.*
   defaults, relayed by the coordinator. Recorded in
   `migration/ledger/2026-10-23-llm-l1-tool-core.md`.
 
+### D14. The editor shows the product name where upstream shows its logo
+
+- **Differs:** the header's logo area (`LogoSection`).
+- **Upstream:** draws its logo (`Paths::vitalV`, `Paths::vitalRing`) in the
+  logo area, and a click opens its About section.
+- **Port:** draws the text "synth-a-size" in the logo area, in the title
+  face and the logo section's primary colour (`port/crates/gui/src/interface.rs`,
+  `paint_logo`). Clicking it does nothing yet; a minimal About of our own
+  is planned.
+- **Why:** migration/AGENTS.md rule 2: UI text and art must not use the
+  upstream product names. The placeholder text is the owner's working
+  default until a product mark exists.
+- **Approved:** owner working default, 2026-10-22 (project context, "GUI
+  and LLM build: working defaults"); `decisions/gui-framework.md`.
+
+### D15. A letterboxed editor on a high-DPI screen keeps one unit throughout
+
+- **Differs:** the editor's layout when the window's aspect ratio differs
+  from 1400:820 *and* the display scale is above 1 (for example a Retina
+  screen and a host that ignores the editor's aspect-ratio hint).
+- **Upstream:** `FullInterface::resized`
+  (`vital/src/interface/editor_sections/full_interface.cpp:411-424`) works
+  in physical pixels, `width = ceil(getWidth() * display_scale_)`, and scales
+  the size ratio by the display scale in its normal branch. Its two
+  letterbox branches don't:
+  - they set `ratio = height_ratio` or `width_ratio` without
+    `display_scale_`, so every skin value is half size at 2x;
+  - they compute `left = (getWidth() - width) / 2` and `top` from the logical
+    window size minus a physical width or height, so the interface is
+    off-centre, with a negative `left` at 2x.
+- **Port:** `FullLayout::new` (`port/crates/gui/src/layout.rs`) letterboxes
+  in physical pixels throughout. The result is what upstream computes at
+  display scale 1 for a window of the same physical size. At display scale 1,
+  and at any scale when the aspect ratio is the default, the port and
+  upstream agree exactly; the layout fixtures check this at six sizes.
+- **Why:** upstream's result is a units bug with no meaningful layout to
+  reproduce: half-size sections, off-centre. This follows D1's precedent of
+  not replicating upstream bugs. The editor asks hosts to keep the aspect
+  ratio, as upstream's constrainer does, so the case needs a host that
+  ignores that.
+- **Approved:** coordinator relaying the review of #93 (GUI Reviewer,
+  2026-10-23); `decisions/gui-framework.md`.
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change
