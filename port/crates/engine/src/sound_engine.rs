@@ -538,8 +538,10 @@ impl SoundEngine {
         this.router_process(num_samples);
 
         if self.num_active_voices() == 0 {
-            let connections = self.with_svh(|svh| svh.enabled_modulation_connections().to_vec());
-            for modulation in connections {
+            let num_connections = self.with_svh(|svh| svh.enabled_modulation_connections().len());
+            for i in 0..num_connections {
+                let modulation =
+                    self.with_svh(|svh| svh.enabled_modulation_connections()[i].clone());
                 let polyphonic_source = modulation
                     .input(ModulationConnectionProcessor::MODULATION_INPUT)
                     .source()
@@ -551,8 +553,7 @@ impl SoundEngine {
             }
         }
 
-        let status_outputs = this.module_data().borrow().status_outputs.clone();
-        for status in status_outputs.values() {
+        for status in this.module_data().borrow().status_outputs.values() {
             status.update();
         }
     }

@@ -514,6 +514,7 @@ dependencies = [
 name = "sas-engine"
 version = "0.0.1"
 dependencies = [
+ "crossbeam-queue",
  "sas-common",
  "sas-dsp-core",
  "sas-effects",

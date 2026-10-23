@@ -32,6 +32,9 @@ sas-effects.workspace = true
 sas-modulation.workspace = true
 sas-preset.workspace = true
 serde_json = "1"
+# Bounded lock-free queues for the edit bus (MIT/Apache-2.0; already in the
+# tree through nice-plug).
+crossbeam-queue = "0.3"
 
 [dev-dependencies]
 sas-parity.workspace = true

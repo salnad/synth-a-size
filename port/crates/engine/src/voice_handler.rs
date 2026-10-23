@@ -28,7 +28,6 @@
 //! [`SlotQueue`]s because upstream walks `active_voices_` with range-for
 //! loops whose bodies edit it.
 
-use std::cell::Cell;
 use std::rc::{Rc, Weak};
 
 use sas_dsp_core::constants;
@@ -418,6 +417,9 @@ pub struct VoiceHandler {
     active_voices: SlotQueue<VoiceId>,
     all_aggregate_voices: Vec<AggregateVoice>,
     active_aggregate_voices: SlotQueue<AggregateId>,
+    /// The active aggregate voices of the block being processed, kept so
+    /// that processing never allocates.
+    aggregate_scratch: Vec<AggregateId>,
 
     voice_router: ProcessorRef,
     global_router: ProcessorRef,
@@ -502,6 +504,9 @@ impl VoiceHandler {
             active_voices,
             all_aggregate_voices: Vec::new(),
             active_aggregate_voices,
+            aggregate_scratch: Vec::with_capacity(
+                MAX_POLYPHONY as usize / PARALLEL_VOICES + PARALLEL_VOICES,
+            ),
             voice_router,
             global_router,
         };
@@ -580,9 +585,11 @@ impl VoiceHandler {
             self.active_aggregate_voices.push_back(last);
         }
 
-        let aggregates: Vec<AggregateId> = self.active_aggregate_voices.iter().collect();
+        let mut aggregates = std::mem::take(&mut self.aggregate_scratch);
+        aggregates.clear();
+        aggregates.extend(self.active_aggregate_voices.iter());
         let oversample = this.oversample_amount();
-        for aggregate in aggregates {
+        for &aggregate in &aggregates {
             self.prepare_voice_triggers(aggregate, num_samples as i32, oversample);
             self.prepare_voice_values(aggregate);
             self.all_aggregate_voices[aggregate.0]
@@ -592,11 +599,12 @@ impl VoiceHandler {
 
             let mut alive_mask = constants::full_mask();
             if let Some(killer) = &self.voice_killer {
-                let buffer: Vec<PolyFloat> = killer.buffer()[..num_samples]
-                    .iter()
-                    .map(Cell::get)
-                    .collect();
-                alive_mask = !utils::get_silent_mask(&buffer);
+                // utils::get_silent_mask over the killer's cells.
+                let mut silent_mask = PolyFloat::equal(0.0.into(), 0.0.into());
+                for value in &killer.buffer()[..num_samples] {
+                    silent_mask &= utils::close_to_zero_mask(value.get());
+                }
+                alive_mask = !silent_mask;
             }
             for i in 0..self.all_aggregate_voices[aggregate.0].voices.len() {
                 let single_voice = self.all_aggregate_voices[aggregate.0].voices[i];
@@ -612,6 +620,7 @@ impl VoiceHandler {
                 }
             }
         }
+        self.aggregate_scratch = aggregates;
 
         self.combine_accumulated_outputs(num_samples);
 
@@ -927,7 +936,8 @@ impl VoiceHandler {
 
     pub fn sustain_off(&mut self, sample: i32, channel: i32) {
         self.sustain[channel as usize] = false;
-        for id in self.active_ids() {
+        for index in 0..self.active_voices.len() {
+            let id = self.active_voices.at(index);
             let voice = &mut self.all_voices[id.0];
             if voice.sustained() && !voice.sostenuto() && voice.state.channel == channel {
                 voice.deactivate(sample);
@@ -937,7 +947,8 @@ impl VoiceHandler {
 
     pub fn sostenuto_on(&mut self, channel: i32) {
         self.sostenuto[channel as usize] = true;
-        for id in self.active_ids() {
+        for index in 0..self.active_voices.len() {
+            let id = self.active_voices.at(index);
             let voice = &mut self.all_voices[id.0];
             if voice.state.channel == channel {
                 voice.set_sostenuto(true);
@@ -947,7 +958,8 @@ impl VoiceHandler {
 
     pub fn sostenuto_off(&mut self, sample: i32, channel: i32) {
         self.sostenuto[channel as usize] = false;
-        for id in self.active_ids() {
+        for index in 0..self.active_voices.len() {
+            let id = self.active_voices.at(index);
             let sustain = self.sustain[channel as usize];
             let voice = &mut self.all_voices[id.0];
             if voice.state.channel == channel {
@@ -969,7 +981,8 @@ impl VoiceHandler {
         for i in from_channel..=to_channel {
             self.sustain[i as usize] = false;
         }
-        for id in self.active_ids() {
+        for index in 0..self.active_voices.len() {
+            let id = self.active_voices.at(index);
             let voice = &mut self.all_voices[id.0];
             let channel = voice.state.channel;
             if voice.sustained()
@@ -986,7 +999,8 @@ impl VoiceHandler {
         for i in from_channel..=to_channel {
             self.sostenuto[i as usize] = true;
         }
-        for id in self.active_ids() {
+        for index in 0..self.active_voices.len() {
+            let id = self.active_voices.at(index);
             let voice = &mut self.all_voices[id.0];
             let channel = voice.state.channel;
             if channel >= from_channel && channel <= to_channel {
@@ -999,7 +1013,8 @@ impl VoiceHandler {
         for i in from_channel..=to_channel {
             self.sostenuto[i as usize] = false;
         }
-        for id in self.active_ids() {
+        for index in 0..self.active_voices.len() {
+            let id = self.active_voices.at(index);
             let voice = &self.all_voices[id.0];
             let channel = voice.state.channel;
             if channel >= from_channel && channel <= to_channel {
@@ -1016,7 +1031,8 @@ impl VoiceHandler {
     /// `allNotesOffRange(sample, from_channel, to_channel)`.
     pub fn all_notes_off_range(&mut self, sample: i32, from_channel: i32, to_channel: i32) {
         self.pressed_notes.clear();
-        for id in self.active_ids() {
+        for index in 0..self.active_voices.len() {
+            let id = self.active_voices.at(index);
             let voice = &mut self.all_voices[id.0];
             let channel = voice.state.channel;
             if channel >= from_channel && channel <= to_channel {
@@ -1028,7 +1044,8 @@ impl VoiceHandler {
     // ----- expression -----
 
     pub fn set_aftertouch(&mut self, note: i32, aftertouch: f32, sample: i32, channel: i32) {
-        for id in self.active_ids() {
+        for index in 0..self.active_voices.len() {
+            let id = self.active_voices.at(index);
             let voice = &mut self.all_voices[id.0];
             if voice.state.midi_note == note && voice.state.channel == channel {
                 voice.set_aftertouch(aftertouch, sample);
@@ -1038,7 +1055,8 @@ impl VoiceHandler {
 
     pub fn set_channel_aftertouch(&mut self, channel: i32, aftertouch: f32, sample: i32) {
         self.pressure_values[channel as usize] = aftertouch;
-        for id in self.active_ids() {
+        for index in 0..self.active_voices.len() {
+            let id = self.active_voices.at(index);
             let voice = &mut self.all_voices[id.0];
             if voice.state.channel == channel && voice.held() {
                 voice.set_aftertouch(aftertouch, sample);
@@ -1053,7 +1071,8 @@ impl VoiceHandler {
         aftertouch: f32,
         sample: i32,
     ) {
-        for id in self.active_ids() {
+        for index in 0..self.active_voices.len() {
+            let id = self.active_voices.at(index);
             let voice = &mut self.all_voices[id.0];
             let channel = voice.state.channel;
             if channel >= from_channel && channel <= to_channel {
@@ -1064,7 +1083,8 @@ impl VoiceHandler {
 
     pub fn set_channel_slide(&mut self, channel: i32, slide: f32, sample: i32) {
         self.slide_values[channel as usize] = slide;
-        for id in self.active_ids() {
+        for index in 0..self.active_voices.len() {
+            let id = self.active_voices.at(index);
             let voice = &mut self.all_voices[id.0];
             if voice.state.channel == channel && voice.held() {
                 voice.set_slide(slide, sample);
@@ -1079,7 +1099,8 @@ impl VoiceHandler {
         slide: f32,
         sample: i32,
     ) {
-        for id in self.active_ids() {
+        for index in 0..self.active_voices.len() {
+            let id = self.active_voices.at(index);
             let voice = &mut self.all_voices[id.0];
             let channel = voice.state.channel;
             if channel >= from_channel && channel <= to_channel {
@@ -1100,7 +1121,8 @@ impl VoiceHandler {
     pub fn set_pitch_wheel(&mut self, value: f32, channel: i32) {
         debug_assert!((0..NUM_MIDI_CHANNELS).contains(&channel));
         self.pitch_wheel_values[channel as usize] = value;
-        for id in self.active_ids() {
+        for index in 0..self.active_voices.len() {
+            let id = self.active_voices.at(index);
             let voice = &mut self.all_voices[id.0];
             if voice.state.channel == channel && voice.held() {
                 voice.set_local_pitch_bend(value);
@@ -1116,11 +1138,6 @@ impl VoiceHandler {
     }
 
     // ----- allocation -----
-
-    /// A snapshot of `active_voices_` for loops whose bodies do not edit it.
-    fn active_ids(&self) -> Vec<VoiceId> {
-        self.active_voices.iter().collect()
-    }
 
     /// `setPolyphony(polyphony)`.
     pub fn set_polyphony(&mut self, polyphony: i32) {
@@ -1438,7 +1455,8 @@ impl VoiceHandler {
 impl NoteHandler for VoiceHandler {
     fn all_sounds_off(&mut self) {
         self.pressed_notes.clear();
-        for id in self.active_ids() {
+        for index in 0..self.active_voices.len() {
+            let id = self.active_voices.at(index);
             self.all_voices[id.0].kill(0);
             self.all_voices[id.0].mark_dead();
             self.free_voices.push_back(id);
@@ -1448,14 +1466,16 @@ impl NoteHandler for VoiceHandler {
 
     fn all_notes_off(&mut self, sample: i32) {
         self.pressed_notes.clear();
-        for id in self.active_ids() {
+        for index in 0..self.active_voices.len() {
+            let id = self.active_voices.at(index);
             self.all_voices[id.0].deactivate(sample);
         }
     }
 
     fn all_notes_off_channel(&mut self, sample: i32, channel: i32) {
         self.pressed_notes.clear();
-        for id in self.active_ids() {
+        for index in 0..self.active_voices.len() {
+            let id = self.active_voices.at(index);
             let voice = &mut self.all_voices[id.0];
             if voice.state.channel == channel {
                 voice.deactivate(sample);

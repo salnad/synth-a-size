@@ -3,6 +3,7 @@
 
 //! The M7 sound engine behind the wrapper's [`Engine`] interface.
 
+use sas_engine::edit_bus::EditConsumer;
 use sas_engine::synth::Synth;
 use sas_engine::Tuning;
 use sas_preset::{PresetState, SampleState};
@@ -86,6 +87,10 @@ impl Engine for SoundEngineHost {
 
     fn process(&mut self, left: &mut [f32], right: &mut [f32]) {
         self.synth.process(left, right);
+    }
+
+    fn apply_edits(&mut self, edits: &mut EditConsumer) {
+        edits.apply_edits(&mut self.synth);
     }
 }
 

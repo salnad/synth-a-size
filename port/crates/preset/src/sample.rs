@@ -24,7 +24,7 @@ const DEFAULT_SAMPLE_RATE: i32 = 44100;
 const DEFAULT_NAME: &str = "White Noise";
 
 /// The sample as the engine holds it after a load.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct SampleState {
     pub name: String,
     pub sample_rate: i32,

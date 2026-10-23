@@ -176,6 +176,20 @@ impl Wavetable {
         self.data.version
     }
 
+    /// Swaps in `rendered`, a table a `WavetableCreator` rendered into a
+    /// fresh `Wavetable` of the same `max_frames`, as if it had rendered into
+    /// this one: the version moves on only when the frame count changes
+    /// (`setNumFrames`), so oscillators reset exactly when they would have.
+    /// `rendered` gets this table's old contents; nothing is allocated or
+    /// freed here.
+    pub fn take_rendered(&mut self, rendered: &mut Wavetable) {
+        debug_assert_eq!(self.max_frames, rendered.max_frames);
+        let frames_changed = rendered.data.num_frames != self.data.num_frames;
+        let version = self.data.version + i32::from(frames_changed);
+        std::mem::swap(self, rendered);
+        self.data.version = version;
+    }
+
     pub fn num_frames(&self) -> usize {
         self.data.num_frames
     }

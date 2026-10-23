@@ -257,3 +257,22 @@ parity cost), and where it came from.
   - Needs an owner decision and a recorded divergence.
 - **Source:** `ledger/2026-10-22-perf-benchmark.md` (perf profiles, Rust
   and C++).
+
+## I14. Allocation-free graph rewiring for modulation connections
+
+- **Idea:** make connecting and disconnecting a modulation allocation-free
+  on the audio thread: preallocate each destination's spare inputs and
+  feedback nodes, and let the routers rebuild their processing order
+  (`update_all_processors`, `create_added_processors`) into reused
+  buffers.
+- **Why:** with G0's edit bus, drag-to-modulate and chat edits connect
+  modulations while the synth plays. Draining the bus and the connection
+  bookkeeping are allocation-free; the graph rewiring after them is not.
+- **Tradeoff:**
+  - Upstream allocates here too (`Processor::plugNext` creates an
+    `Input`, `ProcessorRouter::connect` creates a `Feedback` for a cycle,
+    `updateAllProcessors` clones processors), so this goes beyond parity.
+  - No numeric change if done right, but it reaches into the processor
+    graph that every module relies on.
+- **Source:** `ledger/2026-10-23-g0-edit-bus.md` (the no-allocation
+  stress tests leave the rewiring uncounted).

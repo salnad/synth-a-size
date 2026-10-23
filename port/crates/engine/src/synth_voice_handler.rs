@@ -521,14 +521,13 @@ impl SynthVoiceHandler {
         self.num_voices.set_at(0, (num_voices as f32).into());
         self.note_retriggered.clear_trigger();
 
-        let status_outputs = this.module_data().borrow().status_outputs.clone();
         if num_voices == 0 {
-            for status in status_outputs.values() {
+            for status in this.module_data().borrow().status_outputs.values() {
                 status.clear();
             }
         } else {
             self.last_active_voice_mask = self.base.current_voice_mask();
-            for status in status_outputs.values() {
+            for status in this.module_data().borrow().status_outputs.values() {
                 status.update_masked(self.last_active_voice_mask);
             }
 

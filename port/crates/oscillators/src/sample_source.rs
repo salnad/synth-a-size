@@ -356,6 +356,38 @@ impl Sample {
         sample
     }
 
+    /// A sample holding `left` (and `right`, if stereo) at `sample_rate`,
+    /// loaded as `loadSample` loads them, without the white-noise default and
+    /// so without taking a seed from the global counter.
+    pub fn from_buffers(name: &str, left: &[f32], right: Option<&[f32]>, sample_rate: i32) -> Self {
+        let mut sample = Self {
+            name: name.to_string(),
+            last_browsed_file: String::new(),
+            data: SampleData {
+                length: 0,
+                sample_rate: 0,
+                stereo: false,
+                left_buffers: Vec::new(),
+                left_loop_buffers: Vec::new(),
+                right_buffers: Vec::new(),
+                right_loop_buffers: Vec::new(),
+            },
+        };
+        match right {
+            Some(right) => sample.load_stereo_sample(left, right, left.len(), sample_rate),
+            None => sample.load_sample(left, left.len(), sample_rate),
+        }
+        sample
+    }
+
+    /// Swaps the audio and name with `other` (the last browsed file stays),
+    /// as a sample loaded into this one would leave it. Nothing is allocated
+    /// or freed here.
+    pub fn swap_loaded(&mut self, other: &mut Sample) {
+        std::mem::swap(&mut self.name, &mut other.name);
+        std::mem::swap(&mut self.data, &mut other.data);
+    }
+
     /// `init()`: 44100 samples of white noise in `[-0.9, 0.9)` at 44.1 kHz.
     pub fn init(&mut self) {
         self.name = DEFAULT_NAME.to_string();

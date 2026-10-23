@@ -76,6 +76,27 @@ impl ModulationSlot {
     }
 }
 
+/// The result of [`PresetState::connect_modulation_from_gui`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct GuiConnection {
+    /// The bank slot (0-based; its controls are `modulation_{slot + 1}_*`).
+    pub slot: usize,
+    /// Whether the connection took a new slot.
+    pub created: bool,
+    /// The control values the connection set, which a plugin must also set
+    /// on its host parameters: `modulation_N_bipolar` (the source's default)
+    /// and `modulation_N_power` (0), when a slot was created.
+    pub parameter_changes: Vec<(&'static str, f32)>,
+}
+
+/// The registry's own copy of control `name`.
+fn control_name(name: &str) -> &'static str {
+    registry()
+        .get(name)
+        .map(|info| info.name.as_str())
+        .expect("every modulation slot control is in the registry")
+}
+
 /// Preset name, author, comments, style and macro names (`save_info_`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct SaveInfo {
@@ -240,6 +261,36 @@ impl PresetState {
         self.controls
             .insert(format!("modulation_{}_bipolar", index + 1), bipolar);
         Ok(index)
+    }
+
+    /// `SynthGuiInterface::connectModulation(source, destination)`: what
+    /// upstream's editor does when a source is dropped on a control.
+    /// [`add_modulation`](Self::add_modulation), then, if that took a new slot,
+    /// `initModulationValues`: the slot's remap curve goes back to linear and
+    /// its power to 0. Every live and offline edit path uses this, so they
+    /// all pick the same slot.
+    pub fn connect_modulation_from_gui(
+        &mut self,
+        source: &str,
+        destination: &str,
+    ) -> Result<GuiConnection, Error> {
+        let created = self.modulation_index(source, destination).is_none();
+        let slot = self.add_modulation(source, destination)?;
+        let mut parameter_changes = Vec::new();
+        if created {
+            self.modulations[slot].line_mapping.init_linear();
+            let number = slot + 1;
+            let bipolar = control_name(&format!("modulation_{number}_bipolar"));
+            let power = control_name(&format!("modulation_{number}_power"));
+            self.controls.insert(power.to_string(), 0.0);
+            parameter_changes.push((bipolar, self.controls[bipolar]));
+            parameter_changes.push((power, 0.0));
+        }
+        Ok(GuiConnection {
+            slot,
+            created,
+            parameter_changes,
+        })
     }
 
     /// `SynthBase::disconnectModulation(source, destination)`: frees the slot

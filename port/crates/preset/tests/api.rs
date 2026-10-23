@@ -128,3 +128,42 @@ fn rejects_upgrades_with_missing_keys() {
         Err(Error::Corrupted(_))
     ));
 }
+
+/// `SynthGuiInterface::connectModulation`: a new slot gets the source's
+/// bipolar default, power 0 and a linear curve; reconnecting changes nothing.
+#[test]
+fn gui_connect_initializes_a_new_slot_only() {
+    let mut preset = fresh();
+    preset.set_value("modulation_1_power", 3.0).unwrap();
+    preset.line_mapping_mut(0).unwrap().init_square();
+
+    let connection = preset
+        .connect_modulation_from_gui("env_2", "filter_1_cutoff")
+        .unwrap();
+    assert_eq!(connection.slot, 0);
+    assert!(connection.created);
+    assert_eq!(
+        connection.parameter_changes,
+        vec![("modulation_1_bipolar", 0.0), ("modulation_1_power", 0.0)]
+    );
+    assert_eq!(preset.value("modulation_1_power"), Some(0.0));
+    assert!(preset.modulations()[0].line_mapping.is_linear());
+
+    preset.set_value("modulation_1_power", 2.0).unwrap();
+    let again = preset
+        .connect_modulation_from_gui("env_2", "filter_1_cutoff")
+        .unwrap();
+    assert_eq!((again.slot, again.created), (0, false));
+    assert!(again.parameter_changes.is_empty());
+    assert_eq!(preset.value("modulation_1_power"), Some(2.0));
+
+    let bipolar = preset
+        .connect_modulation_from_gui("lfo_1", "modulation_1_amount")
+        .unwrap();
+    assert_eq!(bipolar.slot, 1);
+    assert_eq!(bipolar.parameter_changes[0], ("modulation_2_bipolar", 1.0));
+    assert!(matches!(
+        preset.connect_modulation_from_gui("lfo_9", "filter_1_cutoff"),
+        Err(Error::UnknownModulationSource(_))
+    ));
+}

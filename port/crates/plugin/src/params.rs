@@ -26,12 +26,13 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::Arc;
 
 use nice_plug::params::internals::ParamPtr;
 use nice_plug::params::InternalParamMut;
 use nice_plug::plugin::ParamValue;
 use nice_plug::prelude::*;
+use sas_engine::edit_bus::EditHandle;
 use sas_preset::{engine, registry, ParamInfo, PresetState, ValueScale};
 
 use crate::state::{self, PresetDocument};
@@ -197,18 +198,20 @@ pub struct SynthParams {
     /// Controls set since the document was last replaced (by the host, or by
     /// the wrapper applying a state without a preset).
     touched: Arc<ChangeSet>,
-    /// Control values in here are stale; the parameters hold the live ones.
-    document: Mutex<PresetDocument>,
-    /// Bumped whenever `document` is replaced, so the audio thread reloads it.
-    /// Starts at 0, the generation the processor starts with: the initial
-    /// document describes the engine as constructed, so it is not loaded.
-    pub(crate) document_generation: AtomicU64,
+    /// The edit bus and its mirror of the document (modulation routing,
+    /// shapes, wavetables, sample, save info, tuning). Control values in the
+    /// mirror are stale; the parameters hold the live ones. A restored
+    /// document replaces the mirror and moves the bus to a new generation,
+    /// so the audio thread reloads it. Generation 0, the processor's
+    /// starting point, is the initial document, which describes the engine
+    /// as constructed and is not loaded.
+    edits: EditHandle,
 }
 
 impl SynthParams {
-    /// Parameters at their registry defaults, around `document` (normally the
-    /// init preset).
-    pub fn new(document: PresetDocument) -> SynthParams {
+    /// Parameters at their registry defaults, around the edit bus `edits`,
+    /// whose mirror is the starting document (normally the init preset).
+    pub fn new(edits: EditHandle) -> SynthParams {
         let names: Vec<&'static str> = registry()
             .parameters()
             .iter()
@@ -244,8 +247,7 @@ impl SynthParams {
             bypass,
             changes,
             touched,
-            document: Mutex::new(document),
-            document_generation: AtomicU64::new(0),
+            edits,
         }
     }
 
@@ -263,24 +265,17 @@ impl SynthParams {
         self.controls[self.bypass].param.value() != 0.0
     }
 
-    pub(crate) fn document(&self) -> MutexGuard<'_, PresetDocument> {
-        self.document
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
-
-    pub(crate) fn try_document(&self) -> Option<MutexGuard<'_, PresetDocument>> {
-        match self.document.try_lock() {
-            Ok(guard) => Some(guard),
-            Err(std::sync::TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),
-            Err(std::sync::TryLockError::WouldBlock) => None,
-        }
+    /// The edit bus, for the editor and the chat layer: modulation routing,
+    /// shapes, wavetables and the sample change through it; every control
+    /// changes through its host parameter.
+    pub fn edit_handle(&self) -> &EditHandle {
+        &self.edits
     }
 
     /// The whole current preset: the stored document with every control set
     /// from its parameter.
     pub fn preset_document(&self) -> PresetDocument {
-        let mut document = self.document().clone();
+        let mut document = self.edits.with_document(PresetDocument::clone);
         self.write_controls(&mut document.state);
         document
     }
@@ -317,12 +312,9 @@ impl SynthParams {
     /// Replaces the non-parameter state with `document` (its control values
     /// are set on the parameters by the wrapper, from `filter_state`).
     fn replace_document(&self, document: PresetDocument) {
-        let mut current = self.document();
-        *current = document;
         // The wrapper set the parameters from this preset just before.
         self.touched.clear();
-        // Bumped under the lock, so a reader holding it sees a matching pair.
-        self.document_generation.fetch_add(1, Ordering::AcqRel);
+        self.edits.begin_restore(document);
     }
 
     /// The state nice-plug's wrapper saves for the host: every parameter's
@@ -373,7 +365,7 @@ impl SynthParams {
     /// Loads the preset JSON `text` on top of the current document, like
     /// `SynthPlugin::setStateInformation`. On error the state is unchanged.
     pub(crate) fn restore_document(&self, text: &str) -> Result<(), sas_preset::Error> {
-        let mut document = self.document().clone();
+        let mut document = self.edits.with_document(PresetDocument::clone);
         document.load_json_str(text)?;
         self.replace_document(document);
         Ok(())

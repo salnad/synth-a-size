@@ -17,7 +17,10 @@
 //!   (`modules/synth_voice_handler.*`), built so far from note articulation,
 //!   macros and expression sources; see its docs for what follows;
 //! - [`parameters`]: the `sas-preset` registry as the graph's
-//!   `Parameters::getDetails`.
+//!   `Parameters::getDetails`;
+//! - [`edit_bus`]: live edits from the editor and the chat layer (modulation
+//!   routing, shapes, wavetables, the sample) and the producers' mirror of
+//!   the [`document::PresetDocument`] (milestone G0 of the GUI plan).
 //!
 //! The upstream per-ISA sites (`migration/decisions/reference-arm.md`) are
 //! reached only through `sas-simd`; the `aarch64-semantics` feature forwards
@@ -29,6 +32,8 @@ pub use sas_filters;
 pub use sas_modulation;
 pub use sas_oscillators;
 
+pub mod document;
+pub mod edit_bus;
 pub mod midi_file;
 pub mod midi_manager;
 pub mod modulation_bank;

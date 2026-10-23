@@ -449,6 +449,21 @@ impl LineGenerator {
     pub fn render_count(&self) -> u32 {
         self.render_count
     }
+
+    /// Takes `other`'s shape (points, powers, point count, smoothing and
+    /// name) and re-renders at this generator's own resolution and loop
+    /// setting, as upstream's line editor edits the shared model and calls
+    /// `render()`. The names are swapped, so `other` keeps this generator's
+    /// old name and nothing is allocated or freed here.
+    pub fn take_shape(&mut self, other: &mut LineGenerator) {
+        std::mem::swap(&mut self.name, &mut other.name);
+        self.points = other.points;
+        self.powers = other.powers;
+        self.num_points = other.num_points;
+        self.smooth = other.smooth;
+        self.check_line_is_linear();
+        self.render();
+    }
 }
 
 #[cfg(test)]
