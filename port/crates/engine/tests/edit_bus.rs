@@ -18,7 +18,7 @@ use sas_engine::synth_voice_handler::SynthVoiceHandler;
 use sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_oscillators::sas_wavetable::Wavetable;
 use sas_oscillators::{RandomValues, Sample};
-use sas_preset::{InitContent, SampleState, SlotValues};
+use sas_preset::{InitContent, SampleState, SaveInfo, SlotValues};
 
 /// A drag onto a control without a modifier key, at mid range.
 const DRAG: SlotValues = SlotValues {
@@ -291,6 +291,65 @@ fn batches_are_all_or_nothing() {
             Call::Lfo(0, "batched".into()),
         ]
     );
+}
+
+fn named_info(name: &str) -> SaveInfo {
+    let mut info = SaveInfo {
+        preset_name: name.to_string(),
+        author: "someone".to_string(),
+        comments: "a comment".to_string(),
+        style: "Bass".to_string(),
+        ..SaveInfo::default()
+    };
+    info.macros[2] = "WOBBLE".to_string();
+    info
+}
+
+#[test]
+fn save_info_changes_only_the_mirror() {
+    let (edits, mut consumer) = EditBus::new(init_document());
+    let generation = edits.generation();
+    // Nothing is queued, so a full queue doesn't refuse it.
+    while edits
+        .connect_modulation("lfo_1", "filter_1_cutoff", DRAG)
+        .and_then(|_| edits.disconnect_modulation("lfo_1", "filter_1_cutoff"))
+        .is_ok()
+    {}
+    let remaining = edits.capacity_remaining();
+    let revision = edits.revision();
+    edits.set_info(named_info("renamed"));
+    assert_eq!(edits.capacity_remaining(), remaining);
+    assert_eq!(edits.revision(), revision + 1);
+    assert_eq!(edits.generation(), generation);
+    edits.with_document(|document| assert_eq!(document.state.info, named_info("renamed")));
+    let mut recorder = Recorder::default();
+    consumer.drain(&mut recorder);
+    assert!(recorder.0.iter().all(|call| matches!(
+        call,
+        Call::Connect(..) | Call::Disconnect(..) | Call::LineMapping(..)
+    )));
+
+    // In a batch: kept when it commits, rolled back when it fails.
+    let revision = edits.revision();
+    edits
+        .batch(|batch| {
+            batch.set_info(named_info("batched"));
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(edits.revision(), revision + 1);
+    edits.with_document(|document| assert_eq!(document.state.info, named_info("batched")));
+    let mut recorder = Recorder::default();
+    consumer.drain(&mut recorder);
+    assert!(recorder.0.is_empty());
+
+    let result = edits.batch(|batch| {
+        batch.set_info(named_info("failed"));
+        batch.connect_modulation("nothing", "filter_1_cutoff", DRAG)
+    });
+    assert!(matches!(result, Err(EditError::UnknownSource(_))));
+    assert_eq!(edits.revision(), revision + 1);
+    edits.with_document(|document| assert_eq!(document.state.info, named_info("batched")));
 }
 
 #[test]

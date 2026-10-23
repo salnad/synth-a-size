@@ -11,19 +11,19 @@ use crate::params::SynthParams;
 /// The editor's view of one plugin instance.
 pub struct PluginModel {
     params: Arc<SynthParams>,
-    /// The preset name and the edit bus generation it was read at, so the
-    /// document mirror is read only when a new document arrives.
+    /// The preset name and the edit bus revision it was read at, so the
+    /// document mirror is read only after it changes.
     preset_name: Mutex<(u64, String)>,
 }
 
 impl PluginModel {
     pub fn new(params: Arc<SynthParams>) -> PluginModel {
         let edits = params.edit_handle();
-        let generation = edits.generation();
+        let revision = edits.revision();
         let name = edits.with_document(|document| document.state.info.preset_name.clone());
         PluginModel {
             params,
-            preset_name: Mutex::new((generation, name)),
+            preset_name: Mutex::new((revision, name)),
         }
     }
 }
@@ -31,14 +31,14 @@ impl PluginModel {
 impl EditorModel for PluginModel {
     fn preset_name(&self) -> String {
         let edits = self.params.edit_handle();
-        let generation = edits.generation();
+        let revision = edits.revision();
         let mut cached = self
             .preset_name
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if cached.0 != generation {
+        if cached.0 != revision {
             *cached = (
-                generation,
+                revision,
                 edits.with_document(|document| document.state.info.preset_name.clone()),
             );
         }
@@ -60,10 +60,16 @@ mod tests {
     use sas_preset::InitContent;
 
     #[test]
-    fn init_preset_has_no_name() {
+    fn the_preset_name_follows_renames() {
         let (edits, _consumer) =
             EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
         let params = Arc::new(SynthParams::new(edits));
-        assert_eq!(PluginModel::new(params).preset_name(), "");
+        let model = PluginModel::new(params.clone());
+        assert_eq!(model.preset_name(), "");
+        let edits = params.edit_handle();
+        let mut info = edits.with_document(|document| document.state.info.clone());
+        info.preset_name = "Renamed".to_string();
+        edits.set_info(info);
+        assert_eq!(model.preset_name(), "Renamed");
     }
 }

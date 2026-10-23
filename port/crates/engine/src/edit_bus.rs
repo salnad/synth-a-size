@@ -44,7 +44,7 @@ use sas_dsp_core::constants::MAX_MODULATION_CONNECTIONS;
 use sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_oscillators::sas_wavetable::{Wavetable, NUM_OSCILLATOR_WAVE_FRAMES};
 use sas_oscillators::Sample;
-use sas_preset::{GuiConnection, SampleState, SlotValues};
+use sas_preset::{GuiConnection, SampleState, SaveInfo, SlotValues};
 
 use crate::document::PresetDocument;
 use crate::synth::{Synth, NUM_LFOS, NUM_OSCILLATORS};
@@ -492,6 +492,14 @@ impl Batch<'_> {
         Ok(())
     }
 
+    /// The preset's name, author, comments, style and macro names
+    /// (`SynthBase::setPresetName`, `setAuthor`, `setComments`, `setStyle`,
+    /// `setMacroName`, which only write `save_info_`). Only the mirror
+    /// changes: the engine never reads them, so nothing is queued.
+    pub fn set_info(&mut self, info: SaveInfo) {
+        self.mirror.document.state.info = info;
+    }
+
     fn new(mirror: &mut Mirror) -> Batch<'_> {
         Batch {
             mirror,
@@ -701,6 +709,15 @@ impl EditHandle {
     /// See [`Batch::set_lfo_shape`].
     pub fn set_lfo_shape(&self, lfo: usize, line: LineGenerator) -> Result<(), EditError> {
         self.single(|batch| batch.set_lfo_shape(lfo, line))
+    }
+
+    /// See [`Batch::set_info`]. Bumps the revision and queues nothing, so
+    /// it never fails; read the current info with [`Self::with_document`].
+    pub fn set_info(&self, info: SaveInfo) {
+        self.collect_retired();
+        let mut mirror = self.lock();
+        mirror.document.state.info = info;
+        self.push(&mut mirror, Vec::new());
     }
 
     /// Renders `creator` on the calling thread, then sets it as oscillator
