@@ -2,6 +2,9 @@
 //! model is done, a reply out. It runs on whatever thread calls it (the
 //! plugin's chat worker, the CLI's main thread), never the audio thread.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use serde_json::Value;
 
 use sas_llm_control::{catalog, patch, specs, Controller, SynthSession, ToolOutput};
@@ -76,6 +79,7 @@ pub struct Agent<S: SynthSession> {
     /// Text for the model about something the user did between turns.
     note: Option<String>,
     usage: Usage,
+    cancel: Arc<AtomicBool>,
 }
 
 impl<S: SynthSession> Agent<S> {
@@ -103,6 +107,7 @@ impl<S: SynthSession> Agent<S> {
             history: Vec::new(),
             note: None,
             usage: Usage::default(),
+            cancel: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -116,6 +121,19 @@ impl<S: SynthSession> Agent<S> {
 
     pub fn into_controller(self) -> Controller<S> {
         self.controller
+    }
+
+    /// A flag another thread sets to stop the current message after the
+    /// model call in flight. It stays set until the caller clears it or
+    /// replaces it ([`set_cancel_flag`](Self::set_cancel_flag)).
+    pub fn cancel_flag(&self) -> Arc<AtomicBool> {
+        self.cancel.clone()
+    }
+
+    /// Replaces the cancel flag, e.g. with one made for the next message, so
+    /// a stop meant for that message is never cleared before it starts.
+    pub fn set_cancel_flag(&mut self, cancel: Arc<AtomicBool>) {
+        self.cancel = cancel;
     }
 
     /// Tokens used so far in this session.
@@ -211,6 +229,13 @@ impl<S: SynthSession> Agent<S> {
         let mut report = TurnReport::default();
 
         loop {
+            if self.cancel.load(Ordering::Relaxed) {
+                report.stopped = Some("stopped by the user".to_string());
+                turn.push(Message::assistant(vec![Block::Text(
+                    "(Stopped by the user.)".to_string(),
+                )]));
+                break;
+            }
             if report.model_calls == self.config.max_steps {
                 report.stopped = Some(format!(
                     "stopped after {} model calls",

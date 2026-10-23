@@ -4,11 +4,13 @@
 
 use std::sync::{Arc, Mutex};
 
+use nice_plug::context::gui::GuiContext;
 use sas_engine::keyboard::KeyboardHandle;
 use sas_engine::telemetry::Telemetry;
 use sas_engine::Tuning;
-use sas_gui::{EditorModel, HostParam};
+use sas_gui::{ChatHost, EditorModel, HostParam};
 
+use crate::chat::PluginChat;
 use crate::midi_learn::MidiLearn;
 use crate::params::SynthParams;
 
@@ -21,6 +23,7 @@ pub struct PluginModel {
     /// The preset name and the edit bus revision it was read at, so the
     /// document mirror is read only after it changes.
     preset_name: Mutex<(u64, String)>,
+    chat: Option<Arc<PluginChat>>,
 }
 
 impl PluginModel {
@@ -29,6 +32,7 @@ impl PluginModel {
         telemetry: Telemetry,
         keyboard: KeyboardHandle,
         midi_learn: Arc<MidiLearn>,
+        chat: Option<Arc<PluginChat>>,
     ) -> PluginModel {
         let edits = params.edit_handle();
         let revision = edits.revision();
@@ -39,6 +43,7 @@ impl PluginModel {
             telemetry,
             midi_learn,
             preset_name: Mutex::new((revision, name)),
+            chat,
         }
     }
 }
@@ -131,6 +136,16 @@ impl EditorModel for PluginModel {
     fn midi_move_forwarded(&self, name: &str, normalized: f32) {
         self.params.record_forwarded(name, normalized);
     }
+
+    fn attach(&self, gui: GuiContext, wake: Box<dyn Fn() + Send + Sync>) {
+        if let Some(chat) = &self.chat {
+            chat.attach(gui, Arc::from(wake));
+        }
+    }
+
+    fn chat(&self) -> Option<&dyn ChatHost> {
+        self.chat.as_deref().map(|chat| chat as &dyn ChatHost)
+    }
 }
 
 #[cfg(test)]
@@ -152,6 +167,7 @@ mod tests {
             telemetry,
             keyboard().0,
             Arc::new(MidiLearn::in_memory()),
+            None,
         );
         assert_eq!(model.preset_name(), "");
         let edits = params.edit_handle();
@@ -171,6 +187,7 @@ mod tests {
             telemetry,
             keyboard().0,
             Arc::new(MidiLearn::in_memory()),
+            None,
         );
         let default_name = model.tuning_name();
         let mut tuning = Tuning::new();
@@ -192,6 +209,7 @@ mod tests {
             telemetry,
             keyboard().0,
             Arc::new(MidiLearn::in_memory()),
+            None,
         );
         let tunings = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../../migration/corpus/tunings");
@@ -230,6 +248,7 @@ mod tests {
             telemetry,
             handle,
             Arc::new(MidiLearn::in_memory()),
+            None,
         );
         model.note_on(60, 0.5);
         assert_eq!(model.held_notes(), 1 << 60);

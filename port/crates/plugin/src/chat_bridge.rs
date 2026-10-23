@@ -16,10 +16,14 @@
 //! call either runs and its result reaches the worker (which waits for a
 //! call already running), or never runs and the worker gets an error. An
 //! edit can't be applied while the worker reports it failed.
+//!
+//! [`ChatBridge::close`] ends a bridge for good (the worker retired or the
+//! plugin closing): queued calls are dropped, their waiting worker wakes at
+//! once with an error, and later calls fail without queueing.
 
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -51,6 +55,12 @@ pub struct ChatBridge {
     /// Asks the editor for a frame (egui's `request_repaint`), so a queued
     /// call runs promptly.
     waker: Mutex<Option<Box<dyn Fn() + Send>>>,
+    /// Set under the `jobs` lock, so no call is queued after `close`.
+    closed: AtomicBool,
+}
+
+fn closed_error() -> Error {
+    Error::Invalid("the chat was closed".to_string())
 }
 
 impl ChatBridge {
@@ -61,6 +71,25 @@ impl ChatBridge {
     /// Sets how to wake the GUI thread when a call is queued.
     pub fn set_waker(&self, waker: impl Fn() + Send + 'static) {
         *self.waker.lock().unwrap_or_else(|p| p.into_inner()) = Some(Box::new(waker));
+    }
+
+    /// Ends the bridge: drops the queued calls (their workers wake at once
+    /// with an error) and refuses later ones.
+    pub fn close(&self) {
+        let jobs: Vec<Job> = {
+            let mut jobs = self.jobs.lock().unwrap_or_else(|p| p.into_inner());
+            self.closed.store(true, Ordering::Release);
+            jobs.drain(..).collect()
+        };
+        for job in jobs {
+            let _ =
+                job.state
+                    .compare_exchange(QUEUED, CANCELLED, Ordering::AcqRel, Ordering::Acquire);
+        }
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::Acquire)
     }
 
     /// Runs the queued calls on `session` (the GUI thread, once per frame).
@@ -103,21 +132,26 @@ impl ChatBridge {
     ) -> Result<R, Error> {
         let (sender, receiver) = mpsc::sync_channel(1);
         let state = Arc::new(AtomicU8::new(QUEUED));
-        self.jobs
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .push_back(Job {
+        {
+            let mut jobs = self.jobs.lock().unwrap_or_else(|p| p.into_inner());
+            if self.is_closed() {
+                return Err(closed_error());
+            }
+            jobs.push_back(Job {
                 state: state.clone(),
                 run: Box::new(move |session| {
                     let _ = sender.send(run(session));
                 }),
             });
+        }
         if let Some(wake) = &*self.waker.lock().unwrap_or_else(|p| p.into_inner()) {
             wake();
         }
         match receiver.recv_timeout(timeout) {
             Ok(result) => Ok(result),
-            Err(_) => {
+            // The call was dropped unrun: the bridge closed.
+            Err(RecvTimeoutError::Disconnected) => Err(closed_error()),
+            Err(RecvTimeoutError::Timeout) => {
                 if state
                     .compare_exchange(QUEUED, CANCELLED, Ordering::AcqRel, Ordering::Acquire)
                     .is_ok()

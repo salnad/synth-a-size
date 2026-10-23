@@ -91,6 +91,11 @@ PR that settles it.
      gesture per frame)?
    - Undo after turning: one step, or many?
    Record the answers next to D16 in `DIVERGENCES.md`.
+4. **The chat's Keychain prompt (L5).** Turn the chat on, store an API key
+   in its settings, quit FL Studio and reopen the project. Does macOS ask
+   for Keychain access when the chat reads the key, and does it ask again
+   after installing a rebuilt bundle? Ad-hoc signed builds may prompt after
+   each rebuild; note whether "Always Allow" sticks.
 
 ## Vendored egui-baseview
 

@@ -30,7 +30,7 @@ impl std::fmt::Debug for HttpRequest {
 }
 
 /// Sends a request and returns the JSON response body.
-pub trait Transport {
+pub trait Transport: Send {
     fn send(&mut self, request: &HttpRequest) -> Result<Value, AgentError>;
 }
 

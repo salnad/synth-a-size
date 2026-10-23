@@ -231,3 +231,27 @@ fn recordings_hold_no_credentials() {
         }
     }
 }
+
+#[test]
+fn a_cancelled_message_stops_after_the_call_in_flight() {
+    let looping = anthropic(
+        json!([{"type": "tool_use", "id": "toolu_x", "name": "get_patch", "input": {}}]),
+        "tool_use",
+    );
+    let mut agent = Agent::new(
+        Controller::new(OfflineSession::init(), Policy::default()),
+        ProviderConfig::new(ProviderKind::Anthropic, None).build(),
+        Box::new(ScriptedTransport::new(vec![looping; 10])),
+        AgentConfig::default(),
+    );
+    let cancel = agent.cancel_flag();
+    let report = agent
+        .send("Look around.", &mut |event| {
+            if let sas_llm_agent::AgentEvent::ToolResult { .. } = event {
+                cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        })
+        .unwrap();
+    assert_eq!(report.model_calls, 1);
+    assert_eq!(report.stopped.as_deref(), Some("stopped by the user"));
+}

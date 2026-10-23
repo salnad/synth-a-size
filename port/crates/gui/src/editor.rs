@@ -18,6 +18,7 @@ use nice_plug_egui::{
     create_egui_editor, EguiEditor, EguiEditorState, EguiNiceSettings, Frame, NiceEguiApp,
 };
 
+use crate::chat::ChatPanel;
 use crate::fonts;
 use crate::host::{Host, OpenGestures};
 use crate::interface::{EditorModel, Interface, PRODUCT_NAME};
@@ -60,6 +61,7 @@ pub struct App {
     /// The host connection, from the window's `build` until it closes.
     gui_context: Option<GuiContext>,
     open_gestures: Arc<OpenGestures>,
+    chat: ChatPanel,
     #[cfg(feature = "focus-spike")]
     focus_spike: crate::focus_spike::FocusSpike,
 }
@@ -71,6 +73,7 @@ impl App {
             interface: Interface::default(),
             gui_context: None,
             open_gestures: Arc::default(),
+            chat: ChatPanel::default(),
             #[cfg(feature = "focus-spike")]
             focus_spike: Default::default(),
         }
@@ -98,12 +101,18 @@ impl NiceEguiApp for App {
             Host::tracking(model.as_ref(), Some(&context), &open).end_open_gestures();
             playing_note.release(model.as_ref());
         });
+        let repaint = egui_ctx.clone();
+        self.model.attach(
+            gui_context.clone(),
+            Box::new(move || repaint.request_repaint()),
+        );
         self.gui_context = Some(gui_context);
         self.model.set_editor_open(true);
         Ok(())
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut Frame) {
+        let area = ui.max_rect();
         let host = Host::tracking(
             self.model.as_ref(),
             self.gui_context.as_ref(),
@@ -113,7 +122,15 @@ impl NiceEguiApp for App {
         // gestures, before this frame draws them.
         host.forward_midi_moves();
         self.interface.show(ui, &host);
+        if let Some(chat) = self.model.chat() {
+            let placement = self
+                .interface
+                .chat_placement(area, ui.ctx().pixels_per_point());
+            self.chat.show(ui.ctx(), &placement, chat, &mut || {
+                let _ = frame.baseview_window().focus();
+            });
+        }
         #[cfg(feature = "focus-spike")]
-        self.focus_spike.show(ui, _frame);
+        self.focus_spike.show(ui, frame);
     }
 }

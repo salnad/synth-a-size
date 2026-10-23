@@ -349,6 +349,31 @@ fn calls_nobody_runs_time_out_and_are_dropped() {
     assert!((rig.value("volume") - 5473.0404).abs() < 1e-3);
 }
 
+#[test]
+fn closing_the_bridge_wakes_a_waiting_call_and_refuses_later_ones() {
+    let rig = rig();
+    let bridge = ChatBridge::new();
+    let mut remote = bridge.remote(Duration::from_secs(10));
+    let worker = std::thread::spawn(move || {
+        let started = std::time::Instant::now();
+        let result = remote.apply(&sas_llm_control::Edit::SetControl {
+            name: "volume",
+            value: 0.0,
+        });
+        (result.unwrap_err().to_string(), started.elapsed(), remote)
+    });
+    std::thread::sleep(Duration::from_millis(50));
+    bridge.close();
+    let (error, waited, remote) = worker.join().unwrap();
+    assert!(error.contains("closed"), "{error}");
+    assert!(waited < Duration::from_secs(1), "{waited:?}");
+    let started = std::time::Instant::now();
+    assert!(remote.snapshot().is_err());
+    assert!(started.elapsed() < Duration::from_millis(100));
+    assert_eq!(bridge.run_pending(&mut rig.session()), 0);
+    assert!((rig.value("volume") - 5473.0404).abs() < 1e-3);
+}
+
 /// A session on the GUI side whose edits take a while, or report busy a
 /// few times first, around a live session.
 struct Slow<'a> {
