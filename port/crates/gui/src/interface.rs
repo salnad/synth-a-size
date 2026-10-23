@@ -44,6 +44,23 @@ pub trait EditorModel: Send + Sync + 'static {
         let _ = name;
         None
     }
+
+    /// The on-screen keyboard pressed `note` with `velocity` (0 to 1), on
+    /// channel 1 (`MidiKeyboardState::noteOn`).
+    fn note_on(&self, note: u8, velocity: f32) {
+        let _ = (note, velocity);
+    }
+
+    /// The on-screen keyboard released `note` (`MidiKeyboardState::noteOff`).
+    fn note_off(&self, note: u8) {
+        let _ = note;
+    }
+
+    /// The notes held on any channel, from the keyboard or host MIDI: bit n
+    /// is note n (`isNoteOnForChannels(0xffff, n)`).
+    fn held_notes(&self) -> u128 {
+        0
+    }
 }
 
 /// The product name, drawn where upstream draws its logo.
