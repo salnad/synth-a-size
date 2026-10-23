@@ -3,10 +3,18 @@
 
 //! `MidiManager`: turns short MIDI messages into [`SoundEngine`] calls.
 //!
-//! Ports the audio-thread part of `vital/src/common/midi_manager.{h,cpp}`
-//! (`processMidiMessage` and its helpers) and the parts of JUCE's
-//! `MPEZoneLayout` it reads. MIDI learn, bank and folder selection and the
-//! GUI callbacks are not part of the engine.
+//! Ports `vital/src/common/midi_manager.{h,cpp}` (`processMidiMessage` and
+//! its helpers, MIDI learn, bank and folder selection) and the parts of
+//! JUCE's `MPEZoneLayout` it reads. The GUI callbacks (pitch and mod wheel
+//! display) are not part of the engine; a learned controller's value reaches
+//! the caller through `process_midi_message`'s listener
+//! (`Listener::valueChangedThroughMidi`). Saving the learn map to the user
+//! config (`LoadSave::saveMidiMapConfig`) is the caller's job: the manager
+//! reports when the map changed.
+
+use std::collections::BTreeMap;
+
+use sas_preset::{lookup, ParamInfo, ValueScale};
 
 use crate::sound_engine::{SoundEngine, NUM_MIDI_CHANNELS};
 
@@ -24,9 +32,12 @@ const PROGRAM_CHANGE: u8 = 0xc0;
 const CHANNEL_PRESSURE: u8 = 0xd0;
 const PITCH_WHEEL: u8 = 0xe0;
 
+const BANK_SELECT: u8 = 0x00;
 const MOD_WHEEL: u8 = 0x01;
+const FOLDER_SELECT: u8 = 0x20;
 const SUSTAIN_PEDAL: u8 = 0x40;
 const SOSTENUTO_PEDAL: u8 = 0x42;
+const SOFT_PEDAL_ON: u8 = 0x43;
 const SLIDE: u8 = 0x4a;
 const LSB_PRESSURE: u8 = 0x66;
 const LSB_SLIDE: u8 = 0x6a;
@@ -156,9 +167,25 @@ impl MpeZoneLayout {
     }
 }
 
-/// `MidiManager`'s engine-facing state.
+/// `MidiManager::midi_map`: controller number → the parameters it sets, by
+/// name. A parameter may be learned on several controllers.
+pub type MidiLearnMap = BTreeMap<i32, BTreeMap<&'static str, &'static ParamInfo>>;
+
+/// `MidiManager`'s state.
 #[derive(Clone, Debug)]
 pub struct MidiManager {
+    // Upstream writes these (and resets them on arm) but never reads them.
+    #[allow(dead_code)]
+    current_bank: i32,
+    #[allow(dead_code)]
+    current_folder: i32,
+    #[allow(dead_code)]
+    current_preset: i32,
+    armed_value: Option<&'static ParamInfo>,
+    midi_learn_map: MidiLearnMap,
+    /// Set when the learn map changes on a controller message, where
+    /// upstream calls `LoadSave::saveMidiMapConfig`.
+    midi_learn_changed: bool,
     mpe_enabled: bool,
     mpe_zone_layout: MpeZoneLayout,
     msb_pressure_values: [i32; 16],
@@ -179,12 +206,96 @@ impl MidiManager {
         let mut mpe_zone_layout = MpeZoneLayout::new();
         mpe_zone_layout.set_lower_zone(NUM_MIDI_CHANNELS - 1);
         Self {
+            current_bank: -1,
+            current_folder: -1,
+            current_preset: -1,
+            armed_value: None,
+            midi_learn_map: MidiLearnMap::new(),
+            midi_learn_changed: false,
             mpe_enabled: false,
             mpe_zone_layout,
             msb_pressure_values: [0; 16],
             lsb_pressure_values: [-1; 16],
             msb_slide_values: [0; 16],
             lsb_slide_values: [-1; 16],
+        }
+    }
+
+    /// `armMidiLearn(name)`: the next controller message learns `name`.
+    /// Unknown names arm nothing (upstream's `Parameters::getDetails` has no
+    /// entry to return for them).
+    pub fn arm_midi_learn(&mut self, name: &str) {
+        self.current_bank = -1;
+        self.current_folder = -1;
+        self.current_preset = -1;
+        self.armed_value = lookup(name);
+    }
+
+    /// `cancelMidiLearn()`.
+    pub fn cancel_midi_learn(&mut self) {
+        self.armed_value = None;
+    }
+
+    /// `clearMidiLearn(name)`: forgets every controller learned for `name`.
+    /// Returns whether any was, where upstream saves the config.
+    pub fn clear_midi_learn(&mut self, name: &str) -> bool {
+        let mut cleared = false;
+        for controls in self.midi_learn_map.values_mut() {
+            cleared |= controls.remove(name).is_some();
+        }
+        cleared
+    }
+
+    /// `isMidiMapped(name)`.
+    pub fn is_midi_mapped(&self, name: &str) -> bool {
+        self.midi_learn_map
+            .values()
+            .any(|controls| controls.contains_key(name))
+    }
+
+    /// `getMidiLearnMap()`.
+    pub fn midi_learn_map(&self) -> &MidiLearnMap {
+        &self.midi_learn_map
+    }
+
+    /// `setMidiLearnMap(map)`.
+    pub fn set_midi_learn_map(&mut self, midi_learn_map: MidiLearnMap) {
+        self.midi_learn_map = midi_learn_map;
+    }
+
+    /// Whether a controller message changed the learn map since the last
+    /// call (upstream saves the config there).
+    pub fn take_midi_learn_changed(&mut self) -> bool {
+        std::mem::take(&mut self.midi_learn_changed)
+    }
+
+    /// `midiInput(midi_id, value)`: a controller learns the armed parameter,
+    /// then sets every parameter learned on it, scaled from 0–127 to the
+    /// parameter's range (rounded for indexed ones), through `listener`.
+    pub fn midi_input(
+        &mut self,
+        midi_id: i32,
+        value: f32,
+        listener: &mut dyn FnMut(&'static str, f32),
+    ) {
+        if let Some(armed) = self.armed_value.take() {
+            self.midi_learn_map
+                .entry(midi_id)
+                .or_default()
+                .insert(armed.name.as_str(), armed);
+            self.midi_learn_changed = true;
+        }
+
+        if let Some(controls) = self.midi_learn_map.get(&midi_id) {
+            for (name, details) in controls {
+                let percent = value / CONTROL_MAX;
+                let range = details.max - details.min;
+                let mut translated = percent * range + details.min;
+                if details.value_scale == ValueScale::Indexed {
+                    translated = translated.round();
+                }
+                listener(name, translated);
+            }
         }
     }
 
@@ -380,7 +491,15 @@ impl MidiManager {
     }
 
     /// `processMidiMessage(message, sample_position)` for one short message.
-    pub fn process_midi_message(&mut self, engine: &SoundEngine, message: [u8; 3], sample: i32) {
+    /// `listener` receives the parameters a learned controller sets
+    /// (`Listener::valueChangedThroughMidi`).
+    pub fn process_midi_message(
+        &mut self,
+        engine: &SoundEngine,
+        message: [u8; 3],
+        sample: i32,
+        listener: &mut dyn FnMut(&'static str, f32),
+    ) {
         let status = message[0];
         let kind = status & 0xf0;
         let channel = (status & 0x0f) as i32;
@@ -434,13 +553,26 @@ impl MidiManager {
                     }
                     SUSTAIN_PEDAL => self.process_sustain(engine, value >= 64, sample, channel),
                     SOSTENUTO_PEDAL => self.process_sostenuto(engine, value >= 64, sample, channel),
+                    SOFT_PEDAL_ON => {}
                     MOD_WHEEL => engine.set_mod_wheel(value as f32 / CONTROL_MAX, channel),
                     ALL_NOTES_OFF | ALL_CONTROLLERS_OFF => {
-                        self.process_all_notes_off(engine, sample, channel)
+                        self.process_all_notes_off(engine, sample, channel);
+                        return;
                     }
                     ALL_SOUNDS_OFF => engine.all_sounds_off(),
+                    BANK_SELECT => {
+                        self.current_bank = value as i32;
+                        return;
+                    }
+                    FOLDER_SELECT => {
+                        self.current_folder = value as i32;
+                        return;
+                    }
                     _ => {}
                 }
+                // Every controller that did not return above, handled or
+                // not, also goes to MIDI learn.
+                self.midi_input(message[1] as i32, value as f32, listener);
             }
             _ => {}
         }

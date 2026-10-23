@@ -26,10 +26,10 @@ use sas_modulation::ModulationConnectionProcessor;
 use sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_oscillators::sas_wavetable::Wavetable;
 use sas_oscillators::Sample;
-use sas_preset::{lookup, PresetState, SampleState, SlotValues};
+use sas_preset::{lookup, registry, PresetState, SampleState, SlotValues};
 
 use crate::midi_file::TimedMessage;
-use crate::midi_manager::MidiManager;
+use crate::midi_manager::{MidiLearnMap, MidiManager};
 use crate::sound_engine::{ModulationChange, SoundEngine};
 use crate::synth_voice_handler::SynthVoiceHandler;
 use crate::telemetry::{
@@ -104,6 +104,12 @@ pub struct Synth {
     oscilloscope: OscilloscopeMemory,
     /// `audio_memory_`.
     audio_memory: Arc<AudioMemory>,
+    /// Controls a learned MIDI controller set, in order, for the host
+    /// (`SynthBase::valueChangedThroughMidi`'s `setValueNotifyHost`). Callers
+    /// drain it after every message, and one message sets each parameter at
+    /// most once, so the capacity reserved for every parameter is never
+    /// outgrown on the audio thread.
+    midi_value_changes: Vec<(&'static str, f32)>,
 }
 
 impl Default for Synth {
@@ -136,6 +142,7 @@ impl Synth {
             modulation_totals: Vec::new(),
             oscilloscope: OscilloscopeMemory::default(),
             audio_memory: Arc::new(AudioMemory::default()),
+            midi_value_changes: Vec::with_capacity(registry().parameters().len()),
         };
         synth.status_outputs = status_names()
             .iter()
@@ -584,12 +591,77 @@ impl Synth {
     }
 
     /// `MidiManager::processMidiMessage` for one short message at
-    /// `sample_offset` into the next [`process`](Self::process).
+    /// `sample_offset` into the next [`process`](Self::process). Controls a
+    /// learned controller sets change before the next message, as
+    /// upstream's listener sets them inside `processMidiMessage`.
     pub fn process_midi(&mut self, message: [u8; 3], sample_offset: i32) {
         let manager = &mut self.midi_manager;
+        let changes = &mut self.midi_value_changes;
+        let first = changes.len();
         self.engine.with::<SoundEngine, _>(|engine, _| {
-            manager.process_midi_message(engine, message, sample_offset)
+            manager.process_midi_message(engine, message, sample_offset, &mut |name, value| {
+                changes.push((name, value))
+            })
         });
+        for index in first..self.midi_value_changes.len() {
+            let (name, value) = self.midi_value_changes[index];
+            self.value_changed_through_midi(name, value);
+        }
+    }
+
+    /// `valueChangedThroughMidi(name, value)`: sets the control alone. Unlike
+    /// [`set_control`](Self::set_control) (`valueChangedExternal`), the mod
+    /// and pitch wheel controls do not reach the voices: upstream's
+    /// `ValueBridge` keeps the host notification from coming back as an
+    /// external change.
+    fn value_changed_through_midi(&mut self, name: &str, value: f32) {
+        if let Some(control) = self.controls.get(name) {
+            control.set_value(value);
+        }
+    }
+
+    /// The controls learned MIDI controllers set since the last call, in
+    /// order, for the host to be told (`setValueNotifyHost`).
+    pub fn drain_midi_value_changes(&mut self, mut f: impl FnMut(&'static str, f32)) {
+        for (name, value) in self.midi_value_changes.drain(..) {
+            f(name, value);
+        }
+    }
+
+    /// `armMidiLearn(name)`.
+    pub fn arm_midi_learn(&mut self, name: &str) {
+        self.midi_manager.arm_midi_learn(name);
+    }
+
+    /// `cancelMidiLearn()`.
+    pub fn cancel_midi_learn(&mut self) {
+        self.midi_manager.cancel_midi_learn();
+    }
+
+    /// `clearMidiLearn(name)`; returns whether anything was cleared.
+    pub fn clear_midi_learn(&mut self, name: &str) -> bool {
+        self.midi_manager.clear_midi_learn(name)
+    }
+
+    /// `isMidiMapped(name)`.
+    pub fn is_midi_mapped(&self, name: &str) -> bool {
+        self.midi_manager.is_midi_mapped(name)
+    }
+
+    /// The MIDI learn map (`MidiManager::getMidiLearnMap`).
+    pub fn midi_learn_map(&self) -> &MidiLearnMap {
+        self.midi_manager.midi_learn_map()
+    }
+
+    /// `MidiManager::setMidiLearnMap`, as `LoadSave::loadConfig` restores it.
+    pub fn set_midi_learn_map(&mut self, midi_learn_map: MidiLearnMap) {
+        self.midi_manager.set_midi_learn_map(midi_learn_map);
+    }
+
+    /// Whether a MIDI controller learned a parameter since the last call
+    /// (upstream saves the config there).
+    pub fn take_midi_learn_changed(&mut self) -> bool {
+        self.midi_manager.take_midi_learn_changed()
     }
 
     /// `processAudio`: runs the engine for `left.len()` samples (at most
@@ -719,6 +791,8 @@ impl Synth {
             for &(position, message) in midi {
                 if position >= sample_offset && position < sample_offset + num_samples {
                     self.process_midi(message, (position - sample_offset) as i32);
+                    // An offline render has no host to tell.
+                    self.midi_value_changes.clear();
                 }
             }
             let end = sample_offset + num_samples;

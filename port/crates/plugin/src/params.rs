@@ -167,6 +167,10 @@ impl ChangeSet {
         self.words[index / 64].fetch_or(1 << (index % 64), Ordering::AcqRel);
     }
 
+    fn unmark(&self, index: usize) {
+        self.words[index / 64].fetch_and(!(1 << (index % 64)), Ordering::AcqRel);
+    }
+
     fn is_marked(&self, index: usize) -> bool {
         self.words[index / 64].load(Ordering::Acquire) & (1 << (index % 64)) != 0
     }
@@ -362,6 +366,35 @@ impl SynthParams {
             }
         }
         self.deserialize_fields(&state.fields);
+    }
+
+    /// A learned MIDI controller set control `name` to `value` in the engine
+    /// (`SynthBase::valueChangedThroughMidi`): the parameter takes the value,
+    /// so the editor shows it and saved states keep it, and counts as set
+    /// since the last restore. It is not sent back to the engine as a host
+    /// change, as upstream's `ValueBridge` guards `setValueNotifyHost` from
+    /// coming back through `parameterChanged`. The host is not told (see
+    /// `migration/DIVERGENCES.md`, D16).
+    pub(crate) fn set_from_midi(&self, name: &str, value: f32) {
+        let Some(&index) = self.by_name.get(name) else {
+            return;
+        };
+        // SAFETY: the setters only store atomics. A host edit of the same
+        // parameter racing this one leaves whichever value lands last.
+        unsafe {
+            match &self.controls[index].param {
+                ControlParam::Float(param) => {
+                    param._internal_set_plain_value(value);
+                }
+                ControlParam::Stepped(param) => {
+                    param._internal_set_plain_value(value.round() as i32);
+                }
+                ControlParam::Bypass(param) => {
+                    param._internal_set_plain_value(value != 0.0);
+                }
+            }
+        }
+        self.changes.unmark(index);
     }
 
     /// Loads the preset JSON `text` on top of the current document, like

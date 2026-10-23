@@ -382,6 +382,53 @@ entry.*
   FL Studio checklist in `decisions/gui-framework.md` (item 2) compares
   the two on the owner's Mac; record the answer here.
 
+### D16. The host is not told when a learned MIDI controller moves a parameter
+
+- **Differs:** what the host sees when a MIDI-learned controller sets a
+  parameter.
+- **Upstream:** `SynthBase::valueChangedThroughMidi` sets the control, then
+  `setValueNotifyHost` calls JUCE's `setValueNotifyingHost` on the
+  parameter's `ValueBridge`, from the audio thread. The host is notified of
+  the edit, and can record it as automation.
+- **Port:** the engine sets the control the same way, and the plugin stores
+  the value on its own host parameter (`SynthParams::set_from_midi`,
+  `port/crates/plugin/src/params.rs`). The editor shows it, saved states
+  keep it, and like upstream it is not sent back to the engine as a host
+  edit. But the host is not sent a parameter edit: it sees the new value
+  only when it next reads the parameter, and records no automation.
+- **Why:** nice-plug offers no parameter edits from the audio thread; its
+  begin/set/end calls are on the editor's `GuiContext`, which exists only
+  while the editor is open.
+- **Approved:** Salil, 2026-10-23: accepted as is (option a). Telling the
+  host through the editor while it is open is a follow-up (option b);
+  doing it from the audio thread is parked as `IMPROVEMENTS.md` I19
+  (option c). Reviewed by Graph Reviewer and Parity Reviewer on #99.
+
+### D17. The MIDI learn config loads without upstream's install check
+
+- **Differs:** when the saved MIDI learn map is loaded, and config entries
+  upstream cannot read.
+- **Upstream:** `Startup::doStartupChecks` calls `LoadSave::loadConfig`
+  (which restores the MIDI map) only when `LoadSave::isInstalled()`, that
+  is, when its data directory of presets and factory content exists. A
+  config entry whose `source` is not a number, or whose `destination` is not
+  a string, throws; one that names an unknown parameter reads a details
+  entry that does not exist. A config file that is not a JSON object throws
+  when the map is saved.
+- **Port:** the map loads whenever the config file has one
+  (`port/crates/plugin/src/config.rs`). Entries it cannot read are skipped,
+  and a config that is not an object is replaced by a new one on save. Of
+  `doStartupChecks` the port runs only `loadConfig`'s MIDI map part: it
+  does not stamp `synth_version` into the config (`saveVersionConfig`
+  after `wasUpgraded`), and reads none of `loadConfig`'s other items (the
+  computer keyboard layout).
+- **Why:** the port ships no factory content and has no data directory
+  (migration/AGENTS.md rule 3), so the install check would never pass and a
+  learned map would never come back. Skipping unreadable entries replaces
+  a crash or undefined behaviour.
+- **Approved:** Salil, 2026-10-23. Reviewed by Graph Reviewer and Parity
+  Reviewer on #99.
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change

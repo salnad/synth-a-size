@@ -231,7 +231,17 @@ fn play_while_editing(routing: bool, blocks: usize) -> (usize, usize) {
 
     let (mut left, mut right) = (vec![0.0f32; 256], vec![0.0f32; 256]);
     let mut seconds = 0.0;
-    // Warm up: every voice and effect has run once.
+    // Warm up: every voice and effect has run once, and CC 20 learns
+    // macro_control_1 (learning grows the learn map).
+    synth.arm_midi_learn("macro_control_1");
+    synth.render_block(
+        &mut left,
+        &mut right,
+        &[(0, [0xB0, 20, 0])],
+        &mut seconds,
+        44100,
+    );
+    assert!(synth.is_midi_mapped("macro_control_1"));
     for block in 0..200 {
         let note = 36 + (block % 37) as u8;
         let midi = [(0, [0x90, note, 100]), (10, [0x80, note, 0])];
@@ -260,6 +270,7 @@ fn play_while_editing(routing: bool, blocks: usize) -> (usize, usize) {
             (100, [0x80, 36 + ((block + 30) % 37) as u8, 0]),
             (180, [0xE0, 0, (block % 128) as u8]),
             (200, [0xD0, (block % 100) as u8, 0]),
+            (220, [0xB0, 20, (block % 128) as u8]),
         ];
         let size = [256, 64, 129, 17][block % 4];
         let mut render = || {
@@ -267,7 +278,7 @@ fn play_while_editing(routing: bool, blocks: usize) -> (usize, usize) {
             synth.set_control("filter_1_cutoff", 40.0 + (block % 80) as f32);
             synth.set_control("modulation_1_amount", (block % 10) as f32 / 10.0);
             synth.set_control("mod_wheel", (block % 7) as f32 / 7.0);
-            let midi = &midi[..if size == 256 { 5 } else { 1 }];
+            let midi = &midi[..if size == 256 { 6 } else { 1 }];
             synth.render_block(
                 &mut left[..size],
                 &mut right[..size],

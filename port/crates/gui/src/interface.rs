@@ -89,6 +89,28 @@ pub trait EditorModel: Send + Sync + 'static {
     fn load_tuning(&self, tuning: Tuning) {
         let _ = tuning;
     }
+
+    /// `SynthBase::armMidiLearn(name)`: the next MIDI controller the engine
+    /// receives learns parameter `name`.
+    fn arm_midi_learn(&self, _name: &str) {}
+
+    /// `SynthBase::cancelMidiLearn()`.
+    fn cancel_midi_learn(&self) {}
+
+    /// `SynthBase::clearMidiLearn(name)`: forgets every controller learned
+    /// for `name`.
+    fn clear_midi_learn(&self, _name: &str) {}
+
+    /// `SynthBase::isMidiMapped(name)`.
+    fn is_midi_mapped(&self, _name: &str) -> bool {
+        false
+    }
+
+    /// The MIDI controllers `name` is learned on, ascending (upstream has
+    /// only [`is_midi_mapped`](Self::is_midi_mapped)).
+    fn midi_learn_ccs(&self, _name: &str) -> Vec<i32> {
+        Vec::new()
+    }
 }
 
 /// What the editor copies from the telemetry snapshot each frame.

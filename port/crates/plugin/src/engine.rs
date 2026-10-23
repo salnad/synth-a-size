@@ -11,12 +11,14 @@
 use std::sync::Arc;
 
 use sas_engine::edit_bus::EditConsumer;
+use sas_engine::midi_manager::MidiLearnMap;
 use sas_engine::telemetry::{AudioMemory, TelemetryWriter};
 use sas_engine::Tuning;
 use sas_preset::{PresetState, SampleState};
 
 /// The sound engine as the plugin drives it. Every method is called from the
-/// audio thread.
+/// audio thread, except [`set_midi_learn_map`](Self::set_midi_learn_map),
+/// which restores the saved map before processing starts.
 pub trait Engine: Send + 'static {
     /// `SoundEngine::setSampleRate` and `MidiManager::setSampleRate`
     /// (`SynthPlugin::prepareToPlay`).
@@ -82,6 +84,39 @@ pub trait Engine: Send + 'static {
     /// Fills and publishes the editor's telemetry snapshot at the end of a
     /// block. An engine without telemetry publishes nothing.
     fn publish_telemetry(&mut self, _telemetry: &mut TelemetryWriter) {}
+
+    /// `SynthBase::armMidiLearn(name)`: the next MIDI controller learns
+    /// `name`.
+    fn arm_midi_learn(&mut self, _name: &str) {}
+
+    /// `SynthBase::cancelMidiLearn()`.
+    fn cancel_midi_learn(&mut self) {}
+
+    /// `SynthBase::clearMidiLearn(name)`; returns whether anything was
+    /// cleared.
+    fn clear_midi_learn(&mut self, _name: &str) -> bool {
+        false
+    }
+
+    /// The MIDI learn map (`MidiManager::getMidiLearnMap`), if the engine
+    /// has one.
+    fn midi_learn_map(&self) -> Option<&MidiLearnMap> {
+        None
+    }
+
+    /// `MidiManager::setMidiLearnMap`, as `LoadSave::loadConfig` restores the
+    /// saved map.
+    fn set_midi_learn_map(&mut self, _midi_learn_map: MidiLearnMap) {}
+
+    /// Whether a MIDI controller learned a parameter since the last call.
+    fn take_midi_learn_changed(&mut self) -> bool {
+        false
+    }
+
+    /// The controls learned MIDI controllers set since the last call, in
+    /// order (`SynthBase::valueChangedThroughMidi`), for the host
+    /// parameters.
+    fn drain_midi_value_changes(&mut self, _f: &mut dyn FnMut(&'static str, f32)) {}
 }
 
 /// An engine that outputs silence (tests that need no sound engine).

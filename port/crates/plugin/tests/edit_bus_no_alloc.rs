@@ -3,9 +3,10 @@
 //! The plugin's whole audio callback (`BlockProcessor::process`) never
 //! allocates or frees while an editor thread sends LFO shapes, remap curves,
 //! wavetables and samples over the edit bus, another plays the on-screen
-//! keyboard, and the host moves parameters, bypasses and plays notes. Restores and modulation connections are covered
-//! by `sas-engine`'s `edit_bus_no_alloc` test, which explains why their
-//! whole-document load and graph rewiring are left out.
+//! keyboard, the host moves parameters, bypasses and plays notes, and a
+//! MIDI-learned controller moves a parameter. Restores and modulation
+//! connections are covered by `sas-engine`'s `edit_bus_no_alloc` test, which
+//! explains why their whole-document load and graph rewiring are left out.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
@@ -187,12 +188,22 @@ fn the_audio_callback_never_allocates() {
     let mut left = vec![0.0f32; 512];
     let mut right = vec![0.0f32; 512];
     // The first block loads the restored preset and prepares the engine.
-    let mut warm_up: Vec<NoteEvent<()>> = vec![NoteEvent::from_midi(0, &[0x90, 48, 100]).unwrap()];
+    // Learning a controller grows the learn map, so it happens here: CC 20
+    // learns macro_control_1.
+    plugin.processor().midi_learn().arm("macro_control_1");
+    let mut warm_up: Vec<NoteEvent<()>> = vec![
+        NoteEvent::from_midi(1, &[0xb0, 20, 0]).unwrap(),
+        NoteEvent::from_midi(0, &[0x90, 48, 100]).unwrap(),
+    ];
     for _ in 0..100 {
         plugin
             .processor_mut()
             .process(&params, &mut left, &mut right, &transport, || warm_up.pop());
     }
+    assert!(plugin
+        .processor()
+        .midi_learn()
+        .is_midi_mapped("macro_control_1"));
 
     let stop = Arc::new(AtomicBool::new(false));
     let worker = {
@@ -215,6 +226,10 @@ fn the_audio_callback_never_allocates() {
         let note = 40 + (block % 30) as u8;
         events.push(NoteEvent::from_midi(5, &[0x90, note, 80]).unwrap());
         events.push(NoteEvent::from_midi(60, &[0x80, 40 + ((block + 12) % 30) as u8, 0]).unwrap());
+        // The learned controller, and the mod wheel, which falls through to
+        // MIDI learn unlearned.
+        events.push(NoteEvent::from_midi(70, &[0xb0, 20, (block % 128) as u8]).unwrap());
+        events.push(NoteEvent::from_midi(71, &[0xb0, 1, (block % 100) as u8]).unwrap());
         events.reverse();
         counted(|| {
             plugin.processor_mut().process(
@@ -233,6 +248,8 @@ fn the_audio_callback_never_allocates() {
         keys_played > 100,
         "the keyboard only played {keys_played} notes"
     );
+    let learned = plugin.synth_params().control("macro_control_1").unwrap();
+    assert_eq!(learned.param.value(), (2999 % 128) as f32 / 127.0);
     plugin.edit_handle().collect_retired();
     assert!(
         edits_made > 100,

@@ -6,6 +6,7 @@
 use std::sync::Arc;
 
 use sas_engine::edit_bus::EditConsumer;
+use sas_engine::midi_manager::MidiLearnMap;
 use sas_engine::synth::Synth;
 use sas_engine::telemetry::{AudioMemory, TelemetryWriter};
 use sas_engine::Tuning;
@@ -22,7 +23,8 @@ pub struct SoundEngineHost {
 // SAFETY: `Synth` owns its whole processor graph. Its `Rc`/`RefCell`
 // handles all point inside that graph, and this wrapper's public surface
 // takes and returns only plain values: no method exposes the `Synth` or any
-// graph handle, and `sample_state` returns an owned copy. So moving the
+// graph handle, `sample_state` returns an owned copy, and `midi_learn_map`
+// borrows plain data (controller numbers and static registry entries). So moving the
 // wrapper moves every handle together and no two threads can reach the
 // same `Rc`. The graph keeps no thread-local
 // buffers (such as dsp-core's per-thread null buffer), so nothing it holds
@@ -102,6 +104,34 @@ impl Engine for SoundEngineHost {
 
     fn publish_telemetry(&mut self, telemetry: &mut TelemetryWriter) {
         self.synth.write_telemetry(telemetry);
+    }
+
+    fn arm_midi_learn(&mut self, name: &str) {
+        self.synth.arm_midi_learn(name);
+    }
+
+    fn cancel_midi_learn(&mut self) {
+        self.synth.cancel_midi_learn();
+    }
+
+    fn clear_midi_learn(&mut self, name: &str) -> bool {
+        self.synth.clear_midi_learn(name)
+    }
+
+    fn midi_learn_map(&self) -> Option<&MidiLearnMap> {
+        Some(self.synth.midi_learn_map())
+    }
+
+    fn set_midi_learn_map(&mut self, midi_learn_map: MidiLearnMap) {
+        self.synth.set_midi_learn_map(midi_learn_map);
+    }
+
+    fn take_midi_learn_changed(&mut self) -> bool {
+        self.synth.take_midi_learn_changed()
+    }
+
+    fn drain_midi_value_changes(&mut self, f: &mut dyn FnMut(&'static str, f32)) {
+        self.synth.drain_midi_value_changes(f);
     }
 }
 
