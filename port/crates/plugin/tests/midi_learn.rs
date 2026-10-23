@@ -282,3 +282,30 @@ fn learned_moves_are_kept_for_the_editor_only_while_it_is_open() {
     harness.block(vec![]);
     assert_eq!(moved(&params), Vec::<&str>::new());
 }
+
+#[test]
+fn a_new_window_opening_before_the_old_one_closes_keeps_reporting() {
+    let mut harness = Harness::new(MidiLearn::in_memory());
+    harness.midi_learn.arm("filter_1_cutoff");
+    harness.block(vec![cc(20, 10)]);
+    let params = harness.plugin.synth_params().clone();
+    let moved = |params: &sas_plugin::SynthParams| {
+        let mut names = Vec::new();
+        params.drain_midi_moved(|name| names.push(name));
+        names
+    };
+    params.set_editor_open(true);
+    // The host builds the new window, then closes the old one.
+    params.set_editor_open(true);
+    params.set_editor_open(false);
+    harness.block(vec![cc(20, 20)]);
+    assert_eq!(moved(&params), ["filter_1_cutoff"]);
+    params.set_editor_open(false);
+    harness.block(vec![cc(20, 30)]);
+    assert_eq!(moved(&params), Vec::<&str>::new());
+    // A close with no window open does not go below zero.
+    params.set_editor_open(false);
+    params.set_editor_open(true);
+    harness.block(vec![cc(20, 40)]);
+    assert_eq!(moved(&params), ["filter_1_cutoff"]);
+}

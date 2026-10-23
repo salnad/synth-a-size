@@ -11,8 +11,10 @@ Option c (from the audio thread, with a framework change) is parked as
 - `plugin/src/params.rs`: `SynthParams::set_from_midi` also marks the
   control in a lock-free bit set while the editor is open
   (`set_editor_open`); `drain_midi_moved` hands the marked controls to the
-  editor. Opening or closing the window clears the set, so moves while the
-  window was closed are never replayed. The audio thread adds one atomic
+  editor. It counts open windows rather than flagging one, because a host
+  may build a new window before the old one's close arrives. The set is
+  cleared when the first window opens and when the last one closes, so moves
+  while no window was open are never replayed. The audio thread adds one atomic
   load and, while the editor is open, one atomic `fetch_or`; no locks, no
   allocation.
 - `sas_gui::EditorModel`: `set_editor_open` and `drain_midi_moved`, with
@@ -31,8 +33,9 @@ Option c (from the audio thread, with a framework change) is parked as
 
 **Tests**
 
-- `plugin/tests/midi_learn.rs`: moves are kept only while the editor is
-  open, two moves of one control in a block report it once, moves while
+- `plugin/tests/midi_learn.rs`: moves are kept only while an editor window
+  is open (a new window opening before the old one closes keeps reporting;
+  a close with none open doesn't go below zero), two moves of one control in a block report it once, moves while
   closed are not reported after reopening, and host edits are not learned
   moves.
 - `gui/tests/controls.rs` (with the recording `GuiContextInner`): a moved

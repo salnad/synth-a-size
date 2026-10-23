@@ -25,7 +25,7 @@
 //! round-trip exactly.
 
 use std::collections::{BTreeMap, HashMap};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use nice_plug::params::internals::ParamPtr;
@@ -215,7 +215,9 @@ pub struct SynthParams {
     /// Controls a learned MIDI controller moved while the editor was open,
     /// for the editor to tell the host.
     midi_moved: ChangeSet,
-    editor_open: AtomicBool,
+    /// Editor windows open. A host may open a new window before the old
+    /// one's close arrives, so this counts rather than flags.
+    editor_windows: AtomicUsize,
 }
 
 impl SynthParams {
@@ -259,7 +261,7 @@ impl SynthParams {
             touched,
             edits,
             midi_moved: ChangeSet::new(names.len()),
-            editor_open: AtomicBool::new(false),
+            editor_windows: AtomicUsize::new(0),
         }
     }
 
@@ -402,22 +404,38 @@ impl SynthParams {
             }
         }
         self.changes.unmark(index);
-        if self.editor_open.load(Ordering::Acquire) {
+        if self.editor_windows.load(Ordering::Acquire) > 0 {
             self.midi_moved.mark(index);
         }
     }
 
-    /// The editor window opened or closed. While it is open, controls a
-    /// learned MIDI controller moves are kept for
-    /// [`drain_midi_moved`](Self::drain_midi_moved); moves while it is closed
-    /// are not, so a window that opens later reports none of them.
+    /// An editor window opened (`true`) or closed. While any is open,
+    /// controls a learned MIDI controller moves are kept for
+    /// [`drain_midi_moved`](Self::drain_midi_moved); moves while none is
+    /// open are not, so a window that opens later reports none of them.
     pub fn set_editor_open(&self, open: bool) {
         if open {
-            self.midi_moved.clear();
-            self.editor_open.store(true, Ordering::Release);
+            if self.editor_windows.load(Ordering::Acquire) == 0 {
+                self.midi_moved.clear();
+            }
+            self.editor_windows.fetch_add(1, Ordering::AcqRel);
         } else {
-            self.editor_open.store(false, Ordering::Release);
-            self.midi_moved.clear();
+            let mut open = self.editor_windows.load(Ordering::Acquire);
+            while open > 0 {
+                match self.editor_windows.compare_exchange_weak(
+                    open,
+                    open - 1,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                ) {
+                    Ok(_) => break,
+                    Err(current) => open = current,
+                }
+            }
+            let closed_last = open == 1;
+            if closed_last {
+                self.midi_moved.clear();
+            }
         }
     }
 
