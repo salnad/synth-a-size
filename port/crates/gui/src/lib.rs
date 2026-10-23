@@ -11,17 +11,25 @@
 //! `migration/decisions/gui-framework.md`.
 
 pub mod colour;
+pub mod controls;
 pub mod editor;
 #[cfg(feature = "focus-spike")]
 mod focus_spike;
 pub mod fonts;
+pub mod host;
 pub mod interface;
+pub mod layer;
 pub mod layout;
 pub mod paint;
+pub mod popup;
+pub mod primitives;
 pub mod scope;
+pub mod section;
+pub mod sections;
 pub mod skin;
 
 pub use editor::{create as create_editor, default_state, Editor};
+pub use host::{Host, HostParam, OpenGestures};
 pub use interface::{EditorModel, Interface, Tab, PRODUCT_NAME};
 pub use nice_plug_egui;
 

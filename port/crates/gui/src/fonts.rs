@@ -5,9 +5,15 @@
 //!
 //! Ports `vital/src/interface/look_and_feel/fonts.{h,cpp}`: the same five
 //! faces from `vital/fonts/` (Lato, Montserrat and Droid Sans Mono; see
-//! `vital/fonts/LICENSE`), registered as egui font families. A JUCE point
-//! height (`Font::withPointHeight`) is the em size, which is what egui's
-//! font size means too, so sizes carry over unchanged.
+//! `vital/fonts/LICENSE`), registered as egui font families.
+//!
+//! On macOS, JUCE's CoreText fonts make a point height
+//! (`Font::withPointHeight`) the em size, which is what egui's font size
+//! means too, so sizes carry over unchanged. JUCE's FreeType fonts (Linux,
+//! where the ref-gui reference renders) instead make the em size
+//! `points * unitsPerEm / ascender`: 1.3% larger for Lato, 3.3% for
+//! Montserrat and 7.7% for Droid Sans Mono. The port follows macOS, its
+//! target, so text in the Linux reference is that much larger.
 
 use std::sync::Arc;
 

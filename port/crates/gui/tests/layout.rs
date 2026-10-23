@@ -6,6 +6,9 @@
 use std::path::PathBuf;
 
 use sas_gui::layout::{FullLayout, Rect};
+use sas_gui::scope::Scope;
+use sas_gui::sections::portamento::{self, PortamentoLayout};
+use sas_gui::sections::voice::{self, VoiceLayout};
 use sas_gui::skin::Skin;
 
 fn corpus() -> PathBuf {
@@ -36,8 +39,11 @@ fn fixtures() -> Vec<PathBuf> {
 }
 
 /// The port's rectangle for each upstream component path it lays out.
-fn port_rect(layout: &FullLayout, path: &str) -> Option<Rect> {
+fn port_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> {
     let header = &layout.header;
+    let top = Scope::top(skin, layout.size_ratio);
+    let voice = VoiceLayout::new(&top.within(voice::SKIN), layout.voice);
+    let portamento = PortamentoLayout::new(&top.within(portamento::SKIN), layout.portamento);
     Some(match path {
         "header_section" => header.bounds,
         "header_section/logo_section" => header.logo,
@@ -59,6 +65,16 @@ fn port_rect(layout: &FullLayout, path: &str) -> Option<Rect> {
         "BEND" => layout.bend,
         "PORTAMENTO" => layout.portamento,
         "VOICE" => layout.voice,
+        "VOICE/polyphony" => voice.polyphony,
+        "VOICE/pitch_bend_range" => voice.pitch_bend_range,
+        "VOICE/velocity_track" => voice.velocity_track,
+        "VOICE/stereo_routing" => voice.stereo_routing,
+        "VOICE/Stereo Mode" | "VOICE/Stereo Mode Text" => voice.stereo_mode,
+        "PORTAMENTO/portamento_time" => portamento.portamento_time,
+        "PORTAMENTO/portamento_slope" => portamento.portamento_slope,
+        "PORTAMENTO/portamento_force" => portamento.portamento_force,
+        "PORTAMENTO/portamento_scale" => portamento.portamento_scale,
+        "PORTAMENTO/legato" => portamento.legato,
         _ => return None,
     })
 }
@@ -89,7 +105,7 @@ fn layout_matches_upstream_at_every_size() {
                 .map(|v| v.as_i64().unwrap() as i32)
                 .collect();
             let expected = Rect::new(bounds[0], bounds[1], bounds[2], bounds[3]);
-            let actual = port_rect(&layout, path)
+            let actual = port_rect(&skin, &layout, path)
                 .unwrap_or_else(|| panic!("{}: no port rectangle for {path}", file.display()));
             assert_eq!(actual, expected, "{path} at {width}x{height}");
             checked += 1;

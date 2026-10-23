@@ -22,7 +22,8 @@ fn harness<'a>(interface: &'a RefCell<Interface>, pixels_per_point: f32) -> Harn
         .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
         .build_ui(|ui| {
             let screen = ui.ctx().content_rect();
-            interface.borrow_mut().show_in(ui, screen, &InitPreset)
+            let host = sas_gui::Host::new(&InitPreset, None);
+            interface.borrow_mut().show_in(ui, screen, &host)
         });
     harness.step();
     harness

@@ -17,6 +17,8 @@ members = [
     "crates/common",
     "crates/bench",
 ]
+# Vendored third-party crates with local patches (see each PATCHES.md).
+exclude = ["vendor"]
 
 [workspace.package]
 version = "0.0.1"
@@ -52,7 +54,11 @@ nice-plug = { version = "=0.4.2", default-features = false, features = ["vst3"] 
 # See migration/decisions/gui-framework.md.
 nice-plug-egui = { version = "=0.6.0", default-features = false, features = ["wgpu"] }
 egui = { version = "=0.37.0", default-features = false }
+egui-wgpu = { version = "=0.37.0", default-features = false }
 egui_kittest = { version = "=0.37.0", features = ["wgpu", "snapshot"] }
+
+[patch.crates-io]
+egui-baseview = { path = "vendor/egui-baseview" }
 
 [profile.release]
 debug = 1

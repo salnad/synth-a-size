@@ -63,6 +63,34 @@ choice below is easy to change.
   (no GPU needed), in the normal `cargo test`.
 - **Host:** FL Studio on the owner's Mac, from the arm64 bundle CI builds.
 
+### FL Studio checklist (owner's Retina Mac)
+
+Checks only the host can answer. Record each answer in the ledger of the
+PR that settles it.
+
+1. **Keyboard focus (G1).** Install the `...-focus-check` artifact in place
+   of the normal bundle and follow its panel: does the text field receive
+   keys, with and without the window asking for focus?
+2. **Knob drag speed (G2).** Open upstream and the port side by side at
+   their default size. In each, start Voice's VEL TRK at its default (0%,
+   the middle of its range), drag straight up 50 points (macOS's screenshot
+   crosshair, Cmd-Shift-4, reads in points) and note the value the popup
+   shows. The port reaches 50% (a quarter of the 200 points a full sweep
+   takes). If upstream reaches 100%, its 200 is in physical pixels on
+   Retina and the port should halve its drag length at display scale 2.
+   Record the answer next to D15 in `DIVERGENCES.md`.
+
+## Vendored egui-baseview
+
+egui paint callbacks (how upstream's shader-drawn quads are drawn, from G2)
+need the render target's texture format and sample count to build a
+pipeline, and neither egui-wgpu's callback API nor egui-baseview exposes
+them. `port/vendor/egui-baseview` is egui-baseview 0.9.0 with one patch that
+publishes them in the renderer's callback resources (`PATCHES.md` there),
+used through `[patch.crates-io]`. Further adapter fixes (file drops) go in
+the same copy. It is excluded from the workspace, so its code is not held to
+the port's lints. Proposing the patch upstream needs a human.
+
 ## Known limits
 
 - egui-baseview does not forward file drag-and-drop to egui yet, and FL

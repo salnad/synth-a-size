@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 
 use egui_kittest::Harness;
-use sas_gui::{EditorModel, Interface, Tab};
+use sas_gui::{EditorModel, Host, Interface, Tab};
 
 struct InitPreset;
 
@@ -64,14 +64,22 @@ fn main() {
             .and_then(|v| v.as_str())
             .unwrap_or("voice")));
 
+        let state = egui_kittest::wgpu::create_render_state(
+            egui_kittest::wgpu::default_wgpu_setup(),
+            egui_wgpu::RendererOptions::PREDICTABLE,
+        );
+        sas_gui::primitives::publish_target(&state, 1);
         let mut harness = Harness::builder()
             .with_size((width, height))
             .with_pixels_per_point(scale)
             .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
-            .wgpu()
+            .renderer(egui_kittest::wgpu::WgpuTestRenderer::from_render_state(
+                state,
+            ))
             .build_ui(|ui| {
                 let screen = ui.ctx().content_rect();
-                interface.borrow_mut().show_in(ui, screen, &InitPreset)
+                let host = Host::new(&InitPreset, None);
+                interface.borrow_mut().show_in(ui, screen, &host)
             });
         harness.run_steps(2);
         let image = harness

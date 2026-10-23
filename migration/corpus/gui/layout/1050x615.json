@@ -23,6 +23,17 @@
   "keyboard": {"bounds": [65, 585, 978, 27], "visible": true},
   "BEND": {"bounds": [7, 559, 51, 53], "visible": true},
   "PORTAMENTO": {"bounds": [839, 525, 204, 53], "visible": true},
-  "VOICE": {"bounds": [599, 525, 237, 53], "visible": true}
+  "VOICE": {"bounds": [599, 525, 237, 53], "visible": true},
+  "VOICE/polyphony": {"bounds": [603, 529, 47, 45], "visible": true},
+  "VOICE/pitch_bend_range": {"bounds": [654, 529, 47, 45], "visible": true},
+  "VOICE/velocity_track": {"bounds": [705, 525, 62, 49], "visible": true},
+  "VOICE/stereo_routing": {"bounds": [771, 525, 61, 49], "visible": true},
+  "VOICE/Stereo Mode": {"bounds": [771, 561, 61, 13], "visible": true},
+  "VOICE/Stereo Mode Text": {"bounds": [771, 561, 61, 13], "visible": true},
+  "PORTAMENTO/portamento_time": {"bounds": [843, 525, 58, 49], "visible": true},
+  "PORTAMENTO/portamento_slope": {"bounds": [905, 529, 58, 32], "visible": true},
+  "PORTAMENTO/portamento_force": {"bounds": [967, 529, 72, 13], "visible": true},
+  "PORTAMENTO/portamento_scale": {"bounds": [967, 544, 72, 14], "visible": true},
+  "PORTAMENTO/legato": {"bounds": [967, 560, 72, 13], "visible": true}
  }
 }

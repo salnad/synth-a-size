@@ -1,0 +1,683 @@
+// Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//! `SynthSlider`: knobs, text sliders, curve sliders and linear sliders.
+//!
+//! Ports `OpenGlSlider` and `SynthSlider`
+//! (`vital/src/interface/editor_components/synth_slider.{h,cpp}`), the drawing
+//! of `TextLookAndFeel::drawRotarySlider` and `CurveLookAndFeel`
+//! (`look_and_feel/`), and the parts of JUCE's `Slider` they rely on: the
+//! value range and interval, `RotaryHorizontalVerticalDrag` and linear drags,
+//! and double-click to the default value.
+
+use std::f32::consts::PI;
+
+use egui::{Modifiers, PointerButton, Pos2, Sense, Ui};
+use sas_preset::registry::{ParamInfo, ValueScale};
+
+use super::format::{self, Format};
+use crate::colour::Colour;
+use crate::fonts::Face;
+use crate::host::Host;
+use crate::layer::Layer;
+use crate::layout::Rect;
+use crate::paint::{PixelPainter, RectF};
+use crate::primitives::{Quad, QuadKind};
+use crate::scope::Scope;
+use crate::skin::{ColorId, ValueId};
+
+/// `OpenGlSlider::kRotaryAngle`: the knob arc runs from -0.8π to 0.8π.
+pub const ROTARY_ANGLE: f32 = 0.8 * PI;
+/// `SynthSlider::kDefaultRotaryDragLength`: pixels for a full turn.
+const DEFAULT_ROTARY_DRAG_LENGTH: f32 = 200.0;
+/// `SynthSlider::kSlowDragMultiplier`, with the command key held.
+const SLOW_DRAG_MULTIPLIER: f32 = 0.1;
+/// `SynthSlider::kLinearWidthPercent` / `kLinearHandlePercent`.
+const LINEAR_WIDTH_PERCENT: f32 = 0.26;
+const LINEAR_HANDLE_PERCENT: f32 = 1.2;
+/// JUCE's multiple-click rules (`MouseInputSource`): presses within 0.4 s
+/// (`MouseEvent::getDoubleClickTimeout`) and 8 points of each other, where
+/// the last moved less than 4 points and was held no more than 0.3 s.
+const DOUBLE_CLICK_TIMEOUT: f64 = 0.4;
+const MULTIPLE_CLICK_DISTANCE: f32 = 8.0;
+const MOVED_SIGNIFICANTLY: f32 = 4.0;
+const LONG_PRESS: f64 = 0.3;
+/// `SynthSlider::kTextEntryHeightPercent`, `kDefaultTextEntryWidthPercent`.
+const TEXT_ENTRY_HEIGHT_PERCENT: f32 = 0.6;
+const TEXT_ENTRY_WIDTH_PERCENT: f32 = 0.9;
+
+/// How a slider looks and is dragged.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SliderStyle {
+    /// `RotaryHorizontalVerticalDrag` drawn as a knob (`kRotarySliderFragment`).
+    Rotary,
+    /// A rotary slider drawn by `TextLookAndFeel`: the value as text.
+    Text,
+    /// A rotary slider drawn by `CurveLookAndFeel`: a power curve.
+    Curve,
+    /// `LinearBar` (`kHorizontalSliderFragment`).
+    Horizontal,
+    /// `LinearBarVertical` (`kVerticalSliderFragment`).
+    Vertical,
+}
+
+impl SliderStyle {
+    fn is_rotary(self) -> bool {
+        matches!(
+            self,
+            SliderStyle::Rotary | SliderStyle::Text | SliderStyle::Curve
+        )
+    }
+}
+
+/// Where the value popup appears (`BubbleComponent::BubblePlacement`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Placement {
+    Above,
+    Below,
+    Left,
+    Right,
+}
+
+/// One slider bound to a synth control.
+#[derive(Clone, Copy, Debug)]
+pub struct Slider {
+    pub name: &'static str,
+    pub info: &'static ParamInfo,
+    pub style: SliderStyle,
+    pub bipolar: bool,
+    /// `sensitivity_`: drags move the value this much faster.
+    pub sensitivity: f32,
+    pub format: Format,
+    /// `knob_size_scale_`.
+    pub knob_size_scale: f32,
+    /// `text_height_percentage_`; 0 uses the skin's text component font size.
+    pub text_height_percentage: f32,
+    pub popup_placement: Placement,
+    pub show_popup_on_hover: bool,
+    /// `OpenGlSlider::active_`: drawn in the disabled colours when false.
+    pub active: bool,
+}
+
+impl Slider {
+    pub fn new(name: &'static str, style: SliderStyle) -> Slider {
+        Slider {
+            name,
+            info: Host::info(name),
+            style,
+            bipolar: false,
+            sensitivity: 1.0,
+            format: Format::default(),
+            knob_size_scale: 1.0,
+            text_height_percentage: 0.0,
+            popup_placement: Placement::Below,
+            show_popup_on_hover: false,
+            active: true,
+        }
+    }
+
+    pub fn bipolar(mut self) -> Slider {
+        self.bipolar = true;
+        self
+    }
+
+    pub fn sensitivity(mut self, sensitivity: f32) -> Slider {
+        self.sensitivity = sensitivity;
+        self
+    }
+
+    pub fn without_suffix(mut self) -> Slider {
+        self.format.use_suffix = false;
+        self
+    }
+
+    /// The JUCE slider interval: 1 for indexed controls, else continuous.
+    fn interval(&self) -> f64 {
+        if self.info.value_scale == ValueScale::Indexed {
+            1.0
+        } else {
+            0.0
+        }
+    }
+
+    /// `Slider::valueToProportionOfLength` (no skew).
+    pub fn proportion(&self, value: f32) -> f64 {
+        let (min, max) = (self.info.min as f64, self.info.max as f64);
+        if max > min {
+            (value as f64 - min) / (max - min)
+        } else {
+            0.0
+        }
+    }
+
+    /// `Slider::proportionOfLengthToValue` then `constrainedValue`.
+    pub fn value_from_proportion(&self, proportion: f64) -> f32 {
+        let (min, max) = (self.info.min as f64, self.info.max as f64);
+        self.constrain(min + (max - min) * proportion) as f32
+    }
+
+    /// `Slider::Pimpl::constrainedValue`: snaps to the interval and clamps.
+    pub fn constrain(&self, value: f64) -> f64 {
+        let (min, max) = (self.info.min as f64, self.info.max as f64);
+        let interval = self.interval();
+        let value = if interval > 0.0 {
+            min + interval * ((value - min) / interval + 0.5).floor()
+        } else {
+            value
+        };
+        value.clamp(min, max)
+    }
+
+    /// `SynthSlider::getTextFromValue`, which the popup shows: a text
+    /// slider already shows its value, so its popup names the parameter.
+    pub fn popup_text(&self, value: f32) -> String {
+        if self.style == SliderStyle::Text {
+            if self.info.local_description.is_empty() {
+                return self.info.display_name.clone();
+            }
+            return self.info.local_description.clone();
+        }
+        format::slider_text(self.info, &self.format, value)
+    }
+
+    fn selected_color(&self, scope: &Scope) -> Colour {
+        match (self.style.is_rotary(), self.active) {
+            (true, true) => scope.color(ColorId::RotaryArc),
+            (true, false) => scope.color(ColorId::RotaryArcDisabled),
+            (false, true) => scope.color(ColorId::LinearSlider),
+            (false, false) => scope.color(ColorId::LinearSliderDisabled),
+        }
+    }
+
+    fn unselected_color(&self, scope: &Scope) -> Colour {
+        match (self.style.is_rotary(), self.active) {
+            (true, true) => scope.color(ColorId::RotaryArcUnselected),
+            (true, false) => scope.color(ColorId::RotaryArcUnselectedDisabled),
+            (false, _) => scope.color(ColorId::LinearSliderUnselected),
+        }
+    }
+
+    fn thumb_color(&self, scope: &Scope) -> Colour {
+        match (self.style.is_rotary(), self.active) {
+            (true, _) => scope.color(ColorId::RotaryHand),
+            (false, true) => scope.color(ColorId::LinearSliderThumb),
+            (false, false) => scope.color(ColorId::LinearSliderThumbDisabled),
+        }
+    }
+
+    /// `SynthSlider::drawShadow`: the knob body and the shadow under its
+    /// arc, or the background of a curve slider. Painted with the section
+    /// background.
+    pub fn paint_shadow(&self, pixels: &PixelPainter, scope: &Scope, bounds: Rect) {
+        match self.style {
+            SliderStyle::Rotary => self.paint_rotary_shadow(pixels, scope, bounds),
+            SliderStyle::Curve => pixels.fill_rounded_rect(
+                bounds,
+                scope.value(ValueId::WidgetRoundedCorner),
+                scope.color(ColorId::WidgetBackground),
+            ),
+            _ => {}
+        }
+    }
+
+    /// `SynthSlider::drawRotaryShadow`. The default skin has no knob shadow
+    /// width, so the radial shadow gradient is not drawn.
+    fn paint_rotary_shadow(&self, pixels: &PixelPainter, scope: &Scope, bounds: Rect) {
+        let shadow_color = scope.color(ColorId::Shadow);
+        let center_x = bounds.x as f32 + bounds.width as f32 / 2.0;
+        let center_y =
+            bounds.y as f32 + bounds.height as f32 / 2.0 + scope.value(ValueId::KnobOffset);
+        let stroke_width = scope.value(ValueId::KnobArcThickness);
+        let radius = self.knob_size_scale * scope.value(ValueId::KnobArcSize) / 2.0;
+        let body_radius = self.knob_size_scale * scope.value(ValueId::KnobBodySize) / 2.0;
+        if body_radius >= 0.0 && body_radius < bounds.width as f32 {
+            let ellipse = RectF::new(
+                center_x - body_radius,
+                center_y - body_radius,
+                2.0 * body_radius,
+                2.0 * body_radius,
+            );
+            pixels.fill_ellipse(ellipse, scope.color(ColorId::RotaryBody));
+            pixels.draw_ellipse(
+                ellipse.reduced(0.5),
+                1.0,
+                scope.color(ColorId::RotaryBodyBorder),
+            );
+        }
+        let unselected = if self.active {
+            scope.color(ColorId::RotaryArcUnselected)
+        } else {
+            scope.color(ColorId::RotaryArcUnselectedDisabled)
+        };
+        if unselected.alpha() != 0 {
+            pixels.stroke_arc(
+                (center_x, center_y),
+                radius,
+                -ROTARY_ANGLE,
+                ROTARY_ANGLE,
+                stroke_width + 1.0,
+                shadow_color,
+            );
+        }
+    }
+
+    /// The slider itself: its quad (`OpenGlSlider::redoImage`), or the text
+    /// or curve its look and feel draws. `hover` is `isMouseOverOrDragging`.
+    pub fn paint(
+        &self,
+        pixels: &PixelPainter,
+        layer: &mut Layer,
+        scope: &Scope,
+        bounds: Rect,
+        value: f32,
+        hover: bool,
+    ) {
+        let t = self.proportion(value) as f32;
+        match self.style {
+            SliderStyle::Rotary => {
+                let thickness = scope.value(ValueId::KnobArcThickness);
+                let size = scope.value(ValueId::KnobArcSize) * self.knob_size_scale + thickness;
+                let offset = scope.value(ValueId::KnobOffset);
+                let side = size + 0.5;
+                let center_x = bounds.x as f32 + bounds.width as f32 / 2.0;
+                let center_y = bounds.y as f32 + bounds.height as f32 / 2.0 + offset;
+                let rect = RectF::new(center_x - side / 2.0, center_y - side / 2.0, side, side);
+                let mut quad = Quad::new(QuadKind::RotarySlider, rect, self.selected_color(scope));
+                quad.alt_color = self.unselected_color(scope);
+                quad.thumb_color = self.thumb_color(scope);
+                quad.thumb_amount = scope.value(ValueId::KnobHandleLength);
+                quad.max_arc = ROTARY_ANGLE;
+                quad.shader_values[0] = -ROTARY_ANGLE + (2.0 * ROTARY_ANGLE) * t;
+                quad.start_pos = if self.bipolar { 0.0 } else { -PI };
+                quad.thickness = if hover { thickness * 1.4 } else { thickness };
+                layer.quad(quad);
+            }
+            SliderStyle::Horizontal | SliderStyle::Vertical => {
+                let horizontal = self.style == SliderStyle::Horizontal;
+                let margin = scope.value(ValueId::WidgetMargin) - 0.5;
+                let rect = if horizontal {
+                    RectF::new(
+                        bounds.x as f32 + margin,
+                        bounds.y as f32,
+                        bounds.width as f32 - 2.0 * margin,
+                        bounds.height as f32,
+                    )
+                } else {
+                    RectF::new(
+                        bounds.x as f32,
+                        bounds.y as f32 + margin,
+                        bounds.width as f32,
+                        bounds.height as f32 - 2.0 * margin,
+                    )
+                };
+                let kind = if horizontal {
+                    QuadKind::HorizontalSlider
+                } else {
+                    QuadKind::VerticalSlider
+                };
+                let total_width = if horizontal {
+                    bounds.height
+                } else {
+                    bounds.width
+                };
+                let slider_width = linear_slider_width(total_width) as f32;
+                let mut quad = Quad::new(kind, rect, self.selected_color(scope));
+                quad.alt_color = self.unselected_color(scope);
+                quad.thumb_color = self.thumb_color(scope);
+                quad.shader_values[0] = t;
+                quad.start_pos = if self.bipolar { 0.0 } else { -1.0 };
+                quad.thickness = if hover {
+                    let boost = (slider_width / 8.0).round() + 1.0;
+                    slider_width + 2.0 * boost
+                } else {
+                    slider_width
+                };
+                quad.rounding = slider_width * 0.4;
+                quad.thumb_amount = LINEAR_HANDLE_PERCENT * total_width as f32;
+                layer.quad(quad);
+            }
+            SliderStyle::Text => self.paint_text(layer, scope, bounds, value),
+            SliderStyle::Curve => self.paint_curve(pixels, scope, bounds, value),
+        }
+    }
+
+    /// `TextLookAndFeel::drawRotarySlider`.
+    fn paint_text(&self, layer: &mut Layer, scope: &Scope, bounds: Rect, value: f32) {
+        let font_size = if self.text_height_percentage == 0.0 {
+            scope.value(ValueId::TextComponentFontSize)
+        } else {
+            bounds.height as f32 * self.text_height_percentage
+        };
+        let offset = scope.value(ValueId::TextComponentOffset).round();
+        let mut colour = scope.color(ColorId::TextComponentText);
+        if !self.active {
+            colour = colour.with_multiplied_alpha(0.5);
+        }
+        let text = format::slider_text(self.info, &self.format, value);
+        let area = RectF::new(
+            bounds.x as f32,
+            bounds.y as f32 + offset,
+            bounds.width as f32,
+            bounds.height as f32,
+        );
+        layer.text_centred(&text, area, Face::Light, font_size, colour);
+    }
+
+    /// `CurveLookAndFeel::drawRotarySlider` / `drawCurve`.
+    fn paint_curve(&self, pixels: &PixelPainter, scope: &Scope, bounds: Rect, value: f32) {
+        const RESOLUTION: usize = 16;
+        const LINE_WIDTH: f32 = 2.0;
+        let rounding = scope.value(ValueId::WidgetRoundedCorner);
+        let short_side = bounds.width.min(bounds.height) as f32;
+        let max_width = short_side.min(scope.value(ValueId::KnobArcSize));
+        let inset = (rounding / 2.0f32.sqrt() + (short_side - max_width) / 2.0) as i32;
+        let (x, y) = ((bounds.x + inset) as f32, (bounds.y + inset) as f32);
+        let width = (bounds.width as f32 - 2.0 * inset as f32) as i32 as f32;
+        let height = (bounds.height as f32 - 2.0 * inset as f32) as i32 as f32;
+
+        let curve_width = width.min(height);
+        let x_offset = (width - curve_width) / 2.0;
+        let power = -value;
+        let start_x = x + x_offset + LINE_WIDTH / 2.0;
+        let start_y = y + height - LINE_WIDTH / 2.0;
+        let active_width = curve_width - LINE_WIDTH;
+        let active_height = curve_width - LINE_WIDTH;
+        let mut points = vec![(start_x, start_y)];
+        if self.bipolar {
+            let half_width = active_width / 2.0;
+            let half_height = active_height / 2.0;
+            for i in 0..RESOLUTION / 2 {
+                let t = 2.0 * (i as f32 + 1.0) / RESOLUTION as f32;
+                let power_t = power_scale(t, -power);
+                points.push((start_x + t * half_width, start_y - power_t * half_height));
+            }
+            for i in 0..RESOLUTION / 2 {
+                let t = 2.0 * (i as f32 + 1.0) / RESOLUTION as f32;
+                let power_t = power_scale(t, power);
+                points.push((
+                    start_x + t * half_width + half_width,
+                    start_y - power_t * half_height - half_height,
+                ));
+            }
+        } else {
+            for i in 0..RESOLUTION {
+                let t = (i as f32 + 1.0) / RESOLUTION as f32;
+                let power_t = power_scale(t, power);
+                points.push((
+                    start_x + t * active_width,
+                    start_y - power_t * active_height,
+                ));
+            }
+        }
+        let colour = if self.active {
+            scope.color(ColorId::RotaryArc)
+        } else {
+            scope.color(ColorId::WidgetPrimaryDisabled)
+        };
+        pixels.stroke_path(&points, LINE_WIDTH, colour);
+    }
+
+    /// `SynthSlider::setRotaryTextEntryBounds` / `setLinearTextEntryBounds`.
+    pub fn text_entry_bounds(&self, scope: &Scope, bounds: Rect) -> Rect {
+        let font_size = scope.value(ValueId::TextComponentFontSize);
+        let text_height = (font_size / TEXT_ENTRY_HEIGHT_PERCENT) as i32;
+        if self.style.is_rotary() {
+            let text_width = (bounds.width as f32 * TEXT_ENTRY_WIDTH_PERCENT) as i32;
+            let y_offset = if self.style == SliderStyle::Text {
+                scope.value(ValueId::TextComponentOffset)
+            } else {
+                0.0
+            };
+            let y = ((bounds.height - text_height + 1) / 2) as f32 + y_offset;
+            Rect::new(
+                bounds.x + (bounds.width - text_width) / 2,
+                bounds.y + y as i32,
+                text_width,
+                text_height,
+            )
+        } else {
+            let text_width = (text_height as f32 * 3.0) as i32;
+            Rect::new(
+                bounds.x + (bounds.width - text_width) / 2,
+                bounds.y + (bounds.height - text_height) / 2,
+                text_width,
+                text_height,
+            )
+        }
+    }
+
+    /// Handles the mouse over this slider (`SynthSlider::mouseDown`,
+    /// `mouseDrag`, `mouseUp`, `mouseDoubleClick`, `mouseEnter`/`mouseExit`).
+    pub fn interact(
+        &self,
+        ui: &mut Ui,
+        host: &Host,
+        pixels: &PixelPainter,
+        bounds: Rect,
+    ) -> SliderEvent {
+        let id = ui.scope_id().with(("synth slider", self.name));
+        let rect = pixels.rect(bounds.into());
+        let response = ui.interact(rect, id, Sense::click_and_drag());
+        let mut state: DragState = ui.data(|data| data.get_temp(id)).unwrap_or_default();
+        let mut event = SliderEvent {
+            hover: response.hovered() || state.down,
+            ..SliderEvent::default()
+        };
+
+        let (pointer, modifiers, primary_down, secondary_down) = ui.input(|input| {
+            (
+                input.pointer.interact_pos(),
+                input.modifiers,
+                input.pointer.button_down(PointerButton::Primary),
+                input.pointer.button_down(PointerButton::Secondary),
+            )
+        });
+        let pressed_here = response.is_pointer_button_down_on();
+        let popup_menu =
+            secondary_down || (cfg!(target_os = "macos") && modifiers.ctrl && primary_down);
+        let now = ui.input(|input| input.time);
+
+        if pressed_here && !state.down {
+            // mouseDown.
+            if modifiers.alt {
+                event.text_entry = true;
+            } else if popup_menu {
+                event.menu_at = pointer;
+            } else if let Some(pointer) = pointer {
+                // MouseInputSource::getNumberOfMultipleClicks: a press near
+                // the previous one and soon after it.
+                let follows_press = state.last_press.is_some_and(|(time, at)| {
+                    now - time < DOUBLE_CLICK_TIMEOUT
+                        && (pointer.x - at.x).abs() < MULTIPLE_CLICK_DISTANCE
+                        && (pointer.y - at.y).abs() < MULTIPLE_CLICK_DISTANCE
+                });
+                state.down = true;
+                state.last = pointer;
+                state.second_click = follows_press;
+                state.moved = false;
+                state.proportion = self.proportion(host.value(self.name));
+                state.last_press = Some((now, pointer));
+                host.begin(self.name);
+                event.popup = true;
+            }
+        } else if state.down && primary_down {
+            // mouseDrag. SynthSlider::mouseDrag ignores drags with alt held.
+            if let (Some(pointer), false) = (pointer, modifiers.alt) {
+                if let Some((_, at)) = state.last_press {
+                    state.moved |= pointer.distance(at) >= MOVED_SIGNIFICANTLY;
+                }
+                if pointer != state.last {
+                    let ppp = pixels.pixels_per_point();
+                    state.proportion =
+                        self.dragged_proportion(&state, pointer, bounds, ppp, modifiers);
+                    state.last = pointer;
+                    let value = self.value_from_proportion(state.proportion);
+                    if value != host.value(self.name) {
+                        host.set(self.name, value);
+                    }
+                }
+                event.popup = true;
+            }
+        } else if state.down {
+            // mouseUp, then Component::internalMouseUp's double-click check:
+            // a second press that was neither a drag nor a long press.
+            state.down = false;
+            host.end(self.name);
+            let long_press = state
+                .last_press
+                .is_some_and(|(time, _)| now - time > LONG_PRESS);
+            if state.second_click && !state.moved && !long_press {
+                // Slider::mouseDoubleClick: back to the default value.
+                host.set_once(self.name, self.info.default_value);
+                event.popup = true;
+            }
+        }
+
+        if self.show_popup_on_hover && response.hovered() {
+            event.popup = true;
+        }
+        event.hover = response.hovered() || state.down;
+        ui.data_mut(|data| data.insert_temp(id, state));
+        event
+    }
+
+    /// `Slider::Pimpl::handleAbsoluteDrag` for one drag event, with
+    /// `SynthSlider::mouseDrag`'s sensitivity for the current modifiers: the
+    /// movement since the last event moves the unsnapped proportion, clamped
+    /// at every step.
+    /// Positions are in points (JUCE's logical coordinates), `bounds` in
+    /// pixels at `pixels_per_point`.
+    fn dragged_proportion(
+        &self,
+        state: &DragState,
+        position: Pos2,
+        bounds: Rect,
+        pixels_per_point: f32,
+        modifiers: Modifiers,
+    ) -> f64 {
+        let multiply = if modifiers.command {
+            SLOW_DRAG_MULTIPLIER
+        } else {
+            1.0
+        };
+        let full_drag = if self.style.is_rotary() {
+            DEFAULT_ROTARY_DRAG_LENGTH / (self.sensitivity * multiply)
+        } else {
+            bounds.width.max(bounds.height) as f32
+                / pixels_per_point
+                / (self.sensitivity * multiply)
+        };
+        let mouse_diff = match self.style {
+            SliderStyle::Horizontal => position.x - state.last.x,
+            SliderStyle::Vertical => state.last.y - position.y,
+            _ => (position.x - state.last.x) + (state.last.y - position.y),
+        };
+        (state.proportion + mouse_diff as f64 / full_drag as f64).clamp(0.0, 1.0)
+    }
+}
+
+/// What a slider asks of the interface this frame.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SliderEvent {
+    /// `isMouseOverOrDragging`.
+    pub hover: bool,
+    /// `showPopup(true)`.
+    pub popup: bool,
+    /// Open the right-click menu at this point (points).
+    pub menu_at: Option<Pos2>,
+    /// `showTextEntry`.
+    pub text_entry: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct DragState {
+    down: bool,
+    /// The pointer at the last drag event, in points (JUCE's
+    /// `mouseDragStartPos`, reset every event).
+    last: Pos2,
+    /// The unsnapped position (JUCE's `valueWhenLastDragged`); only the
+    /// value sent to the host is snapped.
+    proportion: f64,
+    /// The time and place (points) of the last press.
+    last_press: Option<(f64, Pos2)>,
+    /// This press followed the previous one closely enough to make a
+    /// double click.
+    second_click: bool,
+    /// The pointer has moved far enough from the press to make it a drag.
+    moved: bool,
+}
+
+/// `OpenGlSlider::getLinearSliderWidth`.
+fn linear_slider_width(total_width: i32) -> i32 {
+    let extra = total_width % 2;
+    ((LINEAR_WIDTH_PERCENT * total_width as f32 * 0.5).floor() * 2.0) as i32 + extra
+}
+
+/// `futils::powerScale`.
+pub fn power_scale(value: f32, power: f32) -> f32 {
+    const MIN_POWER: f32 = 0.01;
+    if power.abs() < MIN_POWER {
+        return value;
+    }
+    let numerator = (power * value).exp() - 1.0;
+    let denominator = power.exp() - 1.0;
+    numerator / denominator
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn indexed_values_snap_like_juce() {
+        let polyphony = Slider::new("polyphony", SliderStyle::Text);
+        assert_eq!(polyphony.constrain(7.4), 7.0);
+        assert_eq!(polyphony.constrain(7.5), 8.0);
+        assert_eq!(polyphony.constrain(1000.0), polyphony.info.max as f64);
+        let glide = Slider::new("portamento_time", SliderStyle::Rotary);
+        assert_eq!(glide.constrain(-3.25), -3.25);
+    }
+
+    #[test]
+    fn rotary_drags_follow_both_axes() {
+        let knob = Slider::new("velocity_track", SliderStyle::Rotary);
+        let state = DragState {
+            down: true,
+            last: Pos2::new(10.0, 10.0),
+            proportion: 0.5,
+            last_press: None,
+            second_click: false,
+            moved: false,
+        };
+        let bounds = Rect::new(0, 0, 60, 60);
+        // Up 20 and right 20: 40 pixels of a 200-pixel turn.
+        let p =
+            knob.dragged_proportion(&state, Pos2::new(30.0, -10.0), bounds, 1.0, Modifiers::NONE);
+        assert!((p - 0.7).abs() < 1e-9);
+        let fine = knob.dragged_proportion(
+            &state,
+            Pos2::new(30.0, -10.0),
+            bounds,
+            1.0,
+            Modifiers::COMMAND,
+        );
+        assert!((fine - 0.52).abs() < 1e-9);
+        let slow = knob.sensitivity(0.2);
+        let p =
+            slow.dragged_proportion(&state, Pos2::new(30.0, -10.0), bounds, 1.0, Modifiers::NONE);
+        assert!((p - 0.54).abs() < 1e-9);
+    }
+
+    #[test]
+    fn linear_slider_width_matches_upstream() {
+        assert_eq!(linear_slider_width(36), 8);
+        assert_eq!(linear_slider_width(37), 9);
+    }
+
+    #[test]
+    fn power_scale_matches_futils() {
+        assert_eq!(power_scale(0.5, 0.0), 0.5);
+        let expected = ((2.0f32 * 0.5).exp() - 1.0) / (2.0f32.exp() - 1.0);
+        assert_eq!(power_scale(0.5, 2.0), expected);
+    }
+}

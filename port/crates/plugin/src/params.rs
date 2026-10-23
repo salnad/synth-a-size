@@ -125,7 +125,8 @@ impl ControlParam {
         }
     }
 
-    fn as_ptr(&self) -> ParamPtr {
+    /// The host parameter, for the editor.
+    pub fn as_ptr(&self) -> ParamPtr {
         match self {
             ControlParam::Float(param) => param.as_ptr(),
             ControlParam::Stepped(param) => param.as_ptr(),

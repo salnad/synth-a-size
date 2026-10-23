@@ -26,3 +26,16 @@ keyboard
 BEND
 PORTAMENTO
 VOICE
+
+# G2: the Voice and Portamento sections.
+VOICE/polyphony
+VOICE/pitch_bend_range
+VOICE/velocity_track
+VOICE/stereo_routing
+VOICE/Stereo Mode
+VOICE/Stereo Mode Text
+PORTAMENTO/portamento_time
+PORTAMENTO/portamento_slope
+PORTAMENTO/portamento_force
+PORTAMENTO/portamento_scale
+PORTAMENTO/legato

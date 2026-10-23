@@ -61,24 +61,37 @@ impl From<Rect> for RectF {
 pub struct PixelPainter<'a> {
     painter: &'a egui::Painter,
     origin: Pos2,
+    area: egui::Rect,
     pixels_per_point: f32,
 }
 
 impl<'a> PixelPainter<'a> {
+    /// Paints into `area` (points) of `painter`, whose top left corner is
+    /// pixel (0, 0).
     pub fn new(
         painter: &'a egui::Painter,
-        origin: Pos2,
+        area: egui::Rect,
         pixels_per_point: f32,
     ) -> PixelPainter<'a> {
         PixelPainter {
             painter,
-            origin,
+            origin: area.min,
+            area,
             pixels_per_point,
         }
     }
 
     pub fn pixels_per_point(&self) -> f32 {
         self.pixels_per_point
+    }
+
+    pub fn painter(&self) -> &egui::Painter {
+        self.painter
+    }
+
+    /// The editor's area, in points.
+    pub fn area(&self) -> egui::Rect {
+        self.area
     }
 
     /// Pixels to points.
@@ -157,6 +170,92 @@ impl<'a> PixelPainter<'a> {
         self.painter.text(
             rect.center(),
             Align2::CENTER_CENTER,
+            text,
+            face.at(self.points(point_height)),
+            colour.to_egui(),
+        );
+    }
+
+    /// `Graphics::strokePath` with rounded end caps (`PathStrokeType::rounded`).
+    pub fn stroke_path(&self, points: &[(f32, f32)], thickness: f32, colour: Colour) {
+        if points.is_empty() {
+            return;
+        }
+        self.polyline(points, thickness, colour);
+        for &(x, y) in [points[0], points[points.len() - 1]].iter() {
+            self.painter.circle_filled(
+                self.pos(x, y),
+                self.points(thickness / 2.0),
+                colour.to_egui(),
+            );
+        }
+    }
+
+    /// `Path::addCentredArc` from `from` to `to` (radians clockwise from
+    /// twelve o'clock), stroked with rounded caps.
+    pub fn stroke_arc(
+        &self,
+        center: (f32, f32),
+        radius: f32,
+        from: f32,
+        to: f32,
+        thickness: f32,
+        colour: Colour,
+    ) {
+        let segments = ((to - from).abs() * radius / 2.0).ceil().max(8.0) as usize;
+        let points: Vec<(f32, f32)> = (0..=segments)
+            .map(|i| {
+                let angle = from + (to - from) * i as f32 / segments as f32;
+                (
+                    center.0 + radius * angle.sin(),
+                    center.1 - radius * angle.cos(),
+                )
+            })
+            .collect();
+        self.stroke_path(&points, thickness, colour);
+    }
+
+    /// `Graphics::fillEllipse` for a circle.
+    pub fn fill_ellipse(&self, rect: RectF, colour: Colour) {
+        let rect = self.rect(rect);
+        self.painter
+            .circle_filled(rect.center(), rect.width() / 2.0, colour.to_egui());
+    }
+
+    /// `Graphics::drawEllipse` for a circle.
+    pub fn draw_ellipse(&self, rect: RectF, thickness: f32, colour: Colour) {
+        let rect = self.rect(rect);
+        self.painter.circle_stroke(
+            rect.center(),
+            rect.width() / 2.0,
+            Stroke::new(self.points(thickness), colour.to_egui()),
+        );
+    }
+
+    /// The width of `text` in `face` at `point_height` (pixels), as laid
+    /// out by egui.
+    pub fn text_width(&self, text: &str, face: Face, point_height: f32) -> f32 {
+        let galley = self.painter.layout_no_wrap(
+            text.to_string(),
+            face.at(self.points(point_height)),
+            Color32::WHITE,
+        );
+        galley.size().x * self.pixels_per_point
+    }
+
+    /// `Graphics::drawText(text, rect, Justification::centredLeft)`.
+    pub fn text_left(
+        &self,
+        text: &str,
+        rect: impl Into<RectF>,
+        face: Face,
+        point_height: f32,
+        colour: Colour,
+    ) {
+        let rect = self.rect(rect.into());
+        self.painter.text(
+            egui::pos2(rect.min.x, rect.center().y),
+            Align2::LEFT_CENTER,
             text,
             face.at(self.points(point_height)),
             colour.to_egui(),

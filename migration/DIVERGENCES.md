@@ -376,6 +376,11 @@ entry.*
   ignores that.
 - **Approved:** coordinator relaying the review of #93 (GUI Reviewer,
   2026-10-23); `decisions/gui-framework.md`.
+- **Open, related:** whether upstream's coordinates below the interface are
+  also physical pixels on Retina, which would make its knob drag length
+  (200 per turn) half as many points there. The port drags in points. The
+  FL Studio checklist in `decisions/gui-framework.md` (item 2) compares
+  the two on the owner's Mac; record the answer here.
 
 ## Verification exceptions
 
