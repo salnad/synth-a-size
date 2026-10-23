@@ -4,6 +4,7 @@
 //! whole or not at all. Results are compact JSON (or plain text for
 //! `get_patch`), and errors say how to fix the call.
 
+use crate::listen::AuditionRequest;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -330,6 +331,7 @@ pub(crate) fn call<S: SynthSession>(
         "save_preset" => save_preset(controller, args),
         "init_patch" => init_patch(controller),
         "set_preset_info" => set_preset_info(controller, args),
+        "audition" => audition(controller, args),
         _ => Err(ToolOutput::error(format!(
             "unknown tool {name:?}; tools: {}",
             specs()
@@ -459,6 +461,22 @@ fn set_params<S: SynthSession>(
         )));
     }
     apply(controller, edits).map(|_| ToolOutput::ok(json!({"set": landed})))
+}
+
+fn audition<S: SynthSession>(
+    controller: &mut Controller<S>,
+    args: &Value,
+) -> Result<ToolOutput, ToolOutput> {
+    let request = AuditionRequest::from_args(args).map_err(ToolOutput::error)?;
+    if controller.auditioner().is_none() {
+        return Err(ToolOutput::error("listening is not available here"));
+    }
+    let state = snapshot(controller)?;
+    let auditioner = controller.auditioner().expect("checked above");
+    auditioner
+        .audition(&state, &request)
+        .map(ToolOutput::ok)
+        .map_err(ToolOutput::error)
 }
 
 fn checkpoint<S: SynthSession>(

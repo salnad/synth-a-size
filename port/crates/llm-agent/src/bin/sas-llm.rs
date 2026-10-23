@@ -132,7 +132,8 @@ fn initial_state(options: &Options) -> Result<PresetState, String> {
 }
 
 fn agent(options: &Options, state: PresetState) -> Result<Agent<OfflineSession>, String> {
-    let mut controller = Controller::new(OfflineSession::new(state), Policy::default());
+    let mut controller = Controller::new(OfflineSession::new(state), Policy::default())
+        .with_auditioner(Box::new(sas_llm_listen::PreviewEngine::new()));
     if let Some(dir) = &options.preset_dir {
         controller = controller.with_library(PresetLibrary::new(dir));
     }

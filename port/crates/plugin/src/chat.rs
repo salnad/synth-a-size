@@ -25,6 +25,7 @@ use sas_llm_agent::{
     Agent, AgentConfig, AgentEvent, ChatSettings, KeyboardFocus, ProviderConfig, Transport,
 };
 use sas_llm_control::{Controller, Policy, PresetLibrary, Side};
+use sas_llm_listen::PreviewEngine;
 
 use crate::chat_bridge::{ChatBridge, RemoteSession};
 use crate::keys::{KeyStore, NoKeys, SystemKeys};
@@ -76,8 +77,9 @@ struct Worker {
     bridge: Arc<ChatBridge>,
     /// Ends the worker's loop; separate from the messages' cancel flags.
     shutdown: Arc<AtomicBool>,
-    /// The cancel flag of the last message sent.
-    cancel: Mutex<Option<Arc<AtomicBool>>>,
+    /// The cancel flag of the last message sent (shared with the preview
+    /// engine, so Stop also cuts an audition short).
+    cancel: Arc<Mutex<Option<Arc<AtomicBool>>>>,
     /// Disconnects when the thread ends; `None` once retired.
     exited: Option<mpsc::Receiver<()>>,
 }
@@ -312,7 +314,19 @@ fn spawn_worker(
     let bridge = ChatBridge::new();
     let waker = shared.clone();
     bridge.set_waker(move || waker.wake());
-    let mut controller = Controller::new(bridge.remote(TOOL_TIMEOUT), Policy::default());
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let cancel: Arc<Mutex<Option<Arc<AtomicBool>>>> = Arc::default();
+    // The preview engine (the `audition` tool) renders on its own thread and
+    // stops on the user's Stop or the worker's shutdown.
+    let (preview_shutdown, preview_cancel) = (shutdown.clone(), cancel.clone());
+    let preview = PreviewEngine::new().stopped_by(move || {
+        preview_shutdown.load(Ordering::Relaxed)
+            || lock(&preview_cancel)
+                .as_ref()
+                .is_some_and(|cancel| cancel.load(Ordering::Relaxed))
+    });
+    let mut controller = Controller::new(bridge.remote(TOOL_TIMEOUT), Policy::default())
+        .with_auditioner(Box::new(preview));
     if let Some(library) = library {
         controller = controller.with_library(library);
     }
@@ -322,7 +336,6 @@ fn spawn_worker(
         transport,
         AgentConfig::default(),
     );
-    let shutdown = Arc::new(AtomicBool::new(false));
     let stopping = shutdown.clone();
     let generation = shared.worker.fetch_add(1, Ordering::AcqRel) + 1;
     std::thread::Builder::new()
@@ -350,13 +363,16 @@ fn spawn_worker(
                 drop(view);
                 shared.wake();
             }
+            // Before `_exited` signals the end: dropping the agent joins the
+            // preview engine's thread.
+            drop(agent);
         })
         .expect("spawn the chat thread");
     Worker {
         commands: Some(commands),
         bridge,
         shutdown,
-        cancel: Mutex::new(None),
+        cancel,
         exited: Some(exited),
     }
 }
