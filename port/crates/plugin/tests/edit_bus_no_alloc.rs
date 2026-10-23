@@ -219,7 +219,25 @@ fn the_audio_callback_never_allocates() {
         std::thread::spawn(move || keyboard(handle, stop))
     };
     let mut events: Vec<NoteEvent<()>> = Vec::with_capacity(8);
+    let learned = params.control("macro_control_1").unwrap();
+    let mut echoes = std::collections::VecDeque::with_capacity(8);
+    let mut echoed = 0;
     for block in 0..3000usize {
+        // Every third block the editor forwards the learned control, and the
+        // host echoes each forwarded value back two frames later, after newer
+        // CCs moved it on: the audio side's echo guard runs counted.
+        // (macro_control_1's range is 0 to 1, so plain and normalized agree.)
+        if block % 3 == 0 {
+            params.drain_midi_moved(|name| {
+                let forwarded = learned.param.value();
+                params.record_forwarded(name, forwarded);
+                echoes.push_back(forwarded);
+            });
+            if echoes.len() > 2 {
+                set_param(&plugin, "macro_control_1", echoes.pop_front().unwrap());
+                echoed += 1;
+            }
+        }
         set_param(&plugin, "filter_1_cutoff", 30.0 + (block % 90) as f32);
         set_param(&plugin, "reverb_dry_wet", (block % 10) as f32 / 10.0);
         set_param(&plugin, "bypass", if block % 500 < 20 { 1.0 } else { 0.0 });
@@ -253,7 +271,7 @@ fn the_audio_callback_never_allocates() {
     let mut moved = Vec::new();
     params.drain_midi_moved(|name| moved.push(name));
     assert_eq!(moved, ["macro_control_1"]);
-    let learned = plugin.synth_params().control("macro_control_1").unwrap();
+    assert!(echoed > 900, "the host echoed only {echoed} values");
     assert_eq!(learned.param.value(), (2999 % 128) as f32 / 127.0);
     plugin.edit_handle().collect_retired();
     assert!(

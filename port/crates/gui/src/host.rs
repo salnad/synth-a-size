@@ -125,6 +125,11 @@ impl<'a> Host<'a> {
     pub fn forward_midi_moves(&self) {
         self.model.drain_midi_moved(&mut |name| {
             let value = self.value(name);
+            if let Some(param) = self.model.param(name) {
+                // SAFETY: as in `value`.
+                let normalized = unsafe { param.preview_normalized(value) };
+                self.model.midi_move_forwarded(name, normalized);
+            }
             let dragging = self.open.is_some_and(|open| lock(open).contains(name));
             if dragging {
                 self.set(name, value);

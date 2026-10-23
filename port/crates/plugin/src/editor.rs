@@ -127,6 +127,10 @@ impl EditorModel for PluginModel {
     fn drain_midi_moved(&self, f: &mut dyn FnMut(&'static str)) {
         self.params.drain_midi_moved(f);
     }
+
+    fn midi_move_forwarded(&self, name: &str, normalized: f32) {
+        self.params.record_forwarded(name, normalized);
+    }
 }
 
 #[cfg(test)]

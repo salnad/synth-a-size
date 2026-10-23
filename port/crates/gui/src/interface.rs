@@ -121,6 +121,11 @@ pub trait EditorModel: Send + Sync + 'static {
     /// last call while the editor was open, so the editor can tell the host
     /// (upstream's `valueChangedThroughMidi` calls `setValueNotifyHost`).
     fn drain_midi_moved(&self, _f: &mut dyn FnMut(&'static str)) {}
+
+    /// The editor is about to send the host `normalized` (as nice-plug passes
+    /// it) for control `name`, a MIDI-learned move, so the plugin can tell
+    /// the host's echo of it from host automation.
+    fn midi_move_forwarded(&self, _name: &str, _normalized: f32) {}
 }
 
 /// What the editor copies from the telemetry snapshot each frame.

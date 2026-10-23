@@ -404,18 +404,22 @@ entry.*
     only the value, inside the drag's gesture. The host hears of the move
     a frame later than upstream's notification, once per frame, as a
     gesture where upstream sends a bare edit per change.
-  - **The host's echo:** during playback nice-plug only passes the edit to
-    the host (`performEdit`), and the host sends it back into the next
-    `process` as a parameter change. If the value differs from the
-    parameter's current one, it reaches the engine as a host change. While
-    a learned controller keeps moving, that value can be up to about a
-    frame older than the newest MIDI value, so the engine briefly steps
-    back to it until the next controller message. When the controller
-    stops, the last frame forwards the final value and the engine settles
-    there. Upstream echoes too, but its notification comes from the audio
-    thread with the current value (at most a block old), and JUCE drops an
-    echo equal to the current value. The FL Studio checklist
-    (`decisions/gui-framework.md`, item 3) asks the owner to listen for it.
+  - **The host's echo is guarded:** during playback nice-plug only passes
+    the edit to the host (`performEdit`), and the host sends it back into a
+    later `process` as a parameter change. While a learned controller keeps
+    moving, that value can be up to about a frame older than the newest
+    MIDI value. Upstream's echo carries the current value (its notification
+    comes from the audio thread, and JUCE drops an echo equal to the current
+    value), so the control never steps back. The port matches that: the
+    editor records each value it forwards (as nice-plug's normalized bits),
+    and a host change equal to one of them while the last MIDI value
+    differs is the stale echo. It does not reach the engine; the parameter
+    takes the last MIDI value back and the next frame forwards it
+    (`SynthParams::take_stale_echo`, `port/crates/plugin/src/params.rs`).
+    Any other host change is automation and applies as before. The FL
+    Studio checklist (`decisions/gui-framework.md`, item 3) asks the owner
+    to confirm there's no stepping and to check automation recording and
+    undo with one gesture per frame.
   - **Editor closed:** the host is not sent a parameter edit: it sees the
     new value only when it next reads the parameter, and records no
     automation. Moves while the window is closed are not replayed when it

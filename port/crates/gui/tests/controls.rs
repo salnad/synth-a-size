@@ -65,6 +65,8 @@ struct Synth {
     notes: Mutex<Vec<String>>,
     /// Controls a MIDI-learned controller moved, as the plugin reports them.
     midi_moved: Mutex<Vec<&'static str>>,
+    /// The values the editor said it forwards for MIDI moves.
+    midi_forwarded: Mutex<Vec<(String, f32)>>,
 }
 
 impl Synth {
@@ -99,6 +101,7 @@ impl Synth {
             params,
             notes: Mutex::new(Vec::new()),
             midi_moved: Mutex::new(Vec::new()),
+            midi_forwarded: Mutex::new(Vec::new()),
         })
     }
 
@@ -139,6 +142,13 @@ impl EditorModel for Synth {
         for name in std::mem::take(&mut *self.midi_moved.lock().unwrap()) {
             f(name);
         }
+    }
+
+    fn midi_move_forwarded(&self, name: &str, normalized: f32) {
+        self.midi_forwarded
+            .lock()
+            .unwrap()
+            .push((name.to_string(), normalized));
     }
 }
 
@@ -1175,6 +1185,11 @@ fn learned_midi_moves_reach_the_host_as_gestures() {
     );
     assert_eq!(fixture.synth.value("volume"), moved_to);
     assert!(fixture.open.lock().unwrap().is_empty());
+    // The plugin is told the exact normalized value sent, for its echo guard.
+    assert_eq!(
+        *fixture.synth.midi_forwarded.lock().unwrap(),
+        [("volume".to_string(), 0.25)]
+    );
 
     // Nothing moved since: nothing sent.
     fixture.recorder.log.lock().unwrap().clear();

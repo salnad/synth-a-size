@@ -25,7 +25,7 @@
 //! round-trip exactly.
 
 use std::collections::{BTreeMap, HashMap};
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use nice_plug::params::internals::ParamPtr;
@@ -125,6 +125,31 @@ impl ControlParam {
         }
     }
 
+    /// The host-facing normalized value (before host modulation), as
+    /// nice-plug passes it to the host.
+    fn normalized(&self) -> f32 {
+        match self {
+            ControlParam::Float(param) => param.unmodulated_normalized_value(),
+            ControlParam::Stepped(param) => param.unmodulated_normalized_value(),
+            ControlParam::Bypass(param) => param.unmodulated_normalized_value(),
+        }
+    }
+
+    /// Sets the normalized value, firing the change callback if it differs.
+    ///
+    /// # Safety
+    /// Only stores atomics; a host edit racing it leaves whichever lands
+    /// last.
+    unsafe fn set_normalized(&self, normalized: f32) {
+        unsafe {
+            match self {
+                ControlParam::Float(param) => param._internal_set_normalized_value(normalized),
+                ControlParam::Stepped(param) => param._internal_set_normalized_value(normalized),
+                ControlParam::Bypass(param) => param._internal_set_normalized_value(normalized),
+            };
+        }
+    }
+
     /// The host parameter, for the editor.
     pub fn as_ptr(&self) -> ParamPtr {
         match self {
@@ -194,6 +219,36 @@ impl ChangeSet {
     }
 }
 
+/// No value recorded (not a normalized f32: its bits are a NaN).
+const NO_VALUE: u32 = u32::MAX;
+
+/// Forwarded values remembered per control: the host may echo a few frames'
+/// worth back if its blocks are longer than the editor's frames.
+const FORWARDED_SLOTS: usize = 4;
+
+/// Recognises the host echoing back a value the editor forwarded for a
+/// learned MIDI move after newer MIDI moved the control on: per control, the
+/// last value MIDI set and the values forwarded since, all as the normalized
+/// f32 bits nice-plug passes to the host.
+struct EchoGuard {
+    midi: Box<[AtomicU32]>,
+    forwarded: Box<[[AtomicU32; FORWARDED_SLOTS]]>,
+    /// The editor's next slot per control (only the editor writes it).
+    next: Box<[AtomicUsize]>,
+}
+
+impl EchoGuard {
+    fn new(len: usize) -> EchoGuard {
+        EchoGuard {
+            midi: (0..len).map(|_| AtomicU32::new(NO_VALUE)).collect(),
+            forwarded: (0..len)
+                .map(|_| std::array::from_fn(|_| AtomicU32::new(NO_VALUE)))
+                .collect(),
+            next: (0..len).map(|_| AtomicUsize::new(0)).collect(),
+        }
+    }
+}
+
 /// The plugin's parameters plus the preset state that is not a parameter
 /// (modulation routing, wavetables, sample, LFO shapes, save info, tuning).
 pub struct SynthParams {
@@ -218,6 +273,7 @@ pub struct SynthParams {
     /// Editor windows open. A host may open a new window before the old
     /// one's close arrives, so this counts rather than flags.
     editor_windows: AtomicUsize,
+    echo_guard: EchoGuard,
 }
 
 impl SynthParams {
@@ -262,6 +318,7 @@ impl SynthParams {
             edits,
             midi_moved: ChangeSet::new(names.len()),
             editor_windows: AtomicUsize::new(0),
+            echo_guard: EchoGuard::new(names.len()),
         }
     }
 
@@ -404,9 +461,52 @@ impl SynthParams {
             }
         }
         self.changes.unmark(index);
+        let normalized = self.controls[index].param.normalized();
+        self.echo_guard.midi[index].store(normalized.to_bits(), Ordering::Release);
         if self.editor_windows.load(Ordering::Acquire) > 0 {
             self.midi_moved.mark(index);
         }
+    }
+
+    /// The editor is about to forward `normalized` (as it passes it to the
+    /// host) for control `name`, a learned MIDI move: remembered so the
+    /// host's echo of it can be recognised if MIDI has moved on by then.
+    pub fn record_forwarded(&self, name: &str, normalized: f32) {
+        let Some(&index) = self.by_name.get(name) else {
+            return;
+        };
+        let slot = self.echo_guard.next[index].fetch_add(1, Ordering::Relaxed) % FORWARDED_SLOTS;
+        self.echo_guard.forwarded[index][slot].store(normalized.to_bits(), Ordering::Release);
+    }
+
+    /// Audio thread, for a host change of control `index`: whether it is the
+    /// host echoing a value the editor forwarded while newer MIDI has since
+    /// moved the control. If so the parameter takes the last MIDI value back
+    /// (the engine already has it), the forwarded value is forgotten, and the
+    /// control stays marked moved so the editor forwards its current value
+    /// next frame. Upstream's echo carries the current value and so never
+    /// steps the control back.
+    pub(crate) fn take_stale_echo(&self, index: usize) -> bool {
+        let param = &self.controls[index].param;
+        let host = param.normalized().to_bits();
+        let midi = self.echo_guard.midi[index].load(Ordering::Acquire);
+        if midi == NO_VALUE || host == midi {
+            return false;
+        }
+        let forwarded = self.echo_guard.forwarded[index].iter().any(|slot| {
+            slot.compare_exchange(host, NO_VALUE, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+        });
+        if !forwarded {
+            return false;
+        }
+        // SAFETY: only stores atomics (see `set_normalized`).
+        unsafe { param.set_normalized(f32::from_bits(midi)) };
+        self.changes.unmark(index);
+        if self.editor_windows.load(Ordering::Acquire) > 0 {
+            self.midi_moved.mark(index);
+        }
+        true
     }
 
     /// An editor window opened (`true`) or closed. While any is open,

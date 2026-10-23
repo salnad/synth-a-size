@@ -303,6 +303,11 @@ impl<E: Engine> BlockProcessor<E> {
         let Some(restore) = self.edits.take_restore() else {
             self.engine.apply_edits(&mut self.edits);
             params.changes.drain(|index| {
+                // The host echoing a forwarded MIDI move that newer MIDI
+                // overtook is not a host change.
+                if params.take_stale_echo(index) {
+                    return;
+                }
                 let control = &params.controls()[index];
                 self.engine
                     .set_control(control.info.name.as_str(), control.param.value());

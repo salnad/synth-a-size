@@ -309,3 +309,86 @@ fn a_new_window_opening_before_the_old_one_closes_keeps_reporting() {
     harness.block(vec![cc(20, 40)]);
     assert_eq!(moved(&params), ["filter_1_cutoff"]);
 }
+
+fn normalized(control: &sas_plugin::params::Control) -> f32 {
+    use nice_plug::prelude::Param;
+    match &control.param {
+        sas_plugin::params::ControlParam::Float(param) => param.unmodulated_normalized_value(),
+        sas_plugin::params::ControlParam::Stepped(param) => param.unmodulated_normalized_value(),
+        sas_plugin::params::ControlParam::Bypass(param) => param.unmodulated_normalized_value(),
+    }
+}
+
+/// The host applying a parameter change before a block, as nice-plug's
+/// wrapper does with the host's input parameter queue.
+fn host_sets(control: &sas_plugin::params::Control, normalized: f32) {
+    use nice_plug::params::InternalParamMut;
+    unsafe {
+        match &control.param {
+            sas_plugin::params::ControlParam::Float(param) => {
+                param._internal_set_normalized_value(normalized);
+            }
+            sas_plugin::params::ControlParam::Stepped(param) => {
+                param._internal_set_normalized_value(normalized);
+            }
+            sas_plugin::params::ControlParam::Bypass(param) => {
+                param._internal_set_normalized_value(normalized);
+            }
+        }
+    }
+}
+
+#[test]
+fn the_hosts_late_echoes_never_step_the_engine_back() {
+    let mut harness = Harness::new(MidiLearn::in_memory());
+    let params = harness.plugin.synth_params().clone();
+    params.set_editor_open(true);
+    harness.midi_learn.arm("filter_1_cutoff");
+    harness.block(vec![cc(20, 0)]);
+    params.drain_midi_moved(|_| {});
+    let control = params.control("filter_1_cutoff").unwrap();
+
+    // A sweep: one CC per block, an editor frame every third block, and
+    // the host echoing each forwarded value back two frames later, after
+    // newer CCs moved the knob on.
+    let mut echoes = VecDeque::new();
+    let mut stale = 0;
+    let mut last = 0;
+    for step in 1..=90u8 {
+        if step % 3 == 1 && echoes.len() > 2 {
+            let echo = echoes.pop_front().unwrap();
+            stale += usize::from(echo != normalized(control));
+            host_sets(control, echo);
+        }
+        last = step;
+        harness.block(vec![cc(20, step)]);
+        // Host changes reaching the engine for the swept control.
+        let host = harness.host_controls();
+        assert!(
+            host.iter().all(|(name, _)| *name != "filter_1_cutoff"),
+            "step {step}: an echo reached the engine: {host:?}"
+        );
+        if step % 3 == 0 {
+            params.drain_midi_moved(|name| {
+                let forwarded = normalized(control);
+                params.record_forwarded(name, forwarded);
+                echoes.push_back(forwarded);
+            });
+        }
+    }
+    assert!(stale > 20, "the sweep sent only {stale} stale echoes");
+    let expected = last as f32 / 127.0 * 128.0 + 8.0;
+    assert_eq!(harness.param("filter_1_cutoff"), expected);
+
+    // An echo equal to the current value changes nothing.
+    params.drain_midi_moved(|name| params.record_forwarded(name, normalized(control)));
+    host_sets(control, normalized(control));
+    harness.block(vec![]);
+    assert_eq!(harness.host_controls(), []);
+
+    // Host automation nobody forwarded applies while the knob is idle.
+    let automated = (70.0 - 8.0) / 128.0;
+    host_sets(control, automated);
+    harness.block(vec![]);
+    assert_eq!(harness.host_controls(), [("filter_1_cutoff", 70.0)]);
+}
