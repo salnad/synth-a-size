@@ -141,6 +141,7 @@ fn render_case_keys() -> Vec<&'static str> {
         "midi",
         "tuning",
         "keyboard_map",
+        "edits",
         "description",
         "tolerances",
         "tolerance_exception",
@@ -997,10 +998,12 @@ pub fn render_cases_from(cases_json: &Value, ledger: &[&str]) -> Result<Vec<Reso
                 return Err(format!("{id}: needs {key:?}"));
             }
         }
-        // Upstream picks the loader by extension, whichever key names the file.
+        // Upstream picks the tuning loader by extension, whichever key names
+        // the file. An edit script is JSON (ref-render --edits).
         for (key, extensions) in [
             ("tuning", &[".scl", ".tun"][..]),
             ("keyboard_map", &[".kbm"][..]),
+            ("edits", &[".json"][..]),
         ] {
             let Some(value) = case.get(key) else {
                 continue;
@@ -1543,6 +1546,24 @@ mod tests {
         let render = json!({ "name": "r", "preset": "p.vital", "midi": "m.mid", "tolerance": {} });
         let err = render_cases_from(&cases_json(floor_tolerances(), render), LEDGER).unwrap_err();
         assert!(err.contains("unknown keys"), "{err}");
+    }
+
+    #[test]
+    fn render_cases_take_an_edit_script() {
+        let render =
+            json!({ "name": "r", "preset": "p.vital", "midi": "m.mid", "edits": "edits/e.json" });
+        let cases = render_cases_from(&cases_json(floor_tolerances(), render), LEDGER).unwrap();
+        assert_eq!(cases[0].json["edits"], "edits/e.json");
+        for (edits, message) in [
+            (json!(1), "\"edits\" must be a corpus path"),
+            (json!("e.mid"), "\"edits\" must be a .json file"),
+        ] {
+            let render =
+                json!({ "name": "r", "preset": "p.vital", "midi": "m.mid", "edits": edits });
+            let err =
+                render_cases_from(&cases_json(floor_tolerances(), render), LEDGER).unwrap_err();
+            assert!(err.contains(message), "{err}");
+        }
     }
 
     #[test]

@@ -16,7 +16,9 @@ use sas_oscillators::RandomValues;
 use sas_parity::RenderCase;
 use sas_preset::{InitContent, PresetState};
 
-/// Every `renders` case in `migration/corpus/cases.json`.
+/// Every `renders` case in `migration/corpus/cases.json` without an edit
+/// script. Cases with one are played through the plugin's edit bus in
+/// `sas-plugin`'s `tests/live_edit_parity.rs`.
 const CASES: [&str; 16] = [
     "render/init_saw__single_note",
     "render/init_saw__chords",

@@ -26,6 +26,7 @@ MIDI_DIR = os.path.join(HERE, "midi")
 PRESET_TEST_DIR = os.path.join(HERE, "preset_tests")
 BENCH_DIR = os.path.join(HERE, "bench")
 TUNING_DIR = os.path.join(HERE, "tunings")
+EDIT_DIR = os.path.join(HERE, "edits")
 
 # Matches ProjectInfo::versionString of the upstream plugin build the reference
 # harness compiles (see migration/reference/juce_config/JuceHeader.h).
@@ -1227,6 +1228,66 @@ BENCH_MIDI = {
 
 
 # --------------------------------------------------------------------------
+# Live edit scripts (ref-render --edits): edits made while a render plays, as
+# upstream's editor makes them. Times are in seconds, converted to samples as
+# MIDI events are; an edit applies at the start of the first host block that
+# starts at or after it. connect_modulation is a source dropped on the
+# destination's control (bipolar: a modifier key held).
+# --------------------------------------------------------------------------
+
+def bell_sample(length=4096, sample_rate=44100):
+    """A deterministic inharmonic bell, int16 base64 (the sample an edit loads)."""
+    pcm = bytearray()
+    for i in range(length):
+        t = i / sample_rate
+        env = math.exp(-4.0 * i / length)
+        value = env * (0.5 * math.sin(2 * math.pi * 330.0 * t) + 0.3 * math.sin(2 * math.pi * 897.0 * t)
+                       + 0.15 * math.sin(2 * math.pi * 1523.0 * t))
+        pcm += struct.pack("<h", int(round(max(-1.0, min(1.0, value)) * 32767)))
+    return {
+        "name": "corpus bell",
+        "length": length,
+        "sample_rate": sample_rate,
+        "samples": base64.b64encode(bytes(pcm)).decode("ascii"),
+    }
+
+
+def edit(seconds, kind, **fields):
+    return dict(fields, seconds=seconds, type=kind)
+
+
+EDITS = {
+    # Every kind of live edit on the init saw: a modulation connected,
+    # reshaped and remapped, a wavetable and a sample loaded while notes
+    # sound, the connection removed and made again (a new slot, so its curve
+    # is reset to linear).
+    "live_edits": {"edits": [
+        edit(0.25, "set_control", name="filter_1_on", value=1.0),
+        edit(0.25, "set_control", name="filter_1_cutoff", value=64.0),
+        edit(0.25, "connect_modulation", source="lfo_1", destination="filter_1_cutoff"),
+        edit(0.25, "set_control", name="modulation_1_amount", value=0.45),
+        edit(0.25, "set_control", name="lfo_1_frequency", value=1.5),
+        edit(0.75, "lfo_shape", lfo=0,
+             line=line([(0.0, 1.0), (0.2, 0.1), (0.55, 0.8), (1.0, 1.0)], powers=[2.0, -1.5, 0.0, 0.0],
+                       name="edited lfo")),
+        edit(1.25, "line_mapping", slot=0,
+             line=line([(0.0, 1.0), (0.35, 0.3), (1.0, 0.0)], powers=[1.0, -2.5, 0.0], name="edited curve")),
+        edit(1.25, "connect_modulation", source="env_2", destination="osc_1_wave_frame", bipolar=True),
+        edit(1.25, "set_control", name="modulation_2_amount", value=0.6),
+        edit(1.75, "wavetable", oscillator=0, wavetable=line_fold_wavetable()),
+        edit(2.3, "sample", data=bell_sample()),
+        edit(2.3, "set_control", name="sample_on", value=1.0),
+        edit(2.3, "set_control", name="sample_level", value=0.45),
+        edit(2.75, "disconnect_modulation", source="lfo_1", destination="filter_1_cutoff"),
+        edit(3.2, "connect_modulation", source="lfo_1", destination="filter_1_cutoff"),
+        edit(3.2, "set_control", name="modulation_1_amount", value=-0.3),
+        edit(3.6, "line_mapping", slot=0,
+             line=line([(0.0, 1.0), (0.5, 0.5), (1.0, 0.0)], smooth=True, name="smooth curve")),
+    ]},
+}
+
+
+# --------------------------------------------------------------------------
 
 def outputs():
     files = {}
@@ -1236,6 +1297,8 @@ def outputs():
         files[os.path.join(MIDI_DIR, name + ".mid")] = midi_file(events)
     for name, text in TUNINGS.items():
         files[os.path.join(TUNING_DIR, name)] = text.encode()
+    for name, data in EDITS.items():
+        files[os.path.join(EDIT_DIR, name + ".json")] = (json.dumps(data, indent=2, sort_keys=True) + "\n").encode()
     for name, data in PRESET_TESTS.items():
         path = os.path.join(PRESET_TEST_DIR, name + ".vital")
         files[path] = (json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) + "\n").encode()

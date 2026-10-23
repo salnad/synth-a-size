@@ -202,6 +202,14 @@ class ToleranceRules(unittest.TestCase):
                              cases_json(render={"name": "r", "preset": "p", "midi": "m", "keyboard_map": "t.scl"}),
                              LEDGER)
 
+    def test_render_edits_key(self):
+        render = {"name": "r", "preset": "p", "midi": "m", "edits": "edits/e.json"}
+        self.assertEqual(rc.resolve_renders(cases_json(render=render), LEDGER)[0]["edits"], "edits/e.json")
+        self.assertCaseError("must be a corpus path", rc.resolve_renders,
+                             cases_json(render={"name": "r", "preset": "p", "midi": "m", "edits": 1}), LEDGER)
+        self.assertCaseError('"edits" must be a .json file', rc.resolve_renders,
+                             cases_json(render={"name": "r", "preset": "p", "midi": "m", "edits": "e.mid"}), LEDGER)
+
     # Parity Reviewer on #50: "approved_in": "Ledger" was accepted, because the
     # "# Ledger" section spans the whole file (and then every entry file).
     def test_approved_in_must_be_a_dated_heading_within_one_file(self):

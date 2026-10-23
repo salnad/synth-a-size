@@ -6,6 +6,8 @@
         "analog_filter_lfo__velocity_96k_b512": "174c3e7af8f725f3",
         "fx_chain_reordered__chords_140bpm": "018015849713c65f",
         "init_saw__chords": "75683e528015996b",
+        "init_saw__live_edits": "cb69009d07dc3ed7",
+        "init_saw__live_edits_48k_b512": "630df8f25efc1303",
         "init_saw__single_note": "5777e97cdd03d62f",
         "init_saw__single_note_48k_b128": "834b73744e0ae16f",
         "line_wavetable_fold__velocity": "41e464688075ae5f",
