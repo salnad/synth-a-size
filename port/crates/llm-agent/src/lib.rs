@@ -22,12 +22,14 @@ pub mod message;
 pub mod prompt;
 pub mod provider;
 pub mod settings;
+pub mod stop;
 pub mod transport;
 
 pub use agent::{Agent, AgentConfig, AgentEvent, TurnReport};
 pub use message::Usage;
 pub use provider::{Provider, ProviderConfig, ProviderKind};
 pub use settings::{ChatSettings, KeyboardFocus};
+pub use stop::StopCheck;
 pub use transport::{RecordingTransport, ReplayTransport, ScriptedTransport, Transport};
 
 #[cfg(feature = "http")]
@@ -50,6 +52,8 @@ pub enum AgentError {
     /// A session limit was reached.
     Budget(String),
     Tool(String),
+    /// The request was stopped while waiting for the provider.
+    Stopped,
 }
 
 impl fmt::Display for AgentError {
@@ -61,6 +65,7 @@ impl fmt::Display for AgentError {
             AgentError::Replay(message) => write!(f, "replay: {message}"),
             AgentError::Budget(message) => f.write_str(message),
             AgentError::Tool(message) => write!(f, "tool: {message}"),
+            AgentError::Stopped => f.write_str(crate::stop::STOPPED),
         }
     }
 }
