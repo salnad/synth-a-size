@@ -122,7 +122,7 @@ pub fn fill_path(
         return;
     }
     let ctx = pixels.painter().ctx();
-    let id = Id::new((
+    let id = Id::unique((
         "sas-gui path",
         key,
         transform.scale.to_bits(),
@@ -143,7 +143,7 @@ pub fn fill_path(
         let texture = ctx.load_texture(format!("path {key}"), image, TextureOptions::NEAREST);
         ctx.data_mut(|data| {
             data.insert_temp(id, texture.clone());
-            let order = data.get_temp_mut_or_default::<Vec<Id>>(Id::new("sas-gui path cache"));
+            let order = data.get_temp_mut_or_default::<Vec<Id>>(Id::unique("sas-gui path cache"));
             order.push(id);
             if order.len() > CACHE_SIZE {
                 let evicted = order.remove(0);
@@ -282,13 +282,14 @@ mod tests {
         let coverage = rasterise(&overlap, Transform::IDENTITY, (0, 0), 6, 4);
         assert!(coverage.iter().all(|&c| (c - 1.0).abs() < 1e-5));
 
-        // A square inside one wound the other way: a hole.
+        // A square inside one wound the other way (add_rectangle goes
+        // clockwise on screen): a hole.
         let mut hole = Path::new();
         hole.add_rectangle(0.0, 0.0, 6.0, 6.0);
         hole.move_to(2.0, 2.0);
-        hole.line_to(4.0, 2.0);
-        hole.line_to(4.0, 4.0);
         hole.line_to(2.0, 4.0);
+        hole.line_to(4.0, 4.0);
+        hole.line_to(4.0, 2.0);
         hole.close();
         let coverage = rasterise(&hole, Transform::IDENTITY, (0, 0), 6, 6);
         assert_eq!(coverage[3 * 6 + 3], 0.0);
