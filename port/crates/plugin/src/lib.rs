@@ -21,6 +21,9 @@
 //! - [`editor`]: what the `sas-gui` editor reads from the plugin.
 //! - [`midi_learn`]: MIDI learn requests from the editor, and the learn map
 //!   saved to the user [`config`] file.
+//! - [`live`]: the LLM tools' session on the running plugin (host parameter
+//!   gestures, the edit bus, undo, outside-change detection; D13), and
+//!   [`chat_bridge`], how the chat worker reaches it on the GUI thread.
 //!
 //! The shipping build is an arm64 macOS VST3 (`scripts/bundle.sh`).
 //! CLAP export is kept because it costs nothing, but it is not tested or
@@ -35,9 +38,11 @@ use sas_engine::keyboard::{keyboard, KeyboardHandle};
 use sas_engine::telemetry::{AudioMemory, Telemetry};
 use sas_preset::InitContent;
 
+pub mod chat_bridge;
 pub mod config;
 pub mod editor;
 pub mod engine;
+pub mod live;
 pub mod midi_learn;
 pub mod params;
 pub mod processor;

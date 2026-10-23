@@ -7,7 +7,7 @@
 //! (G0) and, for whole-preset loads, `GuiContext::set_state`.
 
 use sas_common::LineGenerator;
-use sas_preset::{InitContent, PresetState, SaveInfo};
+use sas_preset::{InitContent, PresetState, SaveInfo, SlotValues};
 use sas_wavetable::creator::WavetableCreator;
 
 use crate::Error;
@@ -71,6 +71,29 @@ pub trait SynthSession {
 
     /// Returns to `state` (undo).
     fn restore(&mut self, state: &PresetState) -> Result<(), Error>;
+
+    /// Controls the tools set that have since changed outside the chat
+    /// (host automation, or the user turning the knob), each reported once.
+    fn take_outside_changes(&mut self) -> Vec<OutsideChange> {
+        Vec::new()
+    }
+
+    /// Whether the whole state was replaced outside the chat (a host state
+    /// restore or a preset load) since the last call. Undo steps from before
+    /// it no longer apply.
+    fn take_replaced(&mut self) -> bool {
+        false
+    }
+}
+
+/// A control the tools set that has since changed outside the chat.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OutsideChange {
+    pub name: &'static str,
+    /// The engine value the tools set.
+    pub set: f32,
+    /// The engine value it has now.
+    pub now: f32,
 }
 
 /// A session over a preset in memory, with no engine: the CLI, the MCP
@@ -99,81 +122,36 @@ impl OfflineSession {
     }
 }
 
-/// `ModulationManager::kDefaultModulationRatio`: the smallest amount a
-/// dragged-on modulation starts with.
-const DEFAULT_MODULATION_RATIO: f32 = 0.25;
-
-/// What upstream's editor gives a slot it has just created by dragging a
-/// source onto a control (`ModulationManager::setModulationValues`).
-///
-/// G0 (#94) adds the shared form of this rule to `sas-preset`
-/// (`SlotValues`, `PresetState::dragged_values`,
-/// `PresetState::connect_modulation_from_gui`); this copy follows it
-/// exactly and is deleted when the session switches to it.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct SlotValues {
-    /// `modulation_N_amount`.
-    pub amount: f32,
-    pub bipolar: bool,
-    pub stereo: bool,
-    pub bypass: bool,
-}
-
-/// `ModulationManager::modulationDraggedToComponent`: the values for a
-/// source dropped on `destination`'s control at its current value.
-/// `bipolar` stands for the modifier key: a plain drag makes a unipolar
-/// route. The amount reaches from the control's position to the top of its
-/// range (to the nearer end, doubled, when bipolar), at least
-/// `kDefaultModulationRatio`; stereo and bypass are off. `None` if
-/// `destination` is not a parameter.
-pub fn dragged_values(state: &PresetState, destination: &str, bipolar: bool) -> Option<SlotValues> {
-    let info = sas_preset::registry().get(destination)?;
-    let value = state.value(destination).unwrap_or(info.default_value);
-    // juce::Slider::valueToProportionOfLength on the control's linear range,
-    // in double as JUCE computes it, then stored as a float.
-    let (min, max) = (f64::from(info.min), f64::from(info.max));
-    let percent = ((f64::from(value) - min) / (max - min)).clamp(0.0, 1.0) as f32;
-    let mut amount = 1.0 - percent;
-    if bipolar {
-        amount = amount.min(percent) * 2.0;
+/// The values a slot takes when a connection creates it, and any power
+/// setting: upstream's drag values for the destination
+/// (`ModulationManager::modulationDraggedToComponent`, computed by
+/// `dragged` for the bipolar flag the model gave, unipolar by default), with
+/// the model's explicit amount, stereo and bypass on top. They travel with
+/// the connection (`PresetState::connect_modulation_from_gui`, the edit
+/// bus's `connect_modulation`) instead of following it as separate sets.
+/// Power is not a slot value; the connection sets it to 0, and a power the
+/// model gave is set after.
+pub fn created_slot_values(
+    settings: &[(&'static str, f32)],
+    dragged: impl FnOnce(bool) -> Option<SlotValues>,
+) -> Option<(SlotValues, Option<f32>)> {
+    let setting = |name: &str| {
+        settings
+            .iter()
+            .find(|(suffix, _)| *suffix == name)
+            .map(|(_, value)| *value)
+    };
+    let mut values = dragged(setting("bipolar").is_some_and(|value| value != 0.0))?;
+    if let Some(amount) = setting("amount") {
+        values.amount = amount;
     }
-    Some(SlotValues {
-        amount: amount.max(DEFAULT_MODULATION_RATIO),
-        bipolar,
-        stereo: false,
-        bypass: false,
-    })
-}
-
-/// A source dropped on a control in upstream's editor: if the two are not
-/// connected yet, `SynthGuiInterface::connectModulation`
-/// (`PresetState::add_modulation`, then `initModulationValues`: linear remap
-/// curve, power 0), then `setModulationValues` with `values`. An existing
-/// connection is left alone. Returns the slot and whether it was created.
-fn connect_from_gui(
-    state: &mut PresetState,
-    source: &str,
-    destination: &str,
-    values: SlotValues,
-) -> Result<(usize, bool), Error> {
-    let created = state.modulation_index(source, destination).is_none();
-    let slot = state.add_modulation(source, destination)?;
-    if created {
-        if let Some(line) = state.line_mapping_mut(slot) {
-            line.init_linear();
-        }
-        let flag = |on: bool| if on { 1.0 } else { 0.0 };
-        for (suffix, value) in [
-            ("power", 0.0),
-            ("amount", values.amount),
-            ("bipolar", flag(values.bipolar)),
-            ("stereo", flag(values.stereo)),
-            ("bypass", flag(values.bypass)),
-        ] {
-            state.set_value(&format!("modulation_{}_{suffix}", slot + 1), value)?;
-        }
+    if let Some(stereo) = setting("stereo") {
+        values.stereo = stereo != 0.0;
     }
-    Ok((slot, created))
+    if let Some(bypass) = setting("bypass") {
+        values.bypass = bypass != 0.0;
+    }
+    Some((values, setting("power")))
 }
 
 impl SynthSession for OfflineSession {
@@ -193,16 +171,26 @@ impl SynthSession for OfflineSession {
                 destination,
                 settings,
             } => {
-                let bipolar = settings
-                    .iter()
-                    .any(|(suffix, value)| *suffix == "bipolar" && *value != 0.0);
-                let values = dragged_values(&self.state, destination, bipolar)
-                    .ok_or_else(|| Error::Invalid(format!("{destination} is not a parameter")))?;
-                let (slot, created) =
-                    connect_from_gui(&mut self.state, source, destination, values)?;
-                for (suffix, value) in settings {
+                let (values, power) = created_slot_values(settings, |bipolar| {
+                    self.state.dragged_values(destination, bipolar)
+                })
+                .ok_or_else(|| {
+                    Error::Invalid(format!("{destination} is not a modulatable control"))
+                })?;
+                let connection =
                     self.state
-                        .set_value(&format!("modulation_{}_{suffix}", slot + 1), *value)?;
+                        .connect_modulation_from_gui(source, destination, values)?;
+                let (slot, created) = (connection.slot, connection.created);
+                // An existing route keeps its slot values unless the model
+                // set them; a created one already has them.
+                let later: Vec<(&str, f32)> = if created {
+                    power.map(|power| ("power", power)).into_iter().collect()
+                } else {
+                    settings.to_vec()
+                };
+                for (suffix, value) in later {
+                    self.state
+                        .set_value(&format!("modulation_{}_{suffix}", slot + 1), value)?;
                 }
                 return Ok(Applied::Connected { slot, created });
             }

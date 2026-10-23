@@ -301,8 +301,9 @@ D12: retired (temporary, removed in #82).
 ### D13. LLM control layer: additions with no upstream counterpart
 
 *Started in #91 (L1, tool core); extended by #92 (L2: modulation, LFO,
-wavetable and preset tools) and L3 (providers, agent loop, `sas-llm`).
-Later LLM milestones (L4–L8) extend this entry.*
+wavetable and preset tools), #95 (L3: providers, agent loop, `sas-llm`)
+and L4 (the tools on the running plugin). Later LLM milestones (L5–L8)
+extend this entry.*
 
 - **Differs:** the port adds a layer that lets a language model read and
   edit the synth by name: the tools in `port/crates/llm-control`, and later a
@@ -334,10 +335,13 @@ Later LLM milestones (L4–L8) extend this entry.*
   - Values are given in display units and converted with upstream's
     `ValueBridge` formulas (`sas_preset::display`, shared with the plugin's
     host text entry, D1).
-  - Today the plugin does not use the crate at all. When the chat is wired
-    into the plugin (L4/L5), it comes with a setting that is off by default;
-    with it off, or with no API key set, the plugin behaves exactly as
-    without the layer and makes no network requests.
+  - The chat is off until the user turns it on (`ChatSettings::enabled`,
+    false by default, in a per-user settings file; a missing or damaged
+    file leaves it off). With it off, or with no API key set, the plugin
+    behaves exactly as without the layer and makes no network requests.
+  - On the running plugin (`sas_plugin::live`), a tool edit is a host
+    parameter gesture, an edit bus edit, or a whole-state load through the
+    host, exactly as the editor makes them. Undo restores the same way.
   - Working defaults (owner, 2026-10-22, all reversible): edits apply at
     once with undo; raising master volume above 0 dB waits for the user's
     confirmation (`Policy::confirm_above`); chat history is not saved; the

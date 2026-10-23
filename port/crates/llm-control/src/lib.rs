@@ -29,10 +29,10 @@ pub mod session;
 pub mod shapes;
 pub mod tools;
 
-pub use controller::{Controller, Pending, Policy};
+pub use controller::{Controller, Pending, Policy, Side};
 pub use library::PresetLibrary;
 pub use sas_preset;
-pub use session::{Applied, Edit, OfflineSession, SynthSession};
+pub use session::{Applied, Edit, OfflineSession, OutsideChange, SynthSession};
 pub use tools::{specs, ToolOutput, ToolSpec};
 
 /// Milestone in `migration/PLAN.md` that builds this crate.
