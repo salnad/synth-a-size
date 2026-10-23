@@ -23,6 +23,8 @@ enum Image {
         points: Vec<(f32, f32)>,
         colour: Colour,
     },
+    /// A component painted into its image (`paintToImage`).
+    Custom(Box<dyn FnOnce(&PixelPainter)>),
 }
 
 #[derive(Default)]
@@ -63,6 +65,11 @@ impl Layer {
         self.images.push(Image::Polygon { points, colour });
     }
 
+    /// Painting done by a component that paints to an image.
+    pub fn custom(&mut self, paint: impl FnOnce(&PixelPainter) + 'static) {
+        self.images.push(Image::Custom(Box::new(paint)));
+    }
+
     /// Paints the quads, clipped to `clip` (pixels), then the images.
     pub fn paint(self, pixels: &PixelPainter, clip: RectF) {
         self.quads.paint(pixels, clip);
@@ -76,6 +83,7 @@ impl Layer {
                     colour,
                 } => pixels.text_centred(&text, rect, face, point_height, colour),
                 Image::Polygon { points, colour } => pixels.fill_polygon(&points, colour),
+                Image::Custom(paint) => paint(pixels),
             }
         }
     }

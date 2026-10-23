@@ -16,6 +16,7 @@ use egui::{Modifiers, PointerButton, Pos2, Sense, Ui};
 use sas_preset::registry::{ParamInfo, ValueScale};
 
 use super::format::{self, Format};
+use super::wheel::{self, WheelColours};
 use crate::colour::Colour;
 use crate::fonts::Face;
 use crate::host::Host;
@@ -63,6 +64,9 @@ pub enum SliderStyle {
     /// `volume_section.cpp`): its tip at `point_y` and base at `end_y`
     /// pixels below the slider's top.
     Arrow { point_y: i32, end_y: i32 },
+    /// `LinearBarVertical` painted as a wheel (`ControlWheel`); the pitch
+    /// wheel springs back to 0 on release (`PitchWheel::mouseUp`).
+    Wheel { spring_back: bool },
 }
 
 impl SliderStyle {
@@ -352,6 +356,17 @@ impl Slider {
                     scope.color(ColorId::LinearSliderThumb),
                 );
             }
+            SliderStyle::Wheel { .. } => {
+                let colours = WheelColours {
+                    background: scope.color(ColorId::WidgetSecondary1),
+                    line: scope.color(ColorId::WidgetAccent1),
+                    marker: scope.color(ColorId::WidgetPrimary1),
+                    body: scope.color(ColorId::Body),
+                    shadow: scope.color(ColorId::Shadow),
+                };
+                let bounds = RectF::from(bounds);
+                layer.custom(move |pixels| wheel::paint(pixels, bounds, t, colours));
+            }
             SliderStyle::Text => self.paint_text(layer, scope, bounds, value),
             SliderStyle::Curve => self.paint_curve(pixels, scope, bounds, value),
         }
@@ -539,6 +554,10 @@ impl Slider {
             // a second press that was neither a drag nor a long press.
             state.down = false;
             host.end(self.name);
+            if let SliderStyle::Wheel { spring_back: true } = self.style {
+                // PitchWheel::mouseUp: back to the centre after the gesture.
+                host.set_once(self.name, 0.0);
+            }
             let long_press = state
                 .last_press
                 .is_some_and(|(time, _)| now - time > LONG_PRESS);
@@ -585,7 +604,7 @@ impl Slider {
         };
         let mouse_diff = match self.style {
             SliderStyle::Horizontal | SliderStyle::Arrow { .. } => position.x - state.last.x,
-            SliderStyle::Vertical => state.last.y - position.y,
+            SliderStyle::Vertical | SliderStyle::Wheel { .. } => state.last.y - position.y,
             _ => (position.x - state.last.x) + (state.last.y - position.y),
         };
         (state.proportion + mouse_diff as f64 / full_drag as f64).clamp(0.0, 1.0)

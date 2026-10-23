@@ -26,7 +26,8 @@ use crate::layout::{FullLayout, Rect};
 use crate::paint::{PixelPainter, RectF};
 use crate::popup::MenuOutcome;
 use crate::scope::Scope;
-use crate::section::{paint_body, paint_border};
+use crate::section::paint_body;
+use crate::sections::bend::{self, BendLayout, BendSection};
 use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
 use crate::sections::voice::{self, VoiceLayout, VoiceSection};
 use crate::sections::volume::{PeakLevels, VolumeLayout, VolumeSection};
@@ -133,6 +134,7 @@ pub struct Interface {
     voice: VoiceSection,
     portamento: PortamentoSection,
     volume: VolumeSection,
+    bend: BendSection,
     overlay: Overlay,
 }
 
@@ -150,6 +152,7 @@ impl Interface {
             voice: VoiceSection::default(),
             portamento: PortamentoSection::default(),
             volume: VolumeSection::default(),
+            bend: BendSection::default(),
             overlay: Overlay::default(),
         }
     }
@@ -236,7 +239,7 @@ impl Interface {
         panel.finish();
     }
 
-    /// The Voice and Portamento sections.
+    /// The Bend, Voice and Portamento sections.
     fn show_sections(
         &mut self,
         ui: &mut Ui,
@@ -251,6 +254,13 @@ impl Interface {
         self.voice.paint_background(pixels, &scope, &voice_layout);
         let mut panel = Panel::new(ui, host, pixels, scope, &mut self.overlay, layout.voice);
         self.voice.show(&mut panel, &voice_layout);
+        panel.finish();
+
+        let scope = top.within(bend::SKIN);
+        let bend_layout = BendLayout::new(&scope, layout.bend);
+        self.bend.paint_background(pixels, &scope, &bend_layout);
+        let mut panel = Panel::new(ui, host, pixels, scope, &mut self.overlay, layout.bend);
+        self.bend.show(&mut panel, &bend_layout);
         panel.finish();
 
         let scope = top.within(portamento::SKIN);
@@ -331,11 +341,9 @@ impl Interface {
             pixels.fill_rect(bar, header_body);
         }
 
-        // BendSection paints its body and border, KeyboardInterface its body
-        // (both in the Keyboard skin section); their contents come later.
+        // KeyboardInterface paints its body (in the Keyboard skin section);
+        // its contents come later.
         let keyboard = top.within(&[Section::Keyboard]);
-        paint_body(pixels, &keyboard, layout.bend);
-        paint_border(pixels, &keyboard, layout.bend);
         paint_body(pixels, &keyboard, layout.keyboard);
     }
 

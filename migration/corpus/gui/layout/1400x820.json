@@ -34,6 +34,9 @@
   "PORTAMENTO/portamento_slope": {"bounds": [1206, 705, 77, 43], "visible": true},
   "PORTAMENTO/portamento_force": {"bounds": [1288, 705, 97, 19], "visible": true},
   "PORTAMENTO/portamento_scale": {"bounds": [1288, 726, 97, 19], "visible": true},
-  "PORTAMENTO/legato": {"bounds": [1288, 747, 97, 19], "visible": true}
+  "PORTAMENTO/legato": {"bounds": [1288, 747, 97, 19], "visible": true},
+  "header_section/VOLUME/volume": {"bounds": [973, 18, 207, 36], "visible": true},
+  "BEND/pitch_wheel": {"bounds": [20, 750, 19, 61], "visible": true},
+  "BEND/mod_wheel": {"bounds": [49, 750, 19, 61], "visible": true}
  }
 }

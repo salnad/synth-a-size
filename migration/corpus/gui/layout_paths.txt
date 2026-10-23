@@ -39,3 +39,8 @@ PORTAMENTO/portamento_slope
 PORTAMENTO/portamento_force
 PORTAMENTO/portamento_scale
 PORTAMENTO/legato
+
+# G3: the header's volume control and the Bend section.
+header_section/VOLUME/volume
+BEND/pitch_wheel
+BEND/mod_wheel

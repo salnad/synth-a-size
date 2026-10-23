@@ -10,6 +10,7 @@
 //! `SynthSection` does for every control: drawing it, routing its popups to
 //! the interface and its changes to the host.
 
+pub mod bend;
 pub mod portamento;
 pub mod voice;
 pub mod volume;

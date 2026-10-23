@@ -7,8 +7,10 @@ use std::path::PathBuf;
 
 use sas_gui::layout::{FullLayout, Rect};
 use sas_gui::scope::Scope;
+use sas_gui::sections::bend::{self, BendLayout};
 use sas_gui::sections::portamento::{self, PortamentoLayout};
 use sas_gui::sections::voice::{self, VoiceLayout};
+use sas_gui::sections::volume::VolumeLayout;
 use sas_gui::skin::Skin;
 
 fn corpus() -> PathBuf {
@@ -44,6 +46,8 @@ fn port_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> {
     let top = Scope::top(skin, layout.size_ratio);
     let voice = VoiceLayout::new(&top.within(voice::SKIN), layout.voice);
     let portamento = PortamentoLayout::new(&top.within(portamento::SKIN), layout.portamento);
+    let bend = BendLayout::new(&top.within(bend::SKIN), layout.bend);
+    let volume = VolumeLayout::new(header.volume);
     Some(match path {
         "header_section" => header.bounds,
         "header_section/logo_section" => header.logo,
@@ -75,6 +79,9 @@ fn port_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> {
         "PORTAMENTO/portamento_force" => portamento.portamento_force,
         "PORTAMENTO/portamento_scale" => portamento.portamento_scale,
         "PORTAMENTO/legato" => portamento.legato,
+        "header_section/VOLUME/volume" => volume.volume,
+        "BEND/pitch_wheel" => bend.pitch_wheel,
+        "BEND/mod_wheel" => bend.mod_wheel,
         _ => return None,
     })
 }

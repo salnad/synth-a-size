@@ -176,6 +176,58 @@ impl<'a> PixelPainter<'a> {
         );
     }
 
+    /// The outline of a rounded rectangle (pixels), clockwise from the top
+    /// left corner's start, `segments` points per corner. A zero radius
+    /// repeats each corner point, so two outlines always pair up.
+    fn rounded_outline(rect: RectF, radius: f32, segments: usize) -> Vec<(f32, f32)> {
+        use std::f32::consts::FRAC_PI_2;
+        let r = radius.min(rect.width / 2.0).min(rect.height / 2.0).max(0.0);
+        let centres = [
+            (rect.x + r, rect.y + r, 2.0 * FRAC_PI_2),
+            (rect.x + rect.width - r, rect.y + r, 3.0 * FRAC_PI_2),
+            (rect.x + rect.width - r, rect.y + rect.height - r, 0.0),
+            (rect.x + r, rect.y + rect.height - r, FRAC_PI_2),
+        ];
+        let mut points = Vec::with_capacity(4 * (segments + 1));
+        for (cx, cy, start) in centres {
+            for i in 0..=segments {
+                let angle = start + FRAC_PI_2 * i as f32 / segments as f32;
+                points.push((cx + r * angle.cos(), cy + r * angle.sin()));
+            }
+        }
+        points
+    }
+
+    /// Fills between two rounded rectangles (pixels), `inner` inside
+    /// `outer`: JUCE's even-odd fill of one rounded rectangle path with
+    /// another inside it.
+    pub fn fill_rounded_ring(
+        &self,
+        outer: RectF,
+        outer_radius: f32,
+        inner: RectF,
+        inner_radius: f32,
+        colour: Colour,
+    ) {
+        const SEGMENTS: usize = 12;
+        let outer = Self::rounded_outline(outer, outer_radius, SEGMENTS);
+        let inner = Self::rounded_outline(inner, inner_radius, SEGMENTS);
+        let mut mesh = egui::Mesh::default();
+        let colour = colour.to_egui();
+        for (&(ox, oy), &(ix, iy)) in outer.iter().zip(&inner) {
+            mesh.colored_vertex(self.pos(ox, oy), colour);
+            mesh.colored_vertex(self.pos(ix, iy), colour);
+        }
+        let count = outer.len() as u32;
+        for i in 0..count {
+            let next = (i + 1) % count;
+            let (o0, i0, o1, i1) = (2 * i, 2 * i + 1, 2 * next, 2 * next + 1);
+            mesh.add_triangle(o0, i0, o1);
+            mesh.add_triangle(o1, i0, i1);
+        }
+        self.painter.add(egui::Shape::mesh(mesh));
+    }
+
     /// `Graphics::fillPath` for a convex polygon (pixels).
     pub fn fill_polygon(&self, points: &[(f32, f32)], colour: Colour) {
         let points: Vec<Pos2> = points.iter().map(|&(x, y)| self.pos(x, y)).collect();
