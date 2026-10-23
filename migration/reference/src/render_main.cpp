@@ -209,7 +209,19 @@ int main(int argc, const char* argv[]) {
       ++event_index;
     }
 
+    // The port applies a block's edit-bus edits before its host parameters,
+    // upstream in call order: they agree unless a slot's modulation_N_*
+    // control is set before a connection in the same block (which then
+    // overwrites a new slot's values upstream, but not in the port).
+    bool set_modulation_control = false;
     while (edit_index < edits.size() && edits[edit_index].sample <= block_start) {
+      const json& edit = edits[edit_index].edit;
+      const std::string type = edit.value("type", "");
+      if (type == "set_control" && edit.value("name", "").rfind("modulation_", 0) == 0)
+        set_modulation_control = true;
+      else if (type == "connect_modulation" && set_modulation_control)
+        return fail("edit " + std::to_string(edit_index) + ": a connection follows a modulation_N_* "
+                    "control set in the same block; set the slot's controls after connecting");
       std::string error;
       try {
         error = synth->applyEdit(edits[edit_index].edit);

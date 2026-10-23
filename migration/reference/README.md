@@ -140,6 +140,12 @@ Times must be in order. Each edit makes the same calls as upstream:
 | `wavetable` | `oscillator` (0-based), `wavetable` (`WavetableCreator` JSON) | `LoadSave::loadWavetables` for one oscillator |
 | `sample` | `data` (preset `sample` JSON) | `LoadSave::loadSample` |
 
+Within one block, a script may not set a `modulation_N_*` control and then
+connect a modulation (`ref-render` rejects it). Upstream applies a block's
+edits in call order, while the port's plugin applies edit-bus edits before
+the block's host parameters, so the two agree only when a slot's controls
+are set after its connection. That's also the order upstream's editor uses.
+
 The metadata records the script and `edits_applied`. An edit timed past
 the end of the render (one no block would apply) fails the render, so a
 case can't silently lose edits.

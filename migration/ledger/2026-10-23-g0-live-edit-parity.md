@@ -27,6 +27,11 @@ script, and the port plays the same script through the plugin's edit bus.
     after the end of the render fails it, so a case can't silently lose
     edits (Parity Reviewer). Renders without `--edits` are unchanged,
     metadata included.
+- Within one block, `ref-render` rejects a script that sets a
+  `modulation_N_*` control and then connects a modulation (Graph Reviewer).
+  The port's plugin applies edit-bus edits before the block's host
+  parameters, upstream in call order, so the two agree only when a slot's
+  controls follow its connection.
 - Render cases take an optional `"edits"` corpus path (`.json`).
   `run_corpus.py` passes it to `ref-render`, and `sas-parity` validates it
   (`RenderCase::edits_path`). There's a unit test on each side, with the
