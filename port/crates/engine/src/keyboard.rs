@@ -97,10 +97,16 @@ impl KeyboardHandle {
         let velocity = ((velocity * 127.0) as f64)
             .round_ties_even()
             .clamp(0.0, 127.0) as u8;
+        // Held before the message is queued (JUCE does both under one lock),
+        // so the audio side never plays a note the editor doesn't show.
+        let state = &self.shared.note_states[usize::from(note)];
+        let held = state.fetch_or(CHANNEL_BIT, Ordering::AcqRel) & CHANNEL_BIT != 0;
         if !self.push([0x90, note, velocity], millis) {
+            if !held {
+                state.fetch_and(!CHANNEL_BIT, Ordering::AcqRel);
+            }
             return false;
         }
-        self.shared.note_states[usize::from(note)].fetch_or(CHANNEL_BIT, Ordering::AcqRel);
         true
     }
 
@@ -109,10 +115,14 @@ impl KeyboardHandle {
         let Some(state) = self.shared.note_states.get(usize::from(note)) else {
             return false;
         };
-        if state.load(Ordering::Acquire) & CHANNEL_BIT == 0 || !self.push([0x80, note, 0], millis) {
+        // Clearing the bit is the guard, so two releases queue one note off.
+        if state.fetch_and(!CHANNEL_BIT, Ordering::AcqRel) & CHANNEL_BIT == 0 {
             return false;
         }
-        state.fetch_and(!CHANNEL_BIT, Ordering::AcqRel);
+        if !self.push([0x80, note, 0], millis) {
+            state.fetch_or(CHANNEL_BIT, Ordering::AcqRel);
+            return false;
+        }
         true
     }
 
@@ -279,6 +289,26 @@ mod tests {
     }
 
     #[test]
+    fn positions_round_half_to_even() {
+        let (handle, mut consumer) = keyboard();
+        handle.note_on_at(1, 1.0, 0);
+        handle.note_on_at(2, 1.0, 1);
+        consumer.collect();
+        // 5 samples over 2 ms: the second lands on 2.5, which rounds to 2.
+        consumer.schedule(5);
+        assert_eq!(consumer.pop().map(|(position, _)| position), Some(0));
+        assert_eq!(consumer.pop().map(|(position, _)| position), Some(2));
+
+        handle.note_on_at(1, 1.0, 0);
+        handle.note_on_at(2, 1.0, 1);
+        consumer.collect();
+        // 7 samples: 3.5 rounds to 4.
+        consumer.schedule(7);
+        assert_eq!(consumer.pop().map(|(position, _)| position), Some(0));
+        assert_eq!(consumer.pop().map(|(position, _)| position), Some(4));
+    }
+
+    #[test]
     fn velocity_rounds_half_to_even() {
         let (handle, mut consumer) = keyboard();
         // 0.5 / 127 * 127 rounds to 0, 1.5 / 127 * 127 to 2.
@@ -343,8 +373,12 @@ mod tests {
     fn a_full_queue_refuses() {
         let (handle, _consumer) = keyboard();
         for i in 0..KEYBOARD_QUEUE_CAPACITY {
-            assert!(handle.note_on_at((i % 128) as u8, 1.0, 0));
+            assert!(handle.note_on_at((i % 64) as u8, 1.0, 0));
         }
-        assert!(!handle.note_on_at(5, 1.0, 0));
+        // A refused note on leaves the note up; a refused note off leaves
+        // it held.
+        assert!(!handle.note_on_at(100, 1.0, 0));
+        assert!(!handle.note_off_at(5, 0));
+        assert_eq!(handle.held_notes(), (1 << 64) - 1);
     }
 }

@@ -38,22 +38,36 @@ notes into the block's MIDI (`processKeyboardEvents`, then
   same signatures as GUI Builder's G3 branch); `PluginModel` forwards them
   to the keyboard. `SynthPlugin::keyboard_handle()` hands it out.
 
+- The handle sets a note's bit before queueing its note on, and clears it
+  before queueing its note off (the clear is the guard, so two releases
+  queue one note off). It puts the bit back if the queue refuses the
+  message. JUCE does both under one lock; this order means the audio side
+  never plays a note the editor doesn't show.
+
 **Divergence (not audible):** the queue holds 256 messages, where JUCE's
-`MidiBuffer` grows. With the 500 ms window that takes more than 256 clicks
-in half a second; further notes are dropped rather than allocating on the
-audio thread.
+`MidiBuffer` grows. It drains only when the host calls `process`. While
+the host plays, 256 clicks in half a second fill it (the 500 ms window
+applies once collected). While the host isn't calling `process` (stopped
+or deactivated), messages pile up, and the 257th click since the last
+block is refused: the key doesn't light and nothing plays. Upstream's
+`eventsToAdd` would keep only the last 500 ms. Refusing rather than
+allocating keeps the audio thread allocation-free.
 
 **Tests**
 
-- `sas-engine` `keyboard` unit tests: the timestamp spread, velocity
-  rounding, the note-off guard (including a host note on channel 1), held
-  notes from host messages and CC 123, the 500 ms drop while messages wait,
-  and a full queue.
+- `sas-engine` `keyboard` unit tests: the timestamp spread, position and
+  velocity rounding (half to even), the note-off guard (including a host
+  note on channel 1), held notes from host messages and CC 123, the 500 ms
+  drop while messages wait, and a full queue (a refused message leaves the
+  held notes as they were).
 - `sas-plugin` `tests/keyboard.rs`:
   - keyboard and host notes at the same sample, across 128-sample chunks:
     the host's go first;
   - notes wait through bypassed and empty blocks;
   - the held notes in the snapshot, from the keyboard and host MIDI;
+  - the keyboard's own messages don't touch the held notes on the audio
+    side: a host note off in the block releases a note the keyboard
+    pressed before it, as in `processNextMidiBuffer`;
   - a keyboard note renders bit-identical to the same note from the host.
 - `sas-plugin` `edit_bus_no_alloc`: a thread now plays the keyboard while
   the audio callback is counted; still no allocation or free.

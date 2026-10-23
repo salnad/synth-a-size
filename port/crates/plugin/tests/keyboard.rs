@@ -48,21 +48,31 @@ impl Engine for Recorder {
     }
 }
 
-fn run<E: Engine>(plugin: &mut SynthPlugin<E>, samples: usize, events: Vec<NoteEvent<()>>) -> Vec<f32> {
+fn run<E: Engine>(
+    plugin: &mut SynthPlugin<E>,
+    samples: usize,
+    events: Vec<NoteEvent<()>>,
+) -> Vec<f32> {
     let params = plugin.synth_params().clone();
     let mut left = vec![0.0; samples];
     let mut right = vec![0.0; samples];
     let mut queue: VecDeque<_> = events.into();
-    plugin
-        .processor_mut()
-        .process(&params, &mut left, &mut right, &Transport::default(), || {
-            queue.pop_front()
-        });
+    plugin.processor_mut().process(
+        &params,
+        &mut left,
+        &mut right,
+        &Transport::default(),
+        || queue.pop_front(),
+    );
     left.extend(right);
     left
 }
 
-fn calls(plugin: &mut SynthPlugin<Recorder>, samples: usize, events: Vec<NoteEvent<()>>) -> Vec<Call> {
+fn calls(
+    plugin: &mut SynthPlugin<Recorder>,
+    samples: usize,
+    events: Vec<NoteEvent<()>>,
+) -> Vec<Call> {
     plugin.processor_mut().engine_mut().calls.clear();
     run(plugin, samples, events);
     std::mem::take(&mut plugin.processor_mut().engine_mut().calls)
@@ -148,12 +158,34 @@ fn held_notes_reach_the_telemetry_snapshot() {
     let keyboard = plugin.keyboard_handle();
     keyboard.note_on(60, 1.0);
     run(&mut plugin, 32, vec![note_on(3, 1, 70)]);
-    assert_eq!(telemetry.read(|snapshot| snapshot.held_notes()), 1 << 60 | 1 << 70);
+    assert_eq!(
+        telemetry.read(|snapshot| snapshot.held_notes()),
+        1 << 60 | 1 << 70
+    );
     assert!(telemetry.read(|snapshot| snapshot.note_held(70)));
 
     keyboard.note_off(60);
     run(&mut plugin, 32, vec![note_off(0, 1, 70)]);
     assert_eq!(telemetry.read(|snapshot| snapshot.held_notes()), 0);
+}
+
+#[test]
+fn keyboard_messages_leave_the_held_notes_to_the_editor() {
+    let mut plugin = SynthPlugin::new(Recorder::default());
+    let telemetry = plugin.telemetry();
+    let keyboard = plugin.keyboard_handle();
+    run(&mut plugin, 16, vec![note_on(0, 0, 60)]);
+    // processNextMidiBuffer updates the state from the host's messages
+    // only: the keyboard's note on was counted when it was pressed, so the
+    // host's later note off in the block releases the note.
+    keyboard.note_on(60, 1.0);
+    let midi = calls(&mut plugin, 32, vec![note_off(0, 0, 60)]);
+    assert_eq!(
+        &midi[..2],
+        [Call::Midi([0x80, 60, 0], 0), Call::Midi([0x90, 60, 127], 0)]
+    );
+    assert_eq!(telemetry.read(|snapshot| snapshot.held_notes()), 0);
+    assert_eq!(keyboard.held_notes(), 0);
 }
 
 fn render_note(from_keyboard: bool) -> Vec<f32> {
@@ -168,7 +200,10 @@ fn render_note(from_keyboard: bool) -> Vec<f32> {
         keyboard.note_on(60, 1.0);
         (vec![], vec![])
     } else {
-        (vec![note_on(0, 0, 60)], vec![NoteEvent::from_midi(0, &[0x80, 60, 0]).unwrap()])
+        (
+            vec![note_on(0, 0, 60)],
+            vec![NoteEvent::from_midi(0, &[0x80, 60, 0]).unwrap()],
+        )
     };
     output.extend(run(&mut plugin, 256, on));
     for _ in 0..20 {
@@ -190,7 +225,10 @@ fn a_keyboard_note_plays_like_the_same_host_note() {
     assert!(from_keyboard.iter().any(|&sample| sample != 0.0));
     let from_host = render_note(false);
     assert!(
-        from_keyboard.iter().zip(&from_host).all(|(a, b)| a.to_bits() == b.to_bits()),
+        from_keyboard
+            .iter()
+            .zip(&from_host)
+            .all(|(a, b)| a.to_bits() == b.to_bits()),
         "the keyboard's note sounds different from the host's"
     );
 }
