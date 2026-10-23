@@ -77,8 +77,9 @@ struct Worker {
     bridge: Arc<ChatBridge>,
     /// Ends the worker's loop; separate from the messages' cancel flags.
     shutdown: Arc<AtomicBool>,
-    /// The cancel flag of the last message sent.
-    cancel: Mutex<Option<Arc<AtomicBool>>>,
+    /// The cancel flag of the last message sent (shared with the preview
+    /// engine, so Stop also cuts an audition short).
+    cancel: Arc<Mutex<Option<Arc<AtomicBool>>>>,
     /// Disconnects when the thread ends; `None` once retired.
     exited: Option<mpsc::Receiver<()>>,
 }
@@ -314,9 +315,16 @@ fn spawn_worker(
     let waker = shared.clone();
     bridge.set_waker(move || waker.wake());
     let shutdown = Arc::new(AtomicBool::new(false));
-    // The preview engine (the `audition` tool) builds its synth on first use,
-    // on its own thread, and stops with the worker.
-    let preview = PreviewEngine::new().stopped_by(shutdown.clone());
+    let cancel: Arc<Mutex<Option<Arc<AtomicBool>>>> = Arc::default();
+    // The preview engine (the `audition` tool) renders on its own thread and
+    // stops on the user's Stop or the worker's shutdown.
+    let (preview_shutdown, preview_cancel) = (shutdown.clone(), cancel.clone());
+    let preview = PreviewEngine::new().stopped_by(move || {
+        preview_shutdown.load(Ordering::Relaxed)
+            || lock(&preview_cancel)
+                .as_ref()
+                .is_some_and(|cancel| cancel.load(Ordering::Relaxed))
+    });
     let mut controller = Controller::new(bridge.remote(TOOL_TIMEOUT), Policy::default())
         .with_auditioner(Box::new(preview));
     if let Some(library) = library {
@@ -364,7 +372,7 @@ fn spawn_worker(
         commands: Some(commands),
         bridge,
         shutdown,
-        cancel: Mutex::new(None),
+        cancel,
         exited: Some(exited),
     }
 }

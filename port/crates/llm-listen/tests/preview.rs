@@ -41,7 +41,7 @@ fn the_init_patch_plays_its_note_at_pitch() {
     assert_eq!(a4["notes"], json!([69]));
     assert!(a4.get("cut_short").is_none());
 
-    // The same engine plays the next audition, an octave down.
+    // The next audition, an octave down.
     let a3 = engine.audition(&init(), &request(&[57])).unwrap();
     assert!(
         (a3["pitch"]["hz"].as_f64().unwrap() - 220.0).abs() < 1.5,
@@ -166,11 +166,43 @@ fn print_an_example() {
 }
 
 #[test]
-fn an_owner_shutting_down_stops_the_preview() {
-    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
-    let mut engine = PreviewEngine::new().stopped_by(stop);
-    let started = Instant::now();
+fn the_owners_stop_check_ends_a_render_partway_and_the_engine_stays_usable() {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Arc;
+    // Stop after 20 blocks (about 58 ms of audio), while armed.
+    let (checks, armed) = (
+        Arc::new(AtomicUsize::new(0)),
+        Arc::new(AtomicBool::new(true)),
+    );
+    let (counting, arming) = (checks.clone(), armed.clone());
+    let mut engine = PreviewEngine::new().stopped_by(move || {
+        arming.load(Ordering::Relaxed) && counting.fetch_add(1, Ordering::Relaxed) >= 20
+    });
     let error = engine.audition(&init(), &request(&[60])).unwrap_err();
     assert!(error.contains("stopped"), "{error}");
-    assert!(started.elapsed() < Duration::from_secs(1));
+    assert_eq!(checks.load(Ordering::Relaxed), 21, "checked between blocks");
+
+    armed.store(false, Ordering::Relaxed);
+    assert!(engine.audition(&init(), &request(&[60])).is_ok());
+}
+
+#[test]
+fn the_same_patch_sounds_the_same_however_many_auditions_came_before() {
+    // A random LFO on the cutoff: its stream restarts with every audition.
+    let mut patch = init();
+    patch.set_value("filter_1_on", 1.0).unwrap();
+    patch.set_value("filter_1_cutoff", 60.0).unwrap();
+    let slot = patch.add_modulation("random_1", "filter_1_cutoff").unwrap();
+    patch
+        .set_value(&format!("modulation_{}_amount", slot + 1), 0.5)
+        .unwrap();
+    let mut engine = PreviewEngine::new();
+    let first = engine.audition(&patch, &request(&[60])).unwrap();
+    engine.audition(&init(), &request(&[72])).unwrap();
+    let again = engine.audition(&patch, &request(&[60])).unwrap();
+    assert_eq!(first, again);
+    let fresh = PreviewEngine::new()
+        .audition(&patch, &request(&[60]))
+        .unwrap();
+    assert_eq!(first, fresh);
 }

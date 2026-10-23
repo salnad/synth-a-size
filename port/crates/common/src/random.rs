@@ -24,6 +24,12 @@
 //! reference stream also needs the reference's construction order (and the
 //! seeds its static initialisation consumes). [`RandomGenerator::new`] takes
 //! an explicit seed instead.
+//!
+//! A thread can opt into a counter of its own ([`use_thread_seed_counter`]):
+//! the LLM layer's preview engine builds a second synth on its own thread,
+//! and must not move the process's counter, which would change the seeds of
+//! every instance and wavetable built after it. Threads that don't opt in
+//! use the global counter exactly as before.
 
 /// `std::mt19937`.
 #[derive(Clone)]
@@ -146,10 +152,30 @@ pub fn generate_canonical_f32(engine: &mut Mt19937) -> f32 {
 
 static NEXT_SEED: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
 
-/// Takes the next value of the global seed counter
-/// (`RandomGenerator::next_seed_++`).
+thread_local! {
+    /// This thread's own seed counter, if it has one.
+    static THREAD_SEEDS: std::cell::Cell<Option<i32>> = const { std::cell::Cell::new(None) };
+}
+
+/// Takes the next value of the seed counter
+/// (`RandomGenerator::next_seed_++`): the calling thread's own, if it has
+/// one ([`use_thread_seed_counter`]), else the global one.
 pub fn take_next_seed() -> i32 {
-    NEXT_SEED.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    THREAD_SEEDS.with(|seeds| match seeds.get() {
+        Some(seed) => {
+            seeds.set(Some(seed.wrapping_add(1)));
+            seed
+        }
+        None => NEXT_SEED.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+    })
+}
+
+/// Gives the calling thread a seed counter of its own, starting at `seed`,
+/// for the rest of its life (calling it again restarts it). The global
+/// counter is neither read nor changed, by this or by the thread's later
+/// draws.
+pub fn use_thread_seed_counter(seed: i32) {
+    THREAD_SEEDS.with(|seeds| seeds.set(Some(seed)));
 }
 
 /// Sets the global seed counter (`ref-render --seed N` does this before
@@ -294,6 +320,29 @@ mod tests {
         };
         assert_eq!(canonical_from_draw(EDGE), expected);
         assert_eq!(crate::AARCH64_SEMANTICS, expected == 1.0);
+    }
+
+    #[test]
+    fn a_thread_counter_leaves_the_global_counter_alone() {
+        // Only this test sets or draws the global counter from these
+        // threads, but other tests in the binary may draw it concurrently,
+        // so the check is that the thread draws its own sequence.
+        let own = std::thread::spawn(|| {
+            use_thread_seed_counter(0);
+            let first: Vec<i32> = (0..3).map(|_| take_next_seed()).collect();
+            use_thread_seed_counter(0);
+            let again = take_next_seed();
+            (first, again)
+        })
+        .join()
+        .unwrap();
+        assert_eq!(own, (vec![0, 1, 2], 0));
+        let global = std::thread::spawn(take_next_seed).join().unwrap();
+        let next = std::thread::spawn(take_next_seed).join().unwrap();
+        assert!(
+            next > global,
+            "other threads still share the global counter"
+        );
     }
 
     #[test]

@@ -3,18 +3,26 @@
 //! The preview engine: a second [`Synth`], separate from the one the host
 //! plays, on a thread of its own.
 //!
-//! - The thread starts, and builds its synth, at the first audition, and
-//!   keeps both for later ones. Building takes seeds from the process's
-//!   seed counter, as opening another instance does upstream; nothing here
-//!   ever sets the counter (`set_next_seed`), which would change the sound
-//!   of every instance built afterwards.
-//! - It never runs on the audio thread, and the synth is never shared with
-//!   it. The caller (the chat worker) waits for the reply.
+//! - The thread starts at the first audition. It never runs on the audio
+//!   thread, and its synth is never shared. The caller (the chat worker)
+//!   waits for the reply.
+//! - Seeds: the thread has a seed counter of its own
+//!   (`sas_common::random::use_thread_seed_counter`), so neither building
+//!   a synth nor loading a patch on it moves the process's counter, which
+//!   would change the seeds of every instance and wavetable built later in
+//!   the session. Nothing here sets the global counter.
+//! - Each audition builds a fresh synth (about 35 ms) from the thread's
+//!   counter restarted at 0, so an audition never depends on earlier ones:
+//!   the same patch and request give the same analysis, random modulation
+//!   included.
 //! - CPU is bounded: a request is at most [`MAX_HOLD_SECONDS`] +
 //!   [`MAX_RELEASE_SECONDS`] of audio, rendered at 44.1 kHz in 128-sample
 //!   blocks, and a render that takes longer than the budget stops there and
-//!   is analysed as far as it got. Dropping the engine stops a render
-//!   within one block.
+//!   is analysed as far as it got.
+//! - Stopping (the engine dropped, or its owner's stop check, such as a
+//!   user's Stop or the chat shutting down) ends a render at the next block,
+//!   about 3 ms of audio. Building the synth, loading the patch and the
+//!   analysis (about 0.1 s together) run to completion.
 //!
 //! [`MAX_HOLD_SECONDS`]: sas_llm_control::listen::MAX_HOLD_SECONDS
 //! [`MAX_RELEASE_SECONDS`]: sas_llm_control::listen::MAX_RELEASE_SECONDS
@@ -24,6 +32,8 @@ use std::sync::{mpsc, Arc};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use sas_common::random::use_thread_seed_counter;
+use sas_engine::sas_oscillators::RandomValues;
 use sas_engine::synth::Synth;
 use sas_llm_control::{AuditionRequest, Auditioner};
 use sas_preset::PresetState;
@@ -35,8 +45,9 @@ use crate::analysis::analyze;
 pub const SAMPLE_RATE: i32 = 44_100;
 /// Frames per rendered block (the engine's largest sub-block).
 const BLOCK: usize = 128;
-/// The wall-clock time one render may take.
-pub const DEFAULT_BUDGET: Duration = Duration::from_secs(3);
+/// The wall-clock time one render may take. A full-length preview of a
+/// heavy patch (eight effects reordered) took 2.6 s in testing.
+pub const DEFAULT_BUDGET: Duration = Duration::from_secs(5);
 
 struct Job {
     state: PresetState,
@@ -49,10 +60,15 @@ struct Worker {
     thread: Option<JoinHandle<()>>,
 }
 
+/// The owner's stop check, asked between blocks.
+type StopCheck = Arc<dyn Fn() -> bool + Send + Sync>;
+
 /// Renders previews on a separate engine; see the module docs.
 pub struct PreviewEngine {
     budget: Duration,
+    /// Set when the engine is dropped.
     stop: Arc<AtomicBool>,
+    stopped_by: Option<StopCheck>,
     worker: Option<Worker>,
 }
 
@@ -73,14 +89,16 @@ impl PreviewEngine {
         PreviewEngine {
             budget,
             stop: Arc::new(AtomicBool::new(false)),
+            stopped_by: None,
             worker: None,
         }
     }
 
-    /// Also stops on `stop` (the chat worker's shutdown flag), so a render in
-    /// progress ends within one block when its owner shuts down.
-    pub fn stopped_by(mut self, stop: Arc<AtomicBool>) -> PreviewEngine {
-        self.stop = stop;
+    /// Also stops a render when `stop` returns true (asked between blocks):
+    /// the owner's Stop button or shutdown. The render then fails with
+    /// "stopped"; the engine stays usable.
+    pub fn stopped_by(mut self, stop: impl Fn() -> bool + Send + Sync + 'static) -> PreviewEngine {
+        self.stopped_by = Some(Arc::new(stop));
         self
     }
 
@@ -90,19 +108,31 @@ impl PreviewEngine {
     }
 
     fn worker(&mut self) -> &mut Worker {
-        let (budget, stop) = (self.budget, self.stop.clone());
+        let (budget, stop, stopped_by) = (self.budget, self.stop.clone(), self.stopped_by.clone());
         self.worker.get_or_insert_with(|| {
             let (jobs, receiver) = mpsc::channel::<Job>();
             let thread = std::thread::Builder::new()
                 .name("synth-a-size preview".to_string())
                 .spawn(move || {
-                    let mut synth: Option<Synth> = None;
+                    let stopping = || {
+                        stop.load(Ordering::Relaxed)
+                            || stopped_by.as_ref().is_some_and(|stop| stop())
+                    };
                     for job in receiver {
                         if stop.load(Ordering::Relaxed) {
                             break;
                         }
-                        let synth = synth.get_or_insert_with(Synth::new);
-                        let result = render(synth, &job.state, &job.request, budget, &stop);
+                        // The first oscillator built in the process takes one
+                        // seed for a shared table (`RandomValues`). Taking it
+                        // here, from this thread's counter, before the counter
+                        // restarts means every build starts the same way. (In
+                        // the plugin the host's synth has already taken it.)
+                        use_thread_seed_counter(0);
+                        RandomValues::instance();
+                        use_thread_seed_counter(0);
+                        let mut synth = Synth::new();
+                        let result =
+                            render(&mut synth, &job.state, &job.request, budget, &stopping);
                         let _ = job.reply.send(result);
                     }
                 })
@@ -128,7 +158,10 @@ impl Auditioner for PreviewEngine {
             reply,
         };
         let worker = self.worker();
-        let sent = worker.jobs.as_ref().is_some_and(|jobs| jobs.send(job).is_ok());
+        let sent = worker
+            .jobs
+            .as_ref()
+            .is_some_and(|jobs| jobs.send(job).is_ok());
         if !sent {
             return Err("the preview engine stopped".to_string());
         }
@@ -156,10 +189,9 @@ fn render(
     state: &PresetState,
     request: &AuditionRequest,
     budget: Duration,
-    stop: &AtomicBool,
+    stopping: &dyn Fn() -> bool,
 ) -> Result<Value, String> {
     let started = Instant::now();
-    // Loading resets voices and effect tails (`allSoundsOff`).
     synth.load_preset(state);
     synth.prepare(SAMPLE_RATE, 120.0);
 
@@ -181,8 +213,7 @@ fn render(
     let mut start = 0;
     let mut midi = Vec::new();
     while start < frames {
-        if stop.load(Ordering::Relaxed) {
-            synth.all_sounds_off();
+        if stopping() {
             return Err("the preview was stopped".to_string());
         }
         if started.elapsed() > budget {
@@ -205,7 +236,6 @@ fn render(
         );
         start += n;
     }
-    synth.all_sounds_off();
 
     let analysis = analyze(&left[..start], &right[..start], rate, released_at);
     let mut value = serde_json::to_value(&analysis).map_err(|error| error.to_string())?;

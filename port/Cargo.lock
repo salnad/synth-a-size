@@ -2674,6 +2674,7 @@ dependencies = [
  "sas-engine",
  "sas-llm-control",
  "sas-preset",
+ "sas-wavetable",
  "serde",
  "serde_json",
 ]

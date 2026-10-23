@@ -9,6 +9,7 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+sas-common.workspace = true
 sas-engine.workspace = true
 sas-llm-control.workspace = true
 sas-preset.workspace = true
@@ -16,4 +17,4 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [dev-dependencies]
-sas-common.workspace = true
+sas-wavetable.workspace = true
