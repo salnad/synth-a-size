@@ -1,0 +1,28 @@
+{
+ "width": 2800,
+ "height": 1640,
+ "components": {
+  "header_section": {"bounds": [0, 0, 2800, 96], "visible": true},
+  "header_section/logo_section": {"bounds": [20, 0, 136, 96], "visible": true},
+  "header_section/tab_selector": {"bounds": [176, 0, 790, 96], "visible": true},
+  "header_section/preset_selector": {"bounds": [990, 19, 933, 57], "visible": true},
+  "header_section/preset_selector/preset_selector": {"bounds": [990, 19, 808, 57], "visible": true},
+  "header_section/preset_selector/preset_selector/Text": {"bounds": [1047, 19, 694, 57], "visible": true},
+  "header_section/preset_selector/preset_selector/Prev": {"bounds": [990, 19, 57, 57], "visible": true},
+  "header_section/preset_selector/preset_selector/Next": {"bounds": [1741, 19, 57, 57], "visible": true},
+  "header_section/preset_selector/Save": {"bounds": [1809, 19, 57, 57], "visible": true},
+  "header_section/preset_selector/Menu": {"bounds": [1866, 19, 57, 57], "visible": true},
+  "header_section/VOLUME": {"bounds": [1947, 0, 414, 96], "visible": true},
+  "header_section/view_spectrogram": {"bounds": [2377, 11, 403, 74], "visible": true},
+  "synthesis": {"bounds": [176, 96, 1408, 1445], "visible": true},
+  "master_controls": {"bounds": [176, 96, 1408, 1445], "visible": false},
+  "MODULATION MATRIX": {"bounds": [176, 96, 1408, 1445], "visible": false},
+  "effects": {"bounds": [176, 96, 1428, 1445], "visible": false},
+  "modulation": {"bounds": [1604, 96, 1176, 1295], "visible": true},
+  "extra_mod_section": {"bounds": [20, 96, 136, 1393], "visible": true},
+  "keyboard": {"bounds": [176, 1561, 2604, 71], "visible": true},
+  "BEND": {"bounds": [20, 1490, 136, 142], "visible": true},
+  "PORTAMENTO": {"bounds": [2236, 1399, 544, 142], "visible": true},
+  "VOICE": {"bounds": [1604, 1399, 624, 142], "visible": true}
+ }
+}

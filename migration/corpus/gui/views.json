@@ -1,0 +1,9 @@
+{
+  "description": "Views rendered from upstream's interface by migration/scripts/gui_reference.py frames, and from the port's editor by sas-gui's gallery test, for side-by-side comparison. A preset, when given, is a path from the repository root to authored content (never a factory preset).",
+  "views": [
+    { "name": "init_voice", "tab": "voice" },
+    { "name": "init_effects", "tab": "effects" },
+    { "name": "init_matrix", "tab": "matrix" },
+    { "name": "init_advanced", "tab": "advanced" }
+  ]
+}

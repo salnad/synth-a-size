@@ -193,6 +193,51 @@ jobs:
       - name: audio-diff tests
         run: cargo test --locked --manifest-path migration/tools/audio-diff/Cargo.toml
 
+  # Upstream's interface as the editor's reference (migration/reference/gui).
+  # The layout fixtures sas-gui's tests read must match what upstream's own
+  # layout code produces; the screenshots of both editors are uploaded for
+  # side-by-side review. Upstream's frames show its branding, so they stay
+  # in the artifact and are never committed.
+  gui-reference:
+    name: GUI reference (upstream layout fixtures, side-by-side screenshots)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: port
+          key: gui-gallery
+      - name: Install GUI build and render dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libfreetype-dev libgl-dev libx11-dev libxext-dev libxinerama-dev \
+            libxcursor-dev libxrandr-dev xvfb libgl1-mesa-dri mesa-vulkan-drivers imagemagick
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install || rustup show
+          cargo --version
+      - name: Build ref-gui (upstream's interface)
+        run: python3 migration/scripts/gui_reference.py build
+      - name: Layout fixtures match upstream (migration/corpus/gui/layout)
+        run: python3 migration/scripts/gui_reference.py layout --check
+      - name: Render upstream's views
+        run: python3 migration/scripts/gui_reference.py frames --out build/gui/upstream
+      - name: Render the port's views
+        run: cargo run --locked --release -p sas-gui --example gallery --manifest-path port/Cargo.toml -- build/gui/port
+      - name: Side-by-side images (upstream on top)
+        run: |
+          mkdir -p build/gui/side-by-side
+          for upstream in build/gui/upstream/*.png; do
+            name="$(basename "$upstream")"
+            convert "$upstream" "build/gui/port/$name" -append "build/gui/side-by-side/$name"
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gui-gallery
+          path: build/gui/
+          if-no-files-found: error
+          retention-days: 14
+
   parity:
     name: Port tests incl. parity (cargo test --workspace against reference captures)
     needs: [reference-harness, tolerance-calibration]
