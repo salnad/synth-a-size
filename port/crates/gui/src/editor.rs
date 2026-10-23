@@ -94,10 +94,12 @@ impl NiceEguiApp for App {
         // Likewise a key the on-screen keyboard is still playing.
         let playing_note = self.interface.playing_note();
         frame.on_close(move || {
+            model.set_editor_open(false);
             Host::tracking(model.as_ref(), Some(&context), &open).end_open_gestures();
             playing_note.release(model.as_ref());
         });
         self.gui_context = Some(gui_context);
+        self.model.set_editor_open(true);
         Ok(())
     }
 
@@ -107,6 +109,9 @@ impl NiceEguiApp for App {
             self.gui_context.as_ref(),
             &self.open_gestures,
         );
+        // Parameters a learned MIDI controller moved reach the host as
+        // gestures, before this frame draws them.
+        host.forward_midi_moves();
         self.interface.show(ui, &host);
         #[cfg(feature = "focus-spike")]
         self.focus_spike.show(ui, _frame);

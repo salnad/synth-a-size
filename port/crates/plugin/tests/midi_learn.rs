@@ -253,3 +253,32 @@ fn a_clear_racing_a_learn_is_republished() {
     assert!(harness.midi_learn.is_midi_mapped("macro_control_2"));
     let _ = std::fs::remove_dir_all(path.parent().unwrap());
 }
+
+#[test]
+fn learned_moves_are_kept_for_the_editor_only_while_it_is_open() {
+    let mut harness = Harness::new(MidiLearn::in_memory());
+    harness.midi_learn.arm("filter_1_cutoff");
+    harness.block(vec![cc(20, 10)]);
+    let params = harness.plugin.synth_params().clone();
+    let moved = |params: &sas_plugin::SynthParams| {
+        let mut names = Vec::new();
+        params.drain_midi_moved(|name| names.push(name));
+        names
+    };
+    // Closed: nothing is kept.
+    assert_eq!(moved(&params), Vec::<&str>::new());
+
+    params.set_editor_open(true);
+    harness.block(vec![cc(20, 30), cc(20, 40)]);
+    assert_eq!(moved(&params), ["filter_1_cutoff"]);
+    assert_eq!(moved(&params), Vec::<&str>::new());
+
+    // A move while closed is not reported by a window that opens later.
+    params.set_editor_open(false);
+    harness.block(vec![cc(20, 50)]);
+    params.set_editor_open(true);
+    assert_eq!(moved(&params), Vec::<&str>::new());
+    // Host edits are not learned moves.
+    harness.block(vec![]);
+    assert_eq!(moved(&params), Vec::<&str>::new());
+}

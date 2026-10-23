@@ -25,7 +25,7 @@
 //! round-trip exactly.
 
 use std::collections::{BTreeMap, HashMap};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use nice_plug::params::internals::ParamPtr;
@@ -212,6 +212,10 @@ pub struct SynthParams {
     /// starting point, is the initial document, which describes the engine
     /// as constructed and is not loaded.
     edits: EditHandle,
+    /// Controls a learned MIDI controller moved while the editor was open,
+    /// for the editor to tell the host.
+    midi_moved: ChangeSet,
+    editor_open: AtomicBool,
 }
 
 impl SynthParams {
@@ -254,6 +258,8 @@ impl SynthParams {
             changes,
             touched,
             edits,
+            midi_moved: ChangeSet::new(names.len()),
+            editor_open: AtomicBool::new(false),
         }
     }
 
@@ -373,8 +379,9 @@ impl SynthParams {
     /// so the editor shows it and saved states keep it, and counts as set
     /// since the last restore. It is not sent back to the engine as a host
     /// change, as upstream's `ValueBridge` guards `setValueNotifyHost` from
-    /// coming back through `parameterChanged`. The host is not told (see
-    /// `migration/DIVERGENCES.md`, D16).
+    /// coming back through `parameterChanged`. While the editor is open it
+    /// tells the host ([`drain_midi_moved`](Self::drain_midi_moved));
+    /// otherwise the host is not told (see `migration/DIVERGENCES.md`, D16).
     pub(crate) fn set_from_midi(&self, name: &str, value: f32) {
         let Some(&index) = self.by_name.get(name) else {
             return;
@@ -395,6 +402,30 @@ impl SynthParams {
             }
         }
         self.changes.unmark(index);
+        if self.editor_open.load(Ordering::Acquire) {
+            self.midi_moved.mark(index);
+        }
+    }
+
+    /// The editor window opened or closed. While it is open, controls a
+    /// learned MIDI controller moves are kept for
+    /// [`drain_midi_moved`](Self::drain_midi_moved); moves while it is closed
+    /// are not, so a window that opens later reports none of them.
+    pub fn set_editor_open(&self, open: bool) {
+        if open {
+            self.midi_moved.clear();
+            self.editor_open.store(true, Ordering::Release);
+        } else {
+            self.editor_open.store(false, Ordering::Release);
+            self.midi_moved.clear();
+        }
+    }
+
+    /// Calls `f` with each control a learned MIDI controller moved since the
+    /// last call while the editor was open, in registry order.
+    pub fn drain_midi_moved(&self, mut f: impl FnMut(&'static str)) {
+        self.midi_moved
+            .drain(|index| f(self.controls[index].info.name.as_str()));
     }
 
     /// Loads the preset JSON `text` on top of the current document, like

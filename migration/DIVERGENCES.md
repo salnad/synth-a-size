@@ -382,27 +382,39 @@ entry.*
   FL Studio checklist in `decisions/gui-framework.md` (item 2) compares
   the two on the owner's Mac; record the answer here.
 
-### D16. The host is not told when a learned MIDI controller moves a parameter
+### D16. With the editor closed, the host is not told when a learned MIDI controller moves a parameter
 
 - **Differs:** what the host sees when a MIDI-learned controller sets a
   parameter.
 - **Upstream:** `SynthBase::valueChangedThroughMidi` sets the control, then
   `setValueNotifyHost` calls JUCE's `setValueNotifyingHost` on the
   parameter's `ValueBridge`, from the audio thread. The host is notified of
-  the edit, and can record it as automation.
+  the edit, and can record it as automation, whether or not the editor is
+  open.
 - **Port:** the engine sets the control the same way, and the plugin stores
   the value on its own host parameter (`SynthParams::set_from_midi`,
   `port/crates/plugin/src/params.rs`). The editor shows it, saved states
   keep it, and like upstream it is not sent back to the engine as a host
-  edit. But the host is not sent a parameter edit: it sees the new value
-  only when it next reads the parameter, and records no automation.
+  edit.
+  - **Editor open:** the audio thread marks the moved parameter (a
+    lock-free bit), and on its next frame the editor sends the host a
+    begin, set and end gesture with the current value through nice-plug's
+    `GuiContext` (`Host::forward_midi_moves`, `port/crates/gui/src/host.rs`).
+    A parameter the user is dragging gets only the value, inside the drag's
+    gesture. The host hears of the move a frame later than upstream's
+    notification, as a gesture where upstream sends a bare edit.
+  - **Editor closed:** the host is not sent a parameter edit: it sees the
+    new value only when it next reads the parameter, and records no
+    automation. Moves while the window is closed are not replayed when it
+    opens.
 - **Why:** nice-plug offers no parameter edits from the audio thread; its
   begin/set/end calls are on the editor's `GuiContext`, which exists only
   while the editor is open.
 - **Approved:** Salil, 2026-10-23: accepted as is (option a). Telling the
-  host through the editor while it is open is a follow-up (option b);
-  doing it from the audio thread is parked as `IMPROVEMENTS.md` I19
-  (option c). Reviewed by Graph Reviewer and Parity Reviewer on #99.
+  host through the editor while it is open is option b (the MIDI learn
+  host-gestures PR); doing it from the audio thread is parked as
+  `IMPROVEMENTS.md` I19 (option c). Reviewed by Graph Reviewer and Parity
+  Reviewer on #99.
 
 ### D17. The MIDI learn config loads without upstream's install check
 

@@ -118,6 +118,22 @@ impl<'a> Host<'a> {
         }
     }
 
+    /// Tells the host about the controls MIDI-learned controllers moved
+    /// since the last frame ([`EditorModel::drain_midi_moved`]): one gesture
+    /// each with the control's current value, or only the value if a drag of
+    /// that control already holds a gesture open.
+    pub fn forward_midi_moves(&self) {
+        self.model.drain_midi_moved(&mut |name| {
+            let value = self.value(name);
+            let dragging = self.open.is_some_and(|open| lock(open).contains(name));
+            if dragging {
+                self.set(name, value);
+            } else {
+                self.set_once(name, value);
+            }
+        });
+    }
+
     /// One complete gesture setting `name` to `value`.
     pub fn set_once(&self, name: &str, value: f32) {
         self.begin(name);

@@ -204,6 +204,8 @@ fn the_audio_callback_never_allocates() {
         .processor()
         .midi_learn()
         .is_midi_mapped("macro_control_1"));
+    // The editor is open, so learned moves are kept for it to tell the host.
+    params.set_editor_open(true);
 
     let stop = Arc::new(AtomicBool::new(false));
     let worker = {
@@ -248,6 +250,9 @@ fn the_audio_callback_never_allocates() {
         keys_played > 100,
         "the keyboard only played {keys_played} notes"
     );
+    let mut moved = Vec::new();
+    params.drain_midi_moved(|name| moved.push(name));
+    assert_eq!(moved, ["macro_control_1"]);
     let learned = plugin.synth_params().control("macro_control_1").unwrap();
     assert_eq!(learned.param.value(), (2999 % 128) as f32 / 127.0);
     plugin.edit_handle().collect_retired();

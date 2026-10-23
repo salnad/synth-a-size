@@ -119,6 +119,14 @@ impl EditorModel for PluginModel {
     fn midi_learn_ccs(&self, name: &str) -> Vec<i32> {
         self.midi_learn.learned_ccs(name)
     }
+
+    fn set_editor_open(&self, open: bool) {
+        self.params.set_editor_open(open);
+    }
+
+    fn drain_midi_moved(&self, f: &mut dyn FnMut(&'static str)) {
+        self.params.drain_midi_moved(f);
+    }
 }
 
 #[cfg(test)]
