@@ -20,7 +20,8 @@
       {"name": "env_2_sustain", "value": 0.2},
       {"name": "chorus_on", "value": "On"},
       {"name": "reverb_on", "value": "On"},
-      {"name": "reverb_dry_wet", "value": 0.25},
+      {"name": "reverb_dry_wet", "value": 25},
+      {"name": "macro_control_1", "value": 0.5},
       {"name": "volume", "value": -9}
     ]}},
     {"tool": "set_lfo_shape", "args": {"lfo": 1, "points": [[0, 0], [0.3, 1], [0.6, 0.35], [1, 0]], "powers": [2, -2, 0, 0], "name": "Swell"}},

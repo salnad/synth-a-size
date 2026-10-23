@@ -238,3 +238,53 @@ fn preset_info_names_the_patch_and_macros() {
     controller.undo(1, None).unwrap();
     assert_eq!(controller.session().state().info.preset_name, "");
 }
+
+#[test]
+fn a_reused_slot_starts_like_a_dragged_route() {
+    let mut controller = controller();
+    ok(controller.call(
+        "connect_modulation",
+        &json!({"source": "lfo_1", "destination": "osc_1_level", "amount": -0.9, "stereo": true, "bypass": true}),
+    ));
+    ok(controller.call(
+        "disconnect_modulation",
+        &json!({"source": "lfo_1", "destination": "osc_1_level"}),
+    ));
+    // The freed slot 1 is reused; it must not arrive bypassed and stereo.
+    let reply = ok(controller.call(
+        "connect_modulation",
+        &json!({"source": "env_2", "destination": "filter_1_cutoff"}),
+    ));
+    assert_eq!(reply["slot"], 1);
+    let state = controller.session().state();
+    assert_eq!(state.value("modulation_1_stereo"), Some(0.0));
+    assert_eq!(state.value("modulation_1_bypass"), Some(0.0));
+    // Envelopes are unipolar by default; cutoff sits at (60 - 8) / 128 of
+    // its range, so the drag amount is 1 - 52/128.
+    let amount = state.value("modulation_1_amount").unwrap();
+    assert!((amount - (1.0 - 52.0 / 128.0)).abs() < 1e-6, "{amount}");
+}
+
+#[test]
+fn dragged_amounts_have_a_floor_and_follow_bipolar() {
+    let mut controller = controller();
+    // osc_1_level defaults to 0.7071 of its range: unipolar 1 - 0.7071 is
+    // below the 0.25 floor.
+    ok(controller.call(
+        "connect_modulation",
+        &json!({"source": "env_3", "destination": "osc_1_level"}),
+    ));
+    let state = controller.session().state();
+    assert!((state.value("modulation_1_amount").unwrap() - 0.293).abs() < 1e-3);
+    // LFOs are bipolar by default: min(1 - p, p) * 2 for cutoff at 52/128.
+    ok(controller.call(
+        "connect_modulation",
+        &json!({"source": "lfo_4", "destination": "filter_2_cutoff"}),
+    ));
+    let amount = controller
+        .session()
+        .state()
+        .value("modulation_2_amount")
+        .unwrap();
+    assert!((amount - (52.0 / 128.0) * 2.0).abs() < 1e-6, "{amount}");
+}

@@ -99,7 +99,8 @@ impl OfflineSession {
     }
 }
 
-/// `SynthGuiInterface::connectModulation` on a preset state:
+/// `SynthGuiInterface::connectModulation` on a preset state (the caller
+/// then applies [`gui_connect_defaults`] to a created slot):
 /// `SynthBase::connectModulation` (slot and bipolar default, in
 /// `PresetState::add_modulation`), then, for a created slot,
 /// `initModulationValues` (linear remap curve, `modulation_N_power` = 0).
@@ -123,6 +124,39 @@ fn connect_from_gui(
     Ok((slot, !existed))
 }
 
+/// `ModulationManager::kDefaultModulationRatio`: the smallest amount a
+/// dragged-on modulation starts with.
+const DEFAULT_MODULATION_RATIO: f32 = 0.25;
+
+/// The slot settings upstream's GUI gives a route it has just created by
+/// dragging a source onto a control (`ModulationManager::modulationDraggedToComponent`,
+/// then `setModulationValues(..., stereo = false, bypass = false)`): an
+/// amount from the destination's current position, at least 0.25, with
+/// stereo and bypass off. A reused, freed slot would otherwise keep the
+/// previous route's settings. As `(modulation_N_ suffix, engine value)`.
+pub fn gui_connect_defaults(
+    state: &PresetState,
+    destination: &str,
+    bipolar: bool,
+) -> Vec<(&'static str, f32)> {
+    let percent = sas_preset::registry()
+        .get(destination)
+        .map(|info| {
+            let value = state.value(destination).unwrap_or(info.default_value);
+            ((value - info.min) / (info.max - info.min)).clamp(0.0, 1.0)
+        })
+        .unwrap_or(0.0);
+    let mut amount = 1.0 - percent;
+    if bipolar {
+        amount = amount.min(percent) * 2.0;
+    }
+    vec![
+        ("amount", amount.max(DEFAULT_MODULATION_RATIO)),
+        ("stereo", 0.0),
+        ("bypass", 0.0),
+    ]
+}
+
 impl SynthSession for OfflineSession {
     fn snapshot(&self) -> PresetState {
         self.state.clone()
@@ -141,6 +175,19 @@ impl SynthSession for OfflineSession {
                 settings,
             } => {
                 let (slot, created) = connect_from_gui(&mut self.state, source, destination)?;
+                if created {
+                    let bipolar_name = format!("modulation_{}_bipolar", slot + 1);
+                    let bipolar = settings
+                        .iter()
+                        .find(|(suffix, _)| *suffix == "bipolar")
+                        .map(|(_, value)| *value)
+                        .or_else(|| self.state.value(&bipolar_name))
+                        .is_some_and(|value| value != 0.0);
+                    for (suffix, value) in gui_connect_defaults(&self.state, destination, bipolar) {
+                        self.state
+                            .set_value(&format!("modulation_{}_{suffix}", slot + 1), value)?;
+                    }
+                }
                 for (suffix, value) in settings {
                     self.state
                         .set_value(&format!("modulation_{}_{suffix}", slot + 1), *value)?;

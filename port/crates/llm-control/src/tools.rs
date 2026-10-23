@@ -143,7 +143,9 @@ pub fn specs() -> Vec<ToolSpec> {
             description: "Route a modulation source (LFO, envelope, macro, velocity...) to a \
                           modulatable control, as dragging a source onto a knob does. Optional \
                           slot settings: amount (-1..1 of the control's range), bipolar, stereo, \
-                          bypass, power (curve). Connecting an existing pair updates it.",
+                          bypass, power (curve). A new route starts as dragging a source onto the \
+                          knob does (amount from the knob's position, at least 0.25; stereo and \
+                          bypass off). Connecting an existing pair updates it.",
             input_schema: modulation_schema(true),
         },
         ToolSpec {
@@ -166,7 +168,8 @@ pub fn specs() -> Vec<ToolSpec> {
         ToolSpec {
             name: "set_lfo_shape",
             description: "Set an LFO's shape: a named shape, or 2 to 100 points (x = phase 0..1, \
-                          y = value 0 bottom..1 top, x not decreasing) with optional per-point \
+                          first at x = 0 and last at x = 1, x not decreasing; y = value 0 \
+                          bottom..1 top) with optional per-point \
                           curve powers (-20..20, 0 straight). Rate, sync and mode are controls \
                           (lfo_N_*), set with set_params.",
             input_schema: json!({

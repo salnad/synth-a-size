@@ -64,6 +64,11 @@ pub fn lfo_from_points(
             points.len()
         ));
     }
+    // Upstream's LineEditor pins the first point to x = 0 and the last to
+    // x = 1 (`getMinX` / `getMaxX`).
+    if points[0].0 != 0.0 || points[points.len() - 1].0 != 1.0 {
+        return Err("the first point must be at x = 0 and the last at x = 1".to_string());
+    }
     let mut last_x = 0.0f32;
     for &(x, y) in points {
         if !(0.0..=1.0).contains(&x) || !(0.0..=1.0).contains(&y) {
@@ -242,10 +247,18 @@ mod tests {
         let mut saw = LineGenerator::default();
         saw.init_saw_up();
         assert_eq!(saw.point(0), (0.0, 1.0));
-        assert!(lfo_from_points(&[(0.5, 0.0), (0.2, 1.0)], None, false, "").is_err());
+        assert!(lfo_from_points(
+            &[(0.0, 0.0), (0.6, 0.5), (0.2, 1.0), (1.0, 0.0)],
+            None,
+            false,
+            ""
+        )
+        .is_err());
         assert!(lfo_from_points(&[(0.0, 2.0), (1.0, 1.0)], None, false, "").is_err());
         assert!(lfo_from_points(&[(0.0, 0.0)], None, false, "").is_err());
         assert!(lfo_from_points(&[(0.0, 0.0), (1.0, 1.0)], Some(&[1.0]), false, "").is_err());
+        assert!(lfo_from_points(&[(0.1, 0.0), (1.0, 1.0)], None, false, "").is_err());
+        assert!(lfo_from_points(&[(0.0, 0.0), (0.9, 1.0)], None, false, "").is_err());
     }
 
     #[test]

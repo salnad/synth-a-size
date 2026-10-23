@@ -17,7 +17,12 @@ changes: it does not use `sas-llm-control` yet.
   - The offline connect follows upstream's GUI
     (`SynthGuiInterface::connectModulation`, `vital/src/common/synth_gui_interface.cpp:97-121`):
     `PresetState::add_modulation` (slot, bipolar default), then for a
-    created slot a linear remap curve and `modulation_N_power` = 0. G0 owns
+    created slot a linear remap curve and `modulation_N_power` = 0, then the
+    drag path's slot settings (`ModulationManager::modulationDraggedToComponent`,
+    `modulation_manager.cpp:797-816`, `gui_connect_defaults`): stereo and
+    bypass off, and an amount from the destination's position (1 − p, or
+    min(1 − p, p) × 2 when bipolar), at least `kDefaultModulationRatio`
+    0.25. The model's own settings override these. G0 owns
     the shared form, `PresetState::connect_modulation_from_gui`; the offline
     session switches to it when G0's first PR lands. The rule is the same,
     so the golden preset does not change.
@@ -58,8 +63,8 @@ changes: it does not use `sas-llm-control` yet.
 the two new entries were written)
 
 - `render/llm_glass_pad__chords`, port vs official reference: rms_diff
-  0.00017 dB (limit 0.01), residual −63.66 dB (limit −50), lsd 0.033 dB
-  (limit 0.1). The port's output (`sas-render --seed 0`) is bit-identical to
+  0.00013 dB (limit 0.01), residual −63.43 dB on the worse channel (limit
+  −50), lsd 0.053 dB (limit 0.1). The port's output (`sas-render --seed 0`) is bit-identical to
   the `REF_FAST_MATH=OFF` reference, so these are the official build's own
   fast-math differences. The official build passes against its no-fast-math
   build with the same numbers (the CI calibration step).
@@ -113,4 +118,27 @@ from #91. Nits applied:
 - migration/AGENTS.md rule 3 now names authored LLM tool sessions in
   `migration/corpus/llm/sessions/` as test content alongside `generate.py`.
 
-**Blocked:** nothing.
+**Review (#92), Graph Reviewer at 42f4ca9.** Two blocking items, fixed:
+
+- A created slot that reuses a freed one kept the previous route's amount,
+  stereo and bypass, so a new route could arrive bypassed and silent. It
+  now gets the drag path's settings above (`a_reused_slot_starts_like_a_dragged_route`,
+  `dragged_amounts_have_a_floor_and_follow_bipolar`). The bipolar switch
+  keeps `SynthBase::connectModulation`'s source default, as the shared
+  rule does: the drag path's bipolar flag is a modifier key a model does
+  not have, and the tool's `bipolar` argument stands in for it. Edit Bus is
+  told the shared rule needs the same defaults.
+- `set_lfo_shape` now rejects a shape whose first point is not at x = 0
+  or whose last is not at x = 1, as upstream's LineEditor pins them
+  (`getMinX` / `getMaxX`).
+
+Neither changed the golden preset. Also taken (non-blocking): the session
+set `reverb_dry_wet` 0.25, which is 0.25 % in display units, and left
+`macro_control_1` at 0, so the reverb and the macro route were barely
+heard. It now sets 25 % and macro 1 to 0.5. That changed the preset, the
+render hash and both state hashes, re-rendered and re-hashed from the same
+local CI-identity tree; the port is still bit-identical to the no-fast-math
+reference.
+
+**Blocked:** merge waits for the owner to accept the new rule-3 wording
+in migration/AGENTS.md (coordinator, 2026-10-23).
