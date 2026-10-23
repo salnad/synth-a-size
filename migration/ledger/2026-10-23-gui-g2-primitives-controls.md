@@ -29,6 +29,21 @@ the host parameters.
   default, alt-click or the menu's "Enter Value" for a text entry (text
   selected, value parsed by `SynthSlider::getValueFromText`), right click
   for the menu, buttons toggle on release.
+- Review fixes (UI Reviewer at `ddf5218`): drags are incremental like
+  `Slider::Pimpl::handleAbsoluteDrag` (each event's movement at the current
+  sensitivity, clamped every step, unsnapped running proportion), so
+  command mid-drag continues from where the drag is and overshoot has no
+  dead zone; drag distances are in points (JUCE's logical coordinates), so
+  a 2x display drags at upstream's speed; text sliders' popups name the
+  parameter (`getTextFromValue`'s `isText` branch); double click follows
+  JUCE's multiple-click rules (0.4 s, 8 points, a second press that moved
+  under 4 points and lasted at most 0.3 s) and sets the default after the
+  second release (`Component::internalMouseUp`); alt held mid-drag pauses
+  the drag; Escape keeps the text entry open; buttons toggle on any primary
+  release over them and a right press opens no gesture; and gestures a
+  closing window cut short are ended, through a second egui-baseview patch
+  (`Frame::on_close`), because nice-plug-egui keeps the app across windows
+  and never calls `editor_closed`.
 - Popups: the value bubble (`PopupDisplay`), the selection list
   (`SinglePopupSelector`, also the stereo mode selector) and the text entry,
   placed as `FullInterface` places them. Values print with

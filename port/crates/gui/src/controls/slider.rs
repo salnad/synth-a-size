@@ -35,6 +35,13 @@ const SLOW_DRAG_MULTIPLIER: f32 = 0.1;
 /// `SynthSlider::kLinearWidthPercent` / `kLinearHandlePercent`.
 const LINEAR_WIDTH_PERCENT: f32 = 0.26;
 const LINEAR_HANDLE_PERCENT: f32 = 1.2;
+/// JUCE's multiple-click rules (`MouseInputSource`): presses within 0.4 s
+/// (`MouseEvent::getDoubleClickTimeout`) and 8 points of each other, where
+/// the last moved less than 4 points and was held no more than 0.3 s.
+const DOUBLE_CLICK_TIMEOUT: f64 = 0.4;
+const MULTIPLE_CLICK_DISTANCE: f32 = 8.0;
+const MOVED_SIGNIFICANTLY: f32 = 4.0;
+const LONG_PRESS: f64 = 0.3;
 /// `SynthSlider::kTextEntryHeightPercent`, `kDefaultTextEntryWidthPercent`.
 const TEXT_ENTRY_HEIGHT_PERCENT: f32 = 0.6;
 const TEXT_ENTRY_WIDTH_PERCENT: f32 = 0.9;
@@ -161,8 +168,15 @@ impl Slider {
         value.clamp(min, max)
     }
 
-    /// `SynthSlider::getTextFromValue` for the popup.
+    /// `SynthSlider::getTextFromValue`, which the popup shows: a text
+    /// slider already shows its value, so its popup names the parameter.
     pub fn popup_text(&self, value: f32) -> String {
+        if self.style == SliderStyle::Text {
+            if self.info.local_description.is_empty() {
+                return self.info.display_name.clone();
+            }
+            return self.info.local_description.clone();
+        }
         format::slider_text(self.info, &self.format, value)
     }
 
@@ -461,6 +475,7 @@ impl Slider {
         let pressed_here = response.is_pointer_button_down_on();
         let popup_menu =
             secondary_down || (cfg!(target_os = "macos") && modifiers.ctrl && primary_down);
+        let now = ui.input(|input| input.time);
 
         if pressed_here && !state.down {
             // mouseDown.
@@ -469,34 +484,55 @@ impl Slider {
             } else if popup_menu {
                 event.menu_at = pointer;
             } else if let Some(pointer) = pointer {
+                // MouseInputSource::getNumberOfMultipleClicks: a press near
+                // the previous one and soon after it.
+                let follows_press = state.last_press.is_some_and(|(time, at)| {
+                    now - time < DOUBLE_CLICK_TIMEOUT
+                        && (pointer.x - at.x).abs() < MULTIPLE_CLICK_DISTANCE
+                        && (pointer.y - at.y).abs() < MULTIPLE_CLICK_DISTANCE
+                });
                 state.down = true;
-                state.start = to_pixels(pixels, pointer);
-                state.start_proportion = self.proportion(host.value(self.name));
+                state.last = pointer;
+                state.second_click = follows_press;
+                state.moved = false;
+                state.proportion = self.proportion(host.value(self.name));
+                state.last_press = Some((now, pointer));
                 host.begin(self.name);
                 event.popup = true;
             }
         } else if state.down && primary_down {
-            // mouseDrag.
-            if let Some(pointer) = pointer {
-                let position = to_pixels(pixels, pointer);
-                let proportion = self.dragged_proportion(state, position, bounds, modifiers);
-                let value = self.value_from_proportion(proportion);
-                if value != host.value(self.name) {
-                    host.set(self.name, value);
+            // mouseDrag. SynthSlider::mouseDrag ignores drags with alt held.
+            if let (Some(pointer), false) = (pointer, modifiers.alt) {
+                if let Some((_, at)) = state.last_press {
+                    state.moved |= pointer.distance(at) >= MOVED_SIGNIFICANTLY;
+                }
+                if pointer != state.last {
+                    let ppp = pixels.pixels_per_point();
+                    state.proportion =
+                        self.dragged_proportion(&state, pointer, bounds, ppp, modifiers);
+                    state.last = pointer;
+                    let value = self.value_from_proportion(state.proportion);
+                    if value != host.value(self.name) {
+                        host.set(self.name, value);
+                    }
                 }
                 event.popup = true;
             }
         } else if state.down {
-            // mouseUp.
+            // mouseUp, then Component::internalMouseUp's double-click check:
+            // a second press that was neither a drag nor a long press.
             state.down = false;
             host.end(self.name);
+            let long_press = state
+                .last_press
+                .is_some_and(|(time, _)| now - time > LONG_PRESS);
+            if state.second_click && !state.moved && !long_press {
+                // Slider::mouseDoubleClick: back to the default value.
+                host.set_once(self.name, self.info.default_value);
+                event.popup = true;
+            }
         }
 
-        if response.double_clicked() && !popup_menu {
-            // Slider::mouseDoubleClick: back to the default value.
-            host.set_once(self.name, self.info.default_value);
-            event.popup = true;
-        }
         if self.show_popup_on_hover && response.hovered() {
             event.popup = true;
         }
@@ -505,13 +541,18 @@ impl Slider {
         event
     }
 
-    /// `Slider::Pimpl::handleAbsoluteDrag` for this slider's style, with
-    /// `SynthSlider::mouseDrag`'s sensitivity.
+    /// `Slider::Pimpl::handleAbsoluteDrag` for one drag event, with
+    /// `SynthSlider::mouseDrag`'s sensitivity for the current modifiers: the
+    /// movement since the last event moves the unsnapped proportion, clamped
+    /// at every step.
+    /// Positions are in points (JUCE's logical coordinates), `bounds` in
+    /// pixels at `pixels_per_point`.
     fn dragged_proportion(
         &self,
-        state: DragState,
+        state: &DragState,
         position: Pos2,
         bounds: Rect,
+        pixels_per_point: f32,
         modifiers: Modifiers,
     ) -> f64 {
         let multiply = if modifiers.command {
@@ -522,14 +563,16 @@ impl Slider {
         let full_drag = if self.style.is_rotary() {
             DEFAULT_ROTARY_DRAG_LENGTH / (self.sensitivity * multiply)
         } else {
-            bounds.width.max(bounds.height) as f32 / (self.sensitivity * multiply)
+            bounds.width.max(bounds.height) as f32
+                / pixels_per_point
+                / (self.sensitivity * multiply)
         };
         let mouse_diff = match self.style {
-            SliderStyle::Horizontal => position.x - state.start.x,
-            SliderStyle::Vertical => state.start.y - position.y,
-            _ => (position.x - state.start.x) + (state.start.y - position.y),
+            SliderStyle::Horizontal => position.x - state.last.x,
+            SliderStyle::Vertical => state.last.y - position.y,
+            _ => (position.x - state.last.x) + (state.last.y - position.y),
         };
-        (state.start_proportion + mouse_diff as f64 / full_drag as f64).clamp(0.0, 1.0)
+        (state.proportion + mouse_diff as f64 / full_drag as f64).clamp(0.0, 1.0)
     }
 }
 
@@ -549,18 +592,19 @@ pub struct SliderEvent {
 #[derive(Clone, Copy, Debug, Default)]
 struct DragState {
     down: bool,
-    /// Where the drag started, in pixels.
-    start: Pos2,
-    start_proportion: f64,
-}
-
-fn to_pixels(pixels: &PixelPainter, pointer: Pos2) -> Pos2 {
-    let area = pixels.area();
-    let ppp = pixels.pixels_per_point();
-    Pos2::new(
-        (pointer.x - area.min.x) * ppp,
-        (pointer.y - area.min.y) * ppp,
-    )
+    /// The pointer at the last drag event, in points (JUCE's
+    /// `mouseDragStartPos`, reset every event).
+    last: Pos2,
+    /// The unsnapped position (JUCE's `valueWhenLastDragged`); only the
+    /// value sent to the host is snapped.
+    proportion: f64,
+    /// The time and place (points) of the last press.
+    last_press: Option<(f64, Pos2)>,
+    /// This press followed the previous one closely enough to make a
+    /// double click.
+    second_click: bool,
+    /// The pointer has moved far enough from the press to make it a drag.
+    moved: bool,
 }
 
 /// `OpenGlSlider::getLinearSliderWidth`.
@@ -599,18 +643,28 @@ mod tests {
         let knob = Slider::new("velocity_track", SliderStyle::Rotary);
         let state = DragState {
             down: true,
-            start: Pos2::new(10.0, 10.0),
-            start_proportion: 0.5,
+            last: Pos2::new(10.0, 10.0),
+            proportion: 0.5,
+            last_press: None,
+            second_click: false,
+            moved: false,
         };
         let bounds = Rect::new(0, 0, 60, 60);
         // Up 20 and right 20: 40 pixels of a 200-pixel turn.
-        let p = knob.dragged_proportion(state, Pos2::new(30.0, -10.0), bounds, Modifiers::NONE);
+        let p =
+            knob.dragged_proportion(&state, Pos2::new(30.0, -10.0), bounds, 1.0, Modifiers::NONE);
         assert!((p - 0.7).abs() < 1e-9);
-        let fine =
-            knob.dragged_proportion(state, Pos2::new(30.0, -10.0), bounds, Modifiers::COMMAND);
+        let fine = knob.dragged_proportion(
+            &state,
+            Pos2::new(30.0, -10.0),
+            bounds,
+            1.0,
+            Modifiers::COMMAND,
+        );
         assert!((fine - 0.52).abs() < 1e-9);
         let slow = knob.sensitivity(0.2);
-        let p = slow.dragged_proportion(state, Pos2::new(30.0, -10.0), bounds, Modifiers::NONE);
+        let p =
+            slow.dragged_proportion(&state, Pos2::new(30.0, -10.0), bounds, 1.0, Modifiers::NONE);
         assert!((p - 0.54).abs() < 1e-9);
     }
 

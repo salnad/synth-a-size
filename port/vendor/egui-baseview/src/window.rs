@@ -275,15 +275,33 @@ pub struct Frame {
     window: WindowContext,
     clear_color: Rgba,
     key_capture: KeyCapture,
+    // synth-a-size patch: run when the window is torn down.
+    on_close: Vec<Box<dyn FnOnce()>>,
+}
+
+// synth-a-size patch: the frame lives as long as its window, so dropping it
+// is the window closing.
+impl Drop for Frame {
+    fn drop(&mut self) {
+        for callback in self.on_close.drain(..) {
+            callback();
+        }
+    }
 }
 
 impl Frame {
+    /// synth-a-size patch: runs `callback` once, when the window closes.
+    pub fn on_close(&mut self, callback: impl FnOnce() + 'static) {
+        self.on_close.push(Box::new(callback));
+    }
+
     fn new(renderer: Renderer, window: WindowContext) -> Self {
         Self {
             renderer,
             window,
             clear_color: Rgba::BLACK,
             key_capture: Default::default(),
+            on_close: Vec::new(),
         }
     }
 

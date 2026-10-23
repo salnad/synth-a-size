@@ -13,5 +13,10 @@ entries. Changes to the code, each marked "synth-a-size patch":
    count to build matching render pipelines, and egui-wgpu's callback API
    does not pass them.
 
+2. `src/window.rs`: `Frame::on_close(callback)`, run when the frame (and so
+   the window) is dropped. nice-plug-egui keeps the app across editor
+   windows and never tells it a window closed; the editor uses this to end
+   host gestures a closing window cut short.
+
 Drop a patch when upstream egui-baseview provides the same. Proposing it
 upstream needs a human (migration/AGENTS.md).

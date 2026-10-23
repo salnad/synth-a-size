@@ -7,6 +7,9 @@
 //! change goes through nice-plug's `GuiContext`, so the host records a normal
 //! user gesture (automation, undo, saving the project).
 
+use std::collections::BTreeSet;
+use std::sync::Mutex;
+
 use nice_plug::context::gui::GuiContext;
 use nice_plug::prelude::ParamPtr;
 use sas_preset::registry::{registry, ParamInfo};
@@ -17,13 +20,46 @@ use crate::interface::EditorModel;
 pub struct Host<'a> {
     model: &'a dyn EditorModel,
     context: Option<&'a GuiContext>,
+    open: Option<&'a OpenGestures>,
 }
+
+/// The controls with a host gesture in progress, kept across frames so the
+/// editor can end them when it closes.
+pub type OpenGestures = Mutex<BTreeSet<String>>;
 
 impl<'a> Host<'a> {
     /// `context` is the plugin's GUI context; without one (offscreen
     /// rendering) values are read but changes are dropped.
     pub fn new(model: &'a dyn EditorModel, context: Option<&'a GuiContext>) -> Host<'a> {
-        Host { model, context }
+        Host {
+            model,
+            context,
+            open: None,
+        }
+    }
+
+    /// Like [`new`](Self::new), recording open gestures in `open`.
+    pub fn tracking(
+        model: &'a dyn EditorModel,
+        context: Option<&'a GuiContext>,
+        open: &'a OpenGestures,
+    ) -> Host<'a> {
+        Host {
+            model,
+            context,
+            open: Some(open),
+        }
+    }
+
+    /// Ends every gesture still open (the editor is closing mid-drag).
+    pub fn end_open_gestures(&self) {
+        let Some(open) = self.open else {
+            return;
+        };
+        let names = std::mem::take(&mut *lock(open));
+        for name in names {
+            self.end(&name);
+        }
     }
 
     pub fn model(&self) -> &'a dyn EditorModel {
@@ -50,6 +86,9 @@ impl<'a> Host<'a> {
 
     /// `SynthBase::beginChangeGesture`.
     pub fn begin(&self, name: &str) {
+        if let Some(open) = self.open {
+            lock(open).insert(name.to_string());
+        }
         if let (Some(context), Some(param)) = (self.context, self.model.param(name)) {
             // SAFETY: as in `value`.
             unsafe { context.raw_begin_set_parameter(param) };
@@ -70,6 +109,9 @@ impl<'a> Host<'a> {
 
     /// `SynthBase::endChangeGesture`.
     pub fn end(&self, name: &str) {
+        if let Some(open) = self.open {
+            lock(open).remove(name);
+        }
         if let (Some(context), Some(param)) = (self.context, self.model.param(name)) {
             // SAFETY: as in `value`.
             unsafe { context.raw_end_set_parameter(param) };
@@ -82,6 +124,10 @@ impl<'a> Host<'a> {
         self.set(name, value);
         self.end(name);
     }
+}
+
+fn lock(open: &OpenGestures) -> std::sync::MutexGuard<'_, BTreeSet<String>> {
+    open.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// A host parameter pointer, for [`EditorModel::param`] implementations.

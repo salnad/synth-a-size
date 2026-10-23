@@ -422,6 +422,9 @@ fn show_text_entry(
             egui::TextEdit::store_state(ui.ctx(), response.id, state);
             entry.focused = true;
         }
+    } else if response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+        // JUCE's TextEditor keeps focus on Escape; the entry stays open.
+        response.request_focus();
     } else if response.lost_focus() {
         let slider = entry.slider;
         if !entry.text.is_empty() {

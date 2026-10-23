@@ -17,7 +17,7 @@ use sas_gui::layout::{FullLayout, Rect};
 use sas_gui::scope::Scope;
 use sas_gui::sections::portamento::{self, PortamentoLayout};
 use sas_gui::sections::voice::{self, VoiceLayout};
-use sas_gui::{EditorModel, Host, HostParam, Interface};
+use sas_gui::{EditorModel, Host, HostParam, Interface, OpenGestures};
 use sas_preset::registry::{registry, ValueScale};
 
 const CONTROLS: &[&str] = &[
@@ -153,6 +153,7 @@ struct Fixture {
     synth: Arc<Synth>,
     recorder: Arc<Recorder>,
     context: GuiContext,
+    open: OpenGestures,
     interface: RefCell<Interface>,
 }
 
@@ -168,6 +169,7 @@ impl Fixture {
             synth,
             recorder,
             context,
+            open: OpenGestures::default(),
             interface: RefCell::new(Interface::default()),
         }
     }
@@ -179,7 +181,7 @@ impl Fixture {
             .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
             .build_ui(|ui| {
                 let screen = ui.ctx().content_rect();
-                let host = Host::new(self.synth.as_ref(), Some(&self.context));
+                let host = Host::tracking(self.synth.as_ref(), Some(&self.context), &self.open);
                 self.interface.borrow_mut().show_in(ui, screen, &host)
             });
         harness.step();
@@ -243,6 +245,22 @@ fn drag(harness: &mut Harness, from: Pos2, to: Pos2, modifiers: Modifiers) {
         harness.step();
     }
     release(harness, to, PointerButton::Primary, modifiers);
+}
+
+fn move_to(harness: &mut Harness, pos: Pos2) {
+    harness.event(Event::PointerMoved(pos));
+    harness.step();
+}
+
+fn key(harness: &mut Harness, key: Key) {
+    harness.event(Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    });
+    harness.step();
 }
 
 fn click(harness: &mut Harness, pos: Pos2) {
@@ -321,9 +339,32 @@ fn double_click_returns_to_the_default() {
     assert_ne!(fixture.synth.value("portamento_time"), default);
     fixture.take_log();
 
+    // Past the double-click timeout, so the drag's press does not pair
+    // with the next one.
+    for _ in 0..30 {
+        harness.step();
+    }
+
     click(&mut harness, start);
-    click(&mut harness, start);
+    assert_ne!(fixture.synth.value("portamento_time"), default);
+    // JUCE calls mouseDoubleClick after the second release
+    // (Component::internalMouseUp), once that click's gesture has ended.
+    press(&mut harness, start, PointerButton::Primary, Modifiers::NONE);
+    assert_ne!(fixture.synth.value("portamento_time"), default);
+    release(&mut harness, start, PointerButton::Primary, Modifiers::NONE);
     assert_eq!(fixture.synth.value("portamento_time"), default);
+    assert_eq!(
+        fixture.take_log(),
+        [
+            "begin portamento_time",
+            "end portamento_time",
+            "begin portamento_time",
+            "end portamento_time",
+            "begin portamento_time",
+            "set portamento_time",
+            "end portamento_time"
+        ]
+    );
 }
 
 #[test]
@@ -473,4 +514,256 @@ fn alt_click_enters_a_value_as_text() {
     harness.step();
     assert!(fixture.interface.borrow().overlay().text_entry.is_none());
     assert!((fixture.synth.value("velocity_track") - 0.25).abs() < 1e-6);
+}
+
+#[test]
+fn command_mid_drag_continues_from_where_the_drag_is() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let (voice, _) = fixture.layouts();
+    let start = centre(voice.velocity_track);
+    press(&mut harness, start, PointerButton::Primary, Modifiers::NONE);
+    move_to(&mut harness, start + egui::vec2(0.0, -40.0));
+    assert!((fixture.synth.value("velocity_track") - 0.4).abs() < 1e-4);
+    // Fine adjustment from here on: 40 more pixels at a tenth of the speed.
+    harness.event(Event::ModifiersChanged(Modifiers::COMMAND));
+    move_to(&mut harness, start + egui::vec2(0.0, -41.0));
+    assert!((fixture.synth.value("velocity_track") - 0.401).abs() < 1e-4);
+    move_to(&mut harness, start + egui::vec2(0.0, -80.0));
+    release(
+        &mut harness,
+        start + egui::vec2(0.0, -80.0),
+        PointerButton::Primary,
+        Modifiers::COMMAND,
+    );
+    assert!((fixture.synth.value("velocity_track") - 0.44).abs() < 1e-4);
+}
+
+#[test]
+fn dragging_past_the_end_has_no_dead_zone() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let (voice, _) = fixture.layouts();
+    let start = centre(voice.velocity_track);
+    press(&mut harness, start, PointerButton::Primary, Modifiers::NONE);
+    move_to(&mut harness, start + egui::vec2(0.0, -400.0));
+    assert_eq!(fixture.synth.value("velocity_track"), 1.0);
+    // Clamped at every step: coming back 20 pixels moves off the end at once.
+    move_to(&mut harness, start + egui::vec2(0.0, -380.0));
+    release(
+        &mut harness,
+        start + egui::vec2(0.0, -380.0),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert!((fixture.synth.value("velocity_track") - 0.8).abs() < 1e-4);
+}
+
+#[test]
+fn alt_mid_drag_pauses_the_drag() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let (voice, _) = fixture.layouts();
+    let start = centre(voice.velocity_track);
+    press(&mut harness, start, PointerButton::Primary, Modifiers::NONE);
+    move_to(&mut harness, start + egui::vec2(0.0, -20.0));
+    harness.event(Event::ModifiersChanged(Modifiers::ALT));
+    move_to(&mut harness, start + egui::vec2(0.0, -60.0));
+    assert!((fixture.synth.value("velocity_track") - 0.2).abs() < 1e-4);
+    // SynthSlider::mouseDrag returns early, so JUCE's drag start stays put:
+    // the next drag counts from the last one it handled.
+    harness.event(Event::ModifiersChanged(Modifiers::NONE));
+    move_to(&mut harness, start + egui::vec2(0.0, -70.0));
+    release(
+        &mut harness,
+        start + egui::vec2(0.0, -70.0),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert!((fixture.synth.value("velocity_track") - 0.7).abs() < 1e-4);
+}
+
+#[test]
+fn text_slider_popups_name_the_parameter() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let (voice, portamento) = fixture.layouts();
+    for (rect, name, expected) in [
+        (voice.polyphony, "polyphony", "Polyphony"),
+        (
+            voice.pitch_bend_range,
+            "pitch_bend_range",
+            "Pitch Bend Range",
+        ),
+    ] {
+        press(
+            &mut harness,
+            centre(rect),
+            PointerButton::Primary,
+            Modifiers::NONE,
+        );
+        {
+            let interface = fixture.interface.borrow();
+            let (popup_for, popup) = interface.overlay().value_popup.as_ref().unwrap();
+            assert_eq!(*popup_for, name);
+            assert_eq!(popup.text, expected);
+        }
+        release(
+            &mut harness,
+            centre(rect),
+            PointerButton::Primary,
+            Modifiers::NONE,
+        );
+    }
+    // A curve slider is not a text slider: its popup shows the value.
+    press(
+        &mut harness,
+        centre(portamento.portamento_slope),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    let interface = fixture.interface.borrow();
+    let (_, popup) = interface.overlay().value_popup.as_ref().unwrap();
+    assert_eq!(popup.text, "0.000");
+}
+
+#[test]
+fn escape_keeps_the_text_entry_open() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let (voice, _) = fixture.layouts();
+    let knob = centre(voice.velocity_track);
+    press(&mut harness, knob, PointerButton::Primary, Modifiers::ALT);
+    release(&mut harness, knob, PointerButton::Primary, Modifiers::ALT);
+    harness.step();
+    harness.event(Event::Text("50".to_string()));
+    harness.step();
+    key(&mut harness, Key::Escape);
+    harness.step();
+    assert!(fixture.interface.borrow().overlay().text_entry.is_some());
+    assert_eq!(fixture.synth.value("velocity_track"), 0.0);
+    key(&mut harness, Key::Enter);
+    harness.step();
+    assert!(fixture.interface.borrow().overlay().text_entry.is_none());
+    assert!((fixture.synth.value("velocity_track") - 0.5).abs() < 1e-6);
+}
+
+#[test]
+fn buttons_toggle_on_any_release_over_them() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let (_, portamento) = fixture.layouts();
+    let button = centre(portamento.legato);
+    let before = fixture.synth.value("legato");
+    // Out and back before releasing: still a click to JUCE.
+    press(
+        &mut harness,
+        button,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    move_to(&mut harness, button + egui::vec2(0.0, 60.0));
+    move_to(&mut harness, button);
+    release(
+        &mut harness,
+        button,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert_eq!(fixture.synth.value("legato"), 1.0 - before);
+    fixture.take_log();
+
+    // Released away from it: no toggle, but the gesture still ends.
+    press(
+        &mut harness,
+        button,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    move_to(&mut harness, button + egui::vec2(0.0, 60.0));
+    release(
+        &mut harness,
+        button + egui::vec2(0.0, 60.0),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert_eq!(fixture.synth.value("legato"), 1.0 - before);
+    assert_eq!(fixture.take_log(), ["begin legato", "end legato"]);
+
+    // A right press opens no host gesture.
+    press(
+        &mut harness,
+        button,
+        PointerButton::Secondary,
+        Modifiers::NONE,
+    );
+    release(
+        &mut harness,
+        button,
+        PointerButton::Secondary,
+        Modifiers::NONE,
+    );
+    assert!(fixture.take_log().is_empty());
+}
+
+#[test]
+fn closing_mid_drag_ends_the_gesture() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let (voice, _) = fixture.layouts();
+    let start = centre(voice.velocity_track);
+    press(&mut harness, start, PointerButton::Primary, Modifiers::NONE);
+    move_to(&mut harness, start + egui::vec2(0.0, -20.0));
+    assert_eq!(
+        fixture.take_log(),
+        ["begin velocity_track", "set velocity_track"]
+    );
+    // What the editor does when its window closes.
+    Host::tracking(
+        fixture.synth.as_ref(),
+        Some(&fixture.context),
+        &fixture.open,
+    )
+    .end_open_gestures();
+    assert_eq!(fixture.take_log(), ["end velocity_track"]);
+    Host::tracking(
+        fixture.synth.as_ref(),
+        Some(&fixture.context),
+        &fixture.open,
+    )
+    .end_open_gestures();
+    assert!(fixture.take_log().is_empty());
+}
+
+#[test]
+fn drags_are_measured_in_points() {
+    // At two pixels per point, 40 points up is still 40 of the 200 a turn
+    // takes, as JUCE's logical coordinates make it upstream.
+    let fixture = Fixture::new();
+    let mut harness = Harness::builder()
+        .with_size((1400.0, 820.0))
+        .with_pixels_per_point(2.0)
+        .with_step_dt(1.0 / 60.0)
+        .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
+        .build_ui(|ui| {
+            let screen = ui.ctx().content_rect();
+            let host = Host::tracking(
+                fixture.synth.as_ref(),
+                Some(&fixture.context),
+                &fixture.open,
+            );
+            fixture.interface.borrow_mut().show_in(ui, screen, &host)
+        });
+    harness.step();
+    let (voice, _) = fixture.layouts();
+    // The layouts are for 1400x820 pixels; at 2x the window is 2800x1640
+    // pixels, so the same rectangles in points.
+    let start = centre(voice.velocity_track);
+    drag(
+        &mut harness,
+        start,
+        start + egui::vec2(0.0, -40.0),
+        Modifiers::NONE,
+    );
+    assert!((fixture.synth.value("velocity_track") - 0.4).abs() < 1e-4);
 }

@@ -9,7 +9,7 @@
 //! toggle-on-release `Button` behaviour, and `OpenGlButtonComponent`'s text
 //! button style (`setColors`, `renderTextButton`, `incrementHover`).
 
-use egui::{Sense, Ui};
+use egui::{PointerButton, Sense, Ui};
 
 use crate::fonts::Face;
 use crate::host::Host;
@@ -55,15 +55,19 @@ impl TextButton {
         let id = ui.scope_id().with(("synth button", self.name));
         let response = ui.interact(pixels.rect(bounds.into()), id, Sense::click());
         let mut state: ButtonState = ui.data(|data| data.get_temp(id)).unwrap_or_default();
-        let down = response.is_pointer_button_down_on() && !response.secondary_clicked();
+        let primary_down = ui.input(|input| input.pointer.button_down(PointerButton::Primary));
+        let down = (state.down || response.is_pointer_button_down_on()) && primary_down;
         if down && !state.down {
             host.begin(self.name);
         }
-        if response.clicked() {
-            let toggled = host.value(self.name) != 0.0;
-            host.set(self.name, if toggled { 0.0 } else { 1.0 });
-        }
         if state.down && !down {
+            // Button::mouseUp: a release over the button toggles it, however
+            // far the pointer moved while it was down.
+            let pointer = ui.input(|input| input.pointer.interact_pos());
+            if pointer.is_some_and(|pos| response.rect.contains(pos)) {
+                let toggled = host.value(self.name) != 0.0;
+                host.set(self.name, if toggled { 0.0 } else { 1.0 });
+            }
             host.end(self.name);
         }
         state.down = down;
