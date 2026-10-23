@@ -253,3 +253,183 @@ fn a_clear_racing_a_learn_is_republished() {
     assert!(harness.midi_learn.is_midi_mapped("macro_control_2"));
     let _ = std::fs::remove_dir_all(path.parent().unwrap());
 }
+
+#[test]
+fn learned_moves_are_kept_for_the_editor_only_while_it_is_open() {
+    let mut harness = Harness::new(MidiLearn::in_memory());
+    harness.midi_learn.arm("filter_1_cutoff");
+    harness.block(vec![cc(20, 10)]);
+    let params = harness.plugin.synth_params().clone();
+    let moved = |params: &sas_plugin::SynthParams| {
+        let mut names = Vec::new();
+        params.drain_midi_moved(|name| names.push(name));
+        names
+    };
+    // Closed: nothing is kept.
+    assert_eq!(moved(&params), Vec::<&str>::new());
+
+    params.set_editor_open(true);
+    harness.block(vec![cc(20, 30), cc(20, 40)]);
+    assert_eq!(moved(&params), ["filter_1_cutoff"]);
+    assert_eq!(moved(&params), Vec::<&str>::new());
+
+    // A move while closed is not reported by a window that opens later.
+    params.set_editor_open(false);
+    harness.block(vec![cc(20, 50)]);
+    params.set_editor_open(true);
+    assert_eq!(moved(&params), Vec::<&str>::new());
+    // Host edits are not learned moves.
+    harness.block(vec![]);
+    assert_eq!(moved(&params), Vec::<&str>::new());
+}
+
+#[test]
+fn a_new_window_opening_before_the_old_one_closes_keeps_reporting() {
+    let mut harness = Harness::new(MidiLearn::in_memory());
+    harness.midi_learn.arm("filter_1_cutoff");
+    harness.block(vec![cc(20, 10)]);
+    let params = harness.plugin.synth_params().clone();
+    let moved = |params: &sas_plugin::SynthParams| {
+        let mut names = Vec::new();
+        params.drain_midi_moved(|name| names.push(name));
+        names
+    };
+    params.set_editor_open(true);
+    // The host builds the new window, then closes the old one.
+    params.set_editor_open(true);
+    params.set_editor_open(false);
+    harness.block(vec![cc(20, 20)]);
+    assert_eq!(moved(&params), ["filter_1_cutoff"]);
+    params.set_editor_open(false);
+    harness.block(vec![cc(20, 30)]);
+    assert_eq!(moved(&params), Vec::<&str>::new());
+    // A close with no window open does not go below zero.
+    params.set_editor_open(false);
+    params.set_editor_open(true);
+    harness.block(vec![cc(20, 40)]);
+    assert_eq!(moved(&params), ["filter_1_cutoff"]);
+}
+
+fn normalized(control: &sas_plugin::params::Control) -> f32 {
+    use nice_plug::prelude::Param;
+    match &control.param {
+        sas_plugin::params::ControlParam::Float(param) => param.unmodulated_normalized_value(),
+        sas_plugin::params::ControlParam::Stepped(param) => param.unmodulated_normalized_value(),
+        sas_plugin::params::ControlParam::Bypass(param) => param.unmodulated_normalized_value(),
+    }
+}
+
+/// The host applying a parameter change before a block, as nice-plug's
+/// wrapper does with the host's input parameter queue.
+fn host_sets(control: &sas_plugin::params::Control, normalized: f32) {
+    use nice_plug::params::InternalParamMut;
+    unsafe {
+        match &control.param {
+            sas_plugin::params::ControlParam::Float(param) => {
+                param._internal_set_normalized_value(normalized);
+            }
+            sas_plugin::params::ControlParam::Stepped(param) => {
+                param._internal_set_normalized_value(normalized);
+            }
+            sas_plugin::params::ControlParam::Bypass(param) => {
+                param._internal_set_normalized_value(normalized);
+            }
+        }
+    }
+}
+
+#[test]
+fn the_hosts_late_echoes_never_step_the_engine_back() {
+    let mut harness = Harness::new(MidiLearn::in_memory());
+    let params = harness.plugin.synth_params().clone();
+    params.set_editor_open(true);
+    harness.midi_learn.arm("filter_1_cutoff");
+    harness.block(vec![cc(20, 0)]);
+    params.drain_midi_moved(|_| {});
+    let control = params.control("filter_1_cutoff").unwrap();
+
+    // A sweep: one CC per block, an editor frame every third block, and
+    // the host echoing each forwarded value back two frames later, after
+    // newer CCs moved the knob on.
+    let mut echoes = VecDeque::new();
+    let mut stale = 0;
+    let mut last = 0;
+    for step in 1..=90u8 {
+        if step % 3 == 1 && echoes.len() > 2 {
+            let echo = echoes.pop_front().unwrap();
+            stale += usize::from(echo != normalized(control));
+            host_sets(control, echo);
+        }
+        last = step;
+        harness.block(vec![cc(20, step)]);
+        // Host changes reaching the engine for the swept control.
+        let host = harness.host_controls();
+        assert!(
+            host.iter().all(|(name, _)| *name != "filter_1_cutoff"),
+            "step {step}: an echo reached the engine: {host:?}"
+        );
+        if step % 3 == 0 {
+            params.drain_midi_moved(|name| {
+                let forwarded = normalized(control);
+                params.record_forwarded(name, forwarded);
+                echoes.push_back(forwarded);
+            });
+        }
+    }
+    assert!(stale > 20, "the sweep sent only {stale} stale echoes");
+    let expected = last as f32 / 127.0 * 128.0 + 8.0;
+    assert_eq!(harness.param("filter_1_cutoff"), expected);
+
+    // An echo equal to the current value changes nothing.
+    params.drain_midi_moved(|name| params.record_forwarded(name, normalized(control)));
+    host_sets(control, normalized(control));
+    harness.block(vec![]);
+    assert_eq!(harness.host_controls(), []);
+
+    // Host automation nobody forwarded applies while the knob is idle.
+    let automated = (70.0 - 8.0) / 128.0;
+    host_sets(control, automated);
+    harness.block(vec![]);
+    assert_eq!(harness.host_controls(), [("filter_1_cutoff", 70.0)]);
+}
+
+/// Graph Reviewer's case: values the editor forwarded stay remembered, and
+/// the host records exactly those as automation while a learned knob is
+/// turned. Played back once the knob is idle, they are automation, not
+/// echoes.
+#[test]
+fn recorded_automation_of_forwarded_values_plays_back() {
+    let mut harness = Harness::new(MidiLearn::in_memory());
+    let params = harness.plugin.synth_params().clone();
+    params.set_editor_open(true);
+    harness.midi_learn.arm("filter_1_cutoff");
+    harness.block(vec![cc(20, 0)]);
+    params.drain_midi_moved(|_| {});
+    let control = params.control("filter_1_cutoff").unwrap();
+
+    // Turning the knob: each value is forwarded, and the host echoes it
+    // while it is still current, recording it.
+    let mut recorded = Vec::new();
+    for value in [40, 80] {
+        harness.block(vec![cc(20, value)]);
+        params.drain_midi_moved(|name| {
+            let forwarded = normalized(control);
+            params.record_forwarded(name, forwarded);
+            recorded.push(forwarded);
+        });
+        host_sets(control, *recorded.last().unwrap());
+        harness.block(vec![]);
+    }
+    assert_eq!(harness.host_controls(), []);
+
+    // More than the echo window later (0.5 s at 44.1 kHz in 64-sample
+    // blocks), the host plays the recorded CC 40 point back.
+    for _ in 0..400 {
+        harness.block(vec![]);
+    }
+    host_sets(control, recorded[0]);
+    harness.block(vec![]);
+    let cc_40 = 40.0 / 127.0 * 128.0 + 8.0;
+    assert_eq!(harness.host_controls(), [("filter_1_cutoff", cc_40)]);
+    assert_eq!(harness.param("filter_1_cutoff"), cc_40);
+}

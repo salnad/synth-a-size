@@ -63,6 +63,10 @@ struct Synth {
     params: HashMap<&'static str, Box<TestParam>>,
     /// Notes the on-screen keyboard sent.
     notes: Mutex<Vec<String>>,
+    /// Controls a MIDI-learned controller moved, as the plugin reports them.
+    midi_moved: Mutex<Vec<&'static str>>,
+    /// The values the editor said it forwards for MIDI moves.
+    midi_forwarded: Mutex<Vec<(String, f32)>>,
 }
 
 impl Synth {
@@ -96,6 +100,8 @@ impl Synth {
         Arc::new(Synth {
             params,
             notes: Mutex::new(Vec::new()),
+            midi_moved: Mutex::new(Vec::new()),
+            midi_forwarded: Mutex::new(Vec::new()),
         })
     }
 
@@ -130,6 +136,19 @@ impl EditorModel for Synth {
 
     fn note_off(&self, note: u8) {
         self.notes.lock().unwrap().push(format!("off {note}"));
+    }
+
+    fn drain_midi_moved(&self, f: &mut dyn FnMut(&'static str)) {
+        for name in std::mem::take(&mut *self.midi_moved.lock().unwrap()) {
+            f(name);
+        }
+    }
+
+    fn midi_move_forwarded(&self, name: &str, normalized: f32) {
+        self.midi_forwarded
+            .lock()
+            .unwrap()
+            .push((name.to_string(), normalized));
     }
 }
 
@@ -1140,4 +1159,59 @@ fn a_tab_selector_follows_the_pointer_while_down() {
     assert_eq!(selected.get(), 2);
     // The band is GUI state, not a host edit.
     assert!(fixture.take_log().is_empty());
+}
+
+/// A control a MIDI-learned controller moved reaches the host as one
+/// gesture with its current value, which the gesture leaves unchanged.
+#[test]
+fn learned_midi_moves_reach_the_host_as_gestures() {
+    let fixture = Fixture::new();
+    unsafe {
+        fixture.synth.params["volume"]
+            .ptr()
+            ._internal_set_normalized_value(0.25)
+    };
+    let moved_to = fixture.synth.value("volume");
+    fixture.synth.midi_moved.lock().unwrap().push("volume");
+    let host = Host::tracking(
+        fixture.synth.as_ref(),
+        Some(&fixture.context),
+        &fixture.open,
+    );
+    host.forward_midi_moves();
+    assert_eq!(
+        *fixture.recorder.log.lock().unwrap(),
+        ["begin volume", "set volume", "end volume"]
+    );
+    assert_eq!(fixture.synth.value("volume"), moved_to);
+    assert!(fixture.open.lock().unwrap().is_empty());
+    // The plugin is told the exact normalized value sent, for its echo guard.
+    assert_eq!(
+        *fixture.synth.midi_forwarded.lock().unwrap(),
+        [("volume".to_string(), 0.25)]
+    );
+
+    // Nothing moved since: nothing sent.
+    fixture.recorder.log.lock().unwrap().clear();
+    host.forward_midi_moves();
+    assert!(fixture.recorder.log.lock().unwrap().is_empty());
+}
+
+/// A move of a control the user is dragging joins the drag's gesture
+/// instead of nesting another.
+#[test]
+fn a_learned_move_during_a_drag_sends_only_the_value() {
+    let fixture = Fixture::new();
+    let host = Host::tracking(
+        fixture.synth.as_ref(),
+        Some(&fixture.context),
+        &fixture.open,
+    );
+    host.begin("polyphony");
+    fixture.recorder.log.lock().unwrap().clear();
+    fixture.synth.midi_moved.lock().unwrap().push("polyphony");
+    host.forward_midi_moves();
+    assert_eq!(*fixture.recorder.log.lock().unwrap(), ["set polyphony"]);
+    assert!(fixture.open.lock().unwrap().contains("polyphony"));
+    host.end("polyphony");
 }

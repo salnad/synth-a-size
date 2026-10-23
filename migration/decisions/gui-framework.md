@@ -79,6 +79,18 @@ PR that settles it.
    takes). If upstream reaches 100%, its 200 is in physical pixels on
    Retina and the port should halve its drag length at display scale 2.
    Record the answer next to D15 in `DIVERGENCES.md`.
+3. **A learned knob with the editor open (D16).** MIDI-learn a knob
+   (right-click a control, learn, turn a hardware knob), keep the editor
+   open, start playback and turn the hardware knob steadily for a few
+   seconds:
+   - Listen for stepping or zipper noise as the knob moves. The host
+     echoes each forwarded value back into the plugin, up to about a frame
+     older than the newest MIDI value.
+   - Record automation in touch or latch mode while turning: is the curve
+     smooth, or broken into segments at the editor's frame rate (one
+     gesture per frame)?
+   - Undo after turning: one step, or many?
+   Record the answers next to D16 in `DIVERGENCES.md`.
 
 ## Vendored egui-baseview
 

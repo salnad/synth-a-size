@@ -111,6 +111,21 @@ pub trait EditorModel: Send + Sync + 'static {
     fn midi_learn_ccs(&self, _name: &str) -> Vec<i32> {
         Vec::new()
     }
+
+    /// The editor window opened (`true`) or closed. While it is open the
+    /// model keeps the controls MIDI-learned controllers move, for
+    /// [`drain_midi_moved`](Self::drain_midi_moved).
+    fn set_editor_open(&self, _open: bool) {}
+
+    /// Calls `f` with each control a MIDI-learned controller moved since the
+    /// last call while the editor was open, so the editor can tell the host
+    /// (upstream's `valueChangedThroughMidi` calls `setValueNotifyHost`).
+    fn drain_midi_moved(&self, _f: &mut dyn FnMut(&'static str)) {}
+
+    /// The editor is about to send the host `normalized` (as nice-plug passes
+    /// it) for control `name`, a MIDI-learned move, so the plugin can tell
+    /// the host's echo of it from host automation.
+    fn midi_move_forwarded(&self, _name: &str, _normalized: f32) {}
 }
 
 /// What the editor copies from the telemetry snapshot each frame.
