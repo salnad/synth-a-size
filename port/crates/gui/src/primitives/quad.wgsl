@@ -22,6 +22,9 @@ struct Instance {
     @location(8) params: vec4<f32>,
     // max_arc, alpha_mult, kind, unused
     @location(9) params2: vec4<f32>,
+    // `setCoordinates`: the bottom left corner's coordinates and their
+    // extent across the quad.
+    @location(10) coordinates: vec4<f32>,
 };
 
 struct Varyings {
@@ -55,9 +58,9 @@ const KIND_MODULATION_KNOB: u32 = 13u;
 
 const PI: f32 = 3.14159265359;
 
-// Upstream's four vertices: (x, y) with coordinates (-1, -1), (x, y + h) with
-// (-1, 1), (x + w, y + h) with (1, 1), (x + w, y) with (1, -1). Drawn here as
-// a triangle strip.
+// Upstream's four vertices: (x, y), (x, y + h), (x + w, y + h), (x + w, y),
+// with coordinates from `setCoordinates` (by default (-1, -1) to (1, 1)).
+// Drawn here as a triangle strip.
 @vertex
 fn vs_main(@builtin(vertex_index) vertex: u32, instance: Instance) -> Varyings {
     var corners = array<vec2<f32>, 4>(
@@ -76,7 +79,7 @@ fn vs_main(@builtin(vertex_index) vertex: u32, instance: Instance) -> Varyings {
         1.0,
     );
     out.dimensions = instance.dimensions;
-    out.coordinates = corner;
+    out.coordinates = instance.coordinates.xy + unit * instance.coordinates.zw;
     out.shader_values = instance.shader_values;
     out.color = instance.color;
     out.alt_color = instance.alt_color;

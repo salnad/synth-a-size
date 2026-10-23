@@ -14,6 +14,8 @@
 //! The pipeline is built for the render target the editor window or the test
 //! renderer publishes as [`WgpuTarget`] in egui-wgpu's callback resources.
 
+pub mod line;
+
 use std::sync::OnceLock;
 
 use egui_wgpu::wgpu;
@@ -75,6 +77,9 @@ pub struct Quad {
     pub start_pos: f32,
     pub max_arc: f32,
     pub alpha_mult: f32,
+    /// `setCoordinates`: x, y, width, height of the shader coordinates
+    /// across the quad, from its bottom left corner.
+    pub coordinates: [f32; 4],
 }
 
 impl Quad {
@@ -97,7 +102,27 @@ impl Quad {
             start_pos: 0.0,
             max_arc: 2.0,
             alpha_mult: 1.0,
+            coordinates: [-1.0, -1.0, 2.0, 2.0],
         }
+    }
+
+    /// `OpenGlCorners::setCorners`: four quads that paint `colour` outside
+    /// rounded corners of radius `rounding` (pixels) on `bounds`.
+    pub fn corners(bounds: RectF, rounding: f32, colour: Colour) -> [Quad; 4] {
+        let r = rounding;
+        let (left, top) = (bounds.x, bounds.y);
+        let (right, bottom) = (bounds.x + bounds.width - r, bounds.y + bounds.height - r);
+        let corner = |x: f32, y: f32, coordinates: [f32; 4]| {
+            let mut quad = Quad::new(QuadKind::RoundedCorner, RectF::new(x, y, r, r), colour);
+            quad.coordinates = coordinates;
+            quad
+        };
+        [
+            corner(left, bottom, [1.0, 1.0, -1.0, -1.0]),
+            corner(left, top, [1.0, 0.0, -1.0, 1.0]),
+            corner(right, top, [0.0, 0.0, 1.0, 1.0]),
+            corner(right, bottom, [0.0, 1.0, 1.0, -1.0]),
+        ]
     }
 
     /// The instance data, positioned in a viewport `viewport` pixels big.
@@ -137,6 +162,7 @@ impl Quad {
                 self.start_pos,
             ],
             params2: [self.max_arc, alpha_mult, self.kind as u32 as f32, 0.0],
+            coordinates: self.coordinates,
         }
     }
 }
@@ -164,9 +190,10 @@ struct Instance {
     background_color: [f32; 4],
     params: [f32; 4],
     params2: [f32; 4],
+    coordinates: [f32; 4],
 }
 
-const INSTANCE_FLOATS: usize = 4 + 2 + 4 * 8;
+const INSTANCE_FLOATS: usize = 4 + 2 + 4 * 9;
 
 impl Instance {
     fn write(&self, out: &mut Vec<f32>) {
@@ -181,6 +208,7 @@ impl Instance {
             &self.background_color,
             &self.params,
             &self.params2,
+            &self.coordinates,
         ] {
             out.extend_from_slice(values);
         }
@@ -297,6 +325,7 @@ impl QuadPipeline {
             float4,
             float4,
             float4,
+            float4,
         ]
         .into_iter()
         .enumerate()
@@ -308,21 +337,7 @@ impl QuadPipeline {
             });
             offset += format.size();
         }
-        // Upstream blends with (SRC_ALPHA, ONE_MINUS_SRC_ALPHA), or
-        // (SRC_ALPHA, ONE) when additive. egui's target holds premultiplied
-        // colour, so alpha accumulates the same way over it.
-        let blend = wgpu::BlendState {
-            color: wgpu::BlendComponent {
-                src_factor: wgpu::BlendFactor::SrcAlpha,
-                dst_factor,
-                operation: wgpu::BlendOperation::Add,
-            },
-            alpha: wgpu::BlendComponent {
-                src_factor: wgpu::BlendFactor::One,
-                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                operation: wgpu::BlendOperation::Add,
-            },
-        };
+        let blend = straight_alpha_blend(dst_factor);
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("sas-gui quads"),
             layout: Some(&layout),
@@ -370,9 +385,7 @@ impl egui_wgpu::CallbackTrait for QuadCallback {
         _encoder: &mut wgpu::CommandEncoder,
         resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
-        let target = *resources
-            .get::<WgpuTarget>()
-            .expect("the renderer publishes its WgpuTarget (see sas_gui::primitives)");
+        let target = target(resources);
         if resources.get::<QuadPipeline>().map(|p| p.target) != Some(target) {
             resources.insert(QuadPipeline::new(device, target));
         }
@@ -408,6 +421,30 @@ impl egui_wgpu::CallbackTrait for QuadCallback {
         });
         render_pass.set_vertex_buffer(0, buffer.slice(..));
         render_pass.draw(0..4, 0..self.count);
+    }
+}
+
+/// The render target the window or test renderer published.
+pub(crate) fn target(resources: &egui_wgpu::CallbackResources) -> WgpuTarget {
+    *resources
+        .get::<WgpuTarget>()
+        .expect("the renderer publishes its WgpuTarget (see sas_gui::primitives)")
+}
+
+/// Upstream's `glBlendFunc(GL_SRC_ALPHA, dst)`. egui's target holds
+/// premultiplied colour, so alpha accumulates the same way over it.
+pub(crate) fn straight_alpha_blend(dst_factor: wgpu::BlendFactor) -> wgpu::BlendState {
+    wgpu::BlendState {
+        color: wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::SrcAlpha,
+            dst_factor,
+            operation: wgpu::BlendOperation::Add,
+        },
+        alpha: wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::One,
+            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+            operation: wgpu::BlendOperation::Add,
+        },
     }
 }
 
@@ -470,13 +507,15 @@ mod tests {
     }
 
     #[test]
-    fn the_shader_parses() {
-        let module = naga::front::wgsl::parse_str(include_str!("quad.wgsl")).expect("valid WGSL");
-        naga::valid::Validator::new(
-            naga::valid::ValidationFlags::all(),
-            naga::valid::Capabilities::empty(),
-        )
-        .validate(&module)
-        .expect("a valid shader module");
+    fn the_shaders_parse() {
+        for source in [include_str!("quad.wgsl"), include_str!("line.wgsl")] {
+            let module = naga::front::wgsl::parse_str(source).expect("valid WGSL");
+            naga::valid::Validator::new(
+                naga::valid::ValidationFlags::all(),
+                naga::valid::Capabilities::empty(),
+            )
+            .validate(&module)
+            .expect("a valid shader module");
+        }
     }
 }
