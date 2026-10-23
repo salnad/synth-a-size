@@ -193,6 +193,34 @@ impl<'a> PixelPainter<'a> {
         );
     }
 
+    /// Text centred in `rect` (pixels), turned by `angle` radians about its
+    /// centre (clockwise on screen; -π/2 reads upwards).
+    pub fn text_centred_rotated(
+        &self,
+        text: &str,
+        rect: impl Into<RectF>,
+        face: Face,
+        point_height: f32,
+        colour: Colour,
+        angle: f32,
+    ) {
+        let rect = self.rect(rect.into());
+        let galley = self.painter.layout_no_wrap(
+            text.to_owned(),
+            face.at(self.points(point_height)),
+            colour.to_egui(),
+        );
+        // TextShape turns about its top-left corner: place that corner so
+        // the turned galley's centre lands on the rect's.
+        let half = galley.size() / 2.0;
+        let (sin, cos) = angle.sin_cos();
+        let turned_half = egui::vec2(half.x * cos - half.y * sin, half.x * sin + half.y * cos);
+        let shape =
+            egui::epaint::TextShape::new(rect.center() - turned_half, galley, colour.to_egui())
+                .with_angle(angle);
+        self.painter.add(shape);
+    }
+
     /// The outline of a rounded rectangle (pixels), clockwise from the top
     /// left corner's start, `segments` points per corner. A zero radius
     /// repeats each corner point, so two outlines always pair up.

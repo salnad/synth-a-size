@@ -18,9 +18,15 @@ write them twice.
   and its select-on-press/drag/release behaviour, for any list of names.
   The header's tabs use it; the EQ and reverb band selectors will.
 - Section helpers in `section.rs`: `title_width`, `power_button_bounds`,
-  `title_bounds`, `paint_container` (the body with the heading background
-  clipped to the title strip), `paint_heading_text`, and `off_overlay`
-  (the 80% background veil over a section that is switched off).
+  `title_bounds`, `paint_container` and `off_overlay` (the 80% background
+  veil over a section that is switched off). `paint_container` takes a
+  `Heading`: upstream's default sideways heading (a `2 × title_width`
+  rounded rectangle clipped to the left `title_width`) or the horizontal
+  one (the body clipped to the top strip). The name is drawn by
+  `paint_sideways_heading_text` (turned -π/2, centred in
+  `sideways_title_bounds`, which stops `title_width / 2` short of the top
+  when there's a power button) or `paint_heading_text`.
+- `PixelPainter::text_centred_rotated`, for the sideways heading.
 - `Colour::desaturated` (`withSaturation(0)`), for an inactive selector.
 
 **Verified.**
@@ -30,6 +36,8 @@ write them twice.
   editing, and a choice sets the value in one gesture; a right-click opens
   the slider menu; a tab selector follows the pointer while down, clamps
   past its end and makes no host edits.
+- Unit tests of both heading strips and of the sideways title box, with
+  and without a power button and at a size where the title width is odd.
 - The header's tab positions still equal upstream's (`tab_x` unit test),
   and the existing interaction tests for tab switching pass.
 - `cargo clippy --workspace --all-targets -D warnings`, `cargo fmt`, and
