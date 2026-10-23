@@ -1,13 +1,14 @@
 // Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! `SynthButton` with a text label: an on/off control shown as text on a
-//! rounded background.
+//! `SynthButton`: an on/off control, shown as text on a rounded background
+//! or as a section's power button.
 //!
 //! Ports `SynthButton::mouseDown` / `mouseUp`
 //! (`vital/src/interface/editor_components/synth_button.cpp`), JUCE's
 //! toggle-on-release `Button` behaviour, and `OpenGlButtonComponent`'s text
-//! button style (`setColors`, `renderTextButton`, `incrementHover`).
+//! and power button styles (`setColors`, `renderTextButton`,
+//! `renderPowerButton`, `incrementHover`).
 
 use egui::{PointerButton, Sense, Ui};
 
@@ -15,7 +16,7 @@ use crate::fonts::Face;
 use crate::host::Host;
 use crate::layer::Layer;
 use crate::layout::Rect;
-use crate::paint::PixelPainter;
+use crate::paint::{PixelPainter, RectF};
 use crate::primitives::{Quad, QuadKind};
 use crate::scope::Scope;
 use crate::skin::{ColorId, ValueId};
@@ -23,11 +24,21 @@ use crate::skin::{ColorId, ValueId};
 /// `OpenGlButtonComponent::kHoverInc`: the hover fade per frame.
 const HOVER_INC: f32 = 0.2;
 
+/// How a button is drawn (`OpenGlButtonComponent::ButtonStyle`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ButtonStyle {
+    /// `kTextButton`: the label on a text-component background.
+    Text(&'static str),
+    /// `kPowerButton`: a dot, with a halo while hovered or pressed
+    /// (`SynthSection::setActivator`).
+    Power,
+}
+
 /// A toggle bound to an on/off synth control.
 #[derive(Clone, Copy, Debug)]
-pub struct TextButton {
+pub struct SynthButton {
     pub name: &'static str,
-    pub text: &'static str,
+    pub style: ButtonStyle,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -36,9 +47,26 @@ struct ButtonState {
     hover_amount: f32,
 }
 
-impl TextButton {
-    pub fn new(name: &'static str, text: &'static str) -> TextButton {
-        TextButton { name, text }
+impl SynthButton {
+    /// A text button labelled `text`.
+    pub fn text(name: &'static str, text: &'static str) -> SynthButton {
+        SynthButton {
+            name,
+            style: ButtonStyle::Text(text),
+        }
+    }
+
+    /// A section's power button (its activator).
+    pub fn power(name: &'static str) -> SynthButton {
+        SynthButton {
+            name,
+            style: ButtonStyle::Power,
+        }
+    }
+
+    /// Whether the control is on.
+    pub fn is_on(&self, host: &Host) -> bool {
+        host.value(self.name) != 0.0
     }
 
     /// Handles the mouse and draws the button: a press begins the host
@@ -85,38 +113,104 @@ impl TextButton {
         ui.data_mut(|data| data.insert_temp(id, state));
 
         let toggled = host.value(self.name) != 0.0;
-        let (active, hover_colour) = if toggled {
-            let active = if down {
-                ColorId::IconButtonOnPressed
-            } else {
-                ColorId::IconButtonOn
-            };
-            (scope.color(active), scope.color(ColorId::IconButtonOnHover))
-        } else {
-            let active = if down {
-                ColorId::IconButtonOffPressed
-            } else {
-                ColorId::IconButtonOff
-            };
-            (
-                scope.color(active),
-                scope.color(ColorId::IconButtonOffHover),
-            )
-        };
-        let colour = if down {
-            active
-        } else {
-            active.interpolated_with(hover_colour, state.hover_amount)
-        };
+        match self.style {
+            ButtonStyle::Text(text) => paint_text_button(
+                layer,
+                scope,
+                bounds,
+                text,
+                toggled,
+                down,
+                state.hover_amount,
+            ),
+            ButtonStyle::Power => {
+                paint_power_button(layer, scope, bounds, toggled, down, state.hover_amount)
+            }
+        }
+    }
+}
 
-        let mut background = Quad::new(
-            QuadKind::RoundedRectangle,
-            bounds.into(),
-            scope.color(ColorId::TextComponentBackground),
-        );
-        background.rounding = scope.value(ValueId::LabelBackgroundRounding);
-        layer.quad(background);
-        let font_size = scope.value(ValueId::ButtonFontSize);
-        layer.text_centred(self.text, bounds, Face::Mono, font_size, colour);
+/// `OpenGlButtonComponent::renderTextButton` with the text style's colours.
+fn paint_text_button(
+    layer: &mut Layer,
+    scope: &Scope,
+    bounds: Rect,
+    text: &str,
+    toggled: bool,
+    down: bool,
+    hover_amount: f32,
+) {
+    let (active, hover_colour) = if toggled {
+        let active = if down {
+            ColorId::IconButtonOnPressed
+        } else {
+            ColorId::IconButtonOn
+        };
+        (scope.color(active), scope.color(ColorId::IconButtonOnHover))
+    } else {
+        let active = if down {
+            ColorId::IconButtonOffPressed
+        } else {
+            ColorId::IconButtonOff
+        };
+        (
+            scope.color(active),
+            scope.color(ColorId::IconButtonOffHover),
+        )
+    };
+    let colour = if down {
+        active
+    } else {
+        active.interpolated_with(hover_colour, hover_amount)
+    };
+
+    let mut background = Quad::new(
+        QuadKind::RoundedRectangle,
+        bounds.into(),
+        scope.color(ColorId::TextComponentBackground),
+    );
+    background.rounding = scope.value(ValueId::LabelBackgroundRounding);
+    layer.quad(background);
+    let font_size = scope.value(ValueId::ButtonFontSize);
+    layer.text_centred(text, bounds, Face::Mono, font_size, colour);
+}
+
+/// `OpenGlButtonComponent::renderPowerButton` with the power style's
+/// colours: the dot at 0.45 of the button, then a halo at 0.65 while
+/// pressed or hovered.
+fn paint_power_button(
+    layer: &mut Layer,
+    scope: &Scope,
+    bounds: Rect,
+    toggled: bool,
+    down: bool,
+    hover_amount: f32,
+) {
+    const POWER_RADIUS: f32 = 0.45;
+    const POWER_HOVER_RADIUS: f32 = 0.65;
+    let circle = |radius: f32, colour| {
+        // setQuad(0, -r, -r, 2r, 2r) in the button's device coordinates.
+        let width = radius * bounds.width as f32;
+        let height = radius * bounds.height as f32;
+        let x = bounds.x as f32 + (bounds.width as f32 - width) / 2.0;
+        let y = bounds.y as f32 + (bounds.height as f32 - height) / 2.0;
+        Quad::new(QuadKind::Circle, RectF::new(x, y, width, height), colour)
+    };
+    let colour = if toggled {
+        scope.color(ColorId::PowerButtonOn)
+    } else {
+        scope.color(ColorId::PowerButtonOff)
+    };
+    layer.quad(circle(POWER_RADIUS, colour));
+    if down {
+        layer.quad(circle(
+            POWER_HOVER_RADIUS,
+            scope.color(ColorId::OverlayScreen),
+        ));
+    } else if hover_amount > 0.0 {
+        let hover = scope
+            .color(ColorId::LightenScreen)
+            .with_multiplied_alpha(hover_amount);
+        layer.quad(circle(POWER_HOVER_RADIUS, hover));
     }
 }

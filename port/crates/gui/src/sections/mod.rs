@@ -18,13 +18,13 @@ pub mod volume;
 
 use egui::Ui;
 
-use crate::controls::button::TextButton;
+use crate::controls::button::SynthButton;
 use crate::controls::slider::Slider;
 use crate::host::Host;
 use crate::layer::Layer;
 use crate::layout::Rect;
 use crate::paint::{PixelPainter, RectF};
-use crate::popup::{Menu, MenuItem, ValuePopup};
+use crate::popup::{Menu, MenuItem, MenuOutcome, ValuePopup};
 use crate::scope::Scope;
 
 /// `SynthSlider::MenuOptions` ids the port offers.
@@ -39,6 +39,8 @@ pub enum MenuOwner {
     Slider(Slider, Rect),
     /// The Voice section's stereo mode selector.
     StereoMode,
+    /// A `TextSelector`'s options; the selected id is the value.
+    Selector(Slider),
 }
 
 /// A slider's text entry (`SynthSlider::showTextEntry`).
@@ -73,6 +75,39 @@ pub struct Overlay {
     pub value_popup: Option<(&'static str, ValuePopup)>,
     pub menu: Option<Menu<MenuOwner>>,
     pub text_entry: Option<TextEntry>,
+}
+
+impl Overlay {
+    /// The selection menu, if open, and what its selection does.
+    pub fn show_menu(
+        &mut self,
+        ui: &mut Ui,
+        host: &Host,
+        pixels: &PixelPainter,
+        top: &Scope,
+        area: Rect,
+    ) {
+        if let Some(mut menu) = self.menu.take() {
+            match menu.show(ui, pixels, &top, area) {
+                MenuOutcome::Open => self.menu = Some(menu),
+                MenuOutcome::Closed => self.menu = None,
+                MenuOutcome::Selected(id) => {
+                    self.menu = None;
+                    match menu.owner {
+                        MenuOwner::Slider(slider, _) if id == MENU_DEFAULT_VALUE => {
+                            host.set_once(slider.name, slider.info.default_value);
+                        }
+                        MenuOwner::Slider(slider, entry_bounds) if id == MENU_MANUAL_ENTRY => {
+                            self.text_entry = Some(TextEntry::new(host, &slider, entry_bounds));
+                        }
+                        MenuOwner::Slider(..) => {}
+                        MenuOwner::StereoMode => host.set_once("stereo_mode", id as f32),
+                        MenuOwner::Selector(slider) => host.set_once(slider.name, id as f32),
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// One section's controls being shown this frame.
@@ -146,6 +181,16 @@ impl<'a, 'b> Panel<'a, 'b> {
         if event.text_entry {
             self.open_text_entry(slider, bounds);
         }
+        if event.selector {
+            let items = slider
+                .selector_options()
+                .into_iter()
+                .enumerate()
+                .map(|(index, name)| MenuItem::new(index as i32, name))
+                .collect();
+            let position = egui::pos2(bounds.x as f32, bounds.bottom() as f32);
+            self.overlay.menu = Some(Menu::new(items, position, MenuOwner::Selector(*slider)));
+        }
         slider.paint(
             self.pixels,
             &mut self.layer,
@@ -166,7 +211,7 @@ impl<'a, 'b> Panel<'a, 'b> {
         self.overlay.text_entry = Some(entry);
     }
 
-    pub fn button(&mut self, button: &TextButton, bounds: Rect) {
+    pub fn button(&mut self, button: &SynthButton, bounds: Rect) {
         button.show(
             self.ui,
             self.host,

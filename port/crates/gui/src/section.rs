@@ -12,6 +12,7 @@ use crate::colour::Colour;
 use crate::fonts::Face;
 use crate::layout::Rect;
 use crate::paint::{PixelPainter, RectF};
+use crate::primitives::{Quad, QuadKind};
 use crate::scope::Scope;
 use crate::skin::{ColorId, ValueId};
 
@@ -144,4 +145,78 @@ pub fn place_knobs_in_area(scope: &Scope, area: Rect, count: usize) -> Vec<Rect>
         x += component_width + widget_margin as f32;
     }
     bounds
+}
+
+/// `SynthSection::kPowerButtonPaddingPercent`.
+const POWER_BUTTON_PADDING_PERCENT: f32 = 0.29;
+/// `SynthSection::paintHeadingText`'s font size, before scaling.
+const HEADING_TEXT_HEIGHT: f32 = 14.0;
+
+/// `SynthSection::getTitleWidth`: the height of a section's title strip.
+pub fn title_width(scope: &Scope) -> f32 {
+    scope.value(ValueId::TitleWidth)
+}
+
+/// `SynthSection::getPowerButtonBounds`: the activator's square at the
+/// left of the title strip of a section at `bounds` (the default power
+/// button offset is 0).
+pub fn power_button_bounds(scope: &Scope, bounds: Rect) -> Rect {
+    let title_width = title_width(scope) as i32;
+    Rect::new(bounds.x, bounds.y, title_width, title_width)
+}
+
+/// `SynthSection::getTitleBounds`: where the heading text goes. It starts
+/// after the power button if there is one, and ends at `title_text_right`
+/// (pixels from the section's left; its width when there is no preset
+/// selector).
+pub fn title_bounds(
+    scope: &Scope,
+    bounds: Rect,
+    has_activator: bool,
+    title_text_right: i32,
+) -> Rect {
+    let title_width = title_width(scope) as i32;
+    let from = if has_activator {
+        (power_button_bounds(scope, bounds).right() - bounds.x) as f32
+            - title_width as f32 * POWER_BUTTON_PADDING_PERCENT
+    } else {
+        0.0
+    } as i32;
+    Rect::new(
+        bounds.x + from,
+        bounds.y,
+        title_text_right - from,
+        title_width,
+    )
+}
+
+/// `SynthSection::paintContainer`: the body, with the heading background
+/// over the title strip (the body's rounded rectangle clipped to the
+/// strip).
+pub fn paint_container(pixels: &PixelPainter, scope: &Scope, bounds: Rect) {
+    paint_body(pixels, scope, bounds);
+    let rounding = scope.value(ValueId::BodyRounding);
+    let strip = Rect::new(bounds.x, bounds.y, bounds.width, title_width(scope) as i32);
+    pixels.fill_rounded_rect_clipped(bounds, rounding, scope.color(ColorId::BodyHeading), strip);
+}
+
+/// `SynthSection::paintHeadingText`: the section's name in its title.
+pub fn paint_heading_text(pixels: &PixelPainter, scope: &Scope, name: &str, title: Rect) {
+    pixels.text_centred(
+        name,
+        title,
+        Face::Light,
+        scope.size_ratio() * HEADING_TEXT_HEIGHT,
+        scope.color(ColorId::HeadingText),
+    );
+}
+
+/// `SynthSection::OffOverlay`: the veil over a section whose activator is
+/// off, drawn over its controls and under its power button.
+pub fn off_overlay(scope: &Scope, bounds: Rect) -> Quad {
+    Quad::new(
+        QuadKind::Color,
+        bounds.into(),
+        scope.color(ColorId::Background).with_multiplied_alpha(0.8),
+    )
 }

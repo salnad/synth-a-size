@@ -24,16 +24,13 @@ use crate::fonts::Face;
 use crate::host::{Host, HostParam};
 use crate::layout::{FullLayout, Rect};
 use crate::paint::{PixelPainter, RectF};
-use crate::popup::MenuOutcome;
 use crate::scope::Scope;
 use crate::sections::bend::{self, BendLayout, BendSection};
 use crate::sections::keyboard::{self, KeyboardLayout, PlayingNote};
 use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
 use crate::sections::voice::{self, VoiceLayout, VoiceSection};
 use crate::sections::volume::{PeakLevels, VolumeLayout, VolumeSection};
-use crate::sections::{
-    MenuOwner, Overlay, Panel, TextEntry, MENU_DEFAULT_VALUE, MENU_MANUAL_ENTRY,
-};
+use crate::sections::{Overlay, Panel};
 use crate::skin::{ColorId, Section, Skin, ValueId};
 
 /// What the editor shows of the synth's state.
@@ -328,26 +325,7 @@ impl Interface {
             popup.paint(pixels, &top);
         }
 
-        if let Some(mut menu) = self.overlay.menu.take() {
-            match menu.show(ui, pixels, &top, area) {
-                MenuOutcome::Open => self.overlay.menu = Some(menu),
-                MenuOutcome::Closed => self.overlay.menu = None,
-                MenuOutcome::Selected(id) => {
-                    self.overlay.menu = None;
-                    match menu.owner {
-                        MenuOwner::Slider(slider, _) if id == MENU_DEFAULT_VALUE => {
-                            host.set_once(slider.name, slider.info.default_value);
-                        }
-                        MenuOwner::Slider(slider, entry_bounds) if id == MENU_MANUAL_ENTRY => {
-                            self.overlay.text_entry =
-                                Some(TextEntry::new(host, &slider, entry_bounds));
-                        }
-                        MenuOwner::Slider(..) => {}
-                        MenuOwner::StereoMode => host.set_once("stereo_mode", id as f32),
-                    }
-                }
-            }
-        }
+        self.overlay.show_menu(ui, host, pixels, &top, area);
 
         show_text_entry(&mut self.overlay, ui, host, pixels, &top);
     }

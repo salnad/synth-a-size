@@ -129,6 +129,23 @@ impl<'a> PixelPainter<'a> {
         );
     }
 
+    /// `Graphics::fillRoundedRectangle` under `Graphics::reduceClipRegion(clip)`.
+    pub fn fill_rounded_rect_clipped(
+        &self,
+        rect: impl Into<RectF>,
+        radius: f32,
+        colour: Colour,
+        clip: impl Into<RectF>,
+    ) {
+        self.painter
+            .with_clip_rect(self.rect(clip.into()))
+            .rect_filled(
+                self.rect(rect.into()),
+                self.corner(radius),
+                colour.to_egui(),
+            );
+    }
+
     /// `Graphics::drawRoundedRectangle(rect, radius, thickness)`, with the
     /// stroke centred on `rect` as JUCE strokes paths.
     pub fn draw_rounded_rect(
