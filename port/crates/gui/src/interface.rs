@@ -3,23 +3,33 @@
 
 //! The whole editor: upstream's `FullInterface`.
 //!
-//! Ports the shell of `vital/src/interface/editor_sections/full_interface.cpp`
-//! and `header_section.cpp`: the background, the header (logo area, tab
-//! selector, preset selector) and the plain-bodied sections around the
-//! edges. The sections' contents (oscillators, filters, modulators, effects,
-//! matrix, keyboard) arrive in later milestones; until then their areas show
-//! the background, as upstream's do before their children paint.
+//! Ports `vital/src/interface/editor_sections/full_interface.cpp` and
+//! `header_section.cpp` as far as the editor goes: the background, the
+//! header (logo area, tab selector, preset selector), the Voice and
+//! Portamento sections, the plain bodies of the Bend and Keyboard sections,
+//! and the popups. The other sections (oscillators, filters, modulators,
+//! effects, matrix, keyboard) arrive in later milestones; until then their
+//! areas show the background, as upstream's do before their children paint.
 //!
 //! Upstream's logo is replaced by the product name (migration/AGENTS.md
 //! rule 2).
 
-use egui::{Sense, Ui};
+use egui::{Sense, Ui, UiBuilder};
 
 use crate::colour::Colour;
+use crate::controls::format;
 use crate::fonts::Face;
+use crate::host::{Host, HostParam};
 use crate::layout::{FullLayout, Rect};
 use crate::paint::{PixelPainter, RectF};
+use crate::popup::MenuOutcome;
 use crate::scope::Scope;
+use crate::section::{paint_body, paint_border};
+use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
+use crate::sections::voice::{self, VoiceLayout, VoiceSection};
+use crate::sections::{
+    MenuOwner, Overlay, Panel, TextEntry, MENU_DEFAULT_VALUE, MENU_MANUAL_ENTRY,
+};
 use crate::skin::{ColorId, Section, Skin, ValueId};
 
 /// What the editor shows of the synth's state.
@@ -27,6 +37,13 @@ pub trait EditorModel: Send + Sync + 'static {
     /// `SynthBase::getPresetName`: the loaded preset's name, empty for the
     /// init preset.
     fn preset_name(&self) -> String;
+
+    /// The host parameter for synth control `name` (its registry name).
+    /// The pointer must stay valid as long as the model does.
+    fn param(&self, name: &str) -> Option<HostParam> {
+        let _ = name;
+        None
+    }
 }
 
 /// The product name, drawn where upstream draws its logo.
@@ -58,10 +75,13 @@ impl Tab {
     }
 }
 
-/// The editor's own state: the skin and what is selected.
+/// The editor's own state: the skin, what is selected and the open popups.
 pub struct Interface {
     skin: Skin,
     tab: Tab,
+    voice: VoiceSection,
+    portamento: PortamentoSection,
+    overlay: Overlay,
 }
 
 impl Default for Interface {
@@ -75,6 +95,9 @@ impl Interface {
         Interface {
             skin,
             tab: Tab::Voice,
+            voice: VoiceSection::default(),
+            portamento: PortamentoSection::default(),
+            overlay: Overlay::default(),
         }
     }
 
@@ -90,24 +113,103 @@ impl Interface {
         self.tab = tab;
     }
 
+    /// The open popups.
+    pub fn overlay(&self) -> &Overlay {
+        &self.overlay
+    }
+
     /// Draws the editor into `ui`'s whole area and handles its input.
-    pub fn show(&mut self, ui: &mut Ui, model: &dyn EditorModel) {
+    pub fn show(&mut self, ui: &mut Ui, host: &Host) {
         let area = ui.max_rect();
-        self.show_in(ui, area, model);
+        self.show_in(ui, area, host);
     }
 
     /// Draws the editor into `area` (points) and handles its input.
-    pub fn show_in(&mut self, ui: &mut Ui, area: egui::Rect, model: &dyn EditorModel) {
+    pub fn show_in(&mut self, ui: &mut Ui, area: egui::Rect, host: &Host) {
         let pixels_per_point = ui.ctx().pixels_per_point();
         let width = (area.width() * pixels_per_point).round() as i32;
         let height = (area.height() * pixels_per_point).round() as i32;
         let layout = FullLayout::new(&self.skin, width, height);
         let painter = ui.painter_at(area);
-        let pixels = PixelPainter::new(&painter, area.min, pixels_per_point);
+        let pixels = PixelPainter::new(&painter, area, pixels_per_point);
 
         self.paint_background(&pixels, &layout, width, height);
-        self.paint_header(&pixels, &layout, model);
+        self.paint_header(&pixels, &layout, host.model());
         self.handle_tabs(ui, &pixels, &layout);
+        self.show_sections(ui, host, &pixels, &layout);
+        self.show_overlay(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
+    }
+
+    /// The Voice and Portamento sections.
+    fn show_sections(
+        &mut self,
+        ui: &mut Ui,
+        host: &Host,
+        pixels: &PixelPainter,
+        layout: &FullLayout,
+    ) {
+        let top = Scope::top(&self.skin, layout.size_ratio);
+
+        let scope = top.within(voice::SKIN);
+        let voice_layout = VoiceLayout::new(&scope, layout.voice);
+        self.voice.paint_background(pixels, &scope, &voice_layout);
+        let mut panel = Panel::new(ui, host, pixels, scope, &mut self.overlay, layout.voice);
+        self.voice.show(&mut panel, &voice_layout);
+        panel.finish();
+
+        let scope = top.within(portamento::SKIN);
+        let portamento_layout = PortamentoLayout::new(&scope, layout.portamento);
+        self.portamento
+            .paint_background(pixels, &scope, &portamento_layout);
+        let mut panel = Panel::new(
+            ui,
+            host,
+            pixels,
+            scope,
+            &mut self.overlay,
+            layout.portamento,
+        );
+        self.portamento.show(&mut panel, &portamento_layout);
+        panel.finish();
+    }
+
+    /// The value popup, the selection menu and a slider's text entry, over
+    /// everything else.
+    fn show_overlay(
+        &mut self,
+        ui: &mut Ui,
+        host: &Host,
+        pixels: &PixelPainter,
+        layout: &FullLayout,
+        area: Rect,
+    ) {
+        let top = Scope::top(&self.skin, layout.size_ratio);
+        if let Some((_, popup)) = &self.overlay.value_popup {
+            popup.paint(pixels, &top);
+        }
+
+        if let Some(mut menu) = self.overlay.menu.take() {
+            match menu.show(ui, pixels, &top, area) {
+                MenuOutcome::Open => self.overlay.menu = Some(menu),
+                MenuOutcome::Closed => self.overlay.menu = None,
+                MenuOutcome::Selected(id) => {
+                    self.overlay.menu = None;
+                    match menu.owner {
+                        MenuOwner::Slider(slider, _) if id == MENU_DEFAULT_VALUE => {
+                            host.set_once(slider.name, slider.info.default_value);
+                        }
+                        MenuOwner::Slider(slider, entry_bounds) if id == MENU_MANUAL_ENTRY => {
+                            self.overlay.text_entry =
+                                Some(TextEntry::new(host, &slider, entry_bounds));
+                        }
+                        MenuOwner::Slider(..) => {}
+                        MenuOwner::StereoMode => host.set_once("stereo_mode", id as f32),
+                    }
+                }
+            }
+        }
+
+        show_text_entry(&mut self.overlay, ui, host, pixels, &top);
     }
 
     fn top(&self, layout: &FullLayout) -> Scope<'_> {
@@ -133,14 +235,11 @@ impl Interface {
             pixels.fill_rect(bar, header_body);
         }
 
-        // VoiceSection, PortamentoSection and BendSection paint their body
-        // and border; KeyboardInterface its body. All four use the Keyboard
-        // skin section.
+        // BendSection paints its body and border, KeyboardInterface its body
+        // (both in the Keyboard skin section); their contents come later.
         let keyboard = top.within(&[Section::Keyboard]);
-        for bounds in [layout.voice, layout.portamento, layout.bend] {
-            paint_body(pixels, &keyboard, bounds);
-            paint_border(pixels, &keyboard, bounds);
-        }
+        paint_body(pixels, &keyboard, layout.bend);
+        paint_border(pixels, &keyboard, layout.bend);
         paint_body(pixels, &keyboard, layout.keyboard);
     }
 
@@ -274,30 +373,69 @@ impl Interface {
     }
 }
 
+/// `SynthSlider`'s text entry: a monospace field over the slider. Return
+/// or leaving the field sets the value (`setSliderPositionFromText`).
+fn show_text_entry(
+    overlay: &mut Overlay,
+    ui: &mut Ui,
+    host: &Host,
+    pixels: &PixelPainter,
+    top: &Scope,
+) {
+    let Some(entry) = &mut overlay.text_entry else {
+        return;
+    };
+    // DefaultLookAndFeel::fillTextEditorBackground.
+    let rounding = top.value(ValueId::WidgetRoundedCorner);
+    pixels.fill_rounded_rect(
+        entry.bounds,
+        rounding,
+        top.color(ColorId::TextEditorBackground),
+    );
+    pixels.draw_rounded_rect(
+        RectF::from(entry.bounds).reduced(0.5),
+        rounding,
+        1.0,
+        top.color(ColorId::TextEditorBorder),
+    );
+    let rect = pixels.rect(entry.bounds.into());
+    let font_size = pixels.points(top.value(ValueId::TextComponentFontSize));
+    let mut child = ui.new_child(UiBuilder::new().max_rect(rect));
+    child.visuals_mut().selection.bg_fill = top.color(ColorId::TextEditorSelection).to_egui();
+    child.visuals_mut().text_cursor.stroke.color = top.color(ColorId::TextEditorCaret).to_egui();
+    let edit = egui::TextEdit::singleline(&mut entry.text)
+        .frame(egui::Frame::NONE)
+        .font(Face::Mono.at(font_size))
+        .text_color(top.color(ColorId::BodyText).to_egui())
+        .align(egui::Align2::CENTER_CENTER)
+        .desired_width(rect.width());
+    let response = child.add_sized(rect.size(), edit);
+    if !entry.focused {
+        // Focus once the press that opened the entry is over, so its
+        // release does not count as a click elsewhere.
+        if !ui.input(|input| input.pointer.any_down()) {
+            response.request_focus();
+            // setSelectAllWhenFocused: typing replaces the value.
+            let mut state = egui::TextEdit::load_state(ui.ctx(), response.id).unwrap_or_default();
+            let all = egui::text_selection::CCursorRange::select_all_str(&entry.text);
+            state.cursor.set_char_range(Some(all));
+            egui::TextEdit::store_state(ui.ctx(), response.id, state);
+            entry.focused = true;
+        }
+    } else if response.lost_focus() {
+        let slider = entry.slider;
+        if !entry.text.is_empty() {
+            let value = format::value_from_text(slider.info, &slider.format, &entry.text);
+            host.set_once(slider.name, slider.constrain(value) as f32);
+        }
+        overlay.text_entry = None;
+    }
+}
+
 /// `TabSelector::getTabX`.
 fn tab_x(width: i32, position: usize) -> i32 {
     let num_types = Tab::ALL.len() as f32;
     ((width + 1) as f32 * position as f32 / num_types).round() as i32
-}
-
-/// `SynthSection::paintBody`.
-fn paint_body(pixels: &PixelPainter, scope: &Scope, bounds: Rect) {
-    pixels.fill_rounded_rect(
-        bounds,
-        scope.value(ValueId::BodyRounding),
-        scope.color(ColorId::Body),
-    );
-}
-
-/// `SynthSection::paintBorder`.
-fn paint_border(pixels: &PixelPainter, scope: &Scope, bounds: Rect) {
-    let rounding = scope.value(ValueId::BodyRounding) as i32 as f32;
-    pixels.draw_rounded_rect(
-        RectF::from(bounds).reduced(0.5),
-        rounding,
-        1.0,
-        scope.color(ColorId::Border),
-    );
 }
 
 /// An `OpenGlShapeButton` arrow: `PresetSelector`'s chevron path (unit

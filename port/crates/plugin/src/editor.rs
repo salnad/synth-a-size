@@ -4,7 +4,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use sas_gui::EditorModel;
+use sas_gui::{EditorModel, HostParam};
 
 use crate::params::SynthParams;
 
@@ -43,6 +43,12 @@ impl EditorModel for PluginModel {
             );
         }
         cached.1.clone()
+    }
+
+    fn param(&self, name: &str) -> Option<HostParam> {
+        self.params
+            .control(name)
+            .map(|control| control.param.as_ptr())
     }
 }
 

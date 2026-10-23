@@ -20,4 +20,7 @@ source distributes them:
 The plugin links Rust crates under permissive licences (MIT, Apache-2.0,
 ISC, Zlib, BSD, Unlicense and similar), all compatible with the GPLv3. Where
 a crate offers a choice, the permissive option applies. Their licences are in
-each crate's source on crates.io.
+each crate's source on crates.io. One, egui-baseview 0.9.0 (MIT OR
+Apache-2.0, Copyright (c) 2021 Billy Messenger), is built from a copy with
+small local changes; that copy and its licence files are in the
+synth-a-size source under `port/vendor/egui-baseview`.

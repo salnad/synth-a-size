@@ -63,6 +63,17 @@ choice below is easy to change.
   (no GPU needed), in the normal `cargo test`.
 - **Host:** FL Studio on the owner's Mac, from the arm64 bundle CI builds.
 
+## Vendored egui-baseview
+
+egui paint callbacks (how upstream's shader-drawn quads are drawn, from G2)
+need the render target's texture format and sample count to build a
+pipeline, and neither egui-wgpu's callback API nor egui-baseview exposes
+them. `port/vendor/egui-baseview` is egui-baseview 0.9.0 with one patch that
+publishes them in the renderer's callback resources (`PATCHES.md` there),
+used through `[patch.crates-io]`. Further adapter fixes (file drops) go in
+the same copy. It is excluded from the workspace, so its code is not held to
+the port's lints. Proposing the patch upstream needs a human.
+
 ## Known limits
 
 - egui-baseview does not forward file drag-and-drop to egui yet, and FL

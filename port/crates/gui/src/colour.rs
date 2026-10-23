@@ -38,6 +38,78 @@ impl Colour {
         self.0 as u8
     }
 
+    /// `Colour::withMultipliedAlpha` (`withAlpha` rounds to a byte).
+    pub fn with_multiplied_alpha(self, multiplier: f32) -> Colour {
+        if multiplier >= 1.0 {
+            return self;
+        }
+        let alpha = (multiplier * (self.alpha() as f32 / 255.0) * 255.0)
+            .round()
+            .clamp(0.0, 255.0) as u32;
+        Colour((alpha << 24) | (self.0 & 0x00ff_ffff))
+    }
+
+    /// `Colour::interpolatedWith`: a tween of the premultiplied colours in
+    /// 1/255 steps.
+    pub fn interpolated_with(self, other: Colour, proportion: f32) -> Colour {
+        if proportion <= 0.0 {
+            return self;
+        }
+        if proportion >= 1.0 {
+            return other;
+        }
+        let amount = (proportion * 255.0).round() as i32;
+        let premultiply = |colour: Colour| {
+            let alpha = colour.alpha() as i32;
+            let channel = |value: u8| {
+                if alpha == 0xff {
+                    value as i32
+                } else {
+                    (value as i32 * alpha + 0x7f) >> 8
+                }
+            };
+            [
+                alpha,
+                channel(colour.red()),
+                channel(colour.green()),
+                channel(colour.blue()),
+            ]
+        };
+        let (from, to) = (premultiply(self), premultiply(other));
+        let mut mixed = [0i32; 4];
+        for i in 0..4 {
+            mixed[i] = (from[i] + (((to[i] - from[i]) * amount) >> 8)).clamp(0, 255);
+        }
+        let alpha = mixed[0];
+        let unpremultiply = |value: i32| {
+            if alpha == 0xff {
+                value
+            } else if alpha == 0 {
+                0
+            } else {
+                (value * 0xff / alpha).min(0xff)
+            }
+        };
+        Colour(
+            ((alpha as u32) << 24)
+                | ((unpremultiply(mixed[1]) as u32) << 16)
+                | ((unpremultiply(mixed[2]) as u32) << 8)
+                | unpremultiply(mixed[3]) as u32,
+        )
+    }
+
+    /// `Colour::darker`: each channel scaled by 1 / (1 + amount).
+    pub fn darker(self, amount: f32) -> Colour {
+        let scale = 1.0 / (1.0 + amount.max(0.0));
+        let channel = |value: u8| ((value as f32 * scale) as u32).min(255);
+        Colour(
+            ((self.alpha() as u32) << 24)
+                | (channel(self.red()) << 16)
+                | (channel(self.green()) << 8)
+                | channel(self.blue()),
+        )
+    }
+
     pub fn to_egui(self) -> egui::Color32 {
         egui::Color32::from_rgba_unmultiplied(self.red(), self.green(), self.blue(), self.alpha())
     }
@@ -53,5 +125,27 @@ mod tests {
         assert_eq!(Colour::from_string("8ffffff"), Colour(0x08ffffff));
         assert_eq!(Colour::from_string("0"), Colour(0));
         assert_eq!(Colour::from_string("#ff-00-11-22"), Colour(0xff001122));
+    }
+
+    #[test]
+    fn darker_and_alpha_like_juce() {
+        assert_eq!(Colour(0xffaa88ff).darker(0.8), Colour(0xff5e4b8d));
+        assert_eq!(
+            Colour(0xff6b6b6b).with_multiplied_alpha(0.5),
+            Colour(0x806b6b6b)
+        );
+        assert_eq!(
+            Colour(0x806b6b6b).with_multiplied_alpha(1.5),
+            Colour(0x806b6b6b)
+        );
+    }
+
+    #[test]
+    fn interpolation_tweens_in_byte_steps() {
+        let (a, b) = (Colour(0xff848789), Colour(0xffdddddd));
+        assert_eq!(a.interpolated_with(b, 0.0), a);
+        assert_eq!(a.interpolated_with(b, 1.0), b);
+        // amount 128 of 256: 0x84 + ((0xdd - 0x84) * 128 >> 8) = 0xb0.
+        assert_eq!(a.interpolated_with(b, 0.5).red(), 0xb0);
     }
 }

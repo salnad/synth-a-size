@@ -19,6 +19,7 @@ use nice_plug_egui::{
 };
 
 use crate::fonts;
+use crate::host::Host;
 use crate::interface::{EditorModel, Interface, PRODUCT_NAME};
 use crate::layout::{DEFAULT_HEIGHT, DEFAULT_WIDTH};
 
@@ -56,6 +57,8 @@ pub fn create(state: Arc<EguiEditorState>, model: Arc<dyn EditorModel>) -> Optio
 pub struct App {
     model: Arc<dyn EditorModel>,
     interface: Interface,
+    /// The host connection, from the window's `build` until it closes.
+    gui_context: Option<GuiContext>,
     #[cfg(feature = "focus-spike")]
     focus_spike: crate::focus_spike::FocusSpike,
 }
@@ -65,6 +68,7 @@ impl App {
         App {
             model,
             interface: Interface::default(),
+            gui_context: None,
             #[cfg(feature = "focus-spike")]
             focus_spike: Default::default(),
         }
@@ -75,15 +79,21 @@ impl NiceEguiApp for App {
     fn build(
         &mut self,
         egui_ctx: egui::Context,
-        _gui_context: GuiContext,
+        gui_context: GuiContext,
         _frame: &mut Frame,
     ) -> Result<(), nice_plug_egui::baseview::HandlerError> {
         egui_ctx.set_fonts(fonts::definitions());
+        self.gui_context = Some(gui_context);
         Ok(())
     }
 
+    fn editor_closed(&mut self) {
+        self.gui_context = None;
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut Frame) {
-        self.interface.show(ui, self.model.as_ref());
+        let host = Host::new(self.model.as_ref(), self.gui_context.as_ref());
+        self.interface.show(ui, &host);
         #[cfg(feature = "focus-spike")]
         self.focus_spike.show(ui, _frame);
     }
