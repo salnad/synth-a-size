@@ -6,7 +6,7 @@
 //! (`vital/src/interface/editor_sections/portamento_section.cpp`).
 
 use super::Panel;
-use crate::controls::button::TextButton;
+use crate::controls::button::SynthButton;
 use crate::controls::slider::{Slider, SliderStyle};
 use crate::layout::Rect;
 use crate::paint::PixelPainter;
@@ -82,9 +82,9 @@ impl PortamentoLayout {
 pub struct PortamentoSection {
     portamento: Slider,
     portamento_slope: Slider,
-    portamento_scale: TextButton,
-    portamento_force: TextButton,
-    legato: TextButton,
+    portamento_scale: SynthButton,
+    portamento_force: SynthButton,
+    legato: SynthButton,
 }
 
 impl Default for PortamentoSection {
@@ -92,9 +92,9 @@ impl Default for PortamentoSection {
         PortamentoSection {
             portamento: Slider::new("portamento_time", SliderStyle::Rotary),
             portamento_slope: Slider::new("portamento_slope", SliderStyle::Curve),
-            portamento_scale: TextButton::new("portamento_scale", "OCTAVE SCALE"),
-            portamento_force: TextButton::new("portamento_force", "ALWAYS GLIDE"),
-            legato: TextButton::new("legato", "LEGATO"),
+            portamento_scale: SynthButton::text("portamento_scale", "OCTAVE SCALE"),
+            portamento_force: SynthButton::text("portamento_force", "ALWAYS GLIDE"),
+            legato: SynthButton::text("legato", "LEGATO"),
         }
     }
 }

@@ -14,26 +14,24 @@
 //! Upstream's logo is replaced by the product name (migration/AGENTS.md
 //! rule 2).
 
-use egui::{Sense, Ui, UiBuilder};
+use egui::{Ui, UiBuilder};
 use sas_engine::telemetry::Telemetry;
 
 use crate::colour::Colour;
 use crate::controls::format;
 use crate::controls::oscilloscope;
+use crate::controls::tab_selector::{self, TabSelector};
 use crate::fonts::Face;
 use crate::host::{Host, HostParam};
 use crate::layout::{FullLayout, Rect};
 use crate::paint::{PixelPainter, RectF};
-use crate::popup::MenuOutcome;
 use crate::scope::Scope;
 use crate::sections::bend::{self, BendLayout, BendSection};
 use crate::sections::keyboard::{self, KeyboardLayout, PlayingNote};
 use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
 use crate::sections::voice::{self, VoiceLayout, VoiceSection};
 use crate::sections::volume::{PeakLevels, VolumeLayout, VolumeSection};
-use crate::sections::{
-    MenuOwner, Overlay, Panel, TextEntry, MENU_DEFAULT_VALUE, MENU_MANUAL_ENTRY,
-};
+use crate::sections::{Overlay, Panel};
 use crate::skin::{ColorId, Section, Skin, ValueId};
 
 /// What the editor shows of the synth's state.
@@ -110,16 +108,18 @@ pub enum Tab {
     Advanced,
 }
 
+/// `HeaderSection`'s tab selector.
+const HEADER_TABS: TabSelector = TabSelector {
+    names: &["VOICE", "EFFECTS", "MATRIX", "ADVANCED"],
+    font_height_percent: tab_selector::DEFAULT_FONT_HEIGHT_PERCENT,
+    active: true,
+};
+
 impl Tab {
     pub const ALL: [Tab; 4] = [Tab::Voice, Tab::Effects, Tab::Matrix, Tab::Advanced];
 
     pub fn label(self) -> &'static str {
-        match self {
-            Tab::Voice => "VOICE",
-            Tab::Effects => "EFFECTS",
-            Tab::Matrix => "MATRIX",
-            Tab::Advanced => "ADVANCED",
-        }
+        HEADER_TABS.names[self.index()]
     }
 
     fn index(self) -> usize {
@@ -328,26 +328,7 @@ impl Interface {
             popup.paint(pixels, &top);
         }
 
-        if let Some(mut menu) = self.overlay.menu.take() {
-            match menu.show(ui, pixels, &top, area) {
-                MenuOutcome::Open => self.overlay.menu = Some(menu),
-                MenuOutcome::Closed => self.overlay.menu = None,
-                MenuOutcome::Selected(id) => {
-                    self.overlay.menu = None;
-                    match menu.owner {
-                        MenuOwner::Slider(slider, _) if id == MENU_DEFAULT_VALUE => {
-                            host.set_once(slider.name, slider.info.default_value);
-                        }
-                        MenuOwner::Slider(slider, entry_bounds) if id == MENU_MANUAL_ENTRY => {
-                            self.overlay.text_entry =
-                                Some(TextEntry::new(host, &slider, entry_bounds));
-                        }
-                        MenuOwner::Slider(..) => {}
-                        MenuOwner::StereoMode => host.set_once("stereo_mode", id as f32),
-                    }
-                }
-            }
-        }
+        self.overlay.show_menu(ui, host, pixels, &top, area);
 
         show_text_entry(&mut self.overlay, ui, host, pixels, &top);
     }
@@ -408,39 +389,10 @@ impl Interface {
         );
     }
 
-    /// `TabSelector::paint`.
+    /// The header's `TabSelector`.
     fn paint_tabs(&self, pixels: &PixelPainter, layout: &FullLayout) {
-        const LIGHT_HEIGHT_PERCENT: f32 = 0.08;
-        const FONT_HEIGHT_PERCENT: f32 = 0.26;
         let header = self.top(layout).within(&[Section::Header]);
-        let bounds = layout.header.tabs;
-        let selected = self.tab.index();
-        let light_height = ((bounds.height as f32 * LIGHT_HEIGHT_PERCENT) as i32).max(1);
-        let highlight = header.color(ColorId::WidgetPrimary1);
-
-        pixels.fill_rect(
-            Rect::new(bounds.x, bounds.y, bounds.width, light_height),
-            header.color(ColorId::LightenScreen),
-        );
-        let from = tab_x(bounds.width, selected);
-        let to = tab_x(bounds.width, selected + 1);
-        pixels.fill_rect(
-            Rect::new(bounds.x + from, bounds.y, to - from, light_height),
-            highlight,
-        );
-
-        let point_height = bounds.height as f32 * FONT_HEIGHT_PERCENT;
-        for tab in Tab::ALL {
-            let from = tab_x(bounds.width, tab.index());
-            let to = tab_x(bounds.width, tab.index() + 1);
-            let colour = if tab == self.tab {
-                highlight
-            } else {
-                header.color(ColorId::TextComponentText)
-            };
-            let cell = Rect::new(bounds.x + from, bounds.y, to - from, bounds.height);
-            pixels.text_centred(tab.label(), cell, Face::Light, point_height, colour);
-        }
+        HEADER_TABS.paint(pixels, &header, layout.header.tabs, self.tab.index());
     }
 
     /// `PresetSelector::paintBackground` and its text and arrow buttons.
@@ -489,19 +441,10 @@ impl Interface {
     /// pointer is selected as soon as the button goes down, and follows a
     /// drag.
     fn handle_tabs(&mut self, ui: &mut Ui, pixels: &PixelPainter, layout: &FullLayout) {
-        let bounds = layout.header.tabs;
-        let response = ui.interact(
-            pixels.rect(bounds.into()),
-            ui.scope_id().with("tabs"),
-            Sense::click_and_drag(),
-        );
-        if !response.is_pointer_button_down_on() {
-            return;
-        }
-        if let Some(pointer) = response.interact_pointer_pos() {
-            let x = (pointer.x - pixels.rect(bounds.into()).min.x) * pixels.pixels_per_point();
-            let index = (x * Tab::ALL.len() as f32 / bounds.width as f32) as i32;
-            self.tab = Tab::ALL[index.clamp(0, Tab::ALL.len() as i32 - 1) as usize];
+        let mut selected = self.tab.index();
+        let id = ui.scope_id().with("tabs");
+        if HEADER_TABS.interact(ui, pixels, id, layout.header.tabs, &mut selected) {
+            self.tab = Tab::ALL[selected];
         }
     }
 }
@@ -568,12 +511,6 @@ fn show_text_entry(
     }
 }
 
-/// `TabSelector::getTabX`.
-fn tab_x(width: i32, position: usize) -> i32 {
-    let num_types = Tab::ALL.len() as f32;
-    ((width + 1) as f32 * position as f32 / num_types).round() as i32
-}
-
 /// An `OpenGlShapeButton` arrow: `PresetSelector`'s chevron path (unit
 /// coordinates), stroked 0.05 of the button's size with round ends.
 fn paint_arrow(pixels: &PixelPainter, bounds: Rect, path: &[(f32, f32)], colour: Colour) {
@@ -583,17 +520,4 @@ fn paint_arrow(pixels: &PixelPainter, bounds: Rect, path: &[(f32, f32)], colour:
         .map(|&(x, y)| (bounds.x as f32 + x * size, bounds.y as f32 + y * size))
         .collect();
     pixels.polyline(&points, 0.05 * size, colour);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn tab_positions_match_upstream() {
-        assert_eq!(
-            (0..=4).map(|i| tab_x(395, i)).collect::<Vec<_>>(),
-            vec![0, 99, 198, 297, 396]
-        );
-    }
 }

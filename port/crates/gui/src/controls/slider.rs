@@ -105,6 +105,12 @@ pub struct Slider {
     pub show_popup_on_hover: bool,
     /// `OpenGlSlider::active_`: drawn in the disabled colours when false.
     pub active: bool,
+    /// A `TextSelector`: a press opens the list of options instead of
+    /// dragging.
+    pub text_selector: bool,
+    /// `TextSelector::long_lookup_`: the names the list shows, when they
+    /// differ from the ones the slider shows.
+    pub long_lookup: Option<&'static [&'static str]>,
 }
 
 impl Slider {
@@ -121,7 +127,32 @@ impl Slider {
             popup_placement: Placement::Below,
             show_popup_on_hover: false,
             active: true,
+            text_selector: false,
+            long_lookup: None,
         }
+    }
+
+    /// A `TextSelector` (a text slider whose press opens its options),
+    /// listing `long_lookup` if given, else the parameter's option names.
+    pub fn selector(name: &'static str, long_lookup: Option<&'static [&'static str]>) -> Slider {
+        let mut slider = Slider::new(name, SliderStyle::Text);
+        slider.text_selector = true;
+        slider.long_lookup = long_lookup;
+        slider
+    }
+
+    /// The options a `TextSelector` lists (`TextSelector::mouseDown`): one
+    /// per value up to the maximum.
+    pub fn selector_options(&self) -> Vec<&'static str> {
+        let lookup = self
+            .long_lookup
+            .or_else(|| self.info.options())
+            .unwrap_or(&[]);
+        lookup
+            .iter()
+            .take(self.info.max as usize + 1)
+            .copied()
+            .collect()
     }
 
     pub fn bipolar(mut self) -> Slider {
@@ -510,7 +541,10 @@ impl Slider {
 
         if pressed_here && !state.down {
             // mouseDown.
-            if modifiers.alt {
+            if self.text_selector && !popup_menu {
+                // TextSelector::mouseDown: the options, below the selector.
+                event.selector = true;
+            } else if modifiers.alt {
                 event.text_entry = true;
             } else if popup_menu {
                 event.menu_at = pointer;
@@ -625,6 +659,8 @@ pub struct SliderEvent {
     pub menu_at: Option<Pos2>,
     /// `showTextEntry`.
     pub text_entry: bool,
+    /// A `TextSelector` was pressed: open its options.
+    pub selector: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
