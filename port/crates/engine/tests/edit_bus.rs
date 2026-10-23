@@ -18,7 +18,15 @@ use sas_engine::synth_voice_handler::SynthVoiceHandler;
 use sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_oscillators::sas_wavetable::Wavetable;
 use sas_oscillators::{RandomValues, Sample};
-use sas_preset::{InitContent, SampleState};
+use sas_preset::{InitContent, SampleState, SlotValues};
+
+/// A drag onto a control without a modifier key, at mid range.
+const DRAG: SlotValues = SlotValues {
+    amount: 0.5,
+    bipolar: false,
+    stereo: false,
+    bypass: false,
+};
 
 /// What the consumer asked of its target, in order.
 #[derive(Debug, PartialEq)]
@@ -36,7 +44,7 @@ enum Call {
 struct Recorder(Vec<Call>);
 
 impl EditTarget for Recorder {
-    fn connect_modulation(&mut self, source: &str, destination: &str) {
+    fn connect_modulation(&mut self, source: &str, destination: &str, _bipolar: Option<bool>) {
         self.0
             .push(Call::Connect(source.into(), destination.into()));
     }
@@ -88,13 +96,19 @@ fn named_sample(name: &str) -> SampleState {
 fn edits_arrive_in_order() {
     let (edits, mut consumer) = EditBus::new(init_document());
     let connection = edits
-        .connect_modulation("lfo_1", "filter_1_cutoff")
+        .connect_modulation("lfo_1", "filter_1_cutoff", DRAG)
         .unwrap();
     assert_eq!(connection.slot, 0);
     assert!(connection.created);
     assert_eq!(
         connection.parameter_changes,
-        vec![("modulation_1_bipolar", 1.0), ("modulation_1_power", 0.0)]
+        vec![
+            ("modulation_1_power", 0.0),
+            ("modulation_1_amount", 0.5),
+            ("modulation_1_bipolar", 0.0),
+            ("modulation_1_stereo", 0.0),
+            ("modulation_1_bypass", 0.0),
+        ]
     );
     edits.set_lfo_shape(2, named_line("wobble")).unwrap();
     edits.set_sample(named_sample("drum")).unwrap();
@@ -123,7 +137,7 @@ fn edits_arrive_in_order() {
         assert!(document.state.modulations()[0].is_free());
         assert_eq!(document.state.lfos[2].name(), "wobble");
         assert_eq!(document.state.sample.name, "drum");
-        assert_eq!(document.state.value("modulation_1_bipolar"), Some(1.0));
+        assert_eq!(document.state.value("modulation_1_amount"), Some(0.5));
     });
 }
 
@@ -132,11 +146,11 @@ fn unknown_names_and_indices_change_nothing() {
     let (edits, mut consumer) = EditBus::new(init_document());
     let revision = edits.revision();
     assert!(matches!(
-        edits.connect_modulation("lfo_9", "filter_1_cutoff"),
+        edits.connect_modulation("lfo_9", "filter_1_cutoff", DRAG),
         Err(EditError::UnknownSource(_))
     ));
     assert!(matches!(
-        edits.connect_modulation("lfo_1", "filter_9_cutoff"),
+        edits.connect_modulation("lfo_1", "filter_9_cutoff", DRAG),
         Err(EditError::UnknownDestination(_))
     ));
     assert_eq!(
@@ -178,7 +192,9 @@ fn shape_edits_coalesce_newest_wins() {
 fn a_curve_set_after_a_connection_lands_after_its_linear_reset() {
     let (edits, mut consumer) = EditBus::new(init_document());
     edits.set_line_mapping(0, named_line("before")).unwrap();
-    edits.connect_modulation("env_2", "osc_1_level").unwrap();
+    edits
+        .connect_modulation("env_2", "osc_1_level", DRAG)
+        .unwrap();
     let mut recorder = Recorder::default();
     consumer.drain(&mut recorder);
     assert_eq!(
@@ -190,7 +206,9 @@ fn a_curve_set_after_a_connection_lands_after_its_linear_reset() {
     );
 
     edits.disconnect_modulation("env_2", "osc_1_level").unwrap();
-    edits.connect_modulation("env_2", "osc_1_level").unwrap();
+    edits
+        .connect_modulation("env_2", "osc_1_level", DRAG)
+        .unwrap();
     edits.set_line_mapping(0, named_line("after")).unwrap();
     let mut recorder = Recorder::default();
     consumer.drain(&mut recorder);
@@ -208,7 +226,7 @@ fn a_curve_set_after_a_connection_lands_after_its_linear_reset() {
 fn a_restore_drops_older_edits_and_holds_newer_ones_until_loaded() {
     let (edits, mut consumer) = EditBus::new(init_document());
     edits.set_lfo_shape(0, named_line("stale")).unwrap();
-    edits.connect_modulation("lfo_1", "volume").unwrap();
+    edits.connect_modulation("lfo_1", "volume", DRAG).unwrap();
     assert_eq!(edits.generation(), 0);
 
     let mut restored = init_document();
@@ -238,10 +256,10 @@ fn batches_are_all_or_nothing() {
     let (edits, mut consumer) = EditBus::new(init_document());
     let revision = edits.revision();
     let result = edits.batch(|batch| {
-        batch.connect_modulation("lfo_1", "filter_1_cutoff")?;
+        batch.connect_modulation("lfo_1", "filter_1_cutoff", DRAG)?;
         batch.set_lfo_shape(0, named_line("batched"))?;
         batch.set_sample(named_sample("batched"))?;
-        batch.connect_modulation("nothing", "filter_1_cutoff")
+        batch.connect_modulation("nothing", "filter_1_cutoff", DRAG)
     });
     assert!(matches!(result, Err(EditError::UnknownSource(_))));
     assert_eq!(edits.revision(), revision);
@@ -254,7 +272,7 @@ fn batches_are_all_or_nothing() {
 
     edits
         .batch(|batch| {
-            batch.connect_modulation("lfo_1", "filter_1_cutoff")?;
+            batch.connect_modulation("lfo_1", "filter_1_cutoff", DRAG)?;
             batch.set_lfo_shape(0, named_line("batched"))
         })
         .unwrap();
@@ -402,6 +420,18 @@ fn bus_edits_play_like_in_place_edits() {
     let mut expected_synth = fresh_synth();
     expected_synth.connect_modulation("lfo_1", "filter_fx_cutoff");
     expected_synth.connect_modulation("env_2", "osc_1_wave_frame");
+    // initModulationValues, then setModulationValues with the drag's values.
+    for number in [1, 2] {
+        for (suffix, value) in [
+            ("power", 0.0),
+            ("amount", DRAG.amount),
+            ("bipolar", 0.0),
+            ("stereo", 0.0),
+            ("bypass", 0.0),
+        ] {
+            expected_synth.set_control(&format!("modulation_{number}_{suffix}"), value);
+        }
+    }
     expected_synth.process_modulation_changes();
     let mut in_place_curve = curve.clone();
     expected_synth.set_line_mapping(1, &mut in_place_curve);
@@ -425,10 +455,10 @@ fn bus_edits_play_like_in_place_edits() {
     let mut synth = fresh_synth();
     let (edits, mut consumer) = EditBus::new(init_document());
     edits
-        .connect_modulation("lfo_1", "filter_fx_cutoff")
+        .connect_modulation("lfo_1", "filter_fx_cutoff", DRAG)
         .unwrap();
     edits
-        .connect_modulation("env_2", "osc_1_wave_frame")
+        .connect_modulation("env_2", "osc_1_wave_frame", DRAG)
         .unwrap();
     edits.set_line_mapping(1, curve).unwrap();
     edits.set_lfo_shape(0, lfo).unwrap();
@@ -458,4 +488,51 @@ fn corpus_wavetable() -> WavetableCreator {
     creator.clone().render(&mut probe).unwrap();
     assert!(probe.num_frames() > 1, "the corpus wavetable has one frame");
     creator
+}
+
+/// A slot freed by a disconnection and taken by a new route gets the drag's
+/// values, not the old route's (a stale bypass would leave it silent): the
+/// polarity from the edit, the rest from the reported parameter changes.
+#[test]
+fn a_reused_slot_does_not_inherit_the_old_route() {
+    let _rng = ENGINE_RNG.lock().unwrap_or_else(|p| p.into_inner());
+    let mut synth = fresh_synth();
+    let (edits, mut consumer) = EditBus::new(init_document());
+    edits
+        .connect_modulation("lfo_1", "filter_1_cutoff", DRAG)
+        .unwrap();
+    consumer.drain(&mut synth);
+    for (name, value) in [
+        ("modulation_1_amount", -0.9),
+        ("modulation_1_stereo", 1.0),
+        ("modulation_1_bypass", 1.0),
+        ("modulation_1_power", 3.0),
+    ] {
+        synth.set_control(name, value);
+    }
+    edits
+        .disconnect_modulation("lfo_1", "filter_1_cutoff")
+        .unwrap();
+    let connection = edits
+        .connect_modulation("env_2", "osc_1_level", DRAG)
+        .unwrap();
+    assert_eq!((connection.slot, connection.created), (0, true));
+    // As a host applies the reported parameter changes.
+    for (name, value) in &connection.parameter_changes {
+        synth.set_control(name, *value);
+    }
+    consumer.drain(&mut synth);
+    synth.process_modulation_changes();
+    let controls = synth.engine().get_controls();
+    let value = |suffix: &str| controls[&format!("modulation_1_{suffix}")].value();
+    assert_eq!(
+        [
+            value("amount"),
+            value("bipolar"),
+            value("stereo"),
+            value("bypass"),
+            value("power")
+        ],
+        [0.5, 0.0, 0.0, 0.0, 0.0]
+    );
 }

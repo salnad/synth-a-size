@@ -21,7 +21,7 @@ use sas_wavetable::creator::WavetableCreator;
 use crate::constants::*;
 use crate::engine;
 use crate::json::{ensure_object, read_f32, read_string};
-use crate::registry::registry;
+use crate::registry::{registry, ParamInfo};
 use crate::sample::SampleState;
 use crate::upgrade::update_from_old_version;
 use crate::version::{compare_feature_version_strings, SYNTH_VERSION};
@@ -76,6 +76,43 @@ impl ModulationSlot {
     }
 }
 
+/// What upstream's editor gives a slot it has just created by dragging a
+/// source onto a control (`ModulationManager::setModulationValues`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SlotValues {
+    /// `modulation_N_amount`.
+    pub amount: f32,
+    pub bipolar: bool,
+    pub stereo: bool,
+    pub bypass: bool,
+}
+
+impl SlotValues {
+    /// `ModulationManager::modulationDraggedToComponent`: the values for a
+    /// source dropped on `destination`'s control while it is at `value`
+    /// (its live value, the host parameter's). `bipolar` is whether a
+    /// modifier key is held. The amount reaches from the control's position
+    /// to the top of its range (to the nearer end, doubled, when bipolar),
+    /// and at least `kDefaultModulationRatio`; stereo and bypass are off.
+    pub fn dragged_to(destination: &ParamInfo, value: f32, bipolar: bool) -> SlotValues {
+        const DEFAULT_MODULATION_RATIO: f32 = 0.25;
+        // juce::Slider::valueToProportionOfLength on the control's linear
+        // range, in double as JUCE computes it, then stored as a float.
+        let (min, max) = (f64::from(destination.min), f64::from(destination.max));
+        let percent = ((f64::from(value) - min) / (max - min)).clamp(0.0, 1.0) as f32;
+        let mut amount = 1.0 - percent;
+        if bipolar {
+            amount = amount.min(percent) * 2.0;
+        }
+        SlotValues {
+            amount: amount.max(DEFAULT_MODULATION_RATIO),
+            bipolar,
+            stereo: false,
+            bypass: false,
+        }
+    }
+}
+
 /// The result of [`PresetState::connect_modulation_from_gui`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct GuiConnection {
@@ -84,8 +121,10 @@ pub struct GuiConnection {
     /// Whether the connection took a new slot.
     pub created: bool,
     /// The control values the connection set, which a plugin must also set
-    /// on its host parameters: `modulation_N_bipolar` (the source's default)
-    /// and `modulation_N_power` (0), when a slot was created.
+    /// on its host parameters, when a slot was created: `modulation_N_power`
+    /// (0), then `modulation_N_amount`, `_bipolar`, `_stereo` and `_bypass`
+    /// from the [`SlotValues`]. A reused slot would otherwise keep the old
+    /// route's amount, stereo and bypass.
     pub parameter_changes: Vec<(&'static str, f32)>,
 }
 
@@ -263,16 +302,19 @@ impl PresetState {
         Ok(index)
     }
 
-    /// `SynthGuiInterface::connectModulation(source, destination)`: what
-    /// upstream's editor does when a source is dropped on a control.
-    /// [`add_modulation`](Self::add_modulation), then, if that took a new slot,
-    /// `initModulationValues`: the slot's remap curve goes back to linear and
-    /// its power to 0. Every live and offline edit path uses this, so they
-    /// all pick the same slot.
+    /// What upstream's editor does when a source is dropped on a control
+    /// (`ModulationManager::modulationDraggedToComponent`): if the two are
+    /// not connected yet, `SynthGuiInterface::connectModulation`
+    /// ([`add_modulation`](Self::add_modulation), then `initModulationValues`:
+    /// the remap curve goes back to linear and the power to 0), then
+    /// `setModulationValues` with `values`. An existing connection is left
+    /// alone. Every live and offline edit path uses this, so they all pick
+    /// the same slot and give it the same values.
     pub fn connect_modulation_from_gui(
         &mut self,
         source: &str,
         destination: &str,
+        values: SlotValues,
     ) -> Result<GuiConnection, Error> {
         let created = self.modulation_index(source, destination).is_none();
         let slot = self.add_modulation(source, destination)?;
@@ -280,11 +322,18 @@ impl PresetState {
         if created {
             self.modulations[slot].line_mapping.init_linear();
             let number = slot + 1;
-            let bipolar = control_name(&format!("modulation_{number}_bipolar"));
-            let power = control_name(&format!("modulation_{number}_power"));
-            self.controls.insert(power.to_string(), 0.0);
-            parameter_changes.push((bipolar, self.controls[bipolar]));
-            parameter_changes.push((power, 0.0));
+            let flag = |on: bool| if on { 1.0 } else { 0.0 };
+            for (suffix, value) in [
+                ("power", 0.0),
+                ("amount", values.amount),
+                ("bipolar", flag(values.bipolar)),
+                ("stereo", flag(values.stereo)),
+                ("bypass", flag(values.bypass)),
+            ] {
+                let name = control_name(&format!("modulation_{number}_{suffix}"));
+                self.controls.insert(name.to_string(), value);
+                parameter_changes.push((name, value));
+            }
         }
         Ok(GuiConnection {
             slot,

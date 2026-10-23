@@ -40,7 +40,7 @@ use sas_dsp_core::constants::MAX_MODULATION_CONNECTIONS;
 use sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_oscillators::sas_wavetable::{Wavetable, NUM_OSCILLATOR_WAVE_FRAMES};
 use sas_oscillators::Sample;
-use sas_preset::{GuiConnection, SampleState};
+use sas_preset::{GuiConnection, SampleState, SlotValues};
 
 use crate::document::PresetDocument;
 use crate::synth::{Synth, NUM_LFOS, NUM_OSCILLATORS};
@@ -180,9 +180,12 @@ struct Pending {
 
 #[derive(Clone, Copy, Debug)]
 enum Command {
+    /// The polarity a created slot takes (`None` when the mirror found the
+    /// two already connected).
     Connect {
         source: &'static str,
         destination: &'static str,
+        bipolar: Option<bool>,
     },
     Disconnect {
         source: &'static str,
@@ -346,22 +349,26 @@ pub struct Batch<'a> {
 }
 
 impl Batch<'_> {
-    /// `SynthGuiInterface::connectModulation` (see
+    /// A source dropped on a control (see
     /// [`PresetState::connect_modulation_from_gui`](sas_preset::PresetState::connect_modulation_from_gui)):
-    /// queues the connection and, when it takes a new slot, the slot's
-    /// linear remap curve. The caller sets `parameter_changes` on the host
-    /// parameters.
+    /// queues the connection (with `values.bipolar` for a new slot) and that
+    /// slot's linear remap curve. The caller must set the returned
+    /// `parameter_changes` on the host parameters: they carry the new slot's
+    /// power, amount, polarity, stereo and bypass, which a freed slot would
+    /// otherwise keep from its old route. [`SlotValues::dragged_to`] gives
+    /// upstream's values for a drag onto a control.
     pub fn connect_modulation(
         &mut self,
         source: &str,
         destination: &str,
+        values: SlotValues,
     ) -> Result<Connection, EditError> {
         let (source, destination) = route(source, destination)?;
         let connection = self
             .mirror
             .document
             .state
-            .connect_modulation_from_gui(source, destination)
+            .connect_modulation_from_gui(source, destination, values)
             .map_err(|error| match error {
                 sas_preset::Error::NoModulationSlot => EditError::NoFreeSlot,
                 sas_preset::Error::UnknownModulationSource(name) => EditError::UnknownSource(name),
@@ -370,6 +377,7 @@ impl Batch<'_> {
         self.staged.push(Staged::Command(Command::Connect {
             source,
             destination,
+            bipolar: connection.created.then_some(values.bipolar),
         }));
         if connection.created {
             self.staged.push(Staged::Pending(
@@ -647,8 +655,9 @@ impl EditHandle {
         &self,
         source: &str,
         destination: &str,
+        values: SlotValues,
     ) -> Result<Connection, EditError> {
-        self.single(|batch| batch.connect_modulation(source, destination))
+        self.single(|batch| batch.connect_modulation(source, destination, values))
     }
 
     /// See [`Batch::disconnect_modulation`].
@@ -749,7 +758,8 @@ impl EditHandle {
 /// What the edits act on: the [`Synth`] on the audio thread, or nothing
 /// (`()`, for an engine that has no synth).
 pub trait EditTarget {
-    fn connect_modulation(&mut self, source: &str, destination: &str);
+    /// `bipolar` is the slot's polarity if the connection creates it.
+    fn connect_modulation(&mut self, source: &str, destination: &str, bipolar: Option<bool>);
     fn disconnect_modulation(&mut self, source: &str, destination: &str);
     fn set_lfo_shape(&mut self, lfo: usize, line: &mut LineGenerator);
     fn set_line_mapping(&mut self, slot: usize, line: &mut LineGenerator);
@@ -761,8 +771,13 @@ pub trait EditTarget {
 }
 
 impl EditTarget for Synth {
-    fn connect_modulation(&mut self, source: &str, destination: &str) {
-        Synth::connect_modulation(self, source, destination);
+    fn connect_modulation(&mut self, source: &str, destination: &str, bipolar: Option<bool>) {
+        match bipolar {
+            Some(bipolar) => self.gui_connect_modulation(source, destination, bipolar),
+            None => {
+                Synth::connect_modulation(self, source, destination);
+            }
+        }
     }
 
     fn disconnect_modulation(&mut self, source: &str, destination: &str) {
@@ -792,7 +807,7 @@ impl EditTarget for Synth {
 }
 
 impl EditTarget for () {
-    fn connect_modulation(&mut self, _source: &str, _destination: &str) {}
+    fn connect_modulation(&mut self, _source: &str, _destination: &str, _bipolar: Option<bool>) {}
     fn disconnect_modulation(&mut self, _source: &str, _destination: &str) {}
     fn set_lfo_shape(&mut self, _lfo: usize, _line: &mut LineGenerator) {}
     fn set_line_mapping(&mut self, _slot: usize, _line: &mut LineGenerator) {}
@@ -925,7 +940,8 @@ impl EditConsumer {
             Command::Connect {
                 source,
                 destination,
-            } => target.connect_modulation(source, destination),
+                bipolar,
+            } => target.connect_modulation(source, destination, bipolar),
             Command::Disconnect {
                 source,
                 destination,

@@ -33,7 +33,7 @@ use sas_engine::document::PresetDocument;
 use sas_engine::edit_bus::{EditBus, EditError, EditHandle};
 use sas_engine::synth::Synth;
 use sas_oscillators::RandomValues;
-use sas_preset::{InitContent, PresetState, SampleState};
+use sas_preset::{InitContent, PresetState, SampleState, SlotValues};
 
 struct CountingAllocator;
 
@@ -121,6 +121,15 @@ fn retry<R>(mut edit: impl FnMut() -> Result<R, EditError>) -> R {
     panic!("the queue stayed full");
 }
 
+fn drag(count: usize) -> SlotValues {
+    SlotValues {
+        amount: (count % 9) as f32 / 9.0,
+        bipolar: count.is_multiple_of(3),
+        stereo: false,
+        bypass: false,
+    }
+}
+
 fn producer(edits: EditHandle, stop: Arc<AtomicBool>, routing: bool) -> usize {
     let wavetables = preset("line_wavetable_fold").wavetables;
     let shapes: [fn(&mut LineGenerator); 4] = [
@@ -145,14 +154,14 @@ fn producer(edits: EditHandle, stop: Arc<AtomicBool>, routing: bool) -> usize {
         if routing {
             let (source, destination) = routes[count % routes.len()];
             if count % 2 == 0 {
-                retry(|| edits.connect_modulation(source, destination));
+                retry(|| edits.connect_modulation(source, destination, drag(count)));
             } else {
                 retry(|| edits.disconnect_modulation(source, destination));
             }
             if count % 25 == 0 {
                 retry(|| {
                     edits.batch(|batch| {
-                        batch.connect_modulation("lfo_3", "osc_2_level")?;
+                        batch.connect_modulation("lfo_3", "osc_2_level", drag(count))?;
                         batch.set_lfo_shape(2, line.clone())?;
                         batch.disconnect_modulation("lfo_3", "osc_2_level")
                     })

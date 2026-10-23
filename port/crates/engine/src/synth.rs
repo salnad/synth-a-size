@@ -350,6 +350,32 @@ impl Synth {
         create
     }
 
+    /// The engine side of a source dropped on a control
+    /// (`ModulationManager::modulationDraggedToComponent`, see
+    /// `PresetState::connect_modulation_from_gui`): if this creates the
+    /// connection, its polarity becomes `bipolar` right after
+    /// `createConnection` set the source's default, as `setModulationValues`
+    /// sets it. The slot's power, amount, stereo and bypass are host
+    /// parameters, set from the connection's `parameter_changes` (a host-free
+    /// caller sets them with [`set_control`](Self::set_control)); setting them
+    /// here too would override a value the host changed in the same block.
+    /// Nothing is allocated.
+    pub fn gui_connect_modulation(&mut self, source: &str, destination: &str, bipolar: bool) {
+        if !self.connect_modulation(source, destination) {
+            return;
+        }
+        let Some(index) = self
+            .mod_connections
+            .iter()
+            .copied()
+            .find(|&i| self.bank_slot_connects(i, source, destination))
+        else {
+            return;
+        };
+        self.bank_processor(index)
+            .with::<ModulationConnectionProcessor, _>(|kernel, _| kernel.set_bipolar(bipolar));
+    }
+
     /// `disconnectModulation(source, destination)`.
     pub fn disconnect_modulation(&mut self, source: &str, destination: &str) {
         let Some(position) = self

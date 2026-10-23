@@ -2,6 +2,7 @@
 
 //! The by-name API used by the plugin and the LLM control layer.
 
+use sas_preset::SlotValues;
 use sas_preset::{engine, lookup, registry, Error, InitContent, PresetState, ValueScale};
 
 fn fresh() -> PresetState {
@@ -129,41 +130,77 @@ fn rejects_upgrades_with_missing_keys() {
     ));
 }
 
-/// `SynthGuiInterface::connectModulation`: a new slot gets the source's
-/// bipolar default, power 0 and a linear curve; reconnecting changes nothing.
+/// `ModulationManager::modulationDraggedToComponent`: a new slot gets power
+/// 0, a linear curve and the drag's amount, polarity, stereo and bypass, even
+/// where a freed slot held an old route's; reconnecting changes nothing.
 #[test]
 fn gui_connect_initializes_a_new_slot_only() {
+    let drag = SlotValues {
+        amount: 0.4,
+        bipolar: false,
+        stereo: false,
+        bypass: false,
+    };
     let mut preset = fresh();
-    preset.set_value("modulation_1_power", 3.0).unwrap();
+    let old = preset
+        .connect_modulation_from_gui("lfo_1", "osc_1_level", drag)
+        .unwrap();
+    assert_eq!((old.slot, old.created), (0, true));
+    for (name, value) in [
+        ("modulation_1_power", 3.0),
+        ("modulation_1_amount", -0.8),
+        ("modulation_1_stereo", 1.0),
+        ("modulation_1_bypass", 1.0),
+    ] {
+        preset.set_value(name, value).unwrap();
+    }
     preset.line_mapping_mut(0).unwrap().init_square();
+    preset.remove_modulation("lfo_1", "osc_1_level").unwrap();
 
     let connection = preset
-        .connect_modulation_from_gui("env_2", "filter_1_cutoff")
+        .connect_modulation_from_gui("env_2", "filter_1_cutoff", drag)
         .unwrap();
-    assert_eq!(connection.slot, 0);
-    assert!(connection.created);
-    assert_eq!(
-        connection.parameter_changes,
-        vec![("modulation_1_bipolar", 0.0), ("modulation_1_power", 0.0)]
-    );
-    assert_eq!(preset.value("modulation_1_power"), Some(0.0));
+    assert_eq!((connection.slot, connection.created), (0, true));
+    let expected = [
+        ("modulation_1_power", 0.0),
+        ("modulation_1_amount", 0.4),
+        ("modulation_1_bipolar", 0.0),
+        ("modulation_1_stereo", 0.0),
+        ("modulation_1_bypass", 0.0),
+    ];
+    assert_eq!(connection.parameter_changes, expected);
+    for (name, value) in expected {
+        assert_eq!(preset.value(name), Some(value), "{name}");
+    }
     assert!(preset.modulations()[0].line_mapping.is_linear());
 
     preset.set_value("modulation_1_power", 2.0).unwrap();
     let again = preset
-        .connect_modulation_from_gui("env_2", "filter_1_cutoff")
+        .connect_modulation_from_gui("env_2", "filter_1_cutoff", drag)
         .unwrap();
     assert_eq!((again.slot, again.created), (0, false));
     assert!(again.parameter_changes.is_empty());
     assert_eq!(preset.value("modulation_1_power"), Some(2.0));
 
-    let bipolar = preset
-        .connect_modulation_from_gui("lfo_1", "modulation_1_amount")
-        .unwrap();
-    assert_eq!(bipolar.slot, 1);
-    assert_eq!(bipolar.parameter_changes[0], ("modulation_2_bipolar", 1.0));
     assert!(matches!(
-        preset.connect_modulation_from_gui("lfo_9", "filter_1_cutoff"),
+        preset.connect_modulation_from_gui("lfo_9", "filter_1_cutoff", drag),
         Err(Error::UnknownModulationSource(_))
     ));
+}
+
+/// The amount of `modulationDraggedToComponent`: from the control's
+/// position to the top of its range, to the nearer end doubled when bipolar,
+/// and never below `kDefaultModulationRatio` (0.25).
+#[test]
+fn a_drag_amount_follows_the_control_position() {
+    let level = sas_preset::registry().get("osc_1_level").unwrap();
+    assert_eq!((level.min, level.max), (0.0, 1.0));
+    let amount = |value: f32, bipolar: bool| SlotValues::dragged_to(level, value, bipolar).amount;
+    assert_eq!(amount(0.25, false), 0.75);
+    assert_eq!(amount(0.9, false), 0.25);
+    assert_eq!(amount(0.25, true), 0.5);
+    assert_eq!(amount(0.5, true), 1.0);
+    assert_eq!(amount(2.0, false), 0.25);
+    let drag = SlotValues::dragged_to(level, 0.1, true);
+    assert!(drag.bipolar && !drag.stereo && !drag.bypass);
 }

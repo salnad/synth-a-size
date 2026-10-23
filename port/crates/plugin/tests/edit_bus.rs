@@ -18,7 +18,7 @@ use sas_engine::sas_oscillators::RandomValues;
 use sas_engine::synth::Synth;
 use sas_plugin::params::ControlParam;
 use sas_plugin::{state, SoundEngineHost, SynthASize, SynthPlugin, Transport};
-use sas_preset::{InitContent, PresetState};
+use sas_preset::{registry, InitContent, PresetState, SlotValues};
 
 const SAMPLE_RATE: i32 = 44_100;
 const BLOCK: usize = 64;
@@ -105,8 +105,17 @@ fn edits_play_like_direct_engine_edits() {
     // parameter changes they report.
     let mut plugin = new_plugin(&preset_path);
     let edits = plugin.edit_handle();
+    // A drag onto the cutoff knob at its preset value.
+    let cutoff = registry().get("filter_1_cutoff").unwrap();
+    let cutoff_value = plugin
+        .synth_params()
+        .control("filter_1_cutoff")
+        .unwrap()
+        .param
+        .value();
+    let drag = SlotValues::dragged_to(cutoff, cutoff_value, false);
     let connection = edits
-        .connect_modulation("lfo_1", "filter_1_cutoff")
+        .connect_modulation("lfo_1", "filter_1_cutoff", drag)
         .unwrap();
     for (name, value) in &connection.parameter_changes {
         set_param(&plugin, name, *value);
@@ -126,6 +135,9 @@ fn edits_play_like_direct_engine_edits() {
     synth.load_preset(&preset);
     synth.prepare(SAMPLE_RATE, 120.0);
     synth.connect_modulation("lfo_1", "filter_1_cutoff");
+    for (name, value) in &connection.parameter_changes {
+        synth.set_control(name, *value);
+    }
     synth.set_lfo_shape(0, &mut lfo.clone());
     for (name, value) in [
         ("modulation_1_amount", 0.5),
@@ -169,7 +181,15 @@ fn a_host_restore_drops_edits_queued_before_it() {
     let mut plugin = new_plugin(&preset_path);
     let edits = plugin.edit_handle();
     let generation = edits.generation();
-    edits.connect_modulation("lfo_1", "osc_1_level").unwrap();
+    let drag = SlotValues {
+        amount: 1.0,
+        bipolar: false,
+        stereo: false,
+        bypass: false,
+    };
+    edits
+        .connect_modulation("lfo_1", "osc_1_level", drag)
+        .unwrap();
     set_param(&plugin, "modulation_1_amount", 1.0);
     // The host restores the same preset before the next block: the
     // connection made before it is dropped, and the restored amount stands.
