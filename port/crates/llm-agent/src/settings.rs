@@ -1,7 +1,7 @@
 //! The user's chat settings: whether the chat is on, and which provider and
 //! model it uses. The chat is off until the user turns it on; with it off,
 //! the plugin builds no agent and makes no network requests (D13). The API
-//! key is never stored here (the plugin keeps it in the macOS Keychain).
+//! key is never stored here; L5 adds keeping it in the macOS Keychain.
 
 use std::path::{Path, PathBuf};
 

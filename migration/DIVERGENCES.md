@@ -337,8 +337,9 @@ extend this entry.*
     host text entry, D1).
   - The chat is off until the user turns it on (`ChatSettings::enabled`,
     false by default, in a per-user settings file; a missing or damaged
-    file leaves it off). With it off, or with no API key set, the plugin
-    behaves exactly as without the layer and makes no network requests.
+    file leaves it off). With it off, or with no key for a hosted provider,
+    the plugin behaves exactly as without the layer and makes no network
+    requests. A local OpenAI-compatible server needs no key.
   - On the running plugin (`sas_plugin::live`), a tool edit is a host
     parameter gesture, an edit bus edit, or a whole-state load through the
     host, exactly as the editor makes them. Undo restores the same way.
