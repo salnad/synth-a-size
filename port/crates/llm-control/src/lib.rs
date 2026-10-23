@@ -1,18 +1,68 @@
-//! LLM control layer: set named parameters, connect modulations by name, generate preset and wavetable JSON, render offline.
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//! LLM control layer: the tools a language model uses to read and edit the
+//! synth by name (an addition with no upstream counterpart; see D13 in
+//! `migration/DIVERGENCES.md`).
 //!
-//! Stub crate: nothing is ported yet. Porting starts in milestone M9
-//! (see `migration/PLAN.md`); follow `migration/AGENTS.md`.
+//! - [`catalog`]: the 772 controls, described in display units, and the
+//!   templated catalog for the system prompt.
+//! - [`session`]: [`SynthSession`], the state the tools act on, and
+//!   [`OfflineSession`] over a preset in memory.
+//! - [`tools`]: the tool schemas and their handlers.
+//! - [`controller`]: undo, edits waiting for the user's confirmation, and
+//!   the [`Policy`] behind them.
+//! - [`patch`]: the compact patch description `get_patch` returns.
+//!
+//! Every edit is one the upstream GUI can also make, so the engine is
+//! unchanged by this crate. It has no plugin, network or engine dependency.
 
+use std::fmt;
+
+pub mod catalog;
+pub mod controller;
+mod names;
+pub mod patch;
+pub mod session;
+pub mod tools;
+
+pub use controller::{Controller, Pending, Policy};
 pub use sas_preset;
+pub use session::{Edit, OfflineSession, SynthSession};
+pub use tools::{specs, ToolOutput, ToolSpec};
 
-/// Milestone in `migration/PLAN.md` that ports this crate.
+/// Milestone in `migration/PLAN.md` that builds this crate.
 pub const MILESTONE: &str = "M9";
 
-/// Upstream files (relative to the repository root) this crate ports.
+/// Upstream files (relative to the repository root) whose behaviour the
+/// tools follow.
 pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/src/common/synth_parameters.cpp",
     "vital/src/common/wavetable/wavetable_creator.cpp",
 ];
+
+/// Why an edit could not be applied.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Error {
+    Preset(sas_preset::Error),
+    Invalid(String),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Preset(error) => write!(f, "{error}"),
+            Error::Invalid(message) => f.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl From<sas_preset::Error> for Error {
+    fn from(error: sas_preset::Error) -> Self {
+        Error::Preset(error)
+    }
+}
 
 #[cfg(test)]
 mod tests {
