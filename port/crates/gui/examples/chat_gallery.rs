@@ -1,7 +1,9 @@
 //! Renders the chat panel over the editor in three states, for review:
 //! `chat-off.png` (the chat not yet turned on), `chat-confirm.png` (a
 //! conversation with an edit held for confirmation) and
-//! `chat-settings.png` (the settings form opened from a working chat).
+//! `chat-settings.png` (the settings form opened from a working chat), and
+//! the conversation in a small window (`chat-small.png`, 350×205) and a
+//! letterboxed one (`chat-letterboxed.png`, 1400×700).
 //!
 //!     cargo run -p sas-gui --example chat_gallery -- OUT [--scale 2]
 //!
@@ -14,7 +16,9 @@ use std::path::{Path, PathBuf};
 use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
 use sas_gui::chat::{ChatLine, LineKind};
-use sas_gui::{ChatHost, ChatPanel, ChatSettingsView, ChatView, EditorModel, FocusMode, Interface};
+use sas_gui::{
+    ChatHost, ChatPanel, ChatSettingsView, ChatView, EditorModel, FocusMode, Host, Interface,
+};
 
 struct InitPreset;
 
@@ -130,19 +134,39 @@ fn settings() -> FixedHost {
     }
 }
 
-fn render(out: &Path, name: &str, scale: f32, host: FixedHost, open_settings: bool) {
+fn render(
+    out: &Path,
+    name: &str,
+    size: (f32, f32),
+    scale: f32,
+    host: FixedHost,
+    open_settings: bool,
+) {
     let interface = RefCell::new(Interface::default());
     let panel = RefCell::new(ChatPanel::default());
     panel.borrow_mut().set_open(true);
+    let state = egui_kittest::wgpu::create_render_state(
+        egui_kittest::wgpu::default_wgpu_setup(),
+        egui_wgpu::RendererOptions::PREDICTABLE,
+    );
+    sas_gui::primitives::publish_target(&state, 1);
     let mut harness = Harness::builder()
-        .with_size((1400.0, 820.0))
+        .with_size(size)
         .with_pixels_per_point(scale)
         .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
-        .wgpu()
+        .renderer(egui_kittest::wgpu::WgpuTestRenderer::from_render_state(
+            state,
+        ))
         .build_ui(|ui| {
             let screen = ui.ctx().content_rect();
-            interface.borrow_mut().show_in(ui, screen, &InitPreset);
-            panel.borrow_mut().show(ui.ctx(), screen, &host, &mut || {});
+            let editor_host = Host::new(&InitPreset, None);
+            interface.borrow_mut().show_in(ui, screen, &editor_host);
+            let placement = interface
+                .borrow()
+                .chat_placement(screen, ui.ctx().pixels_per_point());
+            panel
+                .borrow_mut()
+                .show(ui.ctx(), &placement, &host, &mut || {});
         });
     harness.run_steps(2);
     if open_settings {
@@ -173,7 +197,24 @@ fn main() {
         }
     }
     std::fs::create_dir_all(&out).unwrap();
-    render(&out, "chat-off", scale, off(), false);
-    render(&out, "chat-confirm", scale, conversation(), false);
-    render(&out, "chat-settings", scale, settings(), true);
+    let full = (1400.0, 820.0);
+    render(&out, "chat-off", full, scale, off(), false);
+    render(&out, "chat-confirm", full, scale, conversation(), false);
+    render(&out, "chat-settings", full, scale, settings(), true);
+    render(
+        &out,
+        "chat-small",
+        (350.0, 205.0),
+        scale,
+        conversation(),
+        false,
+    );
+    render(
+        &out,
+        "chat-letterboxed",
+        (1400.0, 700.0),
+        scale,
+        conversation(),
+        false,
+    );
 }

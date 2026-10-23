@@ -1215,3 +1215,163 @@ fn a_learned_move_during_a_drag_sends_only_the_value() {
     assert!(fixture.open.lock().unwrap().contains("polyphony"));
     host.end("polyphony");
 }
+
+/// A chat that is on and idle, for the composed editor.
+struct IdleChat;
+
+impl sas_gui::ChatHost for IdleChat {
+    fn run_frame(&self) {}
+    fn view(&self) -> sas_gui::ChatView {
+        sas_gui::ChatView {
+            enabled: true,
+            ..Default::default()
+        }
+    }
+    fn send(&self, _text: String) {}
+    fn stop(&self) {}
+    fn undo(&self) {}
+    fn compare(&self) {}
+    fn confirm(&self, _accept: bool) {}
+    fn settings(&self) -> sas_gui::ChatSettingsView {
+        Default::default()
+    }
+    fn save_settings(
+        &self,
+        _settings: sas_gui::ChatSettingsView,
+        _api_key: Option<String>,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+fn intersects(a: egui::Rect, b: Rect) -> bool {
+    let b = egui::Rect::from_min_size(
+        Pos2::new(b.x as f32, b.y as f32),
+        egui::vec2(b.width as f32, b.height as f32),
+    );
+    a.intersects(b) && a.intersect(b).area() > 0.0
+}
+
+#[test]
+fn the_chat_toggle_and_panel_stay_clear_of_upstream_and_inside_the_editor() {
+    let interface = Interface::default();
+    for (width, height) in [
+        (1400, 820),
+        (700, 410),
+        (350, 205),
+        (1400, 700),
+        (1000, 820),
+    ] {
+        let area = egui::Rect::from_min_size(Pos2::ZERO, egui::vec2(width as f32, height as f32));
+        let placement = interface.chat_placement(area, 1.0);
+        let layout = FullLayout::new(interface.skin(), width, height);
+        let header = layout.header;
+        for (name, part) in [
+            ("tabs", header.tabs),
+            ("preset selector", header.preset_selector),
+            ("save", header.save_button),
+            ("menu", header.menu_button),
+            ("volume", header.volume),
+            ("oscilloscope", header.oscilloscope),
+        ] {
+            assert!(
+                !intersects(placement.toggle, part),
+                "{width}x{height}: the toggle covers the {name}"
+            );
+        }
+        let bounds = egui::Rect::from_min_size(
+            Pos2::new(header.bounds.x as f32, header.bounds.y as f32),
+            egui::vec2(header.bounds.width as f32, header.bounds.height as f32),
+        );
+        assert!(bounds.contains_rect(placement.toggle), "{width}x{height}");
+        assert!(
+            placement.editor.contains_rect(placement.panel()),
+            "{width}x{height}"
+        );
+        assert!(placement.panel().min.y >= bounds.max.y, "{width}x{height}");
+    }
+}
+
+#[test]
+fn the_open_chat_panel_composes_with_the_editor() {
+    let fixture = Fixture::new();
+    let panel = RefCell::new(sas_gui::ChatPanel::default());
+    let mut harness = Harness::builder()
+        .with_size((1400.0, 820.0))
+        .with_step_dt(1.0 / 60.0)
+        .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
+        .build_ui(|ui| {
+            // As `App::ui` composes them.
+            let screen = ui.ctx().content_rect();
+            let host = Host::tracking(
+                fixture.synth.as_ref(),
+                Some(&fixture.context),
+                &fixture.open,
+            );
+            fixture.interface.borrow_mut().show_in(ui, screen, &host);
+            let placement = fixture
+                .interface
+                .borrow()
+                .chat_placement(screen, ui.ctx().pixels_per_point());
+            panel
+                .borrow_mut()
+                .show(ui.ctx(), &placement, &IdleChat, &mut || {});
+        });
+    harness.step();
+    let layout = FullLayout::new(fixture.interface.borrow().skin(), 1400, 820);
+    let logo = centre(layout.header.logo);
+    let tabs = layout.header.tabs;
+    let placement = fixture.interface.borrow().chat_placement(
+        egui::Rect::from_min_size(Pos2::ZERO, egui::vec2(1400.0, 820.0)),
+        1.0,
+    );
+
+    // The toggle opens the panel.
+    click(&mut harness, logo);
+    harness.step();
+    assert!(panel.borrow().is_open());
+
+    // The tabs still switch.
+    let effects = Pos2::new(
+        tabs.x as f32 + tabs.width as f32 * 1.5 / 4.0,
+        tabs.y as f32 + 20.0,
+    );
+    click(&mut harness, effects);
+    assert_eq!(fixture.interface.borrow().tab(), sas_gui::Tab::Effects);
+    let voice = Pos2::new(
+        tabs.x as f32 + tabs.width as f32 * 0.5 / 4.0,
+        tabs.y as f32 + 20.0,
+    );
+    click(&mut harness, voice);
+    assert_eq!(fixture.interface.borrow().tab(), sas_gui::Tab::Voice);
+    fixture.take_log();
+
+    // The portamento time knob lies under the open panel: a drag there
+    // reaches the panel, not the knob.
+    let (_, portamento) = fixture.layouts();
+    let knob = centre(portamento.portamento_time);
+    assert!(placement.panel().contains(knob));
+    let before = fixture.synth.value("portamento_time");
+    drag(
+        &mut harness,
+        knob,
+        knob + egui::vec2(0.0, -40.0),
+        Modifiers::NONE,
+    );
+    assert!(fixture.take_log().is_empty());
+    assert_eq!(fixture.synth.value("portamento_time"), before);
+
+    // Closed, the same drag reaches the knob.
+    click(&mut harness, logo);
+    harness.step();
+    assert!(!panel.borrow().is_open());
+    drag(
+        &mut harness,
+        knob,
+        knob + egui::vec2(0.0, -40.0),
+        Modifiers::NONE,
+    );
+    assert!(fixture
+        .take_log()
+        .contains(&"begin portamento_time".to_string()));
+}

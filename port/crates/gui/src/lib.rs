@@ -29,7 +29,9 @@ pub mod section;
 pub mod sections;
 pub mod skin;
 
-pub use chat::{ChatHost, ChatPanel, ChatSettingsView, ChatView, FocusMode};
+pub use chat::{
+    ChatHost, ChatPanel, ChatPlacement, ChatSettingsView, ChatStyle, ChatView, FocusMode,
+};
 pub use editor::{create as create_editor, default_state, Editor};
 pub use host::{Host, HostParam, OpenGestures};
 pub use interface::{EditorModel, Interface, Tab, PRODUCT_NAME};

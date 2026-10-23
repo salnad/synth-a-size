@@ -7,7 +7,9 @@ use egui::Key;
 use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
 use sas_gui::chat::{ChatLine, CompareSide, LineKind};
-use sas_gui::{ChatHost, ChatPanel, ChatSettingsView, ChatView, FocusMode};
+use sas_gui::{
+    ChatHost, ChatPanel, ChatPlacement, ChatSettingsView, ChatView, FocusMode, Interface,
+};
 
 #[derive(Default)]
 struct FakeHost {
@@ -86,6 +88,11 @@ fn settle(harness: &mut Harness, busy: bool) {
     }
 }
 
+/// The chat's placement over a default editor filling the window.
+fn placement(ctx: &egui::Context) -> ChatPlacement {
+    Interface::default().chat_placement(ctx.content_rect(), ctx.pixels_per_point())
+}
+
 fn harness<'a>(
     panel: &'a mut ChatPanel,
     host: &'a FakeHost,
@@ -97,8 +104,8 @@ fn harness<'a>(
         .with_size((1400.0, 820.0))
         .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
         .build_ui(move |ui| {
-            let area = ui.ctx().content_rect();
-            panel.show(ui.ctx(), area, host, &mut || {
+            let placement = placement(ui.ctx());
+            panel.show(ui.ctx(), &placement, host, &mut || {
                 focus_requests.set(focus_requests.get() + 1)
             });
         });
@@ -107,7 +114,7 @@ fn harness<'a>(
 }
 
 #[test]
-fn the_header_button_opens_and_closes_the_panel() {
+fn the_logo_section_opens_and_closes_the_panel() {
     let host = FakeHost::enabled();
     let mut panel = ChatPanel::default();
     {
@@ -115,8 +122,8 @@ fn the_header_button_opens_and_closes_the_panel() {
             .with_size((1400.0, 820.0))
             .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
             .build_ui(|ui| {
-                let area = ui.ctx().content_rect();
-                panel.show(ui.ctx(), area, &host, &mut || {});
+                let placement = placement(ui.ctx());
+                panel.show(ui.ctx(), &placement, &host, &mut || {});
             });
         harness.run();
         assert!(harness.query_by_label("Sound design chat").is_none());
@@ -148,6 +155,27 @@ fn enter_sends_the_message_and_clears_the_field() {
     assert_eq!(host.calls(), ["send warmer pad"]);
     // Grab-on-click is the default focus mode.
     assert_eq!(focus.get(), 1);
+}
+
+#[test]
+fn enter_mid_text_sends_without_a_newline_and_shift_enter_adds_one() {
+    let host = FakeHost::enabled();
+    let focus = Cell::new(0);
+    let mut panel = ChatPanel::default();
+    let mut harness = harness(&mut panel, &host, &focus);
+    let field = harness.get_by_label("Message");
+    field.click();
+    field.type_text("warm pad");
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::SHIFT, Key::Enter);
+    harness.get_by_label("Message").type_text("slow attack");
+    harness.run();
+    for _ in 0.."slow attack".len() {
+        harness.key_press(Key::ArrowLeft);
+    }
+    harness.key_press(Key::Enter);
+    harness.run();
+    assert_eq!(host.calls(), ["send warm pad\nslow attack"]);
 }
 
 #[test]

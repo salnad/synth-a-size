@@ -343,8 +343,12 @@ LLM milestones (L6–L8) extend this entry.*
   - On the running plugin (`sas_plugin::live`), a tool edit is a host
     parameter gesture, an edit bus edit, or a whole-state load through the
     host, exactly as the editor makes them. Undo restores the same way.
-  - The editor has a chat panel (`sas_gui::chat`), opened from a header
-    button and drawn over the right of the editor until G7's drawer exists.
+  - The editor has a chat panel (`sas_gui::chat`). Its toggle is our logo
+    section, the product-name area of D14, with a small "chat" caption.
+    Until G7's drawer exists, the panel overlays the editor's right side,
+    below the header and inside the editor's bounds, coloured from the
+    skin's Overlay section. Both are placed from the editor's layout, so
+    they scale and letterbox with it (`gui-plan.md` §4).
     The chat runs in the plugin (`sas_plugin::chat`) and lasts as long as
     the plugin instance; it is never saved. Its API key is kept in the
     macOS Keychain (or an environment variable), never in a file. Only the
@@ -369,8 +373,9 @@ LLM milestones (L6–L8) extend this entry.*
   logo area, and a click opens its About section.
 - **Port:** draws the text "synth-a-size" in the logo area, in the title
   face and the logo section's primary colour (`port/crates/gui/src/interface.rs`,
-  `paint_logo`). Clicking it does nothing yet; a minimal About of our own
-  is planned.
+  `paint_logo`). The area is also the LLM chat's toggle (D13), with a small
+  "chat" caption under the name; clicking it opens or closes the chat panel
+  instead of an About section. A minimal About of our own is still planned.
 - **Why:** migration/AGENTS.md rule 2: UI text and art must not use the
   upstream product names. The placeholder text is the owner's working
   default until a product mark exists.
