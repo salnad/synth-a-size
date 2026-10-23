@@ -46,7 +46,7 @@ upstream's default skin and layout, the product name in place of the logo.
   `SAS_PLUGIN_FEATURES`.
 - `check_names.sh` now also fails on string literals in the editor that name
   upstream (vital, vial, tytel), except paths into the vendored tree.
-- Records: `decisions/gui-framework.md` (new); DIVERGENCES.md D13 (product
+- Records: `decisions/gui-framework.md` (new); DIVERGENCES.md D14 (product
   name instead of the logo); IMPROVEMENTS.md I17 (custom skins, parked);
   PLAN.md M10 rewritten for the decision.
 

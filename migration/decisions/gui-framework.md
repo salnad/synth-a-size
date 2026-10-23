@@ -20,7 +20,7 @@ choice below is easy to change.
   (`look_and_feel/shaders.cpp`). The port paints with egui; shader-drawn
   widgets get wgpu primitives through egui paint callbacks (G2 onward).
 - **Branding:** upstream's logo is replaced by the product name
-  ([DIVERGENCES.md](../DIVERGENCES.md) D13). Authentication, download,
+  ([DIVERGENCES.md](../DIVERGENCES.md) D14). Authentication, download,
   update-check and expiry sections are not ported (rule 4); factory content
   is never shown (rule 3).
 

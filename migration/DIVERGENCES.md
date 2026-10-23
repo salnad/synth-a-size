@@ -294,7 +294,7 @@ What is **not** listed:
 - **Approved:** #62 (`migration/ledger/2026-10-21-tuning-kbm-validation.md`),
   reviewed by Graph Reviewer.
 
-### D13. The editor shows the product name where upstream shows its logo
+### D14. The editor shows the product name where upstream shows its logo
 
 - **Differs:** the header's logo area (`LogoSection`).
 - **Upstream:** draws its logo (`Paths::vitalV`, `Paths::vitalRing`) in the
