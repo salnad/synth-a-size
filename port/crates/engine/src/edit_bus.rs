@@ -28,10 +28,14 @@
 //!   so the plugin saves the edited state without a reload. The audio thread
 //!   never takes its lock.
 //!
-//! Modulation amount, bipolar, stereo, bypass and power, and every other
-//! control, are host parameters and do not travel here.
+//! Controls are host parameters and don't travel here, with one exception:
+//! the power, amount, bipolar, stereo and bypass a new modulation slot takes
+//! travel with its connection, because upstream writes them to the engine
+//! right away. They are host parameters as well, and the plugin applies the
+//! bus before the block's parameter changes, so a host change in the same
+//! block wins.
 
-use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicPtr, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use crossbeam_queue::ArrayQueue;
@@ -53,6 +57,11 @@ pub const EDIT_QUEUE_CAPACITY: usize = 256;
 /// Retired payloads the return queue holds: every entry the edit queue can
 /// hold retires at most one, and restores add a few more.
 const RETIRED_CAPACITY: usize = 2 * EDIT_QUEUE_CAPACITY + 8;
+
+/// Retirements the audio thread can hold back while the return queue is
+/// full. It checks for room before each entry, so only a restore can land
+/// here.
+const OVERFLOW_CAPACITY: usize = 4;
 
 /// Entries one edit outside a batch can need (a created connection queues
 /// its linear remap curve too).
@@ -180,12 +189,12 @@ struct Pending {
 
 #[derive(Clone, Copy, Debug)]
 enum Command {
-    /// The polarity a created slot takes (`None` when the mirror found the
+    /// The values a created slot takes (`None` when the mirror found the
     /// two already connected).
     Connect {
         source: &'static str,
         destination: &'static str,
-        bipolar: Option<bool>,
+        values: Option<SlotValues>,
     },
     Disconnect {
         source: &'static str,
@@ -234,6 +243,10 @@ struct Shared {
     retired: ArrayQueue<Retired>,
     slots: [AtomicPtr<Pending>; NUM_SLOTS],
     restore: AtomicPtr<Restore>,
+    /// Payloads the audio thread had to leak because the return queue and
+    /// its overflow were both full (never expected; see
+    /// [`EditHandle::leaked_payloads`]).
+    leaked: AtomicUsize,
 }
 
 impl Drop for Shared {
@@ -317,13 +330,14 @@ impl EditBus {
             retired: ArrayQueue::new(RETIRED_CAPACITY),
             slots: std::array::from_fn(|_| AtomicPtr::new(std::ptr::null_mut())),
             restore: AtomicPtr::new(std::ptr::null_mut()),
+            leaked: AtomicUsize::new(0),
         });
         let consumer = EditConsumer {
             shared: shared.clone(),
             loaded_generation: 0,
             staged: Vec::with_capacity(EDIT_QUEUE_CAPACITY),
             held: None,
-            overflow: Vec::with_capacity(4),
+            overflow: Vec::with_capacity(OVERFLOW_CAPACITY),
         };
         (EditHandle { shared }, consumer)
     }
@@ -351,12 +365,13 @@ pub struct Batch<'a> {
 impl Batch<'_> {
     /// A source dropped on a control (see
     /// [`PresetState::connect_modulation_from_gui`](sas_preset::PresetState::connect_modulation_from_gui)):
-    /// queues the connection (with `values.bipolar` for a new slot) and that
-    /// slot's linear remap curve. The caller must set the returned
-    /// `parameter_changes` on the host parameters: they carry the new slot's
-    /// power, amount, polarity, stereo and bypass, which a freed slot would
-    /// otherwise keep from its old route. [`SlotValues::dragged_to`] gives
-    /// upstream's values for a drag onto a control.
+    /// queues the connection (with `values` for a new slot, which the engine
+    /// sets with it) and that slot's linear remap curve. The caller must set
+    /// the returned `parameter_changes` on the host parameters too, so the
+    /// host saves them: they carry the new slot's power, amount, polarity,
+    /// stereo and bypass, which a freed slot would otherwise keep from its
+    /// old route. [`SlotValues::dragged_to`] gives upstream's values for a
+    /// drag onto a control.
     pub fn connect_modulation(
         &mut self,
         source: &str,
@@ -377,7 +392,7 @@ impl Batch<'_> {
         self.staged.push(Staged::Command(Command::Connect {
             source,
             destination,
-            bipolar: connection.created.then_some(values.bipolar),
+            values: connection.created.then_some(values),
         }));
         if connection.created {
             self.staged.push(Staged::Pending(
@@ -519,6 +534,13 @@ impl EditHandle {
     pub fn revision(&self) -> u64 {
         self.collect_retired();
         self.shared.revision.load(Ordering::Acquire)
+    }
+
+    /// Payloads the audio thread leaked because nothing collected the
+    /// returned ones (the return queue and its overflow were full). Always 0
+    /// while producers make edits, since every edit collects.
+    pub fn leaked_payloads(&self) -> usize {
+        self.shared.leaked.load(Ordering::Relaxed)
     }
 
     /// Entries the queue has room for now.
@@ -758,8 +780,8 @@ impl EditHandle {
 /// What the edits act on: the [`Synth`] on the audio thread, or nothing
 /// (`()`, for an engine that has no synth).
 pub trait EditTarget {
-    /// `bipolar` is the slot's polarity if the connection creates it.
-    fn connect_modulation(&mut self, source: &str, destination: &str, bipolar: Option<bool>);
+    /// `values` are the slot's if the connection creates it.
+    fn connect_modulation(&mut self, source: &str, destination: &str, values: Option<&SlotValues>);
     fn disconnect_modulation(&mut self, source: &str, destination: &str);
     fn set_lfo_shape(&mut self, lfo: usize, line: &mut LineGenerator);
     fn set_line_mapping(&mut self, slot: usize, line: &mut LineGenerator);
@@ -771,9 +793,9 @@ pub trait EditTarget {
 }
 
 impl EditTarget for Synth {
-    fn connect_modulation(&mut self, source: &str, destination: &str, bipolar: Option<bool>) {
-        match bipolar {
-            Some(bipolar) => self.gui_connect_modulation(source, destination, bipolar),
+    fn connect_modulation(&mut self, source: &str, destination: &str, values: Option<&SlotValues>) {
+        match values {
+            Some(values) => self.gui_connect_modulation(source, destination, values),
             None => {
                 Synth::connect_modulation(self, source, destination);
             }
@@ -807,7 +829,13 @@ impl EditTarget for Synth {
 }
 
 impl EditTarget for () {
-    fn connect_modulation(&mut self, _source: &str, _destination: &str, _bipolar: Option<bool>) {}
+    fn connect_modulation(
+        &mut self,
+        _source: &str,
+        _destination: &str,
+        _values: Option<&SlotValues>,
+    ) {
+    }
     fn disconnect_modulation(&mut self, _source: &str, _destination: &str) {}
     fn set_lfo_shape(&mut self, _lfo: usize, _line: &mut LineGenerator) {}
     fn set_line_mapping(&mut self, _slot: usize, _line: &mut LineGenerator) {}
@@ -940,8 +968,8 @@ impl EditConsumer {
             Command::Connect {
                 source,
                 destination,
-                bipolar,
-            } => target.connect_modulation(source, destination, bipolar),
+                values,
+            } => target.connect_modulation(source, destination, values.as_ref()),
             Command::Disconnect {
                 source,
                 destination,
@@ -1008,9 +1036,16 @@ impl EditConsumer {
     }
 
     fn retire(&mut self, retired: Retired) {
-        if let Err(retired) = self.shared.retired.push(retired) {
-            debug_assert!(self.overflow.len() < self.overflow.capacity());
+        let Err(retired) = self.shared.retired.push(retired) else {
+            return;
+        };
+        if self.overflow.len() < OVERFLOW_CAPACITY {
             self.overflow.push(retired);
+        } else {
+            // Growing the overflow would allocate and dropping would free on
+            // the audio thread: leak instead, and count it.
+            std::mem::forget(retired);
+            self.shared.leaked.fetch_add(1, Ordering::Relaxed);
         }
     }
 

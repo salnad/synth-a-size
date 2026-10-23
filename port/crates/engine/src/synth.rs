@@ -24,7 +24,7 @@ use sas_modulation::ModulationConnectionProcessor;
 use sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_oscillators::sas_wavetable::Wavetable;
 use sas_oscillators::Sample;
-use sas_preset::{lookup, PresetState, SampleState};
+use sas_preset::{lookup, PresetState, SampleState, SlotValues};
 
 use crate::midi_file::TimedMessage;
 use crate::midi_manager::MidiManager;
@@ -49,6 +49,9 @@ pub struct Synth {
     engine: ProcessorRef,
     /// `SynthBase::controls_`: every control of the engine, by name.
     controls: BTreeMap<String, ProcessorRef>,
+    /// Each modulation slot's `power`, `amount`, `bipolar`, `stereo` and
+    /// `bypass` controls, so an edit sets them without building names.
+    slot_controls: Vec<[ProcessorRef; 5]>,
     midi_manager: MidiManager,
     wavetable_creators: Vec<WavetableCreator>,
     /// `mod_connections_`: the bank indices of the connected slots, in
@@ -70,9 +73,16 @@ impl Synth {
     pub fn new() -> Self {
         let engine = SoundEngine::create();
         let controls = engine.get_controls();
+        let slot_controls = (1..=MAX_MODULATION_CONNECTIONS)
+            .map(|number| {
+                ["power", "amount", "bipolar", "stereo", "bypass"]
+                    .map(|suffix| controls[&format!("modulation_{number}_{suffix}")].clone())
+            })
+            .collect();
         let mut synth = Synth {
             engine,
             controls,
+            slot_controls,
             midi_manager: MidiManager::new(),
             wavetable_creators: Vec::new(),
             mod_connections: Vec::with_capacity(MAX_MODULATION_CONNECTIONS),
@@ -353,14 +363,15 @@ impl Synth {
     /// The engine side of a source dropped on a control
     /// (`ModulationManager::modulationDraggedToComponent`, see
     /// `PresetState::connect_modulation_from_gui`): if this creates the
-    /// connection, its polarity becomes `bipolar` right after
-    /// `createConnection` set the source's default, as `setModulationValues`
-    /// sets it. The slot's power, amount, stereo and bypass are host
-    /// parameters, set from the connection's `parameter_changes` (a host-free
-    /// caller sets them with [`set_control`](Self::set_control)); setting them
-    /// here too would override a value the host changed in the same block.
-    /// Nothing is allocated.
-    pub fn gui_connect_modulation(&mut self, source: &str, destination: &str, bipolar: bool) {
+    /// connection, its slot's power goes to 0 (`initModulationValues`) and
+    /// its amount, bipolar, stereo and bypass to `values`
+    /// (`setModulationValues`), right after `createConnection` set the
+    /// source's default polarity, as upstream writes them before the next
+    /// block. The remap curve's reset to linear arrives as its own edit. A
+    /// plugin applies these edits before the block's host parameter changes,
+    /// so a value the host changed in the same block still wins. Nothing is
+    /// allocated.
+    pub fn gui_connect_modulation(&mut self, source: &str, destination: &str, values: &SlotValues) {
         if !self.connect_modulation(source, destination) {
             return;
         }
@@ -372,8 +383,13 @@ impl Synth {
         else {
             return;
         };
-        self.bank_processor(index)
-            .with::<ModulationConnectionProcessor, _>(|kernel, _| kernel.set_bipolar(bipolar));
+        let flag = |on: bool| if on { 1.0 } else { 0.0 };
+        let [power, amount, bipolar, stereo, bypass] = &self.slot_controls[index];
+        power.set_value(0.0);
+        amount.set_value(values.amount);
+        bipolar.set_value(flag(values.bipolar));
+        stereo.set_value(flag(values.stereo));
+        bypass.set_value(flag(values.bypass));
     }
 
     /// `disconnectModulation(source, destination)`.

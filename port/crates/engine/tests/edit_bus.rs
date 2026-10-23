@@ -44,7 +44,12 @@ enum Call {
 struct Recorder(Vec<Call>);
 
 impl EditTarget for Recorder {
-    fn connect_modulation(&mut self, source: &str, destination: &str, _bipolar: Option<bool>) {
+    fn connect_modulation(
+        &mut self,
+        source: &str,
+        destination: &str,
+        _values: Option<&SlotValues>,
+    ) {
         self.0
             .push(Call::Connect(source.into(), destination.into()));
     }
@@ -491,8 +496,8 @@ fn corpus_wavetable() -> WavetableCreator {
 }
 
 /// A slot freed by a disconnection and taken by a new route gets the drag's
-/// values, not the old route's (a stale bypass would leave it silent): the
-/// polarity from the edit, the rest from the reported parameter changes.
+/// values from the edit itself, not the old route's (a stale bypass would
+/// leave it silent), before any host parameter change arrives.
 #[test]
 fn a_reused_slot_does_not_inherit_the_old_route() {
     let _rng = ENGINE_RNG.lock().unwrap_or_else(|p| p.into_inner());
@@ -517,10 +522,8 @@ fn a_reused_slot_does_not_inherit_the_old_route() {
         .connect_modulation("env_2", "osc_1_level", DRAG)
         .unwrap();
     assert_eq!((connection.slot, connection.created), (0, true));
-    // As a host applies the reported parameter changes.
-    for (name, value) in &connection.parameter_changes {
-        synth.set_control(name, *value);
-    }
+    // No host parameter changes yet: the edit alone sets the new slot's
+    // values, as upstream writes them before the next block.
     consumer.drain(&mut synth);
     synth.process_modulation_changes();
     let controls = synth.engine().get_controls();

@@ -6,9 +6,9 @@
 //!
 //! Per host block (with each parameter at the last value the host sent for
 //! the block, as upstream's JUCE wrapper applies automation): hand any newly
-//! restored preset and changed parameters to the engine, then the edits
-//! queued on the edit bus (`sas_engine::edit_bus`); output silence and drop
-//! MIDI if bypassed; read
+//! restored preset, then the edits queued on the edit bus
+//! (`sas_engine::edit_bus`), then changed parameters to the engine; output
+//! silence and drop MIDI if bypassed; read
 //! the tempo and song position; then render in chunks of at most
 //! `MAX_BUFFER_SIZE` samples, each preceded by `correctToTime` and the MIDI
 //! messages that fall inside it.
@@ -181,34 +181,37 @@ impl<E: Engine> BlockProcessor<E> {
         while next_event().is_some() {}
     }
 
-    /// Loads a newly restored preset or pushes changed parameters, then
-    /// applies the queued edits.
+    /// Loads a newly restored preset, applies the queued edits, then pushes
+    /// the parameters the host changed. Edits go first, so a host change in
+    /// the same block (to a new modulation slot's amount, say) wins over the
+    /// values an edit set.
     fn sync_parameters(&mut self, params: &SynthParams) {
-        if let Some(restore) = self.edits.take_restore() {
-            let document = &restore.document;
-            self.engine.load_preset(&document.state);
-            self.engine.set_tuning(&document.tuning);
-            params.changes.drain(|_| {});
-            // Parameters the host changed after the restore.
-            for (index, control) in params.controls().iter().enumerate() {
-                let name = control.info.name.as_str();
-                let value = control.param.value();
-                let represented = document
-                    .state
-                    .value(name)
-                    .is_some_and(|preset| params.preset_value_stands(index, preset, value));
-                if !represented {
-                    self.engine.set_control(name, value);
-                }
-            }
-            self.edits.retire_restore(restore);
-        } else {
+        let Some(restore) = self.edits.take_restore() else {
+            self.engine.apply_edits(&mut self.edits);
             params.changes.drain(|index| {
                 let control = &params.controls()[index];
                 self.engine
                     .set_control(control.info.name.as_str(), control.param.value());
             });
-        }
+            return;
+        };
+        let document = &restore.document;
+        self.engine.load_preset(&document.state);
+        self.engine.set_tuning(&document.tuning);
         self.engine.apply_edits(&mut self.edits);
+        params.changes.drain(|_| {});
+        // Parameters the host changed after the restore.
+        for (index, control) in params.controls().iter().enumerate() {
+            let name = control.info.name.as_str();
+            let value = control.param.value();
+            let represented = document
+                .state
+                .value(name)
+                .is_some_and(|preset| params.preset_value_stands(index, preset, value));
+            if !represented {
+                self.engine.set_control(name, value);
+            }
+        }
+        self.edits.retire_restore(restore);
     }
 }

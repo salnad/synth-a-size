@@ -206,3 +206,57 @@ fn a_host_restore_drops_edits_queued_before_it() {
     let actual = play(&mut plugin, 200);
     assert_eq!(first_difference(&actual, &expected), None);
 }
+
+/// Edits apply before the block's host parameter changes: a host change to a
+/// new slot's amount made right after the connection wins over the drag's
+/// amount the connection carries.
+#[test]
+fn a_host_change_in_the_same_block_wins_over_an_edit() {
+    let _rng = ENGINE_RNG.lock().unwrap_or_else(|p| p.into_inner());
+    let preset_path = corpus("presets/init_saw.vital");
+    let drag = SlotValues {
+        amount: 0.25,
+        bipolar: false,
+        stereo: false,
+        bypass: false,
+    };
+
+    // The first block loads the restored preset; the edit and the host
+    // change land together before the second.
+    let mut plugin = new_plugin(&preset_path);
+    let mut from_plugin = play(&mut plugin, 1);
+    let edits = plugin.edit_handle();
+    let connection = edits
+        .connect_modulation("lfo_1", "osc_1_level", drag)
+        .unwrap();
+    for (name, value) in &connection.parameter_changes {
+        set_param(&plugin, name, *value);
+    }
+    set_param(&plugin, "modulation_1_amount", -0.8);
+    from_plugin.extend(play(&mut plugin, 299));
+
+    sas_common::random::set_next_seed(SEED);
+    RandomValues::reset_process_state();
+    let mut synth = Synth::new();
+    let mut preset = PresetState::new(&InitContent { sample_seed: 0 });
+    preset.load_file(&preset_path).unwrap();
+    synth.load_preset(&preset);
+    synth.prepare(SAMPLE_RATE, 120.0);
+    let mut from_engine = Vec::new();
+    let (mut left, mut right) = (vec![0.0f32; BLOCK], vec![0.0f32; BLOCK]);
+    let mut seconds = 0.0;
+    for block in 0..300 {
+        if block == 1 {
+            synth.gui_connect_modulation("lfo_1", "osc_1_level", &drag);
+            synth.set_control("modulation_1_amount", -0.8);
+        }
+        // `play` starts each call with the same note.
+        let midi: &[(usize, [u8; 3])] = match block {
+            0 | 1 => &[(4, [0x90, 50, 100])],
+            _ => &[],
+        };
+        synth.render_block(&mut left, &mut right, midi, &mut seconds, SAMPLE_RATE);
+        from_engine.extend(left.iter().zip(&right).flat_map(|(l, r)| [*l, *r]));
+    }
+    assert_eq!(first_difference(&from_plugin, &from_engine), None);
+}

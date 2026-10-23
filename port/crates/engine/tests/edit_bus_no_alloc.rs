@@ -326,3 +326,51 @@ fn connection_edits_never_allocate() {
     );
     assert_no_allocations();
 }
+
+/// Steady state on presets with modulation routing, with no edits: once
+/// every voice has played, whole blocks (notes, pedals, bends, pressure,
+/// parameter changes) allocate nothing.
+#[test]
+fn routed_presets_play_without_allocating() {
+    let _serial = SERIAL
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    for name in ["random_macro_shapes", "mpe_expression", "osc_stack_serial"] {
+        sas_common::random::set_next_seed(5);
+        RandomValues::reset_process_state();
+        let mut synth = Synth::new();
+        synth.load_preset(&preset(name));
+        synth.prepare(44100, 120.0);
+        let (mut left, mut right) = (vec![0.0f32; 256], vec![0.0f32; 256]);
+        let mut seconds = 0.0;
+        // Each block starts a note on a rotating channel and ends the one
+        // started three blocks earlier, so notes overlap without piling up.
+        let key = |block: usize| 30 + (block % 61 * 7 % 61) as u8;
+        let channel = |block: usize| (block % 16) as u8;
+        let mut play = |block: usize, synth: &mut Synth| {
+            let old = block.wrapping_sub(3);
+            let midi = [
+                (0, [0x90 | channel(block), key(block), 100]),
+                (40, [0xB0, 64, if block % 16 < 8 { 127 } else { 0 }]),
+                (100, [0x80 | channel(old), key(old), 0]),
+                (180, [0xE0 | channel(block), 0, (block % 128) as u8]),
+                (200, [0xD0 | channel(block), (block % 100) as u8, 0]),
+            ];
+            let midi = if block < 3 { &midi[..2] } else { &midi[..] };
+            synth.set_control("filter_1_cutoff", 40.0 + (block % 80) as f32);
+            synth.set_control("macro_control_1", (block % 10) as f32 / 10.0);
+            synth.render_block(&mut left, &mut right, midi, &mut seconds, 44100);
+        };
+        // Every voice plays at least once, so each voice's routers have
+        // taken the routing the preset load made.
+        for block in 0..600 {
+            play(block, &mut synth);
+        }
+        counted(|| {
+            for block in 600..1600 {
+                play(block, &mut synth);
+            }
+        });
+        assert_no_allocations();
+    }
+}
