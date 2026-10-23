@@ -176,6 +176,16 @@ impl<'a> PixelPainter<'a> {
         );
     }
 
+    /// `Graphics::fillPath` for a convex polygon (pixels).
+    pub fn fill_polygon(&self, points: &[(f32, f32)], colour: Colour) {
+        let points: Vec<Pos2> = points.iter().map(|&(x, y)| self.pos(x, y)).collect();
+        self.painter.add(egui::Shape::convex_polygon(
+            points,
+            colour.to_egui(),
+            Stroke::NONE,
+        ));
+    }
+
     /// `Graphics::strokePath` with rounded end caps (`PathStrokeType::rounded`).
     pub fn stroke_path(&self, points: &[(f32, f32)], thickness: f32, colour: Colour) {
         if points.is_empty() {

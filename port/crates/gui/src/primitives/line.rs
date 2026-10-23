@@ -251,8 +251,8 @@ impl LineRenderer {
         let x_adjust = 2.0 / width;
         let y_adjust = 2.0 / height;
 
-        for i in 0..n {
-            let radius = line_radius * (1.0 + self.boost_amount * boosts[i]);
+        for (i, &boost) in boosts.iter().enumerate() {
+            let radius = line_radius * (1.0 + self.boost_amount * boost);
             let point = (self.x[i], self.y[i]);
             let next = (i + 1).min(n - 1);
             let mut next_point = (self.x[next], self.y[next]);
@@ -398,17 +398,17 @@ impl LineRenderer {
         };
         let x_adjust = 2.0 / width;
         let y_adjust = 2.0 / height;
-        for i in 0..n {
+        for (i, &boost) in boosts.iter().enumerate() {
             let top = (i + pad) * FILL_FLOATS_PER_POINT;
             let bottom = top + FILL_FLOATS_PER_VERTEX;
             let x = x_adjust * self.x[i] - 1.0;
             let y = 1.0 - y_adjust * self.y[i];
             data[top] = x;
             data[top + 1] = y;
-            data[top + 2] = boosts[i];
+            data[top + 2] = boost;
             data[bottom] = x;
             data[bottom + 1] = self.fill_center;
-            data[bottom + 2] = boosts[i];
+            data[bottom + 2] = boost;
         }
 
         let size = pad * FILL_FLOATS_PER_POINT;
@@ -462,14 +462,14 @@ impl LineRenderer {
         };
 
         let mut line = self.line_vertices(left, bounds.width, bounds.height);
-        for vertex in line.chunks_exact_mut(LINE_FLOATS_PER_VERTEX) {
+        for vertex in line.as_chunks_mut::<LINE_FLOATS_PER_VERTEX>().0 {
             let (x, y) = place(vertex[0], vertex[1]);
             vertex[0] = x;
             vertex[1] = y;
         }
         let fill = self.fill.then(|| {
             let mut fill = self.fill_vertices(left, bounds.width, bounds.height);
-            for vertex in fill.chunks_exact_mut(FILL_FLOATS_PER_VERTEX) {
+            for vertex in fill.as_chunks_mut::<FILL_FLOATS_PER_VERTEX>().0 {
                 let component_y = vertex[1];
                 let (x, y) = place(vertex[0], vertex[1]);
                 vertex[0] = x;

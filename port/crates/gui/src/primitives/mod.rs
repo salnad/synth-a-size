@@ -43,6 +43,9 @@ pub enum QuadKind {
     VerticalSlider = 11,
     LinearModulation = 12,
     ModulationKnob = 13,
+    /// `kGainMeterFragment` (with `kGainMeterVertex`): `color` to
+    /// `alt_color` across the component.
+    GainMeter = 14,
 }
 
 impl QuadKind {

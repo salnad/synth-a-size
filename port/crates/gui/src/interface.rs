@@ -15,9 +15,11 @@
 //! rule 2).
 
 use egui::{Sense, Ui, UiBuilder};
+use sas_engine::telemetry::Telemetry;
 
 use crate::colour::Colour;
 use crate::controls::format;
+use crate::controls::oscilloscope;
 use crate::fonts::Face;
 use crate::host::{Host, HostParam};
 use crate::layout::{FullLayout, Rect};
@@ -27,6 +29,7 @@ use crate::scope::Scope;
 use crate::section::{paint_body, paint_border};
 use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
 use crate::sections::voice::{self, VoiceLayout, VoiceSection};
+use crate::sections::volume::{PeakLevels, VolumeLayout, VolumeSection};
 use crate::sections::{
     MenuOwner, Overlay, Panel, TextEntry, MENU_DEFAULT_VALUE, MENU_MANUAL_ENTRY,
 };
@@ -60,6 +63,37 @@ pub trait EditorModel: Send + Sync + 'static {
     /// is note n (`isNoteOnForChannels(0xffff, n)`).
     fn held_notes(&self) -> u128 {
         0
+    }
+
+    /// What the playing engine publishes for the editor (meters, the
+    /// oscilloscope, modulation values). None draws them at rest.
+    fn telemetry(&self) -> Option<Telemetry> {
+        None
+    }
+}
+
+/// What the editor copies from the telemetry snapshot each frame.
+struct Live {
+    peaks: PeakLevels,
+    oscilloscope: Vec<[f32; 2]>,
+}
+
+impl Live {
+    fn read(model: &dyn EditorModel) -> Option<Live> {
+        let telemetry = model.telemetry()?;
+        Some(telemetry.read(|snapshot| {
+            let peak = snapshot.status_by_name("peak_meter").unwrap_or_default();
+            let memory = snapshot
+                .status_by_name("peak_meter_memory")
+                .unwrap_or_default();
+            Live {
+                peaks: PeakLevels {
+                    peak: [peak[0], peak[1]],
+                    memory: [memory[0], memory[1]],
+                },
+                oscilloscope: snapshot.oscilloscope().to_vec(),
+            }
+        }))
     }
 }
 
@@ -98,6 +132,7 @@ pub struct Interface {
     tab: Tab,
     voice: VoiceSection,
     portamento: PortamentoSection,
+    volume: VolumeSection,
     overlay: Overlay,
 }
 
@@ -114,6 +149,7 @@ impl Interface {
             tab: Tab::Voice,
             voice: VoiceSection::default(),
             portamento: PortamentoSection::default(),
+            volume: VolumeSection::default(),
             overlay: Overlay::default(),
         }
     }
@@ -153,8 +189,51 @@ impl Interface {
         self.paint_background(&pixels, &layout, width, height);
         self.paint_header(&pixels, &layout, host.model());
         self.handle_tabs(ui, &pixels, &layout);
+        let live = Live::read(host.model());
+        if live.is_some() {
+            // The meters and oscilloscope move with the audio.
+            ui.ctx().request_repaint();
+        }
+        self.show_header(ui, host, &pixels, &layout, live.as_ref());
         self.show_sections(ui, host, &pixels, &layout);
         self.show_overlay(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
+    }
+
+    /// The header's live parts: the volume section and the oscilloscope.
+    fn show_header(
+        &mut self,
+        ui: &mut Ui,
+        host: &Host,
+        pixels: &PixelPainter,
+        layout: &FullLayout,
+        live: Option<&Live>,
+    ) {
+        let header = Scope::top(&self.skin, layout.size_ratio).within(&[Section::Header]);
+
+        let oscilloscope = layout.header.oscilloscope;
+        oscilloscope::paint_background(pixels, &header, oscilloscope);
+        oscilloscope::paint(
+            pixels,
+            &header,
+            oscilloscope,
+            live.map(|live| live.oscilloscope.as_slice()),
+            header.color(ColorId::Background),
+        );
+
+        let volume_layout = VolumeLayout::new(layout.header.volume);
+        self.volume
+            .paint_background(pixels, &header, &volume_layout);
+        let mut panel = Panel::new(
+            ui,
+            host,
+            pixels,
+            header,
+            &mut self.overlay,
+            layout.header.volume,
+        );
+        self.volume
+            .show(&mut panel, &volume_layout, live.map(|live| live.peaks));
+        panel.finish();
     }
 
     /// The Voice and Portamento sections.

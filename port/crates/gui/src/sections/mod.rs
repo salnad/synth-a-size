@@ -12,6 +12,7 @@
 
 pub mod portamento;
 pub mod voice;
+pub mod volume;
 
 use egui::Ui;
 
@@ -172,6 +173,11 @@ impl<'a, 'b> Panel<'a, 'b> {
             &self.scope,
             bounds,
         );
+    }
+
+    /// A quad drawn with the section's controls.
+    pub fn quad(&mut self, quad: crate::primitives::Quad) {
+        self.layer.quad(quad);
     }
 
     /// Text over the section's controls.

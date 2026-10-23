@@ -55,6 +55,7 @@ const KIND_HORIZONTAL_SLIDER: u32 = 10u;
 const KIND_VERTICAL_SLIDER: u32 = 11u;
 const KIND_LINEAR_MODULATION: u32 = 12u;
 const KIND_MODULATION_KNOB: u32 = 13u;
+const KIND_GAIN_METER: u32 = 14u;
 
 const PI: f32 = 3.14159265359;
 
@@ -311,6 +312,13 @@ fn modulation_knob(v: Varyings) -> vec4<f32> {
     return color;
 }
 
+// kGainMeterFragmentShader: a gradient across the component, whose device
+// x arrives as the coordinates.
+fn gain_meter(v: Varyings) -> vec4<f32> {
+    let t = (v.coordinates.x + 1.0) / 2.0;
+    return v.alt_color * t + v.color * (1.0 - t);
+}
+
 @fragment
 fn fs_main(v: Varyings) -> @location(0) vec4<f32> {
     let kind = u32(v.params2.z);
@@ -328,6 +336,7 @@ fn fs_main(v: Varyings) -> @location(0) vec4<f32> {
         case KIND_VERTICAL_SLIDER: { return vertical_slider(v); }
         case KIND_LINEAR_MODULATION: { return linear_modulation(v); }
         case KIND_MODULATION_KNOB: { return modulation_knob(v); }
+        case KIND_GAIN_METER: { return gain_meter(v); }
         default: { return v.color; }
     }
 }

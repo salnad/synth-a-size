@@ -59,6 +59,10 @@ pub enum SliderStyle {
     Horizontal,
     /// `LinearBarVertical` (`kVerticalSliderFragment`).
     Vertical,
+    /// `LinearBar` painted as an arrow under the value (`VolumeSlider` in
+    /// `volume_section.cpp`): its tip at `point_y` and base at `end_y`
+    /// pixels below the slider's top.
+    Arrow { point_y: i32, end_y: i32 },
 }
 
 impl SliderStyle {
@@ -336,6 +340,18 @@ impl Slider {
                 quad.thumb_amount = LINEAR_HANDLE_PERCENT * total_width as f32;
                 layer.quad(quad);
             }
+            SliderStyle::Arrow { point_y, end_y } => {
+                // VolumeSlider::paint at getPositionOfValue: a LinearBar's
+                // value runs across the whole width.
+                let x = bounds.x as f32 + t * bounds.width as f32;
+                let tip = (bounds.y + point_y) as f32;
+                let base = (bounds.y + end_y) as f32;
+                let half = (end_y - point_y) as f32 / 2.0;
+                layer.polygon(
+                    vec![(x, tip), (x + half, base), (x - half, base)],
+                    scope.color(ColorId::LinearSliderThumb),
+                );
+            }
             SliderStyle::Text => self.paint_text(layer, scope, bounds, value),
             SliderStyle::Curve => self.paint_curve(pixels, scope, bounds, value),
         }
@@ -568,7 +584,7 @@ impl Slider {
                 / (self.sensitivity * multiply)
         };
         let mouse_diff = match self.style {
-            SliderStyle::Horizontal => position.x - state.last.x,
+            SliderStyle::Horizontal | SliderStyle::Arrow { .. } => position.x - state.last.x,
             SliderStyle::Vertical => state.last.y - position.y,
             _ => (position.x - state.last.x) + (state.last.y - position.y),
         };
