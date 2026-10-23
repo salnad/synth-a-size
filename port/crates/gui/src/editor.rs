@@ -91,8 +91,11 @@ impl NiceEguiApp for App {
         // egui-baseview does.
         let (model, open) = (self.model.clone(), self.open_gestures.clone());
         let context = gui_context.clone();
+        // Likewise a key the on-screen keyboard is still playing.
+        let playing_note = self.interface.playing_note();
         frame.on_close(move || {
-            Host::tracking(model.as_ref(), Some(&context), &open).end_open_gestures()
+            Host::tracking(model.as_ref(), Some(&context), &open).end_open_gestures();
+            playing_note.release(model.as_ref());
         });
         self.gui_context = Some(gui_context);
         Ok(())

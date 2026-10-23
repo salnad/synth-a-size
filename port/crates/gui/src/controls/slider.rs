@@ -556,7 +556,10 @@ impl Slider {
             host.end(self.name);
             if let SliderStyle::Wheel { spring_back: true } = self.style {
                 // PitchWheel::mouseUp: back to the centre after the gesture.
-                host.set_once(self.name, 0.0);
+                // JUCE's setValue sends nothing when the value is unchanged.
+                if host.value(self.name) != 0.0 {
+                    host.set_once(self.name, 0.0);
+                }
             }
             let long_press = state
                 .last_press

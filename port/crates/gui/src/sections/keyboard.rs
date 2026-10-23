@@ -12,9 +12,13 @@
 //! [`EditorModel::note_on`]: crate::EditorModel::note_on
 //! [`EditorModel::note_off`]: crate::EditorModel::note_off
 
+use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::Arc;
+
 use egui::{Pos2, Sense};
 
 use super::Panel;
+use crate::interface::EditorModel;
 use crate::layout::Rect;
 use crate::paint::{PixelPainter, RectF};
 use crate::primitives::{Quad, QuadKind};
@@ -197,8 +201,36 @@ impl KeyboardLayout {
 struct KeyboardState {
     /// `hover_note_`.
     hover: Option<i32>,
-    /// The note the mouse is playing.
-    playing: Option<i32>,
+}
+
+/// The note the mouse is playing (-1 for none), shared with the editor so
+/// a window closing mid-press can release it.
+#[derive(Clone, Debug)]
+pub struct PlayingNote(Arc<AtomicI32>);
+
+impl Default for PlayingNote {
+    fn default() -> PlayingNote {
+        PlayingNote(Arc::new(AtomicI32::new(-1)))
+    }
+}
+
+impl PlayingNote {
+    pub fn get(&self) -> Option<i32> {
+        let note = self.0.load(Ordering::Relaxed);
+        (note >= 0).then_some(note)
+    }
+
+    fn set(&self, note: Option<i32>) {
+        self.0.store(note.unwrap_or(-1), Ordering::Relaxed);
+    }
+
+    /// Releases the note, if one is playing (the editor is closing).
+    pub fn release(&self, model: &dyn EditorModel) {
+        if let Some(note) = self.get() {
+            model.note_off(note as u8);
+            self.set(None);
+        }
+    }
 }
 
 /// `KeyboardInterface::paintBackground` with `MidiKeyboard::paintBackground`:
@@ -223,7 +255,7 @@ pub fn paint_background(pixels: &PixelPainter, scope: &Scope, layout: &KeyboardL
 
 /// `MidiKeyboard`'s mouse handling and `render`. Bit n of `held` is set
 /// while note n is on (any channel).
-pub fn show(panel: &mut Panel, layout: &KeyboardLayout, held: u128) {
+pub fn show(panel: &mut Panel, layout: &KeyboardLayout, held: u128, playing: &PlayingNote) {
     let id = panel.ui.scope_id().with("midi keyboard");
     let rect = panel.pixels.rect(layout.bounds.into());
     let response = panel.ui.interact(rect, id, Sense::click_and_drag());
@@ -233,28 +265,28 @@ pub fn show(panel: &mut Panel, layout: &KeyboardLayout, held: u128) {
     let model = panel.host.model();
 
     let pressed = response.is_pointer_button_down_on();
-    match (state.playing, pressed, local) {
+    match (playing.get(), pressed, local) {
         (None, true, Some((x, y))) => {
             // mouseDown.
             let note = layout.note_at(x, y);
             model.note_on(note as u8, layout.velocity_for(note, y));
-            state.playing = Some(note);
+            playing.set(Some(note));
             state.hover = Some(note);
         }
-        (Some(playing), true, Some((x, y))) => {
+        (Some(current), true, Some((x, y))) => {
             // mouseDrag: a new key releases the old one.
             let note = layout.note_at(x, y);
-            if note != playing {
-                model.note_off(playing as u8);
+            if note != current {
+                model.note_off(current as u8);
                 model.note_on(note as u8, layout.velocity_for(note, y));
-                state.playing = Some(note);
+                playing.set(Some(note));
             }
             state.hover = Some(note);
         }
-        (Some(playing), false, _) => {
+        (Some(current), false, _) => {
             // mouseUp.
-            model.note_off(playing as u8);
-            state.playing = None;
+            model.note_off(current as u8);
+            playing.set(None);
             state.hover = local
                 .filter(|_| response.hovered())
                 .map(|(x, y)| layout.note_at(x, y));
@@ -275,7 +307,7 @@ pub fn show(panel: &mut Panel, layout: &KeyboardLayout, held: u128) {
     let black_key_color = scope.color(ColorId::WidgetSecondary2);
     // Until a note's press reaches the plugin's shared state, the key the
     // mouse plays is lit too.
-    let is_held = |midi: i32| held >> midi & 1 == 1 || state.playing == Some(midi);
+    let is_held = |midi: i32| held >> midi & 1 == 1 || playing.get() == Some(midi);
 
     let mut quads = Vec::new();
     if let Some(hover) = state.hover.filter(|note| is_white_key(*note)) {

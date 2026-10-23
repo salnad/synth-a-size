@@ -27,7 +27,7 @@ use crate::paint::{PixelPainter, RectF};
 use crate::popup::MenuOutcome;
 use crate::scope::Scope;
 use crate::sections::bend::{self, BendLayout, BendSection};
-use crate::sections::keyboard::{self, KeyboardLayout};
+use crate::sections::keyboard::{self, KeyboardLayout, PlayingNote};
 use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
 use crate::sections::voice::{self, VoiceLayout, VoiceSection};
 use crate::sections::volume::{PeakLevels, VolumeLayout, VolumeSection};
@@ -135,6 +135,7 @@ pub struct Interface {
     portamento: PortamentoSection,
     volume: VolumeSection,
     bend: BendSection,
+    playing_note: PlayingNote,
     overlay: Overlay,
 }
 
@@ -153,6 +154,7 @@ impl Interface {
             portamento: PortamentoSection::default(),
             volume: VolumeSection::default(),
             bend: BendSection::default(),
+            playing_note: PlayingNote::default(),
             overlay: Overlay::default(),
         }
     }
@@ -172,6 +174,12 @@ impl Interface {
     /// The open popups.
     pub fn overlay(&self) -> &Overlay {
         &self.overlay
+    }
+
+    /// The note the on-screen keyboard is playing, for releasing it when the
+    /// window closes.
+    pub fn playing_note(&self) -> PlayingNote {
+        self.playing_note.clone()
     }
 
     /// Draws the editor into `ui`'s whole area and handles its input.
@@ -286,7 +294,7 @@ impl Interface {
         keyboard::paint_background(pixels, &scope, &keyboard_layout);
         let mut panel = Panel::new(ui, host, pixels, scope, &mut self.overlay, layout.keyboard);
         let held = host.model().held_notes();
-        keyboard::show(&mut panel, &keyboard_layout, held);
+        keyboard::show(&mut panel, &keyboard_layout, held, &self.playing_note);
         panel.finish();
 
         let scope = top.within(portamento::SKIN);

@@ -31,6 +31,9 @@ const CONTROLS: &[&str] = &[
     "portamento_force",
     "portamento_scale",
     "legato",
+    "pitch_wheel",
+    "mod_wheel",
+    "volume",
 ];
 
 enum TestParam {
@@ -820,4 +823,127 @@ fn the_keyboard_plays_notes() {
             "off 62".to_string(),
         ]
     );
+}
+
+fn bend_and_volume(
+    fixture: &Fixture,
+) -> (
+    sas_gui::sections::bend::BendLayout,
+    sas_gui::sections::volume::VolumeLayout,
+) {
+    let interface = fixture.interface.borrow();
+    let layout = FullLayout::new(interface.skin(), 1400, 820);
+    let top = Scope::top(interface.skin(), layout.size_ratio);
+    (
+        sas_gui::sections::bend::BendLayout::new(
+            &top.within(sas_gui::sections::bend::SKIN),
+            layout.bend,
+        ),
+        sas_gui::sections::volume::VolumeLayout::new(layout.header.volume),
+    )
+}
+
+#[test]
+fn the_pitch_wheel_springs_back_in_its_own_gesture() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let (bend, _) = bend_and_volume(&fixture);
+    let wheel = centre(bend.pitch_wheel);
+    // A vertical drag at sensitivity 0.5: the full range takes twice the
+    // wheel's height.
+    let extent = bend.pitch_wheel.width.max(bend.pitch_wheel.height) as f32 / 0.5;
+    press(&mut harness, wheel, PointerButton::Primary, Modifiers::NONE);
+    move_to(&mut harness, wheel + egui::vec2(0.0, -30.0));
+    let expected = -1.0 + 2.0 * (0.5 + 30.0 / extent);
+    assert!((fixture.synth.value("pitch_wheel") - expected).abs() < 1e-4);
+    release(
+        &mut harness,
+        wheel + egui::vec2(0.0, -30.0),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert_eq!(fixture.synth.value("pitch_wheel"), 0.0);
+    assert_eq!(
+        fixture.take_log(),
+        [
+            "begin pitch_wheel",
+            "set pitch_wheel",
+            "end pitch_wheel",
+            "begin pitch_wheel",
+            "set pitch_wheel",
+            "end pitch_wheel"
+        ]
+    );
+
+    // A click on the wheel at rest changes nothing, so nothing is set.
+    for _ in 0..30 {
+        harness.step();
+    }
+    click(&mut harness, wheel);
+    assert_eq!(fixture.take_log(), ["begin pitch_wheel", "end pitch_wheel"]);
+}
+
+#[test]
+fn the_mod_wheel_stays_where_it_is_released() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let (bend, _) = bend_and_volume(&fixture);
+    let wheel = centre(bend.mod_wheel);
+    let extent = bend.mod_wheel.width.max(bend.mod_wheel.height) as f32 / 0.5;
+    drag(
+        &mut harness,
+        wheel,
+        wheel + egui::vec2(0.0, -30.0),
+        Modifiers::NONE,
+    );
+    assert!((fixture.synth.value("mod_wheel") - 30.0 / extent).abs() < 1e-4);
+    assert_eq!(
+        fixture.take_log(),
+        ["begin mod_wheel", "set mod_wheel", "end mod_wheel"]
+    );
+}
+
+#[test]
+fn the_volume_arrow_drags_across() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let (_, volume) = bend_and_volume(&fixture);
+    let info = registry().get("volume").unwrap();
+    let start = centre(volume.volume);
+    // A horizontal LinearBar: the full range across the slider's width.
+    drag(
+        &mut harness,
+        start,
+        start + egui::vec2(20.0, 0.0),
+        Modifiers::NONE,
+    );
+    let extent = volume.volume.width.max(volume.volume.height) as f32;
+    let expected = info.default_value + (info.max - info.min) * 20.0 / extent;
+    assert!((fixture.synth.value("volume") - expected).abs() < 1e-3);
+    assert_eq!(
+        fixture.take_log(),
+        ["begin volume", "set volume", "end volume"]
+    );
+}
+
+#[test]
+fn a_held_key_is_released_when_the_editor_closes() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let layout = {
+        let interface = fixture.interface.borrow();
+        FullLayout::new(interface.skin(), 1400, 820).keyboard
+    };
+    let white = layout.width as f32 / 75.0;
+    let c4 = Pos2::new(
+        layout.x as f32 + white * 35.5,
+        layout.y as f32 + 0.75 * layout.height as f32,
+    );
+    press(&mut harness, c4, PointerButton::Primary, Modifiers::NONE);
+    // What the editor's close hook does.
+    let playing = fixture.interface.borrow().playing_note();
+    playing.release(fixture.synth.as_ref());
+    let notes = fixture.synth.notes.lock().unwrap().clone();
+    assert_eq!(notes.last().map(String::as_str), Some("off 60"));
+    assert_eq!(playing.get(), None);
 }
