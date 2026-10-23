@@ -204,3 +204,24 @@ fn a_drag_amount_follows_the_control_position() {
     let drag = SlotValues::dragged_to(level, 0.1, true);
     assert!(drag.bipolar && !drag.stereo && !drag.bypass);
 }
+
+/// The offline session's drag values read the destination from the state.
+#[test]
+fn dragged_values_read_the_state() {
+    let mut preset = fresh();
+    preset.set_value("osc_1_level", 0.25).unwrap();
+    assert_eq!(
+        preset.dragged_values("osc_1_level", false),
+        Some(SlotValues {
+            amount: 0.75,
+            bipolar: false,
+            stereo: false,
+            bypass: false,
+        })
+    );
+    assert_eq!(
+        preset.dragged_values("osc_1_level", true).unwrap().amount,
+        0.5
+    );
+    assert_eq!(preset.dragged_values("not_a_destination", false), None);
+}

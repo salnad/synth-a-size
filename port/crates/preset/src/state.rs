@@ -302,6 +302,20 @@ impl PresetState {
         Ok(index)
     }
 
+    /// [`SlotValues::dragged_to`] for `destination` at its value in this
+    /// state, for sessions whose state holds the live control values (the
+    /// offline chat session). A plugin reads the live value from its host
+    /// parameter instead. `None` if `destination` is not a modulation
+    /// destination.
+    pub fn dragged_values(&self, destination: &str, bipolar: bool) -> Option<SlotValues> {
+        if !engine::is_modulation_destination(destination) {
+            return None;
+        }
+        let info = registry().get(destination)?;
+        let value = self.value(destination).unwrap_or(info.default_value);
+        Some(SlotValues::dragged_to(info, value, bipolar))
+    }
+
     /// What upstream's editor does when a source is dropped on a control
     /// (`ModulationManager::modulationDraggedToComponent`): if the two are
     /// not connected yet, `SynthGuiInterface::connectModulation`
