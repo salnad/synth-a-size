@@ -9,6 +9,7 @@ use sas_engine::telemetry::Telemetry;
 use sas_engine::Tuning;
 use sas_gui::{EditorModel, HostParam};
 
+use crate::midi_learn::MidiLearn;
 use crate::params::SynthParams;
 
 /// The editor's view of one plugin instance.
@@ -16,6 +17,7 @@ pub struct PluginModel {
     params: Arc<SynthParams>,
     keyboard: KeyboardHandle,
     telemetry: Telemetry,
+    midi_learn: Arc<MidiLearn>,
     /// The preset name and the edit bus revision it was read at, so the
     /// document mirror is read only after it changes.
     preset_name: Mutex<(u64, String)>,
@@ -26,6 +28,7 @@ impl PluginModel {
         params: Arc<SynthParams>,
         telemetry: Telemetry,
         keyboard: KeyboardHandle,
+        midi_learn: Arc<MidiLearn>,
     ) -> PluginModel {
         let edits = params.edit_handle();
         let revision = edits.revision();
@@ -34,6 +37,7 @@ impl PluginModel {
             params,
             keyboard,
             telemetry,
+            midi_learn,
             preset_name: Mutex::new((revision, name)),
         }
     }
@@ -95,6 +99,26 @@ impl EditorModel for PluginModel {
         // thread is stalled, and the name shown stays the old one.
         let _ = self.params.edit_handle().set_tuning(tuning);
     }
+
+    fn arm_midi_learn(&self, name: &str) {
+        self.midi_learn.arm(name);
+    }
+
+    fn cancel_midi_learn(&self) {
+        self.midi_learn.cancel();
+    }
+
+    fn clear_midi_learn(&self, name: &str) {
+        self.midi_learn.clear(name);
+    }
+
+    fn is_midi_mapped(&self, name: &str) -> bool {
+        self.midi_learn.is_midi_mapped(name)
+    }
+
+    fn midi_learn_ccs(&self, name: &str) -> Vec<i32> {
+        self.midi_learn.learned_ccs(name)
+    }
 }
 
 #[cfg(test)]
@@ -111,7 +135,12 @@ mod tests {
             EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
         let params = Arc::new(SynthParams::new(edits));
         let (_writer, telemetry) = Telemetry::new(Arc::default());
-        let model = PluginModel::new(params.clone(), telemetry, keyboard().0);
+        let model = PluginModel::new(
+            params.clone(),
+            telemetry,
+            keyboard().0,
+            Arc::new(MidiLearn::in_memory()),
+        );
         assert_eq!(model.preset_name(), "");
         let edits = params.edit_handle();
         let mut info = edits.with_document(|document| document.state.info.clone());
@@ -125,7 +154,12 @@ mod tests {
         let (edits, _consumer) =
             EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
         let (_writer, telemetry) = Telemetry::new(Arc::default());
-        let model = PluginModel::new(Arc::new(SynthParams::new(edits)), telemetry, keyboard().0);
+        let model = PluginModel::new(
+            Arc::new(SynthParams::new(edits)),
+            telemetry,
+            keyboard().0,
+            Arc::new(MidiLearn::in_memory()),
+        );
         let default_name = model.tuning_name();
         let mut tuning = Tuning::new();
         tuning.set_name("Septimal");
@@ -141,7 +175,12 @@ mod tests {
         let (edits, _consumer) =
             EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
         let (_writer, telemetry) = Telemetry::new(Arc::default());
-        let model = PluginModel::new(Arc::new(SynthParams::new(edits)), telemetry, keyboard().0);
+        let model = PluginModel::new(
+            Arc::new(SynthParams::new(edits)),
+            telemetry,
+            keyboard().0,
+            Arc::new(MidiLearn::in_memory()),
+        );
         let tunings = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../../migration/corpus/tunings");
         let scale = tunings.join("corpus_septimal.scl");
@@ -174,7 +213,12 @@ mod tests {
             EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
         let (handle, mut consumer) = keyboard();
         let (_writer, telemetry) = Telemetry::new(Arc::default());
-        let model = PluginModel::new(Arc::new(SynthParams::new(edits)), telemetry, handle);
+        let model = PluginModel::new(
+            Arc::new(SynthParams::new(edits)),
+            telemetry,
+            handle,
+            Arc::new(MidiLearn::in_memory()),
+        );
         model.note_on(60, 0.5);
         assert_eq!(model.held_notes(), 1 << 60);
         model.note_off(60);

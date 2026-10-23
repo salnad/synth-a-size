@@ -19,6 +19,8 @@
 //! - [`render`]: offline rendering like the reference's `ref-render`, behind
 //!   the `sas-render` binary.
 //! - [`editor`]: what the `sas-gui` editor reads from the plugin.
+//! - [`midi_learn`]: MIDI learn requests from the editor, and the learn map
+//!   saved to the user [`config`] file.
 //!
 //! The shipping build is an arm64 macOS VST3 (`scripts/bundle.sh`).
 //! CLAP export is kept because it costs nothing, but it is not tested or
@@ -33,8 +35,10 @@ use sas_engine::keyboard::{keyboard, KeyboardHandle};
 use sas_engine::telemetry::{AudioMemory, Telemetry};
 use sas_preset::InitContent;
 
+pub mod config;
 pub mod editor;
 pub mod engine;
+pub mod midi_learn;
 pub mod params;
 pub mod processor;
 pub mod render;
@@ -42,8 +46,9 @@ pub mod sound_engine;
 pub mod state;
 
 pub use engine::{Engine, SilentEngine};
+pub use midi_learn::MidiLearn;
 pub use params::SynthParams;
-pub use processor::{BlockProcessor, Transport};
+pub use processor::{BlockOutcome, BlockProcessor, Transport};
 pub use sound_engine::SoundEngineHost;
 pub use state::PresetDocument;
 
@@ -55,7 +60,16 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
     "vital/src/plugin/synth_plugin.cpp",
     "vital/src/plugin/synth_plugin.h",
     "vital/src/plugin/value_bridge.h",
+    "vital/src/common/load_save.cpp",
 ];
+
+/// Work the audio thread hands to nice-plug's background thread.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PluginTask {
+    /// Save the MIDI learn map to the user config
+    /// (`LoadSave::saveMidiMapConfig`).
+    SaveMidiLearnConfig,
+}
 
 /// The plugin around engine `E`.
 pub struct SynthPlugin<E: Engine> {
@@ -75,8 +89,15 @@ impl<E: Engine> SynthPlugin<E> {
     /// never calls `loadInitPreset`: the engine starts in its constructed
     /// state, which the init document describes, and nothing more is drawn
     /// from the engine's random seed counter (a draw here would shift every
-    /// later one, and the sound with it).
+    /// later one, and the sound with it). No MIDI learn map is loaded or
+    /// saved; see [`with_midi_learn`](Self::with_midi_learn).
     pub fn new(engine: E) -> SynthPlugin<E> {
+        SynthPlugin::with_midi_learn(engine, Arc::new(MidiLearn::in_memory()))
+    }
+
+    /// [`new`](Self::new), with MIDI learn loaded from and saved to
+    /// `midi_learn`'s config file.
+    pub fn with_midi_learn(engine: E, midi_learn: Arc<MidiLearn>) -> SynthPlugin<E> {
         // The init state carries the engine's own sample; an engine that
         // can't report one gets white noise from a local seed, never from
         // the global counter.
@@ -92,7 +113,13 @@ impl<E: Engine> SynthPlugin<E> {
         let (keyboard, keyboard_consumer) = keyboard();
         SynthPlugin {
             params: Arc::new(SynthParams::new(edits)),
-            processor: BlockProcessor::new(engine, consumer, keyboard_consumer, writer),
+            processor: BlockProcessor::with_midi_learn(
+                engine,
+                consumer,
+                keyboard_consumer,
+                writer,
+                midi_learn,
+            ),
             telemetry,
             keyboard,
             editor_state: sas_gui::default_state(),
@@ -128,8 +155,14 @@ impl<E: Engine> SynthPlugin<E> {
 }
 
 impl<E: Engine + Default> Default for SynthPlugin<E> {
+    /// The plugin as a host creates it: MIDI learn uses the user config file
+    /// (`SynthBase`'s constructor loads it through `Startup`).
     fn default() -> Self {
-        SynthPlugin::new(E::default())
+        let midi_learn = match config::config_file() {
+            Some(path) => MidiLearn::with_config_file(path),
+            None => MidiLearn::in_memory(),
+        };
+        SynthPlugin::with_midi_learn(E::default(), Arc::new(midi_learn))
     }
 }
 
@@ -158,7 +191,14 @@ impl<E: Engine + Default> Plugin for SynthPlugin<E> {
 
     type Editor = sas_gui::Editor;
     type SysExMessage = ();
-    type BackgroundTask = ();
+    type BackgroundTask = PluginTask;
+
+    fn task_executor(&mut self) -> TaskExecutor<Self> {
+        let midi_learn = self.processor.midi_learn().clone();
+        Box::new(move |task| match task {
+            PluginTask::SaveMidiLearnConfig => midi_learn.save_config(),
+        })
+    }
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
@@ -166,7 +206,12 @@ impl<E: Engine + Default> Plugin for SynthPlugin<E> {
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Self::Editor> {
         let model =
-            editor::PluginModel::new(self.params.clone(), self.telemetry(), self.keyboard.clone());
+            editor::PluginModel::new(
+                self.params.clone(),
+                self.telemetry(),
+                self.keyboard.clone(),
+                self.processor.midi_learn().clone(),
+            );
         sas_gui::create_editor(self.editor_state.clone(), Arc::new(model))
     }
 
@@ -202,10 +247,14 @@ impl<E: Engine + Default> Plugin for SynthPlugin<E> {
             pos_beats: host.pos_beats(),
         };
         if let [left, right, ..] = buffer.as_slice() {
-            self.processor
+            let outcome = self
+                .processor
                 .process(&self.params, left, right, &transport, || {
                     context.next_event()
                 });
+            if outcome.save_midi_learn {
+                context.execute_background(PluginTask::SaveMidiLearnConfig);
+            }
         }
         ProcessStatus::KeepAlive
     }

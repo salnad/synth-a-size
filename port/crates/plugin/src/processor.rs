@@ -12,7 +12,11 @@
 //! the tempo and song position; merge the on-screen keyboard's notes into
 //! the block's MIDI (`processKeyboardEvents`, `sas_engine::keyboard`); then
 //! render in chunks of at most `MAX_BUFFER_SIZE` samples, each preceded by
-//! `correctToTime` and the MIDI messages that fall inside it.
+//! `correctToTime` and the MIDI messages that fall inside it. MIDI learn
+//! requests from the editor reach the engine first, bypassed or not;
+//! parameters a learned controller sets follow each message.
+
+use std::sync::Arc;
 
 use nice_plug::midi::MidiResult;
 use nice_plug::prelude::{NoteEvent, SysExMessage};
@@ -22,6 +26,7 @@ use sas_engine::sas_dsp_core::sas_simd::common::MAX_BUFFER_SIZE;
 use sas_engine::telemetry::TelemetryWriter;
 
 use crate::engine::Engine;
+use crate::midi_learn::MidiLearn;
 use crate::params::SynthParams;
 
 /// The parts of the host transport the engine uses.
@@ -53,9 +58,20 @@ pub fn midi_message<S: SysExMessage>(event: &NoteEvent<S>) -> Option<[u8; 3]> {
     }
 }
 
+/// What a block asks of the wrapper after it ran.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BlockOutcome {
+    /// The MIDI learn map changed: save the user config off the audio
+    /// thread ([`MidiLearn::save_config`]).
+    pub save_midi_learn: bool,
+}
+
 /// Drives an [`Engine`] from host blocks.
 pub struct BlockProcessor<E: Engine> {
     engine: E,
+    midi_learn: Arc<MidiLearn>,
+    /// The engine's learn map changed but could not be published yet.
+    midi_learn_unpublished: bool,
     sample_rate: f32,
     /// `SynthPlugin::last_seconds_time_`.
     last_seconds_time: f64,
@@ -73,14 +89,36 @@ pub struct BlockProcessor<E: Engine> {
 }
 
 impl<E: Engine> BlockProcessor<E> {
+    /// `engine` with no saved MIDI learn map, saving none.
     pub fn new(
         engine: E,
         edits: EditConsumer,
         keyboard: KeyboardConsumer,
         telemetry: TelemetryWriter,
     ) -> BlockProcessor<E> {
+        BlockProcessor::with_midi_learn(
+            engine,
+            edits,
+            keyboard,
+            telemetry,
+            Arc::new(MidiLearn::in_memory()),
+        )
+    }
+
+    /// `engine` with the map `midi_learn` holds (the saved one, as
+    /// `SynthBase`'s constructor loads it through `Startup`).
+    pub fn with_midi_learn(
+        mut engine: E,
+        edits: EditConsumer,
+        keyboard: KeyboardConsumer,
+        telemetry: TelemetryWriter,
+        midi_learn: Arc<MidiLearn>,
+    ) -> BlockProcessor<E> {
+        engine.set_midi_learn_map(midi_learn.map());
         BlockProcessor {
             engine,
+            midi_learn,
+            midi_learn_unpublished: false,
             sample_rate: 44_100.0,
             last_seconds_time: 0.0,
             edits,
@@ -96,6 +134,10 @@ impl<E: Engine> BlockProcessor<E> {
 
     pub fn engine_mut(&mut self) -> &mut E {
         &mut self.engine
+    }
+
+    pub fn midi_learn(&self) -> &Arc<MidiLearn> {
+        &self.midi_learn
     }
 
     /// `SynthPlugin::prepareToPlay`, now.
@@ -122,6 +164,31 @@ impl<E: Engine> BlockProcessor<E> {
     /// Renders one host block into `left` / `right` (same length), taking
     /// MIDI from `next_event` (in time order, timings relative to the block).
     pub fn process<S: SysExMessage>(
+        &mut self,
+        params: &SynthParams,
+        left: &mut [f32],
+        right: &mut [f32],
+        transport: &Transport,
+        next_event: impl FnMut() -> Option<NoteEvent<S>>,
+    ) -> BlockOutcome {
+        if self.midi_learn.apply_commands(&mut self.engine) {
+            self.midi_learn_unpublished = true;
+        }
+        self.render(params, left, right, transport, next_event);
+        if self.engine.take_midi_learn_changed() {
+            self.midi_learn_unpublished = true;
+        }
+        let mut outcome = BlockOutcome::default();
+        if self.midi_learn_unpublished {
+            if let Some(changed) = self.midi_learn.publish(&self.engine) {
+                self.midi_learn_unpublished = false;
+                outcome.save_midi_learn = changed;
+            }
+        }
+        outcome
+    }
+
+    fn render<S: SysExMessage>(
         &mut self,
         params: &SynthParams,
         left: &mut [f32],
@@ -198,6 +265,9 @@ impl<E: Engine> BlockProcessor<E> {
                         if let Some(message) = pending.take().as_ref().and_then(midi_message) {
                             self.keyboard.host_message(message);
                             self.engine.process_midi(message, sample_offset);
+                            self.engine.drain_midi_value_changes(&mut |name, value| {
+                                params.set_from_midi(name, value)
+                            });
                         }
                         pending = next_event();
                     }
