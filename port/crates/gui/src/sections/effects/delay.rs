@@ -116,6 +116,134 @@ impl DelayLayout {
     }
 }
 
+use egui::Ui;
+
+use super::{paint_section_background, viewer_corners, Effect};
+use crate::controls::slider::{Slider, SliderStyle};
+use crate::controls::tempo::{self, TempoMode};
+use crate::host::Host;
+use crate::paint::PixelPainter;
+use crate::section::{draw_label, draw_text_component_background};
+use crate::sections::{Overlay, Panel};
+
+/// The section's controls (`DelaySection`'s constructor). `delay_style` is
+/// a text slider until the shared `TextSelector` lands.
+pub struct DelaySection {
+    frequency: Slider,
+    tempo: Slider,
+    aux_frequency: Slider,
+    aux_tempo: Slider,
+    filter_cutoff: Slider,
+    filter_spread: Slider,
+    feedback: Slider,
+    dry_wet: Slider,
+    style: Slider,
+}
+
+impl Default for DelaySection {
+    fn default() -> DelaySection {
+        /// `TEMPO_DRAG_SENSITIVITY`.
+        const TEMPO_DRAG_SENSITIVITY: f32 = 0.3;
+        DelaySection {
+            frequency: Slider::new("delay_frequency", SliderStyle::Text),
+            tempo: Slider::new("delay_tempo", SliderStyle::Text)
+                .sensitivity(TEMPO_DRAG_SENSITIVITY),
+            aux_frequency: Slider::new("delay_aux_frequency", SliderStyle::Text),
+            aux_tempo: Slider::new("delay_aux_tempo", SliderStyle::Text)
+                .sensitivity(TEMPO_DRAG_SENSITIVITY),
+            filter_cutoff: Slider::new("delay_filter_cutoff", SliderStyle::Rotary),
+            filter_spread: Slider::new("delay_filter_spread", SliderStyle::Rotary),
+            feedback: Slider::new("delay_feedback", SliderStyle::Rotary).bipolar(),
+            dry_wet: Slider::new("delay_dry_wet", SliderStyle::Rotary),
+            style: Slider::new("delay_style", SliderStyle::Text),
+        }
+    }
+}
+
+impl DelaySection {
+    /// `DelaySection::paintBackground`, then its controls.
+    #[allow(clippy::too_many_arguments)]
+    pub fn show(
+        &self,
+        ui: &mut Ui,
+        host: &Host,
+        pixels: &PixelPainter,
+        scope: &Scope,
+        overlay: &mut Overlay,
+        bounds: Rect,
+        clip: Rect,
+    ) {
+        let style = host.value("delay_style") as usize;
+        let l = DelayLayout::new(scope, bounds, style);
+        let rotaries = [
+            (&self.feedback, l.feedback),
+            (&self.dry_wet, l.dry_wet),
+            (&self.filter_cutoff, l.filter_cutoff),
+            (&self.filter_spread, l.filter_spread),
+        ];
+        paint_section_background(
+            pixels,
+            scope,
+            Effect::Delay,
+            bounds,
+            &rotaries,
+            &[l.viewer, l.filter_viewer],
+        );
+        let widget_margin = scope.widget_margin() as i32;
+        let section_height = scope.knob_section_height() as i32;
+        let right = l.sync.right().max(l.aux_sync.right());
+        let frequency = Rect::new(
+            l.frequency.x,
+            bounds.y + widget_margin,
+            right - l.frequency.x,
+            section_height - 2 * widget_margin,
+        );
+        draw_text_component_background(pixels, scope, frequency, true);
+        draw_text_component_background(pixels, scope, l.style, true);
+        for (text, rect) in [
+            ("FEEDBACK", l.feedback),
+            ("MIX", l.dry_wet),
+            ("CUTOFF", l.filter_cutoff),
+            ("SPREAD", l.filter_spread),
+        ] {
+            draw_label(pixels, scope, text, rect, false);
+        }
+        draw_label(pixels, scope, "MODE", l.style, true);
+        draw_label(pixels, scope, "FREQUENCY", frequency, true);
+        tempo::paint_divider(pixels, scope, l.sync);
+        tempo::paint_divider(pixels, scope, l.aux_sync);
+
+        let mut panel = Panel::new(ui, host, pixels, *scope, overlay, clip);
+        let sync = host.value("delay_sync");
+        let rate = if TempoMode::from_value(sync).shows_free_slider() {
+            &self.frequency
+        } else {
+            &self.tempo
+        };
+        panel.slider(rate, l.frequency);
+        let aux_sync = host.value("delay_aux_sync");
+        if style != STYLE_MONO {
+            let aux_rate = if TempoMode::from_value(aux_sync).shows_free_slider() {
+                &self.aux_frequency
+            } else {
+                &self.aux_tempo
+            };
+            panel.slider(aux_rate, l.aux_frequency);
+        }
+        panel.slider(&self.style, l.style);
+        for (slider, rect) in rotaries {
+            panel.slider(slider, rect);
+        }
+        tempo::paint(pixels, scope, l.sync, sync);
+        if style != STYLE_MONO {
+            tempo::paint(pixels, scope, l.aux_sync, aux_sync);
+        }
+        viewer_corners(&mut panel, l.viewer);
+        viewer_corners(&mut panel, l.filter_viewer);
+        panel.finish();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

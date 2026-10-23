@@ -76,3 +76,85 @@ impl PhaserLayout {
         }
     }
 }
+
+use egui::Ui;
+
+use super::flanger::{ModulatedFilterBounds, ModulatedFilterControls};
+use super::{paint_section_background, viewer_corners, Effect};
+use crate::controls::slider::{Slider, SliderStyle};
+use crate::host::Host;
+use crate::paint::PixelPainter;
+use crate::sections::{Overlay, Panel};
+
+impl PhaserLayout {
+    fn shared(&self) -> ModulatedFilterBounds {
+        ModulatedFilterBounds {
+            frequency: self.frequency,
+            sync: self.sync,
+            phase_offset: self.phase_offset,
+            feedback: self.feedback,
+            dry_wet: self.dry_wet,
+            center: self.center,
+            mod_depth: self.mod_depth,
+        }
+    }
+}
+
+/// The section's controls (`PhaserSection`'s constructor).
+pub struct PhaserSection {
+    controls: ModulatedFilterControls,
+    blend: Slider,
+}
+
+impl Default for PhaserSection {
+    fn default() -> PhaserSection {
+        PhaserSection {
+            controls: ModulatedFilterControls::new(
+                [
+                    "phaser_sync",
+                    "phaser_phase_offset",
+                    "phaser_mod_depth",
+                    "phaser_center",
+                    "phaser_frequency",
+                    "phaser_tempo",
+                    "phaser_feedback",
+                    "phaser_dry_wet",
+                ],
+                false,
+            ),
+            blend: Slider::new("phaser_blend", SliderStyle::Horizontal).bipolar(),
+        }
+    }
+}
+
+impl PhaserSection {
+    /// `PhaserSection::paintBackground`, then its controls.
+    #[allow(clippy::too_many_arguments)]
+    pub fn show(
+        &self,
+        ui: &mut Ui,
+        host: &Host,
+        pixels: &PixelPainter,
+        scope: &Scope,
+        overlay: &mut Overlay,
+        bounds: Rect,
+        clip: Rect,
+    ) {
+        let l = PhaserLayout::new(scope, bounds);
+        let shared = l.shared();
+        paint_section_background(
+            pixels,
+            scope,
+            Effect::Phaser,
+            bounds,
+            &self.controls.rotaries(&shared),
+            &[l.response],
+        );
+        self.controls.paint_labels(pixels, scope, &shared);
+        let mut panel = Panel::new(ui, host, pixels, *scope, overlay, clip);
+        self.controls.show(&mut panel, &shared);
+        panel.slider(&self.blend, l.blend);
+        viewer_corners(&mut panel, l.response);
+        panel.finish();
+    }
+}

@@ -108,3 +108,116 @@ impl ChorusLayout {
         }
     }
 }
+
+use egui::Ui;
+
+use super::{frequency_bounds, paint_section_background, viewer_corners, Effect};
+use crate::controls::slider::{Slider, SliderStyle};
+use crate::controls::tempo::{self, TempoMode};
+use crate::host::Host;
+use crate::paint::PixelPainter;
+use crate::section::{draw_label, draw_text_component_background};
+use crate::sections::{Overlay, Panel};
+
+/// The section's controls (`ChorusSection`'s constructor).
+pub struct ChorusSection {
+    voices: Slider,
+    delay_1: Slider,
+    delay_2: Slider,
+    mod_depth: Slider,
+    frequency: Slider,
+    tempo: Slider,
+    feedback: Slider,
+    dry_wet: Slider,
+    cutoff: Slider,
+    spread: Slider,
+}
+
+impl Default for ChorusSection {
+    fn default() -> ChorusSection {
+        /// `kTempoDragSensitivity`.
+        const TEMPO_DRAG_SENSITIVITY: f32 = 0.5;
+        ChorusSection {
+            voices: Slider::new("chorus_voices", SliderStyle::Text)
+                .sensitivity(TEMPO_DRAG_SENSITIVITY),
+            delay_1: Slider::new("chorus_delay_1", SliderStyle::Rotary),
+            delay_2: Slider::new("chorus_delay_2", SliderStyle::Rotary),
+            mod_depth: Slider::new("chorus_mod_depth", SliderStyle::Rotary),
+            frequency: Slider::new("chorus_frequency", SliderStyle::Text),
+            tempo: Slider::new("chorus_tempo", SliderStyle::Text)
+                .sensitivity(TEMPO_DRAG_SENSITIVITY),
+            feedback: Slider::new("chorus_feedback", SliderStyle::Rotary).bipolar(),
+            dry_wet: Slider::new("chorus_dry_wet", SliderStyle::Rotary),
+            cutoff: Slider::new("chorus_cutoff", SliderStyle::Rotary),
+            spread: Slider::new("chorus_spread", SliderStyle::Rotary),
+        }
+    }
+}
+
+impl ChorusSection {
+    /// `ChorusSection::paintBackground`, then its controls.
+    #[allow(clippy::too_many_arguments)]
+    pub fn show(
+        &self,
+        ui: &mut Ui,
+        host: &Host,
+        pixels: &PixelPainter,
+        scope: &Scope,
+        overlay: &mut Overlay,
+        bounds: Rect,
+        clip: Rect,
+    ) {
+        let l = ChorusLayout::new(scope, bounds);
+        let rotaries = [
+            (&self.delay_1, l.delay_1),
+            (&self.delay_2, l.delay_2),
+            (&self.mod_depth, l.mod_depth),
+            (&self.feedback, l.feedback),
+            (&self.dry_wet, l.dry_wet),
+            (&self.cutoff, l.cutoff),
+            (&self.spread, l.spread),
+        ];
+        paint_section_background(
+            pixels,
+            scope,
+            Effect::Chorus,
+            bounds,
+            &rotaries,
+            &[l.viewer, l.filter_viewer],
+        );
+        let frequency = frequency_bounds(l.frequency, l.sync);
+        draw_text_component_background(pixels, scope, frequency, true);
+        draw_text_component_background(pixels, scope, l.voices, true);
+        draw_label(pixels, scope, "FREQUENCY", frequency, true);
+        draw_label(pixels, scope, "VOICES", l.voices, true);
+        for (text, rect) in [
+            ("FEEDBACK", l.feedback),
+            ("MIX", l.dry_wet),
+            ("DEPTH", l.mod_depth),
+            ("DELAY 1", l.delay_1),
+            ("DELAY 2", l.delay_2),
+            ("CUTOFF", l.cutoff),
+            ("SPREAD", l.spread),
+        ] {
+            draw_label(pixels, scope, text, rect, false);
+        }
+        tempo::paint_divider(pixels, scope, l.sync);
+
+        let mut panel = Panel::new(ui, host, pixels, *scope, overlay, clip);
+        let sync = host.value("chorus_sync");
+        let rate = if TempoMode::from_value(sync).shows_free_slider() {
+            &self.frequency
+        } else {
+            &self.tempo
+        };
+        panel.slider(rate, l.frequency);
+        panel.slider(&self.voices, l.voices);
+        for (slider, rect) in rotaries {
+            panel.slider(slider, rect);
+        }
+        tempo::paint(pixels, scope, l.sync, sync);
+        viewer_corners(&mut panel, l.viewer);
+        viewer_corners(&mut panel, l.filter_viewer);
+        panel.finish();
+    }
+}

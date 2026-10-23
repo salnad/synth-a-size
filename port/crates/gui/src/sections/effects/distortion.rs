@@ -86,3 +86,104 @@ impl DistortionLayout {
         }
     }
 }
+
+use egui::Ui;
+
+use super::{paint_section_background, viewer_corners, Effect};
+use crate::controls::slider::{Slider, SliderStyle};
+use crate::host::Host;
+use crate::paint::PixelPainter;
+use crate::section::{draw_label, draw_text_component_background};
+use crate::sections::{Overlay, Panel};
+
+/// The section's controls (`DistortionSection`'s constructor). The type
+/// and filter order are text sliders until the shared `TextSelector` lands.
+pub struct DistortionSection {
+    kind: Slider,
+    filter_order: Slider,
+    filter_cutoff: Slider,
+    filter_resonance: Slider,
+    filter_blend: Slider,
+    drive: Slider,
+    mix: Slider,
+}
+
+impl Default for DistortionSection {
+    fn default() -> DistortionSection {
+        DistortionSection {
+            kind: Slider::new("distortion_type", SliderStyle::Text),
+            filter_order: Slider::new("distortion_filter_order", SliderStyle::Text),
+            filter_cutoff: Slider::new("distortion_filter_cutoff", SliderStyle::Rotary),
+            filter_resonance: Slider::new("distortion_filter_resonance", SliderStyle::Rotary),
+            filter_blend: Slider::new("distortion_filter_blend", SliderStyle::Rotary).bipolar(),
+            drive: Slider::new("distortion_drive", SliderStyle::Rotary),
+            mix: Slider::new("distortion_mix", SliderStyle::Rotary),
+        }
+    }
+}
+
+impl DistortionSection {
+    /// `DistortionSection::paintBackground`, then its controls.
+    #[allow(clippy::too_many_arguments)]
+    pub fn show(
+        &self,
+        ui: &mut Ui,
+        host: &Host,
+        pixels: &PixelPainter,
+        scope: &Scope,
+        overlay: &mut Overlay,
+        bounds: Rect,
+        clip: Rect,
+    ) {
+        let l = DistortionLayout::new(scope, bounds);
+        // setFilterActive: the filter knobs show disabled without a filter.
+        let filter_active = host.value("distortion_filter_order") != 0.0;
+        let filter = |slider: &Slider| Slider {
+            active: filter_active,
+            ..*slider
+        };
+        let (cutoff, resonance, blend) = (
+            filter(&self.filter_cutoff),
+            filter(&self.filter_resonance),
+            filter(&self.filter_blend),
+        );
+        let rotaries = [
+            (&self.drive, l.drive),
+            (&self.mix, l.mix),
+            (&cutoff, l.filter_cutoff),
+            (&resonance, l.filter_resonance),
+            (&blend, l.filter_blend),
+        ];
+        paint_section_background(
+            pixels,
+            scope,
+            Effect::Distortion,
+            bounds,
+            &rotaries,
+            &[l.viewer, l.filter_response],
+        );
+        draw_text_component_background(pixels, scope, l.kind, true);
+        draw_text_component_background(pixels, scope, l.filter_order, true);
+        for (text, rect) in [
+            ("DRIVE", l.drive),
+            ("MIX", l.mix),
+            ("CUTOFF", l.filter_cutoff),
+            ("RESONANCE", l.filter_resonance),
+            ("BLEND", l.filter_blend),
+        ] {
+            draw_label(pixels, scope, text, rect, false);
+        }
+        draw_label(pixels, scope, "TYPE", l.kind, true);
+        draw_label(pixels, scope, "FILTER", l.filter_order, true);
+
+        let mut panel = Panel::new(ui, host, pixels, *scope, overlay, clip);
+        panel.slider(&self.kind, l.kind);
+        panel.slider(&self.filter_order, l.filter_order);
+        for (slider, rect) in rotaries {
+            panel.slider(slider, rect);
+        }
+        viewer_corners(&mut panel, l.viewer);
+        viewer_corners(&mut panel, l.filter_response);
+        panel.finish();
+    }
+}

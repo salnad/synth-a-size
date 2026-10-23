@@ -28,6 +28,7 @@ use crate::layout::{FullLayout, Rect};
 use crate::paint::{PixelPainter, RectF};
 use crate::scope::Scope;
 use crate::sections::bend::{self, BendLayout, BendSection};
+use crate::sections::effects::EffectsTab;
 use crate::sections::keyboard::{self, KeyboardLayout, PlayingNote};
 use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
 use crate::sections::voice::{self, VoiceLayout, VoiceSection};
@@ -157,6 +158,7 @@ pub struct Interface {
     bend: BendSection,
     playing_note: PlayingNote,
     overlay: Overlay,
+    effects: EffectsTab,
 }
 
 impl Default for Interface {
@@ -176,6 +178,7 @@ impl Interface {
             bend: BendSection::default(),
             playing_note: PlayingNote::default(),
             overlay: Overlay::default(),
+            effects: EffectsTab::default(),
         }
     }
 
@@ -272,12 +275,14 @@ impl Interface {
     /// of the synthesis, effects, matrix and master controls interfaces).
     /// The sections below them show on every tab.
     fn show_tab(&mut self, ui: &mut Ui, host: &Host, pixels: &PixelPainter, layout: &FullLayout) {
-        let _ = (ui, host, pixels, layout);
         match self.tab {
             // G3b: oscillators, sample and filters.
             Tab::Voice => {}
-            // G6: the effects interface, in `layout.effects`.
-            Tab::Effects => {}
+            Tab::Effects => {
+                let top = Scope::top(&self.skin, layout.size_ratio);
+                self.effects
+                    .show(ui, host, pixels, layout, &top, &mut self.overlay)
+            }
             // G4: the modulation matrix.
             Tab::Matrix => {}
             // G6: the master controls interface, in `layout.main`.

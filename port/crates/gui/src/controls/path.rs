@@ -14,7 +14,7 @@
 use std::f32::consts::PI;
 
 /// `Path::addEllipse`'s control point distance for a quarter circle.
-const ELLIPSE_KAPPA: f32 = 0.552_284_75;
+const ELLIPSE_KAPPA: f32 = 0.552_284_8;
 /// `Path::addCentredArc`'s step between line segments, in radians.
 const ARC_ANGLE_INCREMENT: f32 = 0.05;
 /// Line segments per cubic curve.
@@ -465,7 +465,7 @@ fn parse_path_data(data: &str) -> Result<Path, String> {
         if arity == 0 {
             path.close();
         } else {
-            if numbers.is_empty() || numbers.len() % arity != 0 {
+            if numbers.is_empty() || !numbers.len().is_multiple_of(arity) {
                 return Err(format!("{command} takes {arity} numbers"));
             }
             for (i, chunk) in numbers.chunks(arity).enumerate() {
