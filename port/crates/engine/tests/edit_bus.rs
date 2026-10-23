@@ -308,7 +308,7 @@ fn named_info(name: &str) -> SaveInfo {
 #[test]
 fn save_info_changes_only_the_mirror() {
     let (edits, mut consumer) = EditBus::new(init_document());
-    let (revision, generation) = (edits.revision(), edits.generation());
+    let generation = edits.generation();
     // Nothing is queued, so a full queue doesn't refuse it.
     while edits
         .connect_modulation("lfo_1", "filter_1_cutoff", DRAG)
@@ -316,9 +316,10 @@ fn save_info_changes_only_the_mirror() {
         .is_ok()
     {}
     let remaining = edits.capacity_remaining();
+    let revision = edits.revision();
     edits.set_info(named_info("renamed"));
     assert_eq!(edits.capacity_remaining(), remaining);
-    assert!(edits.revision() > revision);
+    assert_eq!(edits.revision(), revision + 1);
     assert_eq!(edits.generation(), generation);
     edits.with_document(|document| assert_eq!(document.state.info, named_info("renamed")));
     let mut recorder = Recorder::default();
@@ -328,13 +329,27 @@ fn save_info_changes_only_the_mirror() {
         Call::Connect(..) | Call::Disconnect(..) | Call::LineMapping(..)
     )));
 
-    // Rolled back with the rest of a failed batch.
+    // In a batch: kept when it commits, rolled back when it fails.
+    let revision = edits.revision();
+    edits
+        .batch(|batch| {
+            batch.set_info(named_info("batched"));
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(edits.revision(), revision + 1);
+    edits.with_document(|document| assert_eq!(document.state.info, named_info("batched")));
+    let mut recorder = Recorder::default();
+    consumer.drain(&mut recorder);
+    assert!(recorder.0.is_empty());
+
     let result = edits.batch(|batch| {
-        batch.set_info(named_info("batched"));
+        batch.set_info(named_info("failed"));
         batch.connect_modulation("nothing", "filter_1_cutoff", DRAG)
     });
     assert!(matches!(result, Err(EditError::UnknownSource(_))));
-    edits.with_document(|document| assert_eq!(document.state.info.preset_name, "renamed"));
+    assert_eq!(edits.revision(), revision + 1);
+    edits.with_document(|document| assert_eq!(document.state.info, named_info("batched")));
 }
 
 #[test]
