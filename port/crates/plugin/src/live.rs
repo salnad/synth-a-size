@@ -12,6 +12,9 @@
 //!   bus (`sas_engine::edit_bus`). A created slot's final values (upstream's
 //!   drag values with the model's explicit settings on top) travel with its
 //!   connection, and its `parameter_changes` go to the host parameters;
+//! - the save info (preset name, author, comments, style, macro names) changes
+//!   on the edit bus's mirror only (`EditHandle::set_info`): the engine never
+//!   reads it, so nothing reloads;
 //! - a whole preset (a preset file, the init patch, or an undo that changes
 //!   the routing) goes through `GuiContext::set_state`, as the editor loads a
 //!   preset.
@@ -231,11 +234,7 @@ impl<W: HostWriter> SynthSession for LiveSession<W> {
                 })?;
             }
             Edit::LoadPreset(preset) => self.replace(preset)?,
-            Edit::SetInfo(info) => {
-                let mut preset = self.params.preset_state();
-                preset.info = (**info).clone();
-                self.replace(&preset)?;
-            }
+            Edit::SetInfo(info) => self.edits().set_info((**info).clone()),
             _ => {
                 return Err(Error::Invalid(
                     "this edit is not supported live".to_string(),
@@ -245,10 +244,10 @@ impl<W: HostWriter> SynthSession for LiveSession<W> {
         Ok(Applied::Done)
     }
 
-    /// Undo and A/B compare. Controls, LFO shapes, remap curves and
-    /// wavetables return as edits (the bus applies its part within one
-    /// block); a different routing, sample or save info reloads `state`
-    /// whole through the host.
+    /// Undo and A/B compare. Controls, LFO shapes, remap curves, wavetables
+    /// and the save info return as edits (the bus applies its part within one
+    /// block); a different routing or sample reloads `state` whole through
+    /// the host.
     fn restore(&mut self, target: &PresetState) -> Result<(), Error> {
         let current = self.params.preset_state();
         let same_routes = current
@@ -257,13 +256,16 @@ impl<W: HostWriter> SynthSession for LiveSession<W> {
             .zip(target.modulations())
             .all(|(a, b)| a.source == b.source && a.destination == b.destination);
         let same_sample = current.sample.to_json().dump() == target.sample.to_json().dump();
+        if !(same_routes && same_sample) {
+            return self.replace(target);
+        }
         let same_info = current.info.preset_name == target.info.preset_name
             && current.info.author == target.info.author
             && current.info.comments == target.info.comments
             && current.info.style == target.info.style
             && current.info.macros == target.info.macros;
-        if !(same_routes && same_sample && same_info) {
-            return self.replace(target);
+        if !same_info {
+            self.edits().set_info(target.info.clone());
         }
 
         let wavetables: Vec<_> = current

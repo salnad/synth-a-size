@@ -481,3 +481,38 @@ fn an_unreadable_patch_blocks_edits_instead_of_saving_a_stale_undo_step() {
         output.content
     );
 }
+
+#[test]
+fn naming_the_patch_changes_the_save_info_without_a_reload() {
+    let rig = rig();
+    let mut controller = rig.controller();
+    let generation = rig.params.edit_handle().generation();
+    ok(controller.call(
+        "set_params",
+        &json!({"changes": [{"name": "filter_1_on", "value": "On"}]}),
+    ));
+    ok(controller.call(
+        "set_preset_info",
+        &json!({"name": "Glass Pad", "author": "Chat", "macro_names": ["Bloom"]}),
+    ));
+    let state = rig.params.preset_state();
+    assert_eq!(state.info.preset_name, "Glass Pad");
+    assert_eq!(state.info.author, "Chat");
+    assert_eq!(state.info.macros[0], "Bloom");
+    // No reload: the generation is unchanged, so the undo history and the
+    // outside-change tracking stay.
+    assert_eq!(controller.session().writer().reloads.get(), 0);
+    assert_eq!(rig.params.edit_handle().generation(), generation);
+    assert!(!controller.session_mut().take_replaced());
+    // The host's saved state carries the new name.
+    let saved = serde_json::to_string(&rig.params.capture_state().fields).unwrap();
+    assert!(saved.contains("Glass Pad"), "{saved}");
+
+    // Undoing the turn restores the old name and the control, still without
+    // a reload.
+    ok(controller.call("undo", &json!({})));
+    let state = rig.params.preset_state();
+    assert_eq!(state.info.preset_name, "");
+    assert_eq!(rig.value("filter_1_on"), 0.0);
+    assert_eq!(controller.session().writer().reloads.get(), 0);
+}
