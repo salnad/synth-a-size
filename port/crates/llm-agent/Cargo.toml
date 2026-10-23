@@ -1,0 +1,26 @@
+[package]
+name = "sas-llm-agent"
+description = "LLM agent loop over the synth's tools: model provider adapters (Anthropic Messages, OpenAI-compatible Chat Completions), recorded replays for tests, and the sas-llm command line."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+sas-llm-control.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# HTTPS for real model calls, through the system's TLS (Security.framework
+# on macOS, OpenSSL 3 on Linux); no bundled crypto. Off by default, so the
+# workspace build and CI contain no network code at all.
+ureq = { version = "2", default-features = false, features = ["native-tls"], optional = true }
+native-tls = { version = "0.2", optional = true }
+
+[features]
+http = ["dep:ureq", "dep:native-tls"]
+
+[[bin]]
+name = "sas-llm"
+required-features = ["http"]

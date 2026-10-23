@@ -12,6 +12,7 @@ members = [
     "crates/preset",
     "crates/gui",
     "crates/llm-control",
+    "crates/llm-agent",
     "crates/plugin",
     "crates/parity",
     "crates/common",
@@ -40,6 +41,7 @@ sas-engine = { path = "crates/engine" }
 sas-preset = { path = "crates/preset" }
 sas-gui = { path = "crates/gui" }
 sas-llm-control = { path = "crates/llm-control" }
+sas-llm-agent = { path = "crates/llm-agent" }
 sas-parity = { path = "crates/parity" }
 # Comparison metrics shared with the migration tooling (not a workspace member).
 audio-diff = { path = "../migration/tools/audio-diff" }
