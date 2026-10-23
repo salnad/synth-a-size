@@ -63,6 +63,23 @@ pub struct Controller<S: SynthSession> {
     needs_snapshot: bool,
     pending: Option<Pending>,
     library: Option<PresetLibrary>,
+    compare: Option<Compare>,
+}
+
+/// Which version an A/B comparison is playing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Side {
+    /// The patch before the last undo step (before the model's last turn).
+    Before,
+    /// The patch with that step.
+    After,
+}
+
+#[derive(Clone, Debug)]
+struct Compare {
+    before: PresetState,
+    after: PresetState,
+    playing: Side,
 }
 
 impl<S: SynthSession> Controller<S> {
@@ -74,6 +91,7 @@ impl<S: SynthSession> Controller<S> {
             needs_snapshot: true,
             pending: None,
             library: None,
+            compare: None,
         }
     }
 
@@ -99,9 +117,75 @@ impl<S: SynthSession> Controller<S> {
         &self.policy
     }
 
-    /// Starts a model turn: its edits form one undo step.
+    /// Starts a model turn: its edits form one undo step. An A/B comparison
+    /// in progress keeps the version playing. If the state was replaced
+    /// outside the chat, the undo history and any held edits are dropped.
     pub fn begin_turn(&mut self) {
         self.needs_snapshot = true;
+        self.compare = None;
+        self.check_replaced();
+    }
+
+    /// Drops the undo history, held edits and comparison if the session's
+    /// state was replaced outside the chat. Returns whether it was.
+    pub fn check_replaced(&mut self) -> bool {
+        if !self.session.take_replaced() {
+            return false;
+        }
+        self.history.clear();
+        self.pending = None;
+        self.compare = None;
+        self.needs_snapshot = true;
+        true
+    }
+
+    /// Mutable access to the session, for checks such as
+    /// [`SynthSession::take_outside_changes`].
+    pub fn session_mut(&mut self) -> &mut S {
+        &mut self.session
+    }
+
+    /// Switches between the patch before and after the last undo step (A/B
+    /// compare). The first call plays the version before; each later call
+    /// swaps. Returns the side now playing, or `None` with nothing to
+    /// compare. Any edit or new turn ends the comparison on the side
+    /// playing.
+    pub fn compare_toggle(&mut self) -> Result<Option<Side>, Error> {
+        if self.check_replaced() {
+            return Ok(None);
+        }
+        let compare = match self.compare.take() {
+            Some(mut compare) => {
+                compare.playing = match compare.playing {
+                    Side::Before => Side::After,
+                    Side::After => Side::Before,
+                };
+                compare
+            }
+            None => {
+                let Some(before) = self.history.last() else {
+                    return Ok(None);
+                };
+                Compare {
+                    before: before.state.clone(),
+                    after: self.session.snapshot()?,
+                    playing: Side::Before,
+                }
+            }
+        };
+        let target = match compare.playing {
+            Side::Before => &compare.before,
+            Side::After => &compare.after,
+        };
+        self.session.restore(target)?;
+        let playing = compare.playing;
+        self.compare = Some(compare);
+        Ok(Some(playing))
+    }
+
+    /// The side an A/B comparison is playing, if one is in progress.
+    pub fn comparing(&self) -> Option<Side> {
+        self.compare.as_ref().map(|compare| compare.playing)
     }
 
     /// Runs tool `name` with JSON arguments `args`.
@@ -151,10 +235,14 @@ impl<S: SynthSession> Controller<S> {
     /// Applies `edits` in order. If one fails, the batch's earlier edits are
     /// undone, so a batch applies whole or not at all.
     fn apply_now(&mut self, edits: &[Edit]) -> Result<Vec<Applied>, Error> {
+        self.compare = None;
         if self.needs_snapshot {
-            self.push_snapshot(None);
+            self.push_snapshot(None)?;
         }
-        let before = (edits.len() > 1).then(|| self.session.snapshot());
+        let before = match edits.len() > 1 {
+            true => Some(self.session.snapshot()?),
+            false => None,
+        };
         let mut applied = Vec::with_capacity(edits.len());
         for edit in edits {
             match self.session.apply(edit) {
@@ -204,20 +292,31 @@ impl<S: SynthSession> Controller<S> {
         None
     }
 
-    pub(crate) fn push_snapshot(&mut self, label: Option<String>) {
+    pub(crate) fn push_snapshot(&mut self, label: Option<String>) -> Result<(), Error> {
         self.history.push(Snapshot {
             label,
-            state: self.session.snapshot(),
+            state: self.session.snapshot()?,
         });
         if self.history.len() > self.policy.max_undo {
             self.history.remove(0);
         }
         self.needs_snapshot = false;
+        Ok(())
     }
 
     /// Undoes `steps` steps, or back to the checkpoint `label`. Returns the
     /// steps undone.
     pub fn undo(&mut self, steps: usize, label: Option<&str>) -> Result<usize, Error> {
+        if self.check_replaced() {
+            return Ok(0);
+        }
+        if let Some(compare) = self.compare.take() {
+            // Undo from the version being compared: back to "after" first,
+            // so the undo history matches the state.
+            if compare.playing == Side::Before {
+                self.session.restore(&compare.after)?;
+            }
+        }
         let count = match label {
             Some(label) => {
                 let position = self

@@ -29,10 +29,10 @@ pub mod session;
 pub mod shapes;
 pub mod tools;
 
-pub use controller::{Controller, Pending, Policy};
+pub use controller::{Controller, Pending, Policy, Side};
 pub use library::PresetLibrary;
 pub use sas_preset;
-pub use session::{Applied, Edit, OfflineSession, SynthSession};
+pub use session::{Applied, Edit, OfflineSession, OutsideChange, SynthSession};
 pub use tools::{specs, ToolOutput, ToolSpec};
 
 /// Milestone in `migration/PLAN.md` that builds this crate.
@@ -50,13 +50,17 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
 pub enum Error {
     Preset(sas_preset::Error),
     Invalid(String),
+    /// The synth cannot take the edit right now (its edit queue is full
+    /// while the audio thread is not processing); nothing was changed, and
+    /// the caller may retry later.
+    Busy(String),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::Preset(error) => write!(f, "{error}"),
-            Error::Invalid(message) => f.write_str(message),
+            Error::Invalid(message) | Error::Busy(message) => f.write_str(message),
         }
     }
 }

@@ -241,3 +241,100 @@ fn malformed_arguments_are_errors() {
     ))
     .contains("cannot read"));
 }
+
+#[test]
+fn compare_switches_between_before_and_after_the_last_turn() {
+    use sas_llm_control::Side;
+    let mut controller = controller();
+    assert_eq!(controller.compare_toggle().unwrap(), None);
+    controller.begin_turn();
+    ok(controller.call(
+        "set_params",
+        &json!({"changes": [{"name": "osc_1_transpose", "value": 12}]}),
+    ));
+
+    assert_eq!(controller.compare_toggle().unwrap(), Some(Side::Before));
+    assert_eq!(controller.session().control("osc_1_transpose"), Some(0.0));
+    assert_eq!(controller.compare_toggle().unwrap(), Some(Side::After));
+    assert_eq!(controller.session().control("osc_1_transpose"), Some(12.0));
+    assert_eq!(controller.compare_toggle().unwrap(), Some(Side::Before));
+
+    // Undo while comparing undoes the turn, from either side.
+    assert_eq!(controller.undo(1, None).unwrap(), 1);
+    assert_eq!(controller.comparing(), None);
+    assert_eq!(controller.session().control("osc_1_transpose"), Some(0.0));
+}
+
+#[test]
+fn an_edit_ends_the_comparison_on_the_side_playing() {
+    let mut controller = controller();
+    controller.begin_turn();
+    ok(controller.call(
+        "set_params",
+        &json!({"changes": [{"name": "osc_1_transpose", "value": 12}]}),
+    ));
+    controller.compare_toggle().unwrap();
+    ok(controller.call(
+        "set_params",
+        &json!({"changes": [{"name": "osc_1_level", "value": 0.25}]}),
+    ));
+    assert_eq!(controller.comparing(), None);
+    // The edit applied to the "before" version.
+    assert_eq!(controller.session().control("osc_1_transpose"), Some(0.0));
+}
+
+/// An offline session whose state another party replaces.
+struct Replaceable {
+    inner: OfflineSession,
+    replaced: bool,
+}
+
+impl SynthSession for Replaceable {
+    fn snapshot(&self) -> Result<sas_llm_control::sas_preset::PresetState, sas_llm_control::Error> {
+        self.inner.snapshot()
+    }
+    fn control(&self, name: &str) -> Option<f32> {
+        self.inner.control(name)
+    }
+    fn apply(
+        &mut self,
+        edit: &sas_llm_control::Edit,
+    ) -> Result<sas_llm_control::Applied, sas_llm_control::Error> {
+        self.inner.apply(edit)
+    }
+    fn restore(
+        &mut self,
+        state: &sas_llm_control::sas_preset::PresetState,
+    ) -> Result<(), sas_llm_control::Error> {
+        self.inner.restore(state)
+    }
+    fn take_replaced(&mut self) -> bool {
+        std::mem::take(&mut self.replaced)
+    }
+}
+
+#[test]
+fn a_state_replaced_outside_the_chat_drops_the_undo_history() {
+    let session = Replaceable {
+        inner: OfflineSession::init(),
+        replaced: false,
+    };
+    let mut controller = Controller::new(session, Policy::default());
+    controller.begin_turn();
+    ok(controller.call(
+        "set_params",
+        &json!({"changes": [{"name": "osc_1_transpose", "value": 12}]}),
+    ));
+    ok(controller.call(
+        "set_params",
+        &json!({"changes": [{"name": "volume", "value": 3}]}),
+    ));
+    assert!(controller.pending().is_some());
+    assert_eq!(controller.undo_depth(), 1);
+
+    controller.session_mut().replaced = true;
+    controller.begin_turn();
+    assert_eq!(controller.undo_depth(), 0);
+    assert!(controller.pending().is_none());
+    assert_eq!(ok(controller.call("undo", &json!({})))["undone"], 0);
+}

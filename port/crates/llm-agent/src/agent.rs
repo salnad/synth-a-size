@@ -4,7 +4,7 @@
 
 use serde_json::Value;
 
-use sas_llm_control::{patch, specs, Controller, SynthSession, ToolOutput};
+use sas_llm_control::{catalog, patch, specs, Controller, SynthSession, ToolOutput};
 
 use crate::message::{Block, ChatRequest, Message, StopReason, Tool, Usage};
 use crate::prompt::system_prompt;
@@ -166,12 +166,45 @@ impl<S: SynthSession> Agent<S> {
                 self.usage.total()
             )));
         }
+        let replaced = self.controller.check_replaced();
+        let outside = self.controller.session_mut().take_outside_changes();
         self.controller.begin_turn();
         let mut opening = Vec::new();
         if let Some(note) = self.note.take() {
             opening.push(Block::Text(note));
         }
-        let patch = patch::describe(&self.controller.session().snapshot());
+        if replaced {
+            opening.push(Block::Text(
+                "The whole patch was replaced outside the chat (a preset load or the host \
+                 restoring its state); earlier undo steps are gone."
+                    .to_string(),
+            ));
+        }
+        if !outside.is_empty() {
+            let changes: Vec<String> = outside
+                .iter()
+                .filter_map(|change| {
+                    let info = catalog::control(change.name)?;
+                    Some(format!(
+                        "{} is now {} (you set {})",
+                        change.name,
+                        catalog::value_view(info, change.now),
+                        catalog::value_view(info, change.set)
+                    ))
+                })
+                .collect();
+            opening.push(Block::Text(format!(
+                "Changed outside the chat since your edits (host automation or the user; don't \
+                 fight automation): {}.",
+                changes.join("; ")
+            )));
+        }
+        let state = self
+            .controller
+            .session()
+            .snapshot()
+            .map_err(|error| AgentError::Tool(format!("cannot read the patch: {error}")))?;
+        let patch = patch::describe(&state);
         opening.push(Block::Text(format!("Current patch:\n{patch}")));
         opening.push(Block::Text(text.to_string()));
         let mut turn = vec![Message::user(opening)];

@@ -281,6 +281,14 @@ pub fn catalog() -> String {
     catalog::catalog_text()
 }
 
+/// The session's current state, or the tool error if it cannot be read.
+fn snapshot<S: SynthSession>(controller: &Controller<S>) -> Result<PresetState, ToolOutput> {
+    controller
+        .session()
+        .snapshot()
+        .map_err(|error| ToolOutput::error(format!("cannot read the patch: {error}")))
+}
+
 fn parse<T: for<'de> Deserialize<'de>>(tool: &str, args: &Value) -> Result<T, ToolOutput> {
     serde_json::from_value(args.clone())
         .map_err(|error| ToolOutput::error(format!("invalid arguments for {tool}: {error}")))
@@ -306,9 +314,7 @@ pub(crate) fn call<S: SynthSession>(
     args: &Value,
 ) -> ToolOutput {
     let result = match name {
-        "get_patch" => Ok(ToolOutput::text(patch::describe(
-            &controller.session().snapshot(),
-        ))),
+        "get_patch" => snapshot(controller).map(|state| ToolOutput::text(patch::describe(&state))),
         "find_params" => find_params(controller, args),
         "get_params" => get_params(controller, args),
         "set_params" => set_params(controller, args),
@@ -464,7 +470,9 @@ fn checkpoint<S: SynthSession>(
         label: String,
     }
     let args: Args = parse("checkpoint", args)?;
-    controller.push_snapshot(Some(args.label.clone()));
+    controller
+        .push_snapshot(Some(args.label.clone()))
+        .map_err(|error| ToolOutput::error(error.to_string()))?;
     Ok(ToolOutput::ok(json!({"checkpoint": args.label})))
 }
 
@@ -632,9 +640,7 @@ fn update_modulation<S: SynthSession>(
     args: &Value,
 ) -> Result<ToolOutput, ToolOutput> {
     let args: ModulationArgs = parse("update_modulation", args)?;
-    let slot = controller
-        .session()
-        .snapshot()
+    let slot = snapshot(controller)?
         .modulation_index(&args.source, &args.destination)
         .ok_or_else(|| {
             ToolOutput::error(format!(
@@ -791,7 +797,7 @@ fn load_preset<S: SynthSession>(
     }
     let args: Args = parse("load_preset", args)?;
     let state = library(controller)?
-        .load(&args.name, &controller.session().snapshot())
+        .load(&args.name, &snapshot(controller)?)
         .map_err(ToolOutput::error)?;
     apply(controller, vec![Edit::LoadPreset(Box::new(state))])?;
     Ok(ToolOutput::ok(json!({"loaded": args.name})))
@@ -815,7 +821,7 @@ fn save_preset<S: SynthSession>(
     }
     let args: Args = parse("save_preset", args)?;
     let library = library(controller)?;
-    let mut state = controller.session().snapshot();
+    let mut state = snapshot(controller)?;
     state.info.preset_name = args.name.clone();
     if let Some(author) = args.author {
         state.info.author = author;
@@ -856,7 +862,7 @@ fn set_preset_info<S: SynthSession>(
         macro_names: Option<Vec<String>>,
     }
     let args: Args = parse("set_preset_info", args)?;
-    let mut info = controller.session().snapshot().info;
+    let mut info = snapshot(controller)?.info;
     let macros = args.macro_names.unwrap_or_default();
     if macros.len() > info.macros.len() {
         return Err(ToolOutput::error(format!(

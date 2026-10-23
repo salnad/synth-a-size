@@ -21,11 +21,13 @@ pub mod eval;
 pub mod message;
 pub mod prompt;
 pub mod provider;
+pub mod settings;
 pub mod transport;
 
 pub use agent::{Agent, AgentConfig, AgentEvent, TurnReport};
 pub use message::Usage;
 pub use provider::{Provider, ProviderConfig, ProviderKind};
+pub use settings::ChatSettings;
 pub use transport::{RecordingTransport, ReplayTransport, ScriptedTransport, Transport};
 
 #[cfg(feature = "http")]

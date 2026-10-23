@@ -16,6 +16,8 @@ nice-plug.workspace = true
 sas-common.workspace = true
 sas-engine.workspace = true
 sas-gui.workspace = true
+# The LLM tools' live session (pure; no network code).
+sas-llm-control.workspace = true
 sas-preset.workspace = true
 # sas-engine's Tuning state is serde_json; already in the tree via nice-plug.
 serde_json = "1"
