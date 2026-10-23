@@ -4,6 +4,7 @@
 
 use std::sync::{Arc, Mutex};
 
+use sas_engine::keyboard::KeyboardHandle;
 use sas_gui::{EditorModel, HostParam};
 
 use crate::params::SynthParams;
@@ -11,18 +12,20 @@ use crate::params::SynthParams;
 /// The editor's view of one plugin instance.
 pub struct PluginModel {
     params: Arc<SynthParams>,
+    keyboard: KeyboardHandle,
     /// The preset name and the edit bus revision it was read at, so the
     /// document mirror is read only after it changes.
     preset_name: Mutex<(u64, String)>,
 }
 
 impl PluginModel {
-    pub fn new(params: Arc<SynthParams>) -> PluginModel {
+    pub fn new(params: Arc<SynthParams>, keyboard: KeyboardHandle) -> PluginModel {
         let edits = params.edit_handle();
         let revision = edits.revision();
         let name = edits.with_document(|document| document.state.info.preset_name.clone());
         PluginModel {
             params,
+            keyboard,
             preset_name: Mutex::new((revision, name)),
         }
     }
@@ -50,6 +53,18 @@ impl EditorModel for PluginModel {
             .control(name)
             .map(|control| control.param.as_ptr())
     }
+
+    fn note_on(&self, note: u8, velocity: f32) {
+        self.keyboard.note_on(note, velocity);
+    }
+
+    fn note_off(&self, note: u8) {
+        self.keyboard.note_off(note);
+    }
+
+    fn held_notes(&self) -> u128 {
+        self.keyboard.held_notes()
+    }
 }
 
 #[cfg(test)]
@@ -57,6 +72,7 @@ mod tests {
     use super::*;
     use sas_engine::document::PresetDocument;
     use sas_engine::edit_bus::EditBus;
+    use sas_engine::keyboard::keyboard;
     use sas_preset::InitContent;
 
     #[test]
@@ -64,12 +80,31 @@ mod tests {
         let (edits, _consumer) =
             EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
         let params = Arc::new(SynthParams::new(edits));
-        let model = PluginModel::new(params.clone());
+        let model = PluginModel::new(params.clone(), keyboard().0);
         assert_eq!(model.preset_name(), "");
         let edits = params.edit_handle();
         let mut info = edits.with_document(|document| document.state.info.clone());
         info.preset_name = "Renamed".to_string();
         edits.set_info(info);
         assert_eq!(model.preset_name(), "Renamed");
+    }
+
+    #[test]
+    fn keyboard_notes_reach_the_keyboard() {
+        let (edits, _consumer) =
+            EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+        let (handle, mut consumer) = keyboard();
+        let model = PluginModel::new(Arc::new(SynthParams::new(edits)), handle);
+        model.note_on(60, 0.5);
+        assert_eq!(model.held_notes(), 1 << 60);
+        model.note_off(60);
+        assert_eq!(model.held_notes(), 0);
+        consumer.collect();
+        consumer.schedule(64);
+        assert_eq!(consumer.pop(), Some((0, [0x90, 60, 64])));
+        assert_eq!(
+            consumer.pop().map(|(_, message)| message),
+            Some([0x80, 60, 0])
+        );
     }
 }

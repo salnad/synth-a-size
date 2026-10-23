@@ -29,6 +29,7 @@ use std::sync::Arc;
 
 use nice_plug::prelude::*;
 use sas_engine::edit_bus::{EditBus, EditHandle};
+use sas_engine::keyboard::{keyboard, KeyboardHandle};
 use sas_engine::telemetry::{AudioMemory, Telemetry};
 use sas_preset::InitContent;
 
@@ -61,6 +62,7 @@ pub struct SynthPlugin<E: Engine> {
     params: Arc<SynthParams>,
     processor: BlockProcessor<E>,
     telemetry: Telemetry,
+    keyboard: KeyboardHandle,
     /// The editor window's size, kept while the window is closed.
     editor_state: Arc<sas_gui::nice_plug_egui::EguiEditorState>,
 }
@@ -87,10 +89,12 @@ impl<E: Engine> SynthPlugin<E> {
             .audio_memory()
             .unwrap_or_else(|| Arc::new(AudioMemory::default()));
         let (writer, telemetry) = Telemetry::new(audio_memory);
+        let (keyboard, keyboard_consumer) = keyboard();
         SynthPlugin {
             params: Arc::new(SynthParams::new(edits)),
-            processor: BlockProcessor::new(engine, consumer, writer),
+            processor: BlockProcessor::new(engine, consumer, keyboard_consumer, writer),
             telemetry,
+            keyboard,
             editor_state: sas_gui::default_state(),
         }
     }
@@ -98,6 +102,11 @@ impl<E: Engine> SynthPlugin<E> {
     /// What the editor shows of the playing engine (`sas_engine::telemetry`).
     pub fn telemetry(&self) -> Telemetry {
         self.telemetry.clone()
+    }
+
+    /// The on-screen keyboard (`sas_engine::keyboard`).
+    pub fn keyboard_handle(&self) -> KeyboardHandle {
+        self.keyboard.clone()
     }
 
     /// The edit bus, for the editor and the chat worker.
@@ -156,7 +165,7 @@ impl<E: Engine + Default> Plugin for SynthPlugin<E> {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Self::Editor> {
-        let model = editor::PluginModel::new(self.params.clone());
+        let model = editor::PluginModel::new(self.params.clone(), self.keyboard.clone());
         sas_gui::create_editor(self.editor_state.clone(), Arc::new(model))
     }
 

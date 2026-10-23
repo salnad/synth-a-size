@@ -36,6 +36,7 @@ pub use sas_oscillators;
 
 pub mod document;
 pub mod edit_bus;
+pub mod keyboard;
 pub mod midi_file;
 pub mod midi_manager;
 pub mod modulation_bank;

@@ -2,8 +2,8 @@
 
 //! The plugin's whole audio callback (`BlockProcessor::process`) never
 //! allocates or frees while an editor thread sends LFO shapes, remap curves,
-//! wavetables and samples over the edit bus and the host moves parameters,
-//! bypasses and plays notes. Restores and modulation connections are covered
+//! wavetables and samples over the edit bus, another plays the on-screen
+//! keyboard, and the host moves parameters, bypasses and plays notes. Restores and modulation connections are covered
 //! by `sas-engine`'s `edit_bus_no_alloc` test, which explains why their
 //! whole-document load and graph rewiring are left out.
 
@@ -18,6 +18,7 @@ use nice_plug::params::InternalParamMut;
 use nice_plug::prelude::NoteEvent;
 use sas_common::LineGenerator;
 use sas_engine::edit_bus::{EditError, EditHandle};
+use sas_engine::keyboard::KeyboardHandle;
 use sas_engine::sas_oscillators::RandomValues;
 use sas_plugin::params::ControlParam;
 use sas_plugin::{state, SoundEngineHost, SynthASize, SynthPlugin, Transport};
@@ -138,6 +139,18 @@ fn editor(edits: EditHandle, stop: Arc<AtomicBool>) -> usize {
     count
 }
 
+fn keyboard(keyboard: KeyboardHandle, stop: Arc<AtomicBool>) -> usize {
+    let mut count = 0;
+    while !stop.load(Ordering::Relaxed) {
+        let note = 50 + (count % 24) as u8;
+        keyboard.note_on(note, 0.75);
+        std::thread::sleep(Duration::from_micros(700));
+        keyboard.note_off(note);
+        count += 1;
+    }
+    count
+}
+
 fn set_param(plugin: &SynthASize, name: &str, value: f32) {
     let control = plugin.synth_params().control(name).unwrap();
     // SAFETY: as a host sets a parameter between blocks.
@@ -187,6 +200,11 @@ fn the_audio_callback_never_allocates() {
         let stop = stop.clone();
         std::thread::spawn(move || editor(edits, stop))
     };
+    let player = {
+        let handle = plugin.keyboard_handle();
+        let stop = stop.clone();
+        std::thread::spawn(move || keyboard(handle, stop))
+    };
     let mut events: Vec<NoteEvent<()>> = Vec::with_capacity(8);
     for block in 0..3000usize {
         set_param(&plugin, "filter_1_cutoff", 30.0 + (block % 90) as f32);
@@ -210,6 +228,11 @@ fn the_audio_callback_never_allocates() {
     }
     stop.store(true, Ordering::Relaxed);
     let edits_made = worker.join().unwrap();
+    let keys_played = player.join().unwrap();
+    assert!(
+        keys_played > 100,
+        "the keyboard only played {keys_played} notes"
+    );
     plugin.edit_handle().collect_retired();
     assert!(
         edits_made > 100,

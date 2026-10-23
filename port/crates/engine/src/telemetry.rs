@@ -173,6 +173,9 @@ pub struct TelemetrySnapshot {
     /// `SynthBase::oscilloscope_memory_`: the last complete window, left and
     /// right.
     oscilloscope: Box<[[f32; 2]]>,
+    /// Bit `n` is set while note `n` is held, from the on-screen keyboard or
+    /// the host (`sas_engine::keyboard`).
+    held_notes: u128,
 }
 
 impl Default for TelemetrySnapshot {
@@ -182,6 +185,7 @@ impl Default for TelemetrySnapshot {
             status: vec![[0.0; 4]; status_names().len()].into_boxed_slice(),
             totals: vec![ModulationTotal::default(); destination_names().len()].into_boxed_slice(),
             oscilloscope: vec![[0.0; 2]; OSCILLOSCOPE_SAMPLES].into_boxed_slice(),
+            held_notes: 0,
         }
     }
 }
@@ -206,6 +210,21 @@ impl TelemetrySnapshot {
     /// The oscilloscope memory (`2 * kOscilloscopeMemoryResolution` frames).
     pub fn oscilloscope(&self) -> &[[f32; 2]] {
         &self.oscilloscope
+    }
+
+    /// The notes held at the end of the block, one bit per note.
+    pub fn held_notes(&self) -> u128 {
+        self.held_notes
+    }
+
+    /// Whether note `note` was held at the end of the block.
+    pub fn note_held(&self, note: u8) -> bool {
+        note < 128 && self.held_notes & 1 << note != 0
+    }
+
+    /// Set by the block processor before the engine publishes.
+    pub fn set_held_notes(&mut self, held_notes: u128) {
+        self.held_notes = held_notes;
     }
 
     /// Writable views, for the engine that fills the snapshot.

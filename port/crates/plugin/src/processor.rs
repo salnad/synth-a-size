@@ -9,13 +9,15 @@
 //! restored preset, then the edits queued on the edit bus
 //! (`sas_engine::edit_bus`), then changed parameters to the engine; output
 //! silence and drop MIDI if bypassed; read
-//! the tempo and song position; then render in chunks of at most
-//! `MAX_BUFFER_SIZE` samples, each preceded by `correctToTime` and the MIDI
-//! messages that fall inside it.
+//! the tempo and song position; merge the on-screen keyboard's notes into
+//! the block's MIDI (`processKeyboardEvents`, `sas_engine::keyboard`); then
+//! render in chunks of at most `MAX_BUFFER_SIZE` samples, each preceded by
+//! `correctToTime` and the MIDI messages that fall inside it.
 
 use nice_plug::midi::MidiResult;
 use nice_plug::prelude::{NoteEvent, SysExMessage};
 use sas_engine::edit_bus::EditConsumer;
+use sas_engine::keyboard::KeyboardConsumer;
 use sas_engine::sas_dsp_core::sas_simd::common::MAX_BUFFER_SIZE;
 use sas_engine::telemetry::TelemetryWriter;
 
@@ -60,6 +62,8 @@ pub struct BlockProcessor<E: Engine> {
     /// The audio side of the edit bus whose producer the parameters hold:
     /// restored documents and edits arrive through it.
     edits: EditConsumer,
+    /// The on-screen keyboard's notes, merged into each block's MIDI.
+    keyboard: KeyboardConsumer,
     /// The editor's telemetry, published at the end of each block that runs
     /// the engine.
     telemetry: TelemetryWriter,
@@ -69,12 +73,18 @@ pub struct BlockProcessor<E: Engine> {
 }
 
 impl<E: Engine> BlockProcessor<E> {
-    pub fn new(engine: E, edits: EditConsumer, telemetry: TelemetryWriter) -> BlockProcessor<E> {
+    pub fn new(
+        engine: E,
+        edits: EditConsumer,
+        keyboard: KeyboardConsumer,
+        telemetry: TelemetryWriter,
+    ) -> BlockProcessor<E> {
         BlockProcessor {
             engine,
             sample_rate: 44_100.0,
             last_seconds_time: 0.0,
             edits,
+            keyboard,
             telemetry,
             pending_prepare: None,
         }
@@ -137,8 +147,10 @@ impl<E: Engine> BlockProcessor<E> {
             None => self.sync_parameters(params),
         }
 
+        self.keyboard.collect();
         if params.bypassed() {
-            // AudioProcessor::processBlockBypassed with no inputs.
+            // AudioProcessor::processBlockBypassed with no inputs; the
+            // keyboard's notes wait.
             left.fill(0.0);
             right.fill(0.0);
             while next_event().is_some() {}
@@ -156,6 +168,7 @@ impl<E: Engine> BlockProcessor<E> {
         }
 
         let total_samples = left.len().min(right.len());
+        self.keyboard.schedule(total_samples);
         let sample_time = 1.0 / self.sample_rate as f64;
         let mut pending = next_event();
         let mut offset = 0;
@@ -165,17 +178,32 @@ impl<E: Engine> BlockProcessor<E> {
             let last_chunk = end == total_samples;
 
             self.engine.correct_to_time(self.last_seconds_time);
-            while let Some(event) = pending.take() {
-                let timing = event.timing() as usize;
-                if timing >= end && !last_chunk {
-                    pending = Some(event);
-                    break;
+            loop {
+                let host = pending
+                    .as_ref()
+                    .map(|event| event.timing() as usize)
+                    .filter(|&timing| timing < end || last_chunk);
+                let keyboard = self
+                    .keyboard
+                    .next_position()
+                    .filter(|&position| position < end);
+                match (host, keyboard) {
+                    // MidiBuffer::addEvent puts a keyboard message after the
+                    // host's at the same sample.
+                    (Some(timing), Some(position)) if position < timing => {
+                        self.play_keyboard(offset)
+                    }
+                    (Some(timing), _) => {
+                        let sample_offset = timing.saturating_sub(offset).min(num_samples - 1);
+                        if let Some(message) = pending.take().as_ref().and_then(midi_message) {
+                            self.keyboard.host_message(message);
+                            self.engine.process_midi(message, sample_offset);
+                        }
+                        pending = next_event();
+                    }
+                    (None, Some(_)) => self.play_keyboard(offset),
+                    (None, None) => break,
                 }
-                let sample_offset = timing.saturating_sub(offset).min(num_samples - 1);
-                if let Some(message) = midi_message(&event) {
-                    self.engine.process_midi(message, sample_offset);
-                }
-                pending = next_event();
             }
             self.engine
                 .process(&mut left[offset..end], &mut right[offset..end]);
@@ -183,8 +211,18 @@ impl<E: Engine> BlockProcessor<E> {
             self.last_seconds_time += num_samples as f64 * sample_time;
             offset = end;
         }
+        self.telemetry
+            .snapshot_mut()
+            .set_held_notes(self.keyboard.held_notes());
         self.engine.publish_telemetry(&mut self.telemetry);
         while next_event().is_some() {}
+    }
+
+    /// The keyboard's next message, in the chunk starting at `offset`.
+    fn play_keyboard(&mut self, offset: usize) {
+        if let Some((position, message)) = self.keyboard.pop() {
+            self.engine.process_midi(message, position - offset);
+        }
     }
 
     /// Loads a newly restored preset, applies the queued edits, then pushes
