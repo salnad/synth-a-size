@@ -198,6 +198,7 @@ impl Interface {
             ui.ctx().request_repaint();
         }
         self.show_header(ui, host, &pixels, &layout, live.as_ref());
+        self.show_tab(ui, host, &pixels, &layout);
         self.show_sections(ui, host, &pixels, &layout);
         self.show_overlay(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
     }
@@ -237,6 +238,23 @@ impl Interface {
         self.volume
             .show(&mut panel, &volume_layout, live.map(|live| live.peaks));
         panel.finish();
+    }
+
+    /// The selected tab's contents (`FullInterface::tabSelected` shows one
+    /// of the synthesis, effects, matrix and master controls interfaces).
+    /// The sections below them show on every tab.
+    fn show_tab(&mut self, ui: &mut Ui, host: &Host, pixels: &PixelPainter, layout: &FullLayout) {
+        let _ = (ui, host, pixels, layout);
+        match self.tab {
+            // G3b: oscillators, sample and filters.
+            Tab::Voice => {}
+            // G6: the effects interface, in `layout.effects`.
+            Tab::Effects => {}
+            // G4: the modulation matrix.
+            Tab::Matrix => {}
+            // G6: the master controls interface, in `layout.main`.
+            Tab::Advanced => {}
+        }
     }
 
     /// The Bend, Keyboard, Voice and Portamento sections.
