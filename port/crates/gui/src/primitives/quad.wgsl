@@ -56,6 +56,7 @@ const KIND_VERTICAL_SLIDER: u32 = 11u;
 const KIND_LINEAR_MODULATION: u32 = 12u;
 const KIND_MODULATION_KNOB: u32 = 13u;
 const KIND_GAIN_METER: u32 = 14u;
+const KIND_BAR: u32 = 15u;
 
 const PI: f32 = 3.14159265359;
 
@@ -319,6 +320,17 @@ fn gain_meter(v: Varyings) -> vec4<f32> {
     return v.alt_color * t + v.color * (1.0 - t);
 }
 
+// kBarFragmentShader (`BarRenderer`): the colour, fading out over the last
+// pixel inside each edge. `corner` runs 0 to 1 across the bar.
+fn bar(v: Varyings) -> vec4<f32> {
+    let corner = v.coordinates * 0.5 + vec2<f32>(0.5, 0.5);
+    let alpha_x = min(corner.x * v.dimensions.x, (1.0 - corner.x) * v.dimensions.x);
+    let alpha_y = min(corner.y * v.dimensions.y, (1.0 - corner.y) * v.dimensions.y);
+    var color = v.color;
+    color.a = v.color.a * min(1.0, min(alpha_x, alpha_y));
+    return color;
+}
+
 @fragment
 fn fs_main(v: Varyings) -> @location(0) vec4<f32> {
     let kind = u32(v.params2.z);
@@ -337,6 +349,7 @@ fn fs_main(v: Varyings) -> @location(0) vec4<f32> {
         case KIND_LINEAR_MODULATION: { return linear_modulation(v); }
         case KIND_MODULATION_KNOB: { return modulation_knob(v); }
         case KIND_GAIN_METER: { return gain_meter(v); }
+        case KIND_BAR: { return bar(v); }
         default: { return v.color; }
     }
 }

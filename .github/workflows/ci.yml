@@ -224,6 +224,8 @@ jobs:
         run: python3 migration/scripts/gui_reference.py frames --out build/gui/upstream
       - name: Render the port's views
         run: cargo run --locked --release -p sas-gui --example gallery --manifest-path port/Cargo.toml -- build/gui/port
+      - name: sas-gui tests that render through wgpu (ignored where there is no GPU adapter)
+        run: cargo test --locked --release -p sas-gui --manifest-path port/Cargo.toml -- --ignored
       - name: Side-by-side images (upstream on top)
         run: |
           mkdir -p build/gui/side-by-side
