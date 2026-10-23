@@ -17,6 +17,7 @@ use nice_plug::midi::MidiResult;
 use nice_plug::prelude::{NoteEvent, SysExMessage};
 use sas_engine::edit_bus::EditConsumer;
 use sas_engine::sas_dsp_core::sas_simd::common::MAX_BUFFER_SIZE;
+use sas_engine::telemetry::TelemetryWriter;
 
 use crate::engine::Engine;
 use crate::params::SynthParams;
@@ -59,18 +60,22 @@ pub struct BlockProcessor<E: Engine> {
     /// The audio side of the edit bus whose producer the parameters hold:
     /// restored documents and edits arrive through it.
     edits: EditConsumer,
+    /// The editor's telemetry, published at the end of each block that runs
+    /// the engine.
+    telemetry: TelemetryWriter,
     /// Set by [`activate`](Self::activate) until the next block prepares the
     /// engine: the document generation at activation.
     pending_prepare: Option<u64>,
 }
 
 impl<E: Engine> BlockProcessor<E> {
-    pub fn new(engine: E, edits: EditConsumer) -> BlockProcessor<E> {
+    pub fn new(engine: E, edits: EditConsumer, telemetry: TelemetryWriter) -> BlockProcessor<E> {
         BlockProcessor {
             engine,
             sample_rate: 44_100.0,
             last_seconds_time: 0.0,
             edits,
+            telemetry,
             pending_prepare: None,
         }
     }
@@ -178,6 +183,7 @@ impl<E: Engine> BlockProcessor<E> {
             self.last_seconds_time += num_samples as f64 * sample_time;
             offset = end;
         }
+        self.engine.publish_telemetry(&mut self.telemetry);
         while next_event().is_some() {}
     }
 

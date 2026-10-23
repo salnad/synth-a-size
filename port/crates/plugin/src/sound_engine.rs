@@ -3,8 +3,11 @@
 
 //! The M7 sound engine behind the wrapper's [`Engine`] interface.
 
+use std::sync::Arc;
+
 use sas_engine::edit_bus::EditConsumer;
 use sas_engine::synth::Synth;
+use sas_engine::telemetry::{AudioMemory, TelemetryWriter};
 use sas_engine::Tuning;
 use sas_preset::{PresetState, SampleState};
 
@@ -91,6 +94,14 @@ impl Engine for SoundEngineHost {
 
     fn apply_edits(&mut self, edits: &mut EditConsumer) {
         edits.apply_edits(&mut self.synth);
+    }
+
+    fn audio_memory(&self) -> Option<Arc<AudioMemory>> {
+        Some(self.synth.audio_memory())
+    }
+
+    fn publish_telemetry(&mut self, telemetry: &mut TelemetryWriter) {
+        self.synth.write_telemetry(telemetry);
     }
 }
 

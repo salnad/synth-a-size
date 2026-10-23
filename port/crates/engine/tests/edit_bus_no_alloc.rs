@@ -15,8 +15,9 @@
 //!   inputs, feedback nodes and processor copies there too).
 //!
 //! So [`shapes_wavetables_and_samples_never_allocate`] counts whole blocks
-//! on presets without modulation routing, where nothing rewires the graph,
-//! and [`connection_edits_never_allocate`] counts the bus and the
+//! on presets without modulation routing, where nothing rewires the graph
+//! (the editor's telemetry snapshot included), and
+//! [`connection_edits_never_allocate`] counts the bus and the
 //! connection bookkeeping `Synth::connect_modulation` /
 //! `disconnect_modulation` do on the audio thread, leaving the rewiring
 //! uncounted.
@@ -32,6 +33,7 @@ use sas_common::LineGenerator;
 use sas_engine::document::PresetDocument;
 use sas_engine::edit_bus::{EditBus, EditError, EditHandle};
 use sas_engine::synth::Synth;
+use sas_engine::telemetry::Telemetry;
 use sas_oscillators::RandomValues;
 use sas_preset::{InitContent, PresetState, SampleState, SlotValues};
 
@@ -216,6 +218,7 @@ fn play_while_editing(routing: bool, blocks: usize) -> (usize, usize) {
     synth.load_preset(&document.state);
     synth.prepare(44100, 120.0);
     let (edits, mut consumer) = EditBus::new(document);
+    let (mut telemetry, _reader) = Telemetry::new(synth.audio_memory());
 
     let (mut left, mut right) = (vec![0.0f32; 256], vec![0.0f32; 256]);
     let mut seconds = 0.0;
@@ -263,6 +266,7 @@ fn play_while_editing(routing: bool, blocks: usize) -> (usize, usize) {
                 &mut seconds,
                 44100,
             );
+            synth.write_telemetry(&mut telemetry);
         };
         if routing {
             render();
@@ -329,7 +333,7 @@ fn connection_edits_never_allocate() {
 
 /// Steady state on presets with modulation routing, with no edits: once
 /// every voice has played, whole blocks (notes, pedals, bends, pressure,
-/// parameter changes) allocate nothing.
+/// parameter changes, telemetry) allocate nothing.
 #[test]
 fn routed_presets_play_without_allocating() {
     let _serial = SERIAL
@@ -341,6 +345,7 @@ fn routed_presets_play_without_allocating() {
         let mut synth = Synth::new();
         synth.load_preset(&preset(name));
         synth.prepare(44100, 120.0);
+        let (mut telemetry, _reader) = Telemetry::new(synth.audio_memory());
         let (mut left, mut right) = (vec![0.0f32; 256], vec![0.0f32; 256]);
         let mut seconds = 0.0;
         // Each block starts a note on a rotating channel and ends the one
@@ -360,6 +365,7 @@ fn routed_presets_play_without_allocating() {
             synth.set_control("filter_1_cutoff", 40.0 + (block % 80) as f32);
             synth.set_control("macro_control_1", (block % 10) as f32 / 10.0);
             synth.render_block(&mut left, &mut right, midi, &mut seconds, 44100);
+            synth.write_telemetry(&mut telemetry);
         };
         // Every voice plays at least once, so each voice's routers have
         // taken the routing the preset load made.
