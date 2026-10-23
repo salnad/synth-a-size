@@ -70,6 +70,16 @@ If the editor clears while a block is learning, the next block applies the
 clear and publishes and saves again, so the file always ends with the
 engine's map.
 
+**Allocation-free audio path (#94).** A learned controller allocates
+nothing on the audio thread. `valueChangedThroughMidi` sets the control
+through `Synth`'s cached control map. The queue of learned values reserves
+one entry per parameter, and every caller drains it after each message, so
+it never grows. Learning itself still allocates (the map grows), as
+upstream's `std::map` insert does. Both of #94's no-allocation tests now
+send a learned controller in every counted block (plus the unlearned mod
+wheel in the plugin's). Reverting to a fresh control-map copy per message
+fails the plugin's test.
+
 **Divergences:** D16 (the host isn't sent the parameter edit; nice-plug has
 no audio-thread edits) and D17 (the map loads without upstream's
 data-directory install check; unreadable entries are skipped).
