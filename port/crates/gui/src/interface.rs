@@ -78,8 +78,16 @@ pub trait EditorModel: Send + Sync + 'static {
         String::new()
     }
 
-    /// `SynthBase::loadTuningFile` / `setTuning`: play with `tuning` from
-    /// now on.
+    /// A copy of the tuning the synth plays (`SynthBase::getTuning`).
+    /// Upstream changes its tuning in place, so edit this copy the same way
+    /// (a `.kbm` keeps the scale and a scale keeps the keyboard map;
+    /// `TuningSelector`'s built-ins `set_name` then load a scale or
+    /// `set_default_tuning`) and pass it to [`load_tuning`](Self::load_tuning).
+    fn tuning(&self) -> Tuning {
+        Tuning::new()
+    }
+
+    /// Play with `tuning` from now on (`SynthBase::loadTuningFile`).
     fn load_tuning(&self, tuning: Tuning) {
         let _ = tuning;
     }

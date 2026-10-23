@@ -859,12 +859,15 @@ impl VoiceHandler {
 
     /// Swaps `tuning` with the handler's own in place. The handler holds the
     /// only reference to its tuning (`Synth::set_tuning` makes a fresh one),
-    /// so this neither allocates nor frees; without a tuning of its own it
-    /// takes a copy.
+    /// so this neither allocates nor frees. Without a tuning of its own,
+    /// which `Synth` never leaves it, it takes a copy.
     pub fn swap_tuning(&mut self, tuning: &mut Tuning) {
         match self.tuning.as_mut().and_then(Rc::get_mut) {
             Some(own) => std::mem::swap(own, tuning),
-            None => self.tuning = Some(Rc::new(tuning.clone())),
+            None => {
+                debug_assert!(false, "swap_tuning allocates: no unshared tuning to swap");
+                self.tuning = Some(Rc::new(tuning.clone()));
+            }
         }
     }
 

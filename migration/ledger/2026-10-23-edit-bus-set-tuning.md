@@ -15,9 +15,16 @@ Tun file, or the default tuning, while the synth plays.
   through `Rc::get_mut` (it holds the only reference), so applying the edit
   neither allocates nor frees on the audio thread. The old tuning goes back
   to the producer through the retire queue, as wavetables and samples do.
-- `EditorModel::tuning_name` and `EditorModel::load_tuning` in `sas-gui`,
-  implemented by `PluginModel`. A full queue drops the load, leaving the
-  old name showing.
+  `Synth` always leaves the handler an unshared tuning, so the allocating
+  fallback debug-asserts (Graph Reviewer nit on #110).
+- `EditorModel::tuning_name`, `EditorModel::tuning` and
+  `EditorModel::load_tuning` in `sas-gui`, implemented by `PluginModel`.
+  Upstream changes `SynthBase::tuning_` in place: a `.kbm` keeps the scale,
+  a scale keeps the keyboard map, and `TuningSelector`'s built-ins call
+  `setName` and then load a scale or `setDefaultTuning` on the same object.
+  So the editor edits a copy from `tuning()` the same way and passes it
+  back (Graph Reviewer on #110). A full queue drops the load, leaving the
+  old tuning in place.
 
 **Tests**
 
@@ -32,6 +39,10 @@ Tun file, or the default tuning, while the synth plays.
 - `sas-plugin` `edit_bus::edits_play_like_direct_engine_edits` adds a
   tuning load, and the saved document keeps it.
 - `sas-plugin` `editor::a_loaded_tuning_names_the_tuning`.
+- `sas-plugin` `editor::a_keyboard_map_layers_on_the_loaded_scale`: the
+  corpus `.scl` and then its `.kbm` through `tuning()` and `load_tuning`
+  match one tuning that loaded both, and differ from either alone. It
+  fails with `tuning()` returning a fresh tuning.
 
 No change to the audio path when no tuning edit arrives; no-edit parity is
 untouched.
