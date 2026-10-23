@@ -207,16 +207,18 @@ impl Processor {
     }
 
     /// `enableOwnedProcessors(enable)`.
+    /// Walks the lists by index, borrowing them only to read each entry,
+    /// so enabling from the audio thread copies nothing.
     pub fn enable_owned_processors(&self, enable: bool) {
-        let (owned, subs) = {
-            let data = self.module_data();
-            let data = data.borrow();
-            (data.owned_mono_processors.clone(), data.sub_modules.clone())
-        };
-        for processor in owned {
+        let data = self.module_data();
+        let num_owned = data.borrow().owned_mono_processors.len();
+        for i in 0..num_owned {
+            let processor = data.borrow().owned_mono_processors[i].clone();
             processor.enable(enable);
         }
-        for module in subs {
+        let num_subs = data.borrow().sub_modules.len();
+        for i in 0..num_subs {
+            let module = data.borrow().sub_modules[i].clone();
             module.enable(enable);
         }
     }
@@ -249,6 +251,16 @@ impl Processor {
         self.module_data().borrow().sub_modules.clone()
     }
 
+    /// The first sub-module result of `find`, walking the list in place (a
+    /// lookup on the audio thread must not copy it).
+    fn find_in_sub_modules<R>(&self, find: impl FnMut(&ProcessorRef) -> Option<R>) -> Option<R> {
+        self.module_data()
+            .borrow()
+            .sub_modules
+            .iter()
+            .find_map(find)
+    }
+
     /// `getControls()`: this module's and all sub-modules' controls.
     pub fn get_controls(&self) -> BTreeMap<String, ProcessorRef> {
         let mut all_controls = self.module_data().borrow().controls.clone();
@@ -263,9 +275,7 @@ impl Processor {
         if let Some(source) = self.module_data().borrow().mod_sources.get(name) {
             return Some(source.clone());
         }
-        self.sub_modules()
-            .iter()
-            .find_map(|module| module.get_modulation_source(name))
+        self.find_in_sub_modules(|module| module.get_modulation_source(name))
     }
 
     /// `getStatusOutput(name)`.
@@ -273,9 +283,7 @@ impl Processor {
         if let Some(status) = self.module_data().borrow().status_outputs.get(name) {
             return Some(status.clone());
         }
-        self.sub_modules()
-            .iter()
-            .find_map(|module| module.get_status_output(name))
+        self.find_in_sub_modules(|module| module.get_status_output(name))
     }
 
     /// `getModulationDestination(name, poly)`.
@@ -292,9 +300,7 @@ impl Processor {
         if let Some(d) = self.module_data().borrow().mono_mod_destinations.get(name) {
             return Some(d.clone());
         }
-        self.sub_modules()
-            .iter()
-            .find_map(|module| module.get_mono_modulation_destination(name))
+        self.find_in_sub_modules(|module| module.get_mono_modulation_destination(name))
     }
 
     /// `getPolyModulationDestination(name)`.
@@ -302,9 +308,7 @@ impl Processor {
         if let Some(d) = self.module_data().borrow().poly_mod_destinations.get(name) {
             return Some(d.clone());
         }
-        self.sub_modules()
-            .iter()
-            .find_map(|module| module.get_poly_modulation_destination(name))
+        self.find_in_sub_modules(|module| module.get_poly_modulation_destination(name))
     }
 
     /// `getModulationSwitch(name, poly)`.
@@ -326,9 +330,7 @@ impl Processor {
         {
             return Some(s.clone());
         }
-        self.sub_modules()
-            .iter()
-            .find_map(|module| module.get_mono_modulation_switch(name))
+        self.find_in_sub_modules(|module| module.get_mono_modulation_switch(name))
     }
 
     /// `getPolyModulationSwitch(name)`.
@@ -341,9 +343,7 @@ impl Processor {
         {
             return Some(s.clone());
         }
-        self.sub_modules()
-            .iter()
-            .find_map(|module| module.get_poly_modulation_switch(name))
+        self.find_in_sub_modules(|module| module.get_poly_modulation_switch(name))
     }
 
     /// `updateAllModulationSwitches()`: a switch routes the modulated value

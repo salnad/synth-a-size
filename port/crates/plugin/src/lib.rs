@@ -12,7 +12,8 @@
 //!   upgrade chain), and preset file load/save.
 //! - [`engine`]: the engine interface the wrapper drives ([`SilentEngine`]
 //!   for tests that need none).
-//! - [`processor`]: the audio callback, MIDI/MPE in.
+//! - [`processor`]: the audio callback, MIDI/MPE in, and the edit bus
+//!   (`sas_engine::edit_bus`) drained at the start of each block.
 //! - [`sound_engine`]: the M7 sound engine ([`SoundEngineHost`]) behind
 //!   [`Engine`]; the shipped plugin, [`SynthASize`], runs on it.
 //! - [`render`]: offline rendering like the reference's `ref-render`, behind
@@ -27,6 +28,7 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use nice_plug::prelude::*;
+use sas_engine::edit_bus::{EditBus, EditHandle};
 use sas_preset::InitContent;
 
 pub mod editor;
@@ -78,11 +80,17 @@ impl<E: Engine> SynthPlugin<E> {
         if let Some(sample) = engine.engine_sample() {
             document.state.sample = sample;
         }
+        let (edits, consumer) = EditBus::new(document);
         SynthPlugin {
-            params: Arc::new(SynthParams::new(document)),
-            processor: BlockProcessor::new(engine),
+            params: Arc::new(SynthParams::new(edits)),
+            processor: BlockProcessor::new(engine, consumer),
             editor_state: sas_gui::default_state(),
         }
+    }
+
+    /// The edit bus, for the editor and the chat worker.
+    pub fn edit_handle(&self) -> EditHandle {
+        self.params.edit_handle().clone()
     }
 
     pub fn synth_params(&self) -> &Arc<SynthParams> {

@@ -43,7 +43,7 @@ pub mod version;
 
 pub use registry::{lookup, registry, ParamInfo, Registry, ValueScale};
 pub use sample::SampleState;
-pub use state::{InitContent, ModulationSlot, PresetState, SaveInfo};
+pub use state::{GuiConnection, InitContent, ModulationSlot, PresetState, SaveInfo, SlotValues};
 pub use strings::StringTable;
 
 /// Why a preset could not be loaded or a change could not be made.

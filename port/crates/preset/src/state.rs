@@ -21,7 +21,7 @@ use sas_wavetable::creator::WavetableCreator;
 use crate::constants::*;
 use crate::engine;
 use crate::json::{ensure_object, read_f32, read_string};
-use crate::registry::registry;
+use crate::registry::{registry, ParamInfo};
 use crate::sample::SampleState;
 use crate::upgrade::update_from_old_version;
 use crate::version::{compare_feature_version_strings, SYNTH_VERSION};
@@ -74,6 +74,66 @@ impl ModulationSlot {
     pub fn is_free(&self) -> bool {
         self.source.is_empty() && self.destination.is_empty()
     }
+}
+
+/// What upstream's editor gives a slot it has just created by dragging a
+/// source onto a control (`ModulationManager::setModulationValues`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SlotValues {
+    /// `modulation_N_amount`.
+    pub amount: f32,
+    pub bipolar: bool,
+    pub stereo: bool,
+    pub bypass: bool,
+}
+
+impl SlotValues {
+    /// `ModulationManager::modulationDraggedToComponent`: the values for a
+    /// source dropped on `destination`'s control while it is at `value`
+    /// (its live value, the host parameter's). `bipolar` is whether a
+    /// modifier key is held. The amount reaches from the control's position
+    /// to the top of its range (to the nearer end, doubled, when bipolar),
+    /// and at least `kDefaultModulationRatio`; stereo and bypass are off.
+    pub fn dragged_to(destination: &ParamInfo, value: f32, bipolar: bool) -> SlotValues {
+        const DEFAULT_MODULATION_RATIO: f32 = 0.25;
+        // juce::Slider::valueToProportionOfLength on the control's linear
+        // range, in double as JUCE computes it, then stored as a float.
+        let (min, max) = (f64::from(destination.min), f64::from(destination.max));
+        let percent = ((f64::from(value) - min) / (max - min)).clamp(0.0, 1.0) as f32;
+        let mut amount = 1.0 - percent;
+        if bipolar {
+            amount = amount.min(percent) * 2.0;
+        }
+        SlotValues {
+            amount: amount.max(DEFAULT_MODULATION_RATIO),
+            bipolar,
+            stereo: false,
+            bypass: false,
+        }
+    }
+}
+
+/// The result of [`PresetState::connect_modulation_from_gui`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct GuiConnection {
+    /// The bank slot (0-based; its controls are `modulation_{slot + 1}_*`).
+    pub slot: usize,
+    /// Whether the connection took a new slot.
+    pub created: bool,
+    /// The control values the connection set, which a plugin must also set
+    /// on its host parameters, when a slot was created: `modulation_N_power`
+    /// (0), then `modulation_N_amount`, `_bipolar`, `_stereo` and `_bypass`
+    /// from the [`SlotValues`]. A reused slot would otherwise keep the old
+    /// route's amount, stereo and bypass.
+    pub parameter_changes: Vec<(&'static str, f32)>,
+}
+
+/// The registry's own copy of control `name`.
+fn control_name(name: &str) -> &'static str {
+    registry()
+        .get(name)
+        .map(|info| info.name.as_str())
+        .expect("every modulation slot control is in the registry")
 }
 
 /// Preset name, author, comments, style and macro names (`save_info_`).
@@ -240,6 +300,60 @@ impl PresetState {
         self.controls
             .insert(format!("modulation_{}_bipolar", index + 1), bipolar);
         Ok(index)
+    }
+
+    /// [`SlotValues::dragged_to`] for `destination` at its value in this
+    /// state, for sessions whose state holds the live control values (the
+    /// offline chat session). A plugin reads the live value from its host
+    /// parameter instead. `None` if `destination` is not a modulation
+    /// destination.
+    pub fn dragged_values(&self, destination: &str, bipolar: bool) -> Option<SlotValues> {
+        if !engine::is_modulation_destination(destination) {
+            return None;
+        }
+        let info = registry().get(destination)?;
+        let value = self.value(destination).unwrap_or(info.default_value);
+        Some(SlotValues::dragged_to(info, value, bipolar))
+    }
+
+    /// What upstream's editor does when a source is dropped on a control
+    /// (`ModulationManager::modulationDraggedToComponent`): if the two are
+    /// not connected yet, `SynthGuiInterface::connectModulation`
+    /// ([`add_modulation`](Self::add_modulation), then `initModulationValues`:
+    /// the remap curve goes back to linear and the power to 0), then
+    /// `setModulationValues` with `values`. An existing connection is left
+    /// alone. Every live and offline edit path uses this, so they all pick
+    /// the same slot and give it the same values.
+    pub fn connect_modulation_from_gui(
+        &mut self,
+        source: &str,
+        destination: &str,
+        values: SlotValues,
+    ) -> Result<GuiConnection, Error> {
+        let created = self.modulation_index(source, destination).is_none();
+        let slot = self.add_modulation(source, destination)?;
+        let mut parameter_changes = Vec::new();
+        if created {
+            self.modulations[slot].line_mapping.init_linear();
+            let number = slot + 1;
+            let flag = |on: bool| if on { 1.0 } else { 0.0 };
+            for (suffix, value) in [
+                ("power", 0.0),
+                ("amount", values.amount),
+                ("bipolar", flag(values.bipolar)),
+                ("stereo", flag(values.stereo)),
+                ("bypass", flag(values.bypass)),
+            ] {
+                let name = control_name(&format!("modulation_{number}_{suffix}"));
+                self.controls.insert(name.to_string(), value);
+                parameter_changes.push((name, value));
+            }
+        }
+        Ok(GuiConnection {
+            slot,
+            created,
+            parameter_changes,
+        })
     }
 
     /// `SynthBase::disconnectModulation(source, destination)`: frees the slot

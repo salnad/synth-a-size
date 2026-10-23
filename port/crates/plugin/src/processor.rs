@@ -6,16 +6,16 @@
 //!
 //! Per host block (with each parameter at the last value the host sent for
 //! the block, as upstream's JUCE wrapper applies automation): hand any newly
-//! restored preset and changed parameters to the engine; output silence and
-//! drop MIDI if bypassed; read
+//! restored preset, then the edits queued on the edit bus
+//! (`sas_engine::edit_bus`), then changed parameters to the engine; output
+//! silence and drop MIDI if bypassed; read
 //! the tempo and song position; then render in chunks of at most
 //! `MAX_BUFFER_SIZE` samples, each preceded by `correctToTime` and the MIDI
 //! messages that fall inside it.
 
-use std::sync::atomic::Ordering;
-
 use nice_plug::midi::MidiResult;
 use nice_plug::prelude::{NoteEvent, SysExMessage};
+use sas_engine::edit_bus::EditConsumer;
 use sas_engine::sas_dsp_core::sas_simd::common::MAX_BUFFER_SIZE;
 
 use crate::engine::Engine;
@@ -56,20 +56,21 @@ pub struct BlockProcessor<E: Engine> {
     sample_rate: f32,
     /// `SynthPlugin::last_seconds_time_`.
     last_seconds_time: f64,
-    /// The `SynthParams::document_generation` last loaded into the engine.
-    document_generation: u64,
+    /// The audio side of the edit bus whose producer the parameters hold:
+    /// restored documents and edits arrive through it.
+    edits: EditConsumer,
     /// Set by [`activate`](Self::activate) until the next block prepares the
     /// engine: the document generation at activation.
     pending_prepare: Option<u64>,
 }
 
 impl<E: Engine> BlockProcessor<E> {
-    pub fn new(engine: E) -> BlockProcessor<E> {
+    pub fn new(engine: E, edits: EditConsumer) -> BlockProcessor<E> {
         BlockProcessor {
             engine,
             sample_rate: 44_100.0,
             last_seconds_time: 0.0,
-            document_generation: 0,
+            edits,
             pending_prepare: None,
         }
     }
@@ -94,9 +95,9 @@ impl<E: Engine> BlockProcessor<E> {
     /// restored before activation loads first and is then prepared (as when
     /// a host opens a project, and as the reference's offline render does);
     /// one restored after activation is prepared first and then loads.
-    pub fn activate(&mut self, params: &SynthParams, sample_rate: f32) {
+    pub fn activate(&mut self, _params: &SynthParams, sample_rate: f32) {
         self.sample_rate = sample_rate;
-        self.pending_prepare = Some(params.document_generation.load(Ordering::Acquire));
+        self.pending_prepare = Some(self.edits.published_generation());
     }
 
     pub fn reset(&mut self) {
@@ -119,8 +120,7 @@ impl<E: Engine> BlockProcessor<E> {
         // or not; here they reach the engine at the start of the next block.
         match self.pending_prepare.take() {
             Some(generation_at_activation)
-                if params.document_generation.load(Ordering::Acquire)
-                    != generation_at_activation =>
+                if self.edits.published_generation() != generation_at_activation =>
             {
                 self.engine.set_sample_rate(self.sample_rate);
                 self.sync_parameters(params);
@@ -181,37 +181,37 @@ impl<E: Engine> BlockProcessor<E> {
         while next_event().is_some() {}
     }
 
-    /// Loads a newly restored preset, then pushes changed parameters.
+    /// Loads a newly restored preset, applies the queued edits, then pushes
+    /// the parameters the host changed. Edits go first, so a host change in
+    /// the same block (to a new modulation slot's amount, say) wins over the
+    /// values an edit set.
     fn sync_parameters(&mut self, params: &SynthParams) {
-        if params.document_generation.load(Ordering::Acquire) != self.document_generation {
-            // Other threads hold the lock only briefly: the host's thread
-            // while saving or restoring, and the editor reading the preset
-            // name once per new document. If it is busy, the preset is picked
-            // up next block.
-            if let Some(document) = params.try_document() {
-                self.document_generation = params.document_generation.load(Ordering::Acquire);
-                self.engine.load_preset(&document.state);
-                self.engine.set_tuning(&document.tuning);
-                params.changes.drain(|_| {});
-                // Parameters the host changed after the restore.
-                for (index, control) in params.controls().iter().enumerate() {
-                    let name = control.info.name.as_str();
-                    let value = control.param.value();
-                    let represented = document
-                        .state
-                        .value(name)
-                        .is_some_and(|preset| params.preset_value_stands(index, preset, value));
-                    if !represented {
-                        self.engine.set_control(name, value);
-                    }
-                }
-                return;
+        let Some(restore) = self.edits.take_restore() else {
+            self.engine.apply_edits(&mut self.edits);
+            params.changes.drain(|index| {
+                let control = &params.controls()[index];
+                self.engine
+                    .set_control(control.info.name.as_str(), control.param.value());
+            });
+            return;
+        };
+        let document = &restore.document;
+        self.engine.load_preset(&document.state);
+        self.engine.set_tuning(&document.tuning);
+        self.engine.apply_edits(&mut self.edits);
+        params.changes.drain(|_| {});
+        // Parameters the host changed after the restore.
+        for (index, control) in params.controls().iter().enumerate() {
+            let name = control.info.name.as_str();
+            let value = control.param.value();
+            let represented = document
+                .state
+                .value(name)
+                .is_some_and(|preset| params.preset_value_stands(index, preset, value));
+            if !represented {
+                self.engine.set_control(name, value);
             }
         }
-        params.changes.drain(|index| {
-            let control = &params.controls()[index];
-            self.engine
-                .set_control(control.info.name.as_str(), control.param.value());
-        });
+        self.edits.retire_restore(restore);
     }
 }

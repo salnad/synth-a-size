@@ -8,6 +8,7 @@
 //! plugin runs on [`crate::SoundEngineHost`]; [`SilentEngine`] outputs
 //! silence, for tests that need no engine.
 
+use sas_engine::edit_bus::EditConsumer;
 use sas_engine::Tuning;
 use sas_preset::{PresetState, SampleState};
 
@@ -61,6 +62,13 @@ pub trait Engine: Send + 'static {
     /// Renders `left.len()` samples (at most `MAX_BUFFER_SIZE`, 128) of
     /// stereo output (`SynthBase::processAudio`).
     fn process(&mut self, left: &mut [f32], right: &mut [f32]);
+
+    /// Applies the edits queued on the edit bus (modulation routing, shapes,
+    /// wavetables, the sample) at the start of a block. An engine without a
+    /// synth drops them.
+    fn apply_edits(&mut self, edits: &mut EditConsumer) {
+        edits.apply_edits(&mut ());
+    }
 }
 
 /// An engine that outputs silence (tests that need no sound engine).

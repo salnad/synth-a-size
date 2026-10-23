@@ -14,13 +14,17 @@
 //! [`ModulationChange`]s and queued, and the queue is applied before the
 //! next audio (`processModulationChanges`).
 
+use std::collections::BTreeMap;
 use std::rc::Rc;
 
+use sas_common::LineGenerator;
+use sas_dsp_core::constants::MAX_MODULATION_CONNECTIONS;
 use sas_dsp_core::ProcessorRef;
 use sas_modulation::ModulationConnectionProcessor;
 use sas_oscillators::sas_wavetable::creator::WavetableCreator;
+use sas_oscillators::sas_wavetable::Wavetable;
 use sas_oscillators::Sample;
-use sas_preset::{lookup, PresetState, SampleState};
+use sas_preset::{lookup, PresetState, SampleState, SlotValues};
 
 use crate::midi_file::TimedMessage;
 use crate::midi_manager::MidiManager;
@@ -31,14 +35,23 @@ use crate::tuning::Tuning;
 /// `kMaxBufferSize`: the longest engine sub-block.
 pub const MAX_BUFFER_SIZE: usize = 128;
 /// `kNumOscillators`.
-const NUM_OSCILLATORS: usize = 3;
+pub const NUM_OSCILLATORS: usize = 3;
 /// `kNumLfos`.
-const NUM_LFOS: usize = 8;
+pub const NUM_LFOS: usize = 8;
+/// Modulation changes [`Synth`] can queue between two blocks without
+/// growing its queue: a full bank's worth plus a full edit queue.
+const MODULATION_CHANGE_CAPACITY: usize =
+    MAX_MODULATION_CONNECTIONS + crate::edit_bus::EDIT_QUEUE_CAPACITY;
 
 /// The synth: a [`SoundEngine`] with its MIDI manager, tuning and wavetable
 /// creators.
 pub struct Synth {
     engine: ProcessorRef,
+    /// `SynthBase::controls_`: every control of the engine, by name.
+    controls: BTreeMap<String, ProcessorRef>,
+    /// Each modulation slot's `power`, `amount`, `bipolar`, `stereo` and
+    /// `bypass` controls, so an edit sets them without building names.
+    slot_controls: Vec<[ProcessorRef; 5]>,
     midi_manager: MidiManager,
     wavetable_creators: Vec<WavetableCreator>,
     /// `mod_connections_`: the bank indices of the connected slots, in
@@ -59,12 +72,21 @@ impl Synth {
     /// oscillator's default wavetable rendered (`WavetableCreator::init`).
     pub fn new() -> Self {
         let engine = SoundEngine::create();
+        let controls = engine.get_controls();
+        let slot_controls = (1..=MAX_MODULATION_CONNECTIONS)
+            .map(|number| {
+                ["power", "amount", "bipolar", "stereo", "bypass"]
+                    .map(|suffix| controls[&format!("modulation_{number}_{suffix}")].clone())
+            })
+            .collect();
         let mut synth = Synth {
             engine,
+            controls,
+            slot_controls,
             midi_manager: MidiManager::new(),
             wavetable_creators: Vec::new(),
-            mod_connections: Vec::new(),
-            modulation_change_queue: Vec::new(),
+            mod_connections: Vec::with_capacity(MAX_MODULATION_CONNECTIONS),
+            modulation_change_queue: Vec::with_capacity(MODULATION_CHANGE_CAPACITY),
         };
         synth.set_tuning(&Tuning::new());
         for i in 0..NUM_OSCILLATORS {
@@ -141,8 +163,9 @@ impl Synth {
     /// Sets control `name` (`SynthBase::valueChangedExternal`): the mod and
     /// pitch wheels also reach every channel's voices.
     pub fn set_control(&mut self, name: &str, value: f32) {
-        let control = self.engine.get_controls().get(name).cloned();
-        let Some(control) = control else { return };
+        let Some(control) = self.controls.get(name) else {
+            return;
+        };
         control.set_value(value);
         match name {
             "mod_wheel" => self.with_engine(|engine| engine.set_mod_wheel_all_channels(value)),
@@ -157,8 +180,8 @@ impl Synth {
     pub fn load_preset(&mut self, preset: &PresetState) {
         self.all_sounds_off();
 
-        let controls = self.engine.get_controls();
-        for (name, control) in &controls {
+        let controls = &self.controls;
+        for (name, control) in controls {
             let value = preset
                 .value(name)
                 .or_else(|| lookup(name).map(|details| details.default_value))
@@ -237,6 +260,15 @@ impl Synth {
         })
     }
 
+    /// Whether bank slot `index` connects `source` to `destination`.
+    fn bank_slot_connects(&self, index: usize, source: &str, destination: &str) -> bool {
+        self.with_svh(|svh| {
+            svh.modulation_bank()
+                .at_index(index)
+                .connects(source, destination)
+        })
+    }
+
     fn set_bank_names(&self, index: usize, source: &str, destination: &str) {
         self.with_svh(|svh| {
             svh.modulation_bank()
@@ -245,9 +277,14 @@ impl Synth {
         });
     }
 
-    /// `createModulationChange(connection)` for bank slot `index`.
-    fn create_modulation_change(&self, index: usize) -> ModulationChange {
-        let (source_name, destination_name) = self.bank_names(index);
+    /// `createModulationChange(connection)` for bank slot `index`, which
+    /// connects `source_name` to `destination_name`.
+    fn create_modulation_change(
+        &self,
+        index: usize,
+        source_name: &str,
+        destination_name: &str,
+    ) -> ModulationChange {
         let engine = &self.engine;
         let num_audio_rate = self.with_svh(|svh| {
             let bank = svh.modulation_bank();
@@ -262,28 +299,29 @@ impl Synth {
         });
         ModulationChange {
             source: engine
-                .get_modulation_source(&source_name)
+                .get_modulation_source(source_name)
                 .expect("a connected modulation source exists"),
             mono_destination: engine
-                .get_mono_modulation_destination(&destination_name)
+                .get_mono_modulation_destination(destination_name)
                 .expect("a connected modulation destination exists"),
-            poly_destination: engine.get_poly_modulation_destination(&destination_name),
-            destination_scale: lookup(&destination_name).map_or(0.0, |details| details.range()),
+            poly_destination: engine.get_poly_modulation_destination(destination_name),
+            destination_scale: lookup(destination_name).map_or(0.0, |details| details.range()),
             mono_modulation_switch: engine
-                .get_mono_modulation_switch(&destination_name)
+                .get_mono_modulation_switch(destination_name)
                 .expect("a modulation destination has a switch"),
-            poly_modulation_switch: engine.get_poly_modulation_switch(&destination_name),
+            poly_modulation_switch: engine.get_poly_modulation_switch(destination_name),
             modulation_processor: self.bank_processor(index),
             disconnecting: false,
             num_audio_rate,
         }
     }
 
-    /// `connectModulation(connection)` for bank slot `index` (its names
-    /// already set): queues the connection, or clears the slot if it would
-    /// modulate its own amount (`isInvalidConnection`).
-    fn connect_slot(&mut self, index: usize) {
-        let change = self.create_modulation_change(index);
+    /// `connectModulation(connection)` for bank slot `index`, whose names
+    /// are already `source` and `destination`: queues the connection, or
+    /// clears the slot if it would modulate its own amount
+    /// (`isInvalidConnection`).
+    fn connect_slot(&mut self, index: usize, source: &str, destination: &str) {
+        let change = self.create_modulation_change(index, source, destination);
         let invalid = change
             .poly_destination
             .as_ref()
@@ -308,7 +346,7 @@ impl Synth {
             .mod_connections
             .iter()
             .copied()
-            .find(|&i| self.bank_names(i) == (source.to_string(), destination.to_string()));
+            .find(|&i| self.bank_slot_connects(i, source, destination));
         let create = existing.is_none();
         let index = match existing {
             Some(index) => Some(index),
@@ -317,9 +355,41 @@ impl Synth {
             }
         };
         if let Some(index) = index {
-            self.connect_slot(index);
+            self.connect_slot(index, source, destination);
         }
         create
+    }
+
+    /// The engine side of a source dropped on a control
+    /// (`ModulationManager::modulationDraggedToComponent`, see
+    /// `PresetState::connect_modulation_from_gui`): if this creates the
+    /// connection, its slot's power goes to 0 (`initModulationValues`) and
+    /// its amount, bipolar, stereo and bypass to `values`
+    /// (`setModulationValues`), right after `createConnection` set the
+    /// source's default polarity, as upstream writes them before the next
+    /// block. The remap curve's reset to linear arrives as its own edit. A
+    /// plugin applies these edits before the block's host parameter changes,
+    /// so a value the host changed in the same block still wins. Nothing is
+    /// allocated.
+    pub fn gui_connect_modulation(&mut self, source: &str, destination: &str, values: &SlotValues) {
+        if !self.connect_modulation(source, destination) {
+            return;
+        }
+        let Some(index) = self
+            .mod_connections
+            .iter()
+            .copied()
+            .find(|&i| self.bank_slot_connects(i, source, destination))
+        else {
+            return;
+        };
+        let flag = |on: bool| if on { 1.0 } else { 0.0 };
+        let [power, amount, bipolar, stereo, bypass] = &self.slot_controls[index];
+        power.set_value(0.0);
+        amount.set_value(values.amount);
+        bipolar.set_value(flag(values.bipolar));
+        stereo.set_value(flag(values.stereo));
+        bypass.set_value(flag(values.bypass));
     }
 
     /// `disconnectModulation(source, destination)`.
@@ -327,12 +397,12 @@ impl Synth {
         let Some(position) = self
             .mod_connections
             .iter()
-            .position(|&i| self.bank_names(i) == (source.to_string(), destination.to_string()))
+            .position(|&i| self.bank_slot_connects(i, source, destination))
         else {
             return;
         };
         let index = self.mod_connections[position];
-        let mut change = self.create_modulation_change(index);
+        let mut change = self.create_modulation_change(index, source, destination);
         self.set_bank_names(index, "", "");
         self.mod_connections.remove(position);
         change.disconnecting = true;
@@ -345,7 +415,8 @@ impl Synth {
         self.modulation_change_queue.clear();
         while let Some(index) = self.mod_connections.first().copied() {
             self.mod_connections.remove(0);
-            let mut change = self.create_modulation_change(index);
+            let (source, destination) = self.bank_names(index);
+            let mut change = self.create_modulation_change(index, &source, &destination);
             change.disconnecting = true;
             self.with_engine(|engine| engine.disconnect_modulation(&change));
             self.set_bank_names(index, "", "");
@@ -376,7 +447,7 @@ impl Synth {
             }
             if !slot.source.is_empty() && !slot.destination.is_empty() {
                 self.set_bank_names(index, &slot.source, &slot.destination);
-                self.connect_slot(index);
+                self.connect_slot(index, &slot.source, &slot.destination);
             }
             let generator = self
                 .bank_processor(index)
@@ -390,8 +461,9 @@ impl Synth {
     /// `processModulationChanges()`: applies the queued connections and
     /// disconnections, in order.
     pub fn process_modulation_changes(&mut self) {
-        let changes = std::mem::take(&mut self.modulation_change_queue);
-        for change in &changes {
+        let mut changes = std::mem::take(&mut self.modulation_change_queue);
+        for change in changes.drain(..) {
+            let change = &change;
             self.with_engine(|engine| {
                 if change.disconnecting {
                     engine.disconnect_modulation(change);
@@ -400,6 +472,40 @@ impl Synth {
                 }
             });
         }
+        self.modulation_change_queue = changes;
+    }
+
+    /// Sets the remap curve of modulation slot `slot` (0-based) to `line`'s
+    /// shape, as upstream's curve editor edits the slot's line map in place.
+    /// `line` gets the slot's old name; nothing is allocated or freed.
+    pub fn set_line_mapping(&mut self, slot: usize, line: &mut LineGenerator) {
+        let generator = self
+            .bank_processor(slot)
+            .with::<ModulationConnectionProcessor, _>(|kernel, _| kernel.line_map_generator());
+        generator.borrow_mut().take_shape(line);
+    }
+
+    /// Sets LFO `lfo`'s shape (`getLfoSource(lfo)` edited in place, as the
+    /// LFO editor does). `line` gets the old name; nothing is allocated or
+    /// freed.
+    pub fn set_lfo_shape(&mut self, lfo: usize, line: &mut LineGenerator) {
+        let source = self.with_svh(|svh| svh.lfo_source(lfo));
+        source.borrow_mut().take_shape(line);
+    }
+
+    /// Swaps in oscillator `oscillator`'s newly rendered wavetable, as if its
+    /// creator had rendered into the engine's table
+    /// ([`Wavetable::take_rendered`]). `rendered` gets the old table.
+    pub fn swap_wavetable(&mut self, oscillator: usize, rendered: &mut Wavetable) {
+        let wavetable = self.with_svh(|svh| svh.wavetable(oscillator));
+        wavetable.borrow_mut().take_rendered(rendered);
+    }
+
+    /// Swaps in a loaded sample ([`Sample::swap_loaded`]). `loaded` gets the
+    /// old audio and name.
+    pub fn swap_sample(&mut self, loaded: &mut Sample) {
+        let sample = self.with_svh(|svh| svh.sample());
+        sample.borrow_mut().swap_loaded(loaded);
     }
 
     /// `MidiManager::processMidiMessage` for one short message at

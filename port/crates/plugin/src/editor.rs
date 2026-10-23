@@ -2,7 +2,6 @@
 
 //! What the `sas-gui` editor reads from the plugin.
 
-use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use sas_gui::EditorModel;
@@ -12,15 +11,16 @@ use crate::params::SynthParams;
 /// The editor's view of one plugin instance.
 pub struct PluginModel {
     params: Arc<SynthParams>,
-    /// The preset name and the document generation it was read at, so the
-    /// document lock is taken only when a new document arrives.
+    /// The preset name and the edit bus generation it was read at, so the
+    /// document mirror is read only when a new document arrives.
     preset_name: Mutex<(u64, String)>,
 }
 
 impl PluginModel {
     pub fn new(params: Arc<SynthParams>) -> PluginModel {
-        let name = params.document().state.info.preset_name.clone();
-        let generation = params.document_generation.load(Ordering::Acquire);
+        let edits = params.edit_handle();
+        let generation = edits.generation();
+        let name = edits.with_document(|document| document.state.info.preset_name.clone());
         PluginModel {
             params,
             preset_name: Mutex::new((generation, name)),
@@ -30,7 +30,8 @@ impl PluginModel {
 
 impl EditorModel for PluginModel {
     fn preset_name(&self) -> String {
-        let generation = self.params.document_generation.load(Ordering::Acquire);
+        let edits = self.params.edit_handle();
+        let generation = edits.generation();
         let mut cached = self
             .preset_name
             .lock()
@@ -38,7 +39,7 @@ impl EditorModel for PluginModel {
         if cached.0 != generation {
             *cached = (
                 generation,
-                self.params.document().state.info.preset_name.clone(),
+                edits.with_document(|document| document.state.info.preset_name.clone()),
             );
         }
         cached.1.clone()
@@ -48,14 +49,15 @@ impl EditorModel for PluginModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::PresetDocument;
+    use sas_engine::document::PresetDocument;
+    use sas_engine::edit_bus::EditBus;
     use sas_preset::InitContent;
 
     #[test]
     fn init_preset_has_no_name() {
-        let params = Arc::new(SynthParams::new(PresetDocument::init(&InitContent {
-            sample_seed: 0,
-        })));
+        let (edits, _consumer) =
+            EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+        let params = Arc::new(SynthParams::new(edits));
         assert_eq!(PluginModel::new(params).preset_name(), "");
     }
 }
