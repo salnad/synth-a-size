@@ -43,6 +43,7 @@
         "init_saw__single_note": "7833744cebab33c7",
         "init_saw__single_note_48k_b128": "18654d508a22991b",
         "line_wavetable_fold__velocity": "d30482ef1f96af47",
+        "llm_glass_pad__chords": "f631441023c7340c",
         "mono_legato_glide__legato": "4a36b6c72051fcb3",
         "mpe_expression__expression": "39a4ff107c7483f3",
         "osc_diode_phase__overlap": "6bad6fe0016bdc0b",

@@ -76,6 +76,8 @@
         "init_saw:artifact/state.json": "eddbfdef3efafde7",
         "line_wavetable_fold:artifact/roundtrip.json": "1b440c24303911b4",
         "line_wavetable_fold:artifact/state.json": "f49e8952b9621ce3",
+        "llm_glass_pad:artifact/roundtrip.json": "065236d7628e6e31",
+        "llm_glass_pad:artifact/state.json": "a00b8486a5470243",
         "modulation_slots:artifact/state.json": "031e23c0a569d96b",
         "mono_legato_glide:artifact/roundtrip.json": "07ee7f75850eb929",
         "mono_legato_glide:artifact/state.json": "7d56b0ba72b93f52",
