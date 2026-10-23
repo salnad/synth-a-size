@@ -25,11 +25,24 @@ Option c (from the audio thread, with a framework change) is parked as
   `Host::forward_midi_moves` sends one begin, set and end gesture per moved
   control with its current value. A control the user is dragging gets only
   the value, inside the drag's open gesture, so gestures never nest. The
-  set carries the value the parameter already holds, so nice-plug applies
-  no change and nothing reaches the engine twice.
+  set carries the value the parameter holds when the frame starts.
+- **The host's echo** (UI Reviewer): with no audio running, nice-plug
+  writes that value to the parameter (unchanged, so nothing reaches the
+  engine). During playback it only calls the host's `performEdit`, and the
+  host sends the edit back into the next `process`. If the value differs
+  from the parameter's current one, the callback marks it and
+  `sync_parameters` sends it to the engine. While a learned controller
+  keeps moving, the echo can carry a value up to about a frame old, and the
+  engine steps back to it until the next controller message; it settles on
+  the final value when the controller stops. D16 says so, and the FL Studio
+  checklist (`decisions/gui-framework.md`, item 3) asks the owner to listen
+  for stepping and to check automation recording and undo with one gesture
+  per frame. Whether the audio side should drop a stale echo is Graph
+  Reviewer's call; this PR changes no code for it yet.
 - D16 is narrowed to the window-closed case, and says what differs while it
-  is open: the host hears of the move a frame later, as a gesture where
-  upstream sends a bare `setValueNotifyingHost`.
+  is open: the host hears of the move a frame later, once per frame, as a
+  gesture where upstream sends a bare `setValueNotifyingHost`; and the
+  host's echo can briefly step the engine back to a frame-old value.
 
 **Tests**
 

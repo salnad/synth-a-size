@@ -398,11 +398,24 @@ entry.*
   edit.
   - **Editor open:** the audio thread marks the moved parameter (a
     lock-free bit), and on its next frame the editor sends the host a
-    begin, set and end gesture with the current value through nice-plug's
-    `GuiContext` (`Host::forward_midi_moves`, `port/crates/gui/src/host.rs`).
-    A parameter the user is dragging gets only the value, inside the drag's
-    gesture. The host hears of the move a frame later than upstream's
-    notification, as a gesture where upstream sends a bare edit.
+    begin, set and end gesture with the value the parameter holds then,
+    through nice-plug's `GuiContext` (`Host::forward_midi_moves`,
+    `port/crates/gui/src/host.rs`). A parameter the user is dragging gets
+    only the value, inside the drag's gesture. The host hears of the move
+    a frame later than upstream's notification, once per frame, as a
+    gesture where upstream sends a bare edit per change.
+  - **The host's echo:** during playback nice-plug only passes the edit to
+    the host (`performEdit`), and the host sends it back into the next
+    `process` as a parameter change. If the value differs from the
+    parameter's current one, it reaches the engine as a host change. While
+    a learned controller keeps moving, that value can be up to about a
+    frame older than the newest MIDI value, so the engine briefly steps
+    back to it until the next controller message. When the controller
+    stops, the last frame forwards the final value and the engine settles
+    there. Upstream echoes too, but its notification comes from the audio
+    thread with the current value (at most a block old), and JUCE drops an
+    echo equal to the current value. The FL Studio checklist
+    (`decisions/gui-framework.md`, item 3) asks the owner to listen for it.
   - **Editor closed:** the host is not sent a parameter edit: it sees the
     new value only when it next reads the parameter, and records no
     automation. Moves while the window is closed are not replayed when it
