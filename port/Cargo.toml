@@ -48,6 +48,11 @@ libm = { version = "=0.2.16", default-features = false }
 # Plugin framework: nice-plug, the maintained community fork of nih-plug
 # (see migration/decisions/plugin-framework.md).
 nice-plug = { version = "=0.4.2", default-features = false, features = ["vst3"] }
+# Editor: egui through nice-plug's adapter, drawn with wgpu (Metal on macOS).
+# See migration/decisions/gui-framework.md.
+nice-plug-egui = { version = "=0.6.0", default-features = false, features = ["wgpu"] }
+egui = { version = "=0.37.0", default-features = false }
+egui_kittest = { version = "=0.37.0", features = ["wgpu", "snapshot"] }
 
 [profile.release]
 debug = 1

@@ -3,6 +3,9 @@
 #
 #   port/crates/plugin/scripts/bundle.sh [OUT_DIR]     (default: build/plugin)
 #
+# SAS_PLUGIN_FEATURES, if set, is passed to cargo as --features (for example
+# focus-spike for the G1 keyboard-focus check build).
+#
 # macOS: the shipping build, Apple Silicon only (aarch64-apple-darwin), signed
 # ad hoc for local use. No universal or x86_64 macOS bundle is made.
 # Linux: an x86_64 bundle for running a VST3 validator during development
@@ -19,13 +22,17 @@ name="synth-a-size"
 bundle_id="io.github.salnad.synth-a-size.vst3"
 version="$(sed -n 's/^version = "\(.*\)"/\1/p' "$repo/port/Cargo.toml" | head -1)"
 bundle="$out/$name.vst3"
+features=()
+if [[ -n "${SAS_PLUGIN_FEATURES:-}" ]]; then
+  features=(--features "$SAS_PLUGIN_FEATURES")
+fi
 
 case "$(uname -s)" in
   Darwin)
     target=aarch64-apple-darwin
     export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-11.0}"
     rustup target add "$target" >/dev/null 2>&1 || true
-    cargo build --release --locked -p sas-plugin --target "$target" --manifest-path "$repo/port/Cargo.toml"
+    cargo build --release --locked -p sas-plugin --target "$target" ${features[@]+"${features[@]}"} --manifest-path "$repo/port/Cargo.toml"
     library="$repo/port/target/$target/release/libsas_plugin.dylib"
 
     rm -rf "$bundle"
@@ -76,7 +83,7 @@ PLIST
     codesign --verify --strict --verbose=2 "$bundle"
     ;;
   Linux)
-    cargo build --release --locked -p sas-plugin --manifest-path "$repo/port/Cargo.toml"
+    cargo build --release --locked -p sas-plugin ${features[@]+"${features[@]}"} --manifest-path "$repo/port/Cargo.toml"
     rm -rf "$bundle"
     mkdir -p "$bundle/Contents/x86_64-linux"
     cp "$repo/port/target/release/libsas_plugin.so" "$bundle/Contents/x86_64-linux/$name.so"

@@ -11,6 +11,9 @@ against:
 It also links `ref-bench`, which times `ref-render`'s block loop for the
 performance benchmark ([`../BENCHMARKS.md`](../BENCHMARKS.md)).
 
+Upstream's interface, the editor's reference, is a separate project in
+[`gui/`](gui/README.md) (`ref-gui`).
+
 Nothing in `/vital` is modified. All build glue lives here.
 
 ## Build

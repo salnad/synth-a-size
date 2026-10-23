@@ -37,7 +37,23 @@ for file in "${plugin_sources[@]}"; do
   fi
 done
 
+# Editor text: no string literal in the editor's code may carry an upstream
+# name (upstream's binary is also called "Vial"). Comments citing the
+# upstream files a module ports, and paths into the vendored vital/ tree
+# (UPSTREAM_SOURCES, the embedded skin and fonts), are allowed.
+mapfile -t gui_sources < <(find "$repo/port/crates/gui/src" "$repo/port/crates/gui/examples" -type f -name '*.rs')
+for file in "${gui_sources[@]}"; do
+  hits="$(grep -EinH "\"[^\"]*(vital|vial|tytel)[^\"]*\"" "$file" \
+    | grep -Ev '^[^:]+:[0-9]+:[[:space:]]*//' \
+    | grep -Ev '"(\.\./)*vital/[^"]*"' || true)"
+  if [[ -n "$hits" ]]; then
+    echo "banned upstream name in editor text:" >&2
+    echo "$hits" >&2
+    status=1
+  fi
+done
+
 if [[ $status -eq 0 ]]; then
-  echo "name check passed (${#manifests[@]} manifests, ${#plugin_sources[@]} plugin sources)"
+  echo "name check passed (${#manifests[@]} manifests, ${#plugin_sources[@]} plugin sources, ${#gui_sources[@]} editor sources)"
 fi
 exit $status

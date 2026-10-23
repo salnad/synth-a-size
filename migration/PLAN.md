@@ -160,13 +160,18 @@ cases is within tolerance; the test is recorded in the ledger.
 Exit: an LLM-driven session can create a patch and wavetable from text,
 and that patch renders identically in the reference and the port.
 
-## M10: GUI (egui or vizia)
+## M10: GUI (egui with wgpu)
 
-- Choose egui or vizia, both supported by nice-plug, and record the
-  decision.
-- Editor covering oscillators/wavetable view, filters, envelopes/LFOs,
-  the mod matrix, effects and preset browsing, plus an LLM prompt panel.
-  No upstream branding, art or skins.
+- egui through nice-plug's adapter, drawn with wgpu (Metal on macOS);
+  decision in `decisions/gui-framework.md`.
+- A rebuild of upstream's own interface: oscillators and the wavetable view
+  and editor, filters, envelopes/LFOs, drag-to-modulate, the mod matrix,
+  effects and preset browsing, plus the LLM chat drawer. Layout, skin and
+  fonts follow upstream's defaults (owner working default, 2026-10-22); no
+  upstream names or logo (rule 2) and no factory content (rule 3).
+- Checked against upstream's own interface (`reference/gui`): exact layout
+  fixtures, side-by-side screenshots and interaction tests. Milestones G1–G7
+  in the project's GUI plan.
 
 Exit: usable editor in FL Studio on macOS, with screenshots recorded.
 

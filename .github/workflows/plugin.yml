@@ -85,6 +85,19 @@ jobs:
           path: build/plugin/
           if-no-files-found: error
           retention-days: 14
+      # G1 spike: the same plugin with the editor's keyboard-focus check panel,
+      # for testing text entry in FL Studio. Same plugin ID, so install it in
+      # place of the normal bundle while testing. Not shipped.
+      - name: Build the keyboard-focus check bundle
+        env:
+          SAS_PLUGIN_FEATURES: focus-spike
+        run: port/crates/plugin/scripts/bundle.sh build/plugin-focus-check
+      - uses: actions/upload-artifact@v7
+        with:
+          name: synth-a-size-vst3-arm64-macos-focus-check
+          path: build/plugin-focus-check/
+          if-no-files-found: error
+          retention-days: 14
 
   # Gating counterpart of the macOS job (macOS CI is non-gating by owner
   # policy): the same validator and sound check on the x86_64 Linux dev

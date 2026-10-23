@@ -294,6 +294,21 @@ What is **not** listed:
 - **Approved:** #62 (`migration/ledger/2026-10-21-tuning-kbm-validation.md`),
   reviewed by Graph Reviewer.
 
+### D13. The editor shows the product name where upstream shows its logo
+
+- **Differs:** the header's logo area (`LogoSection`).
+- **Upstream:** draws its logo (`Paths::vitalV`, `Paths::vitalRing`) in the
+  logo area, and a click opens its About section.
+- **Port:** draws the text "synth-a-size" in the logo area, in the title
+  face and the logo section's primary colour (`port/crates/gui/src/interface.rs`,
+  `paint_logo`). Clicking it does nothing yet; a minimal About of our own
+  is planned.
+- **Why:** migration/AGENTS.md rule 2: UI text and art must not use the
+  upstream product names. The placeholder text is the owner's working
+  default until a product mark exists.
+- **Approved:** owner working default, 2026-10-22 (project context, "GUI
+  and LLM build: working defaults"); `decisions/gui-framework.md`.
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change

@@ -257,3 +257,17 @@ parity cost), and where it came from.
   - Needs an owner decision and a recorded divergence.
 - **Source:** `ledger/2026-10-22-perf-benchmark.md` (perf profiles, Rust
   and C++).
+
+## I17. Custom skins
+
+- **Idea:** port upstream's skin designer and let users load their own
+  `.vitalskin` files, as upstream does (`Skin::loadFromFile`,
+  `SkinDesigner` in `vital/src/interface/look_and_feel/skin.cpp`).
+- **Why:** users could restyle the editor, and skins made for upstream
+  would load.
+- **Tradeoff:** a settings surface and file handling the editor does not
+  otherwise need. `sas-gui`'s `Skin::from_json` already reads any skin, so
+  loading is small; the designer window is the bulk. No audio cost.
+- **Status:** parked by the owner's working defaults for the GUI
+  (2026-10-22). The editor uses upstream's default skin.
+- **Source:** `decisions/gui-framework.md`; the GUI plan (G1).

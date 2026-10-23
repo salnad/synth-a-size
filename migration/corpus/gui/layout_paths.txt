@@ -1,0 +1,28 @@
+# Upstream components whose bounds the port's layout is checked against
+# (migration/scripts/gui_reference.py layout). Paths are component names from
+# the interface down, as ref-gui --layout prints them. Each GUI PR adds the
+# components it ports.
+
+# G1: the shell.
+header_section
+header_section/logo_section
+header_section/tab_selector
+header_section/preset_selector
+header_section/preset_selector/preset_selector
+header_section/preset_selector/preset_selector/Text
+header_section/preset_selector/preset_selector/Prev
+header_section/preset_selector/preset_selector/Next
+header_section/preset_selector/Save
+header_section/preset_selector/Menu
+header_section/VOLUME
+header_section/view_spectrogram
+synthesis
+master_controls
+MODULATION MATRIX
+effects
+modulation
+extra_mod_section
+keyboard
+BEND
+PORTAMENTO
+VOICE
