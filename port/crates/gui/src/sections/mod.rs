@@ -11,6 +11,7 @@
 //! the interface and its changes to the host.
 
 pub mod bend;
+pub mod keyboard;
 pub mod portamento;
 pub mod voice;
 pub mod volume;

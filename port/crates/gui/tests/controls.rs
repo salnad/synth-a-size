@@ -51,6 +51,8 @@ impl TestParam {
 /// are linear over the registry range, indexed ones are integers.
 struct Synth {
     params: HashMap<&'static str, Box<TestParam>>,
+    /// Notes the on-screen keyboard sent.
+    notes: Mutex<Vec<String>>,
 }
 
 impl Synth {
@@ -81,7 +83,10 @@ impl Synth {
                 (name, Box::new(param))
             })
             .collect();
-        Arc::new(Synth { params })
+        Arc::new(Synth {
+            params,
+            notes: Mutex::new(Vec::new()),
+        })
     }
 
     fn name_of(&self, ptr: ParamPtr) -> &'static str {
@@ -104,6 +109,17 @@ impl EditorModel for Synth {
 
     fn param(&self, name: &str) -> Option<HostParam> {
         self.params.get(name).map(|param| param.ptr())
+    }
+
+    fn note_on(&self, note: u8, velocity: f32) {
+        self.notes
+            .lock()
+            .unwrap()
+            .push(format!("on {note} {velocity:.2}"));
+    }
+
+    fn note_off(&self, note: u8) {
+        self.notes.lock().unwrap().push(format!("off {note}"));
     }
 }
 
@@ -766,4 +782,42 @@ fn drags_are_measured_in_points() {
         Modifiers::NONE,
     );
     assert!((fixture.synth.value("velocity_track") - 0.4).abs() < 1e-4);
+}
+
+#[test]
+fn the_keyboard_plays_notes() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let layout = {
+        let interface = fixture.interface.borrow();
+        FullLayout::new(interface.skin(), 1400, 820).keyboard
+    };
+    let keys = sas_gui::sections::keyboard::KeyboardLayout::new(layout);
+    // Three quarters down the white key holding middle C (note 60).
+    let white = layout.width as f32 / 75.0;
+    let c4 = Pos2::new(
+        layout.x as f32 + white * 35.5,
+        layout.y as f32 + 0.75 * layout.height as f32,
+    );
+    let local_y = 0.75 * layout.height as f32;
+    assert_eq!(keys.note_at(white * 35.5, local_y), 60);
+    press(&mut harness, c4, PointerButton::Primary, Modifiers::NONE);
+    // Dragging onto the next white key (D, note 62) moves the note.
+    move_to(&mut harness, c4 + egui::vec2(white, 0.0));
+    release(
+        &mut harness,
+        c4 + egui::vec2(white, 0.0),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    let velocity = keys.velocity_for(60, local_y);
+    assert_eq!(
+        *fixture.synth.notes.lock().unwrap(),
+        [
+            format!("on 60 {velocity:.2}"),
+            "off 60".to_string(),
+            format!("on 62 {velocity:.2}"),
+            "off 62".to_string(),
+        ]
+    );
 }

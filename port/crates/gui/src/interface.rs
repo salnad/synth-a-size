@@ -26,8 +26,8 @@ use crate::layout::{FullLayout, Rect};
 use crate::paint::{PixelPainter, RectF};
 use crate::popup::MenuOutcome;
 use crate::scope::Scope;
-use crate::section::paint_body;
 use crate::sections::bend::{self, BendLayout, BendSection};
+use crate::sections::keyboard::{self, KeyboardLayout};
 use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
 use crate::sections::voice::{self, VoiceLayout, VoiceSection};
 use crate::sections::volume::{PeakLevels, VolumeLayout, VolumeSection};
@@ -239,7 +239,7 @@ impl Interface {
         panel.finish();
     }
 
-    /// The Bend, Voice and Portamento sections.
+    /// The Bend, Keyboard, Voice and Portamento sections.
     fn show_sections(
         &mut self,
         ui: &mut Ui,
@@ -261,6 +261,14 @@ impl Interface {
         self.bend.paint_background(pixels, &scope, &bend_layout);
         let mut panel = Panel::new(ui, host, pixels, scope, &mut self.overlay, layout.bend);
         self.bend.show(&mut panel, &bend_layout);
+        panel.finish();
+
+        let scope = top.within(keyboard::SKIN);
+        let keyboard_layout = KeyboardLayout::new(layout.keyboard);
+        keyboard::paint_background(pixels, &scope, &keyboard_layout);
+        let mut panel = Panel::new(ui, host, pixels, scope, &mut self.overlay, layout.keyboard);
+        let held = host.model().held_notes();
+        keyboard::show(&mut panel, &keyboard_layout, held);
         panel.finish();
 
         let scope = top.within(portamento::SKIN);
@@ -340,11 +348,6 @@ impl Interface {
         for bar in layout.bars {
             pixels.fill_rect(bar, header_body);
         }
-
-        // KeyboardInterface paints its body (in the Keyboard skin section);
-        // its contents come later.
-        let keyboard = top.within(&[Section::Keyboard]);
-        paint_body(pixels, &keyboard, layout.keyboard);
     }
 
     /// `HeaderSection::paintBackground` and its children's paint: the logo
