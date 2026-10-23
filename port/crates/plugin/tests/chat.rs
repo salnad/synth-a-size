@@ -338,3 +338,69 @@ fn the_in_memory_chat_stays_off_and_keeps_no_keys() {
     assert!(chat.save_settings(settings, Some("key".into())).is_err());
     assert!(!chat.view().enabled);
 }
+
+fn cutoff_then_done() -> Vec<Value> {
+    vec![
+        anthropic(
+            json!([
+                {"type": "text", "text": "Opening the filter."},
+                {"type": "tool_use", "id": "t1", "name": "set_params",
+                 "input": {"changes": [{"name": "filter_1_cutoff", "value": 24}]}}
+            ]),
+            "tool_use",
+        ),
+        anthropic(json!([{"type": "text", "text": "Done."}]), "end_turn"),
+    ]
+}
+
+#[test]
+fn dropping_the_plugin_ends_a_worker_blocked_on_the_editor() {
+    // The editor never runs a frame (its window is closed), so the worker
+    // waits on the bridge for the tool call.
+    let rig = rig("blocked", Some(on()), Some("key"), cutoff_then_done());
+    rig.chat.send("brighter".into());
+    // The turn's first bridge call (checking for outside changes) blocks.
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(rig.chat.view().busy);
+    let started = Instant::now();
+    drop(rig);
+    // Drop returns early only when the thread has ended.
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "{:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn a_stop_right_after_sending_is_not_lost() {
+    let rig = rig("stop", Some(on()), Some("key"), cutoff_then_done());
+    rig.chat.send("brighter".into());
+    rig.chat.stop();
+    rig.settle();
+    let lines = rig.chat.view().lines;
+    assert!(lines
+        .iter()
+        .any(|line| line.text.contains("stopped by the user")));
+    assert!(!lines.iter().any(|line| line.text == "Done."));
+}
+
+#[test]
+fn a_retired_worker_stays_out_of_the_new_conversation() {
+    let rig = rig("retired", Some(on()), Some("key"), cutoff_then_done());
+    rig.chat.send("brighter".into());
+    std::thread::sleep(Duration::from_millis(100));
+    let settings = rig.chat.settings();
+    rig.chat.save_settings(settings, None).unwrap();
+    let count = rig.chat.view().lines.len();
+    std::thread::sleep(Duration::from_millis(100));
+    for _ in 0..5 {
+        rig.chat.run_frame();
+    }
+    let view = rig.chat.view();
+    assert_eq!(view.lines.len(), count, "{:?}", view.lines);
+    assert!(view.lines.last().unwrap().text.contains("new conversation"));
+    assert!(!view.busy);
+    // Its tool call was dropped with its bridge, unapplied.
+    assert_eq!(rig.value("filter_1_cutoff"), 60.0);
+}

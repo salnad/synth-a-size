@@ -34,9 +34,11 @@ use crate::params::SynthParams;
 /// How long a tool call waits for the editor to run it.
 const TOOL_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// How long a closing plugin waits for the chat thread to finish. A model
-/// call in flight cannot be interrupted; past this the thread is left to
-/// end on its own.
+/// How long a closing plugin waits for the chat thread to finish. Closing
+/// the bridge ends tool calls at once, so only a model request in flight
+/// can take longer: it cannot be interrupted, and runs until it answers or
+/// the transport's timeout (120 s). Past this wait the thread is left to end
+/// on its own, and must not outlive the plugin's library.
 const WORKER_EXIT_WAIT: Duration = Duration::from_secs(2);
 
 /// Builds the transport for a provider: real HTTPS in the macOS plugin.
@@ -61,7 +63,8 @@ pub fn system_transport() -> TransportFactory {
 }
 
 enum Command {
-    Send(String),
+    /// A message, with the cancel flag made for it.
+    Send(String, Arc<AtomicBool>),
     Undo,
     Compare,
     Confirm(bool),
@@ -69,25 +72,44 @@ enum Command {
 
 struct Worker {
     commands: Option<mpsc::Sender<Command>>,
-    cancel: Arc<AtomicBool>,
+    /// This worker's own bridge to the GUI thread, closed when it stops.
+    bridge: Arc<ChatBridge>,
+    /// Ends the worker's loop; separate from the messages' cancel flags.
+    shutdown: Arc<AtomicBool>,
+    /// The cancel flag of the last message sent.
+    cancel: Mutex<Option<Arc<AtomicBool>>>,
     /// Disconnects when the thread ends; `None` once retired.
     exited: Option<mpsc::Receiver<()>>,
 }
 
 impl Worker {
-    /// Stops the worker after the model call in flight, without waiting.
+    /// Stops the message being answered after its model call.
+    fn stop(&self) {
+        if let Some(cancel) = &*lock(&self.cancel) {
+            cancel.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// Ends the thread: no further command or tool call runs.
+    fn shut_down(&mut self) {
+        self.shutdown.store(true, Ordering::Relaxed);
+        self.stop();
+        self.bridge.close();
+        self.commands = None;
+    }
+
+    /// Stops the worker without waiting for it (the plugin stays loaded).
     fn retire(mut self) {
-        self.cancel.store(true, Ordering::Relaxed);
+        self.shut_down();
         self.exited = None;
     }
 }
 
 impl Drop for Worker {
     /// The plugin is going away (and its library may be unloaded after):
-    /// stop the thread and give it a moment to end.
+    /// stop the thread and wait for it, up to [`WORKER_EXIT_WAIT`].
     fn drop(&mut self) {
-        self.cancel.store(true, Ordering::Relaxed);
-        self.commands = None;
+        self.shut_down();
         if let Some(exited) = &self.exited {
             let _ = exited.recv_timeout(WORKER_EXIT_WAIT);
         }
@@ -116,6 +138,22 @@ impl Shared {
         self.wake();
     }
 
+    /// [`push`](Self::push) from worker `generation`; dropped if a newer
+    /// worker has started (a retired worker's lines never reach the new
+    /// conversation).
+    fn push_from(&self, generation: u64, kind: LineKind, text: impl Into<String>) {
+        let mut view = self.view();
+        if self.worker.load(Ordering::Acquire) != generation {
+            return;
+        }
+        view.lines.push(ChatLine {
+            kind,
+            text: text.into(),
+        });
+        drop(view);
+        self.wake();
+    }
+
     fn wake(&self) {
         if let Some(wake) = &*self.wake.lock().unwrap_or_else(|p| p.into_inner()) {
             wake();
@@ -126,7 +164,6 @@ impl Shared {
 /// The chat of one plugin instance.
 pub struct PluginChat {
     params: Arc<SynthParams>,
-    bridge: Arc<ChatBridge>,
     shared: Arc<Shared>,
     /// The tools' session on the GUI thread, made when the editor opens.
     live: Mutex<Option<LiveSession<GuiContext>>>,
@@ -180,7 +217,6 @@ impl PluginChat {
             .unwrap_or_default();
         PluginChat {
             params,
-            bridge: ChatBridge::new(),
             shared: Arc::new(Shared::default()),
             live: Mutex::new(None),
             worker: Mutex::new(None),
@@ -196,8 +232,6 @@ impl PluginChat {
     /// it.
     pub fn attach(&self, gui: GuiContext, wake: Arc<dyn Fn() + Send + Sync>) {
         *lock(&self.live) = Some(LiveSession::new(self.params.clone(), gui));
-        let bridge_wake = wake.clone();
-        self.bridge.set_waker(move || bridge_wake());
         *lock(&self.shared.wake) = Some(wake);
     }
 
@@ -232,7 +266,6 @@ impl PluginChat {
             let transport = (self.transports)(&provider)?;
             let library = lock(&self.settings).preset_folder().map(PresetLibrary::new);
             *worker = Some(spawn_worker(
-                self.bridge.remote(TOOL_TIMEOUT),
                 provider,
                 transport,
                 library,
@@ -247,7 +280,13 @@ impl PluginChat {
     fn command(&self, command: Command) {
         match self.worker() {
             Ok(worker) => {
-                if let Some(commands) = worker.as_ref().and_then(|w| w.commands.as_ref()) {
+                let Some(worker) = worker.as_ref() else {
+                    return;
+                };
+                if let Command::Send(_, cancel) = &command {
+                    *lock(&worker.cancel) = Some(cancel.clone());
+                }
+                if let Some(commands) = &worker.commands {
                     self.shared.view().busy = true;
                     if commands.send(command).is_err() {
                         self.shared.view().busy = false;
@@ -263,7 +302,6 @@ impl PluginChat {
 }
 
 fn spawn_worker(
-    session: RemoteSession,
     provider: ProviderConfig,
     transport: Box<dyn Transport>,
     library: Option<PresetLibrary>,
@@ -271,7 +309,10 @@ fn spawn_worker(
 ) -> Worker {
     let (commands, receiver) = mpsc::channel::<Command>();
     let (exited_sender, exited) = mpsc::channel::<()>();
-    let mut controller = Controller::new(session, Policy::default());
+    let bridge = ChatBridge::new();
+    let waker = shared.clone();
+    bridge.set_waker(move || waker.wake());
+    let mut controller = Controller::new(bridge.remote(TOOL_TIMEOUT), Policy::default());
     if let Some(library) = library {
         controller = controller.with_library(library);
     }
@@ -281,19 +322,23 @@ fn spawn_worker(
         transport,
         AgentConfig::default(),
     );
-    let cancel = agent.cancel_flag();
-    let generation = shared.worker.fetch_add(1, Ordering::Relaxed) + 1;
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let stopping = shutdown.clone();
+    let generation = shared.worker.fetch_add(1, Ordering::AcqRel) + 1;
     std::thread::Builder::new()
         .name("synth-a-size chat".to_string())
         .spawn(move || {
             let _exited = exited_sender;
             for command in receiver {
-                run_command(&mut agent, command, &shared);
-                if shared.worker.load(Ordering::Relaxed) != generation {
-                    continue;
+                if stopping.load(Ordering::Relaxed) {
+                    break;
                 }
+                run_command(&mut agent, command, &shared, generation);
                 let controller = agent.controller();
                 let mut view = shared.view();
+                if shared.worker.load(Ordering::Acquire) != generation {
+                    continue;
+                }
                 view.busy = false;
                 view.can_undo = controller.undo_depth() > 0;
                 view.comparing = controller.comparing().map(|side| match side {
@@ -309,55 +354,72 @@ fn spawn_worker(
         .expect("spawn the chat thread");
     Worker {
         commands: Some(commands),
-        cancel,
+        bridge,
+        shutdown,
+        cancel: Mutex::new(None),
         exited: Some(exited),
     }
 }
 
-fn run_command(agent: &mut Agent<RemoteSession>, command: Command, shared: &Shared) {
+fn run_command(
+    agent: &mut Agent<RemoteSession>,
+    command: Command,
+    shared: &Shared,
+    generation: u64,
+) {
     match command {
-        Command::Send(text) => {
+        Command::Send(text, cancel) => {
+            agent.set_cancel_flag(cancel);
             let result = agent.send(&text, &mut |event| match event {
-                AgentEvent::Text(text) => shared.push(LineKind::Assistant, text),
+                AgentEvent::Text(text) => shared.push_from(generation, LineKind::Assistant, text),
                 AgentEvent::ToolCall { name, input } => {
-                    shared.push(
+                    shared.push_from(
+                        generation,
                         LineKind::Tool,
                         format!("{name} {}", summary(&input.to_string())),
                     );
                 }
                 AgentEvent::ToolResult { output, .. } if output.is_error => {
-                    shared.push(LineKind::Tool, format!("error: {}", output.content));
+                    shared.push_from(
+                        generation,
+                        LineKind::Tool,
+                        format!("error: {}", output.content),
+                    );
                 }
                 AgentEvent::ToolResult { .. } => {}
             });
             match result {
                 Ok(report) => {
                     if let Some(stopped) = report.stopped {
-                        shared.push(LineKind::Note, format!("({stopped})"));
+                        shared.push_from(generation, LineKind::Note, format!("({stopped})"));
                     }
                 }
-                Err(error) => shared.push(LineKind::Error, error.to_string()),
+                Err(error) => shared.push_from(generation, LineKind::Error, error.to_string()),
             }
         }
         Command::Undo => match agent.controller_mut().undo(1, None) {
-            Ok(0) => shared.push(LineKind::Note, "Nothing to undo."),
+            Ok(0) => shared.push_from(generation, LineKind::Note, "Nothing to undo."),
             Ok(steps) => {
                 agent.note_user_undo(steps);
-                shared.push(LineKind::Note, "Undid the last change.");
+                shared.push_from(generation, LineKind::Note, "Undid the last change.");
             }
-            Err(error) => shared.push(LineKind::Error, error.to_string()),
+            Err(error) => shared.push_from(generation, LineKind::Error, error.to_string()),
         },
         Command::Compare => match agent.controller_mut().compare_toggle() {
-            Ok(Some(Side::Before)) => shared.push(LineKind::Note, "Playing the version before."),
-            Ok(Some(Side::After)) => shared.push(LineKind::Note, "Playing the version after."),
-            Ok(None) => shared.push(LineKind::Note, "Nothing to compare yet."),
-            Err(error) => shared.push(LineKind::Error, error.to_string()),
+            Ok(Some(Side::Before)) => {
+                shared.push_from(generation, LineKind::Note, "Playing the version before.")
+            }
+            Ok(Some(Side::After)) => {
+                shared.push_from(generation, LineKind::Note, "Playing the version after.")
+            }
+            Ok(None) => shared.push_from(generation, LineKind::Note, "Nothing to compare yet."),
+            Err(error) => shared.push_from(generation, LineKind::Error, error.to_string()),
         },
         Command::Confirm(accept) => match agent.resolve_pending(accept) {
-            Ok(true) if accept => shared.push(LineKind::Note, "Applied."),
-            Ok(true) => shared.push(LineKind::Note, "Declined; nothing changed."),
+            Ok(true) if accept => shared.push_from(generation, LineKind::Note, "Applied."),
+            Ok(true) => shared.push_from(generation, LineKind::Note, "Declined; nothing changed."),
             Ok(false) => {}
-            Err(error) => shared.push(LineKind::Error, error.to_string()),
+            Err(error) => shared.push_from(generation, LineKind::Error, error.to_string()),
         },
     }
 }
@@ -374,8 +436,11 @@ pub fn summary(text: &str) -> String {
 
 impl ChatHost for PluginChat {
     fn run_frame(&self) {
-        if let Some(session) = &mut *lock(&self.live) {
-            self.bridge.run_pending(session);
+        let bridge = lock(&self.worker)
+            .as_ref()
+            .map(|worker| worker.bridge.clone());
+        if let (Some(bridge), Some(session)) = (bridge, &mut *lock(&self.live)) {
+            bridge.run_pending(session);
         }
     }
 
@@ -392,12 +457,12 @@ impl ChatHost for PluginChat {
 
     fn send(&self, text: String) {
         self.shared.push(LineKind::User, text.clone());
-        self.command(Command::Send(text));
+        self.command(Command::Send(text, Arc::new(AtomicBool::new(false))));
     }
 
     fn stop(&self) {
         if let Some(worker) = &*lock(&self.worker) {
-            worker.cancel.store(true, Ordering::Relaxed);
+            worker.stop();
         }
     }
 
@@ -450,8 +515,12 @@ impl ChatHost for PluginChat {
         // The next message starts a worker with the new provider and key (and
         // a new conversation); the old one stops after its model call.
         if let Some(worker) = lock(&self.worker).take() {
-            worker.retire();
             let mut view = self.shared.view();
+            // Retired: its lines and state no longer reach the view.
+            self.shared.worker.fetch_add(1, Ordering::AcqRel);
+            drop(view);
+            worker.retire();
+            view = self.shared.view();
             view.busy = false;
             view.can_undo = false;
             view.can_compare = false;

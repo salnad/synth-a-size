@@ -124,9 +124,16 @@ impl<S: SynthSession> Agent<S> {
     }
 
     /// A flag another thread sets to stop the current message after the
-    /// model call in flight; it is cleared when the next message starts.
+    /// model call in flight. It stays set until the caller clears it or
+    /// replaces it ([`set_cancel_flag`](Self::set_cancel_flag)).
     pub fn cancel_flag(&self) -> Arc<AtomicBool> {
         self.cancel.clone()
+    }
+
+    /// Replaces the cancel flag, e.g. with one made for the next message, so
+    /// a stop meant for that message is never cleared before it starts.
+    pub fn set_cancel_flag(&mut self, cancel: Arc<AtomicBool>) {
+        self.cancel = cancel;
     }
 
     /// Tokens used so far in this session.
@@ -177,7 +184,6 @@ impl<S: SynthSession> Agent<S> {
                 self.usage.total()
             )));
         }
-        self.cancel.store(false, Ordering::Relaxed);
         let replaced = self.controller.check_replaced();
         let outside = self.controller.session_mut().take_outside_changes();
         self.controller.begin_turn();
