@@ -264,9 +264,6 @@ impl<W: HostWriter> SynthSession for LiveSession<W> {
             && current.info.comments == target.info.comments
             && current.info.style == target.info.style
             && current.info.macros == target.info.macros;
-        if !same_info {
-            self.edits().set_info(target.info.clone());
-        }
 
         let wavetables: Vec<_> = current
             .wavetables
@@ -294,7 +291,10 @@ impl<W: HostWriter> SynthSession for LiveSession<W> {
             })
             .map(|(slot, (_, then))| (slot, then.line_mapping.clone()))
             .collect();
+        let info = (!same_info).then(|| target.info.clone());
         if !(wavetables.is_empty() && lfos.is_empty() && curves.is_empty()) {
+            // The info goes in the same batch, so a refused batch (a full
+            // queue, a wavetable that won't render) changes nothing.
             let edits = self.edits().clone();
             with_room(|| {
                 let prepared = wavetables
@@ -313,9 +313,14 @@ impl<W: HostWriter> SynthSession for LiveSession<W> {
                     for (oscillator, prepared) in prepared {
                         batch.set_prepared_wavetable(oscillator, prepared)?;
                     }
+                    if let Some(info) = &info {
+                        batch.set_info(info.clone());
+                    }
                     Ok(())
                 })
             })?;
+        } else if let Some(info) = info {
+            self.edits().set_info(info);
         }
         for (name, value) in target.controls() {
             let Some(control) = self.params.control(name) else {
