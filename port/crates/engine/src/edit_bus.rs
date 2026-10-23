@@ -48,6 +48,7 @@ use sas_preset::{GuiConnection, SampleState, SaveInfo, SlotValues};
 
 use crate::document::PresetDocument;
 use crate::synth::{Synth, NUM_LFOS, NUM_OSCILLATORS};
+use crate::tuning::Tuning;
 
 /// Entries the edit queue holds. A producer gets [`EditError::QueueFull`]
 /// rather than block; the queue only fills while the audio thread is not
@@ -71,7 +72,8 @@ const LFO_SLOTS: usize = 0;
 const LINE_MAPPING_SLOTS: usize = LFO_SLOTS + NUM_LFOS;
 const WAVETABLE_SLOTS: usize = LINE_MAPPING_SLOTS + MAX_MODULATION_CONNECTIONS;
 const SAMPLE_SLOT: usize = WAVETABLE_SLOTS + NUM_OSCILLATORS;
-const NUM_SLOTS: usize = SAMPLE_SLOT + 1;
+const TUNING_SLOT: usize = SAMPLE_SLOT + 1;
+const NUM_SLOTS: usize = TUNING_SLOT + 1;
 
 /// What a modulation connection edit returns: the slot, whether it was
 /// created, and the host parameter changes the caller must also make (see
@@ -149,6 +151,7 @@ enum Target {
     LineMapping(usize),
     Wavetable(usize),
     Sample,
+    Tuning,
 }
 
 impl Target {
@@ -158,6 +161,7 @@ impl Target {
             Target::LineMapping(slot) => LINE_MAPPING_SLOTS + slot,
             Target::Wavetable(oscillator) => WAVETABLE_SLOTS + oscillator,
             Target::Sample => SAMPLE_SLOT,
+            Target::Tuning => TUNING_SLOT,
         }
     }
 
@@ -166,7 +170,8 @@ impl Target {
             s if s < LINE_MAPPING_SLOTS => Target::Lfo(s - LFO_SLOTS),
             s if s < WAVETABLE_SLOTS => Target::LineMapping(s - LINE_MAPPING_SLOTS),
             s if s < SAMPLE_SLOT => Target::Wavetable(s - WAVETABLE_SLOTS),
-            _ => Target::Sample,
+            SAMPLE_SLOT => Target::Sample,
+            _ => Target::Tuning,
         }
     }
 }
@@ -178,6 +183,7 @@ enum Payload {
     Line(LineGenerator),
     Wavetable(Wavetable),
     Sample(Sample),
+    Tuning(Tuning),
 }
 
 /// The newest payload for one target, with the sequence number of the
@@ -492,6 +498,15 @@ impl Batch<'_> {
         Ok(())
     }
 
+    /// The tuning (`TuningSelector::loadTuning`, `SynthBase::loadTuningFile`):
+    /// built on the producer's thread and swapped into the engine, which
+    /// keeps converting notes through it from the next block.
+    pub fn set_tuning(&mut self, tuning: Tuning) {
+        self.mirror.document.tuning = tuning.clone();
+        self.staged
+            .push(Staged::Pending(Target::Tuning, Payload::Tuning(tuning)));
+    }
+
     /// The preset's name, author, comments, style and macro names
     /// (`SynthBase::setPresetName`, `setAuthor`, `setComments`, `setStyle`,
     /// `setMacroName`, which only write `save_info_`). Only the mirror
@@ -711,6 +726,14 @@ impl EditHandle {
         self.single(|batch| batch.set_lfo_shape(lfo, line))
     }
 
+    /// See [`Batch::set_tuning`].
+    pub fn set_tuning(&self, tuning: Tuning) -> Result<(), EditError> {
+        self.single(|batch| {
+            batch.set_tuning(tuning);
+            Ok(())
+        })
+    }
+
     /// See [`Batch::set_info`]. Bumps the revision and queues nothing, so
     /// it never fails; read the current info with [`Self::with_document`].
     pub fn set_info(&self, info: SaveInfo) {
@@ -806,6 +829,9 @@ pub trait EditTarget {
     fn set_line_mapping(&mut self, slot: usize, line: &mut LineGenerator);
     fn swap_wavetable(&mut self, oscillator: usize, rendered: &mut Wavetable);
     fn swap_sample(&mut self, loaded: &mut Sample);
+    /// Takes `tuning` in place of the engine's own, handing the old one back
+    /// in `tuning`.
+    fn swap_tuning(&mut self, tuning: &mut Tuning);
     /// Loads a whole restored document (controls, routing, shapes,
     /// wavetables, sample, tuning).
     fn load_document(&mut self, document: &PresetDocument);
@@ -841,6 +867,10 @@ impl EditTarget for Synth {
         Synth::swap_sample(self, loaded);
     }
 
+    fn swap_tuning(&mut self, tuning: &mut Tuning) {
+        Synth::swap_tuning(self, tuning);
+    }
+
     fn load_document(&mut self, document: &PresetDocument) {
         self.load_preset(&document.state);
         self.set_tuning(&document.tuning);
@@ -860,6 +890,7 @@ impl EditTarget for () {
     fn set_line_mapping(&mut self, _slot: usize, _line: &mut LineGenerator) {}
     fn swap_wavetable(&mut self, _oscillator: usize, _rendered: &mut Wavetable) {}
     fn swap_sample(&mut self, _loaded: &mut Sample) {}
+    fn swap_tuning(&mut self, _tuning: &mut Tuning) {}
     fn load_document(&mut self, _document: &PresetDocument) {}
 }
 
@@ -1006,6 +1037,7 @@ impl EditConsumer {
                         target.swap_wavetable(oscillator, wavetable)
                     }
                     (Target::Sample, Payload::Sample(sample)) => target.swap_sample(sample),
+                    (Target::Tuning, Payload::Tuning(tuning)) => target.swap_tuning(tuning),
                     _ => unreachable!("each slot only takes its own payload"),
                 }
                 self.retire(Retired::Pending(pending));

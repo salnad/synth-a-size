@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use sas_engine::keyboard::KeyboardHandle;
 use sas_engine::telemetry::Telemetry;
+use sas_engine::Tuning;
 use sas_gui::{EditorModel, HostParam};
 
 use crate::params::SynthParams;
@@ -76,6 +77,18 @@ impl EditorModel for PluginModel {
     fn held_notes(&self) -> u128 {
         self.keyboard.held_notes()
     }
+
+    fn tuning_name(&self) -> String {
+        self.params
+            .edit_handle()
+            .with_document(|document| document.tuning.name())
+    }
+
+    fn load_tuning(&self, tuning: Tuning) {
+        // A full queue drops the load: the queue only fills while the audio
+        // thread is stalled, and the name shown stays the old one.
+        let _ = self.params.edit_handle().set_tuning(tuning);
+    }
 }
 
 #[cfg(test)]
@@ -99,6 +112,20 @@ mod tests {
         info.preset_name = "Renamed".to_string();
         edits.set_info(info);
         assert_eq!(model.preset_name(), "Renamed");
+    }
+
+    #[test]
+    fn a_loaded_tuning_names_the_tuning() {
+        let (edits, _consumer) =
+            EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+        let (_writer, telemetry) = Telemetry::new(Arc::default());
+        let model = PluginModel::new(Arc::new(SynthParams::new(edits)), telemetry, keyboard().0);
+        let default_name = model.tuning_name();
+        let mut tuning = Tuning::new();
+        tuning.set_name("Septimal");
+        model.load_tuning(tuning);
+        assert_eq!(model.tuning_name(), "Septimal");
+        assert_ne!(default_name, "Septimal");
     }
 
     #[test]

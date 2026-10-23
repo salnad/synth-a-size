@@ -100,6 +100,7 @@ fn edits_play_like_direct_engine_edits() {
     let preset_path = corpus("presets/init_saw.vital");
     let mut lfo = LineGenerator::default();
     lfo.init_saw_down();
+    let tuning = sas_engine::Tuning::from_file(&corpus("tunings/corpus_septimal.scl")).unwrap();
 
     // Through the plugin, as an editor would: bus edits plus the host
     // parameter changes they report.
@@ -121,6 +122,7 @@ fn edits_play_like_direct_engine_edits() {
         set_param(&plugin, name, *value);
     }
     edits.set_lfo_shape(0, lfo.clone()).unwrap();
+    edits.set_tuning(tuning.clone()).unwrap();
     set_param(&plugin, "modulation_1_amount", 0.5);
     set_param(&plugin, "filter_1_on", 1.0);
     set_param(&plugin, "lfo_1_frequency", 3.0);
@@ -139,6 +141,7 @@ fn edits_play_like_direct_engine_edits() {
         synth.set_control(name, *value);
     }
     synth.set_lfo_shape(0, &mut lfo.clone());
+    synth.set_tuning(&tuning);
     for (name, value) in [
         ("modulation_1_amount", 0.5),
         ("filter_1_on", 1.0),
@@ -168,6 +171,8 @@ fn edits_play_like_direct_engine_edits() {
     assert_eq!(saved.modulation_index("lfo_1", "filter_1_cutoff"), Some(0));
     assert_eq!(saved.lfos[0].name(), "Saw Down");
     assert_eq!(saved.value("modulation_1_amount"), Some(0.5));
+    let document = plugin.synth_params().preset_document();
+    assert_eq!(document.tuning.name(), tuning.name());
 }
 
 #[test]

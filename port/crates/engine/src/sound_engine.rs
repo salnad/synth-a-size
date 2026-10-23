@@ -396,6 +396,11 @@ impl SoundEngine {
         self.with_vh(|vh| vh.set_tuning(tuning));
     }
 
+    /// See [`VoiceHandler::swap_tuning`].
+    pub fn swap_tuning(&self, tuning: &mut Tuning) {
+        self.with_vh(|vh| vh.swap_tuning(tuning));
+    }
+
     /// `correctToTime(seconds)`.
     pub fn correct_to_time(&self, seconds: f64) {
         self.with_svh(|svh| svh.correct_to_time(seconds));

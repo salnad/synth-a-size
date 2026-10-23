@@ -16,6 +16,7 @@
 
 use egui::{Sense, Ui, UiBuilder};
 use sas_engine::telemetry::Telemetry;
+use sas_engine::Tuning;
 
 use crate::colour::Colour;
 use crate::controls::format;
@@ -70,6 +71,17 @@ pub trait EditorModel: Send + Sync + 'static {
     /// oscilloscope, modulation values). None draws them at rest.
     fn telemetry(&self) -> Option<Telemetry> {
         None
+    }
+
+    /// `SynthBase::getTuningName`: the name of the tuning the synth plays.
+    fn tuning_name(&self) -> String {
+        String::new()
+    }
+
+    /// `SynthBase::loadTuningFile` / `setTuning`: play with `tuning` from
+    /// now on.
+    fn load_tuning(&self, tuning: Tuning) {
+        let _ = tuning;
     }
 }
 
