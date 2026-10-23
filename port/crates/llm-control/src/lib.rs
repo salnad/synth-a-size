@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! LLM control layer: the tools a language model uses to read and edit the
-//! synth by name (an addition with no upstream counterpart; see D12 in
+//! synth by name (an addition with no upstream counterpart; see D13 in
 //! `migration/DIVERGENCES.md`).
 //!
 //! - [`catalog`]: the 772 controls, described in display units, and the

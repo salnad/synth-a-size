@@ -273,8 +273,11 @@ parity cost), and where it came from.
     the editor closed parameter edits may not reach the host.
   - No engine or parity cost.
 - **Status:** parked. The LLM plan starts with a standalone stdio MCP server
-  (`sas-mcp`, milestone L7) over an offline session.
-- **Source:** `docs/llm-plan.md` (project store), section 7;
+  (`sas-mcp`, milestone L7) over an offline session: agents can build
+  patches and write preset files without a socket in the plugin, and it is
+  testable in CI.
+- **Source:** the owner-approved LLM plan (2026-10-22), whose working
+  defaults put MCP second, as a standalone server;
   `ledger/2026-10-23-llm-l1-tool-core.md`.
 
 ## I15. Send preview audio to audio-capable models
@@ -290,7 +293,10 @@ parity cost), and where it came from.
     ("the listen loop sends analysis only, never audio").
   - Only some providers accept audio. No engine or parity cost.
 - **Status:** parked by the owner's working defaults (2026-10-22).
-- **Source:** `docs/llm-plan.md` (project store), section 5.
+- **Source:** the owner-approved LLM plan (2026-10-22): the listen loop
+  renders a short preview offline and sends about 300 tokens of analysis
+  (levels, attack and decay, spectral centroid over time, a coarse
+  spectrogram) instead of audio; `ledger/2026-10-23-llm-l1-tool-core.md`.
 
 ## I16. Note preview through the live engine
 
@@ -305,5 +311,8 @@ parity cost), and where it came from.
     export.
   - It adds a MIDI path upstream does not have. The engine itself is
     unchanged.
-- **Status:** parked. The listen loop (L6) renders offline.
-- **Source:** `docs/llm-plan.md` (project store), section 8.
+- **Status:** parked. The listen loop (L6) renders offline with a second
+  engine, so nothing reaches the host's audio or a bounce.
+- **Source:** the owner-approved LLM plan (2026-10-22), which keeps every LLM
+  feature away from the live engine's audio path;
+  `ledger/2026-10-23-llm-l1-tool-core.md`.

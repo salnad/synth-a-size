@@ -30,13 +30,14 @@ or engine dependency. Nothing the plugin does changes in this PR.
     wavetables).
 - `port/crates/preset/src/display.rs` (`sas_preset::display`): upstream's
   `ValueBridge` conversions (`skew`, `unskew`, `display_text`,
-  `value_from_text`), moved verbatim from `port/crates/plugin/src/params.rs`
-  so the plugin, the LLM tools and the GUI share one copy. The plugin now
+  `value_from_text`), moved from `port/crates/plugin/src/params.rs` in a
+  semantics-preserving move, so the plugin, the LLM tools and the GUI share one copy. The plugin now
   imports them. Its two tests (`display_text_matches_the_value_bridge`,
   `text_input_inverts_the_display`) moved with the code, unchanged; none was
   deleted or narrowed. Host parameter behaviour is unchanged.
-- `migration/DIVERGENCES.md`: D12, the LLM layer as an addition with no
-  upstream counterpart.
+- `migration/DIVERGENCES.md`: D13, the LLM layer as an addition with no
+  upstream counterpart, and a tombstone for D12 (temporary, removed in
+  #82; frozen ledger entries still cite it).
 - `migration/IMPROVEMENTS.md`: I14 (MCP bridge inside the plugin), I15
   (preview audio sent to models), I16 (note preview through the live
   engine), parked per the plan and the working defaults.
@@ -61,6 +62,14 @@ or engine dependency. Nothing the plugin does changes in this PR.
 - Numbers in `set_params` are display numbers, the same reading as host text
   entry (D1), so `osc_1_level` 0.5 is engine value √0.5 on its quadratic
   scale.
+
+**Review (#91).** Chain Reviewer approved at 78566eb, with nits applied: the
+move is described as semantics-preserving, and I14–I16 state their rationale
+inline instead of citing the project store's plan. Parity Reviewer asked for
+the entry to be D13, since D12 was the temporary entry added in #79 and
+removed in #82 that frozen ledger entries cite; D12 now has a tombstone.
+D13 also says the off-by-default setting arrives with the plugin wiring
+(L4/L5).
 
 **Blocked:** nothing. L2 (structural tools and the golden test) and L3
 (providers and replay tests) follow; L4 waits for G0, L5 for G1.
