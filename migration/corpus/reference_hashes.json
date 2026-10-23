@@ -37,6 +37,8 @@
         "analog_filter_lfo__velocity_96k_b512": "acc54eefc3efd453",
         "fx_chain_reordered__chords_140bpm": "e67958a2f818b3a0",
         "init_saw__chords": "9493f49d197a6f4f",
+        "init_saw__live_edits": "90b89f7a0fe9aed3",
+        "init_saw__live_edits_48k_b512": "eae69ee6208aa907",
         "init_saw__single_note": "7833744cebab33c7",
         "init_saw__single_note_48k_b128": "18654d508a22991b",
         "line_wavetable_fold__velocity": "d30482ef1f96af47",

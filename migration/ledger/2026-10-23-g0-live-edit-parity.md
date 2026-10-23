@@ -89,7 +89,8 @@ time.
   identity matched all 2772 committed hashes (`hashes --check
   --require-known-identity`, 0 problems). CI's cross-machine check confirms
   them. The macOS arm64 hashes come from the advisory job's `macos-hashes`
-  artifact.
+  artifact (run 39908662632, at 2209282 before the rebase onto main; the
+  reference and corpus are unchanged by the rebase).
 
 **Finding: the unison pad amplifies the reference's noise.** The first draft
 ran the same script on `unison_pad_fx` (unison, chorus, delay, reverb).
