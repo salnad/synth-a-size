@@ -49,6 +49,14 @@ impl Colour {
         Colour((alpha << 24) | (self.0 & 0x00ff_ffff))
     }
 
+    /// `Colour::withSaturation(0.0f)`: the grey of the colour's HSB
+    /// brightness (its brightest channel).
+    pub fn desaturated(self) -> Colour {
+        let [_, r, g, b] = self.0.to_be_bytes();
+        let grey = r.max(g).max(b) as u32;
+        Colour((self.0 & 0xff00_0000) | (grey << 16) | (grey << 8) | grey)
+    }
+
     /// `Colour::interpolatedWith`: a tween of the premultiplied colours in
     /// 1/255 steps.
     pub fn interpolated_with(self, other: Colour, proportion: f32) -> Colour {

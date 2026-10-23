@@ -15,6 +15,7 @@ use nice_plug::prelude::PluginState;
 use nice_plug::prelude::{FloatParam, FloatRange, IntParam, IntRange, Param, ParamPtr};
 use sas_gui::controls::button::SynthButton;
 use sas_gui::controls::slider::Slider;
+use sas_gui::controls::tab_selector::TabSelector;
 use sas_gui::layout::{FullLayout, Rect};
 use sas_gui::paint::PixelPainter;
 use sas_gui::scope::Scope;
@@ -969,7 +970,22 @@ const SELECTOR: Rect = Rect {
 
 /// The shared widgets on their own: a power button and a text selector in
 /// one panel, with the interface's menu over them.
+const TABS: Rect = Rect {
+    x: 20,
+    y: 100,
+    width: 300,
+    height: 30,
+};
+
 fn widget_harness<'a>(fixture: &'a Fixture, overlay: &'a RefCell<Overlay>) -> Harness<'a> {
+    widget_harness_with_tabs(fixture, overlay, None)
+}
+
+fn widget_harness_with_tabs<'a>(
+    fixture: &'a Fixture,
+    overlay: &'a RefCell<Overlay>,
+    tabs: Option<&'a std::cell::Cell<usize>>,
+) -> Harness<'a> {
     let mut harness = Harness::builder()
         .with_size((400.0, 300.0))
         .with_step_dt(1.0 / 60.0)
@@ -997,6 +1013,14 @@ fn widget_harness<'a>(fixture: &'a Fixture, overlay: &'a RefCell<Overlay>) -> Ha
             panel.button(&SynthButton::power("chorus_on"), POWER);
             panel.slider(&Slider::selector("distortion_type", None), SELECTOR);
             panel.finish();
+            if let Some(tabs) = tabs {
+                let selector = TabSelector::new(&["LOW", "BAND", "HIGH"]);
+                let mut selected = tabs.get();
+                let id = ui.scope_id().with("bands");
+                selector.interact(ui, &pixels, id, TABS, &mut selected);
+                tabs.set(selected);
+                selector.paint(&pixels, &top, TABS, selected);
+            }
             overlay.show_menu(ui, &host, &pixels, &top, Rect::new(0, 0, 400, 300));
         });
     harness.step();
@@ -1088,4 +1112,32 @@ fn a_right_click_on_a_text_selector_opens_the_slider_menu() {
         overlay.menu.as_ref().unwrap().owner,
         MenuOwner::Slider(..)
     ));
+}
+
+#[test]
+fn a_tab_selector_follows_the_pointer_while_down() {
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let selected = std::cell::Cell::new(0);
+    let mut harness = widget_harness_with_tabs(&fixture, &overlay, Some(&selected));
+    let y = centre(TABS).y;
+    let third = Pos2::new(TABS.x as f32 + 250.0, y);
+    let second = Pos2::new(TABS.x as f32 + 150.0, y);
+    press(&mut harness, third, PointerButton::Primary, Modifiers::NONE);
+    assert_eq!(selected.get(), 2);
+    move_to(&mut harness, second);
+    assert_eq!(selected.get(), 1);
+    // Dragging off the end clamps to the last tab.
+    move_to(&mut harness, Pos2::new(TABS.right() as f32 + 40.0, y));
+    assert_eq!(selected.get(), 2);
+    release(
+        &mut harness,
+        Pos2::new(TABS.right() as f32 + 40.0, y),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    move_to(&mut harness, second);
+    assert_eq!(selected.get(), 2);
+    // The band is GUI state, not a host edit.
+    assert!(fixture.take_log().is_empty());
 }

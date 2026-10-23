@@ -7,4 +7,5 @@ pub mod button;
 pub mod format;
 pub mod oscilloscope;
 pub mod slider;
+pub mod tab_selector;
 pub mod wheel;

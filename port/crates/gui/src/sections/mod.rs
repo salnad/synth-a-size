@@ -88,7 +88,7 @@ impl Overlay {
         area: Rect,
     ) {
         if let Some(mut menu) = self.menu.take() {
-            match menu.show(ui, pixels, &top, area) {
+            match menu.show(ui, pixels, top, area) {
                 MenuOutcome::Open => self.menu = Some(menu),
                 MenuOutcome::Closed => self.menu = None,
                 MenuOutcome::Selected(id) => {
