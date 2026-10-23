@@ -29,6 +29,17 @@ class LayoutPathsTest(unittest.TestCase):
             [("header_section", None), ("effects/container/CHORUS", preset)],
         )
 
+    def test_a_path_listed_twice_fails(self):
+        preset = "migration/corpus/gui/presets/all_effects.vital"
+        with self.assertRaises(SystemExit):
+            self.paths(f"effects\n@preset {preset}\neffects\n")
+
+    def test_presets_come_from_the_gui_preset_folder(self):
+        with self.assertRaises(SystemExit):
+            self.paths("@preset migration/corpus/presets/init_saw.vital\nheader_section\n")
+        with self.assertRaises(SystemExit):
+            self.paths("@preset migration/corpus/gui/presets/../../presets/init_saw.vital\neffects\n")
+
     def test_a_missing_preset_fails(self):
         with self.assertRaises(SystemExit):
             self.paths("@preset migration/corpus/gui/presets/missing.vital\nheader_section\n")

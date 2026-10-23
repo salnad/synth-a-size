@@ -105,8 +105,16 @@ fn layout_matches_upstream_at_every_size() {
                 .map(|v| v.as_i64().unwrap() as i32)
                 .collect();
             let expected = Rect::new(bounds[0], bounds[1], bounds[2], bounds[3]);
-            let actual = port_rect(&skin, &layout, path)
-                .unwrap_or_else(|| panic!("{}: no port rectangle for {path}", file.display()));
+            // Entries laid out with a preset (`@preset` in layout_paths.txt)
+            // name it; the port must lay the path out for that preset.
+            let actual = match entry.get("preset").map(|preset| preset.as_str().unwrap()) {
+                None => port_rect(&skin, &layout, path),
+                Some(preset) => panic!(
+                    "{}: {path} is laid out with {preset}, which this test does not know",
+                    file.display()
+                ),
+            }
+            .unwrap_or_else(|| panic!("{}: no port rectangle for {path}", file.display()));
             assert_eq!(actual, expected, "{path} at {width}x{height}");
             checked += 1;
         }

@@ -1,9 +1,10 @@
 # Upstream components whose bounds the port's layout is checked against
 # (migration/scripts/gui_reference.py layout). Paths are component names from
 # the interface down, as ref-gui --layout prints them. Each GUI PR adds the
-# components it ports. Paths after an "@preset <file>" line (from the
-# repository root; authored presets from migration/corpus/generate.py only)
-# are laid out with that preset loaded, the rest with the init preset.
+# components it ports, each path once. Paths after an "@preset <file>" line
+# (a file in migration/corpus/gui/presets/, authored by
+# migration/corpus/generate.py) are laid out with that preset loaded, and
+# their fixture entries name it; the rest use the init preset.
 
 # G1: the shell.
 header_section

@@ -6,10 +6,11 @@ Commands:
   layout   Write migration/corpus/gui/layout/<W>x<H>.json: the bounds of the
            components listed in migration/corpus/gui/layout_paths.txt, from
            upstream's own layout code at each size in SIZES. Paths after an
-           "@preset <file>" line are laid out with that preset loaded (from
-           the repository root; authored content only), the rest with the
-           init preset. sas-gui's layout tests compare against these. --check
-           fails if a committed file differs instead of writing it.
+           "@preset <file>" line are laid out with that preset loaded (a file
+           in migration/corpus/gui/presets/), the rest with the init preset;
+           their entries name the preset. Each path may be listed once.
+           sas-gui's layout tests compare against these. --check fails if a
+           committed file differs instead of writing it.
   frames   Render every view in migration/corpus/gui/views.json to
            OUT/<name>.png. These show upstream's branding, so they are CI
            artifacts only and are never committed.
@@ -35,6 +36,9 @@ CORPUS = REPO / "migration" / "corpus" / "gui"
 LAYOUT_DIR = CORPUS / "layout"
 LAYOUT_PATHS = CORPUS / "layout_paths.txt"
 VIEWS = CORPUS / "views.json"
+# Presets the layout fixtures and views may load: authored ones from
+# migration/corpus/generate.py, never factory content.
+GUI_PRESETS = "migration/corpus/gui/presets/"
 
 # Default size, smaller and larger scales, both letterbox directions, and a
 # window twice the default size (at display scale 1; Xvfb has no high-DPI
@@ -69,18 +73,28 @@ def run_ref_gui(args):
     subprocess.run([str(REF_GUI), *args], check=True, env=env, timeout=300)
 
 
+def check_preset(preset, where):
+    if not preset.startswith(GUI_PRESETS) or ".." in Path(preset).parts:
+        sys.exit(f"gui_reference.py: {where}: preset {preset} is not in {GUI_PRESETS}")
+    if not (REPO / preset).is_file():
+        sys.exit(f"gui_reference.py: {where}: no preset {preset}")
+
+
 def layout_paths():
     """The checked paths in file order, each with the preset it is laid out
     with (None for the init preset)."""
     paths = []
+    seen = set()
     preset = None
     for line in LAYOUT_PATHS.read_text().splitlines():
         line = line.strip()
         if line.startswith("@preset "):
             preset = line[len("@preset "):].strip()
-            if not (REPO / preset).is_file():
-                sys.exit(f"gui_reference.py: {LAYOUT_PATHS.name}: no preset {preset}")
+            check_preset(preset, LAYOUT_PATHS.name)
         elif line and not line.startswith("#"):
+            if line in seen:
+                sys.exit(f"gui_reference.py: {LAYOUT_PATHS.name}: {line} is listed twice")
+            seen.add(line)
             paths.append((line, preset))
     return paths
 
@@ -100,8 +114,13 @@ def layout_for(width, height, paths, preset=None):
     if missing:
         with_preset = f" with {preset}" if preset else ""
         sys.exit(f"gui_reference.py: upstream has no component {missing} at {width}x{height}{with_preset}")
-    return {path: {"bounds": entries[path]["bounds"], "visible": entries[path]["visible"]}
-            for path in paths}
+    laid_out = {}
+    for path in paths:
+        entry = {"bounds": entries[path]["bounds"], "visible": entries[path]["visible"]}
+        if preset:
+            entry["preset"] = preset
+        laid_out[path] = entry
+    return laid_out
 
 
 def layout(check):
@@ -141,6 +160,7 @@ def frames(out):
                 "--width", str(view.get("width", 1400)),
                 "--height", str(view.get("height", 820))]
         if view.get("preset"):
+            check_preset(view["preset"], VIEWS.name)
             args += ["--preset", str(REPO / view["preset"])]
         run_ref_gui(args)
         print(f"wrote {out / (view['name'] + '.png')}")
