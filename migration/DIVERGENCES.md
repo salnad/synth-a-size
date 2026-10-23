@@ -301,8 +301,8 @@ D12: retired (temporary, removed in #82).
 ### D13. LLM control layer: additions with no upstream counterpart
 
 *Started in #91 (L1, tool core); extended by #92 (L2: modulation, LFO,
-wavetable and preset tools). Later LLM milestones (L3–L8) extend this
-entry.*
+wavetable and preset tools) and L3 (providers, agent loop, `sas-llm`).
+Later LLM milestones (L4–L8) extend this entry.*
 
 - **Differs:** the port adds a layer that lets a language model read and
   edit the synth by name: the tools in `port/crates/llm-control`, and later a
@@ -321,6 +321,12 @@ entry.*
     0, stereo and bypass off, the drag path's default amount, and a
     unipolar route unless the model asks for bipolar (a plain drag, with no
     modifier key).
+  - The model client (`port/crates/llm-agent`) talks to a configurable
+    provider: Anthropic's Messages API by default, or any OpenAI-compatible
+    endpoint. Its HTTPS code is behind the `http` feature, off by default,
+    so the default build and CI contain no network code; tests replay
+    recorded exchanges. Keys are never stored in recordings, presets or
+    plugin state.
   - Wavetables the tools make are generated (basic shapes or harmonic
     spectra in a Wave Source); preset files are read and written only in
     the user's preset folder, and an existing file is replaced only on
