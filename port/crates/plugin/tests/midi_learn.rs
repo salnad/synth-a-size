@@ -392,3 +392,44 @@ fn the_hosts_late_echoes_never_step_the_engine_back() {
     harness.block(vec![]);
     assert_eq!(harness.host_controls(), [("filter_1_cutoff", 70.0)]);
 }
+
+/// Graph Reviewer's case: values the editor forwarded stay remembered, and
+/// the host records exactly those as automation while a learned knob is
+/// turned. Played back once the knob is idle, they are automation, not
+/// echoes.
+#[test]
+fn recorded_automation_of_forwarded_values_plays_back() {
+    let mut harness = Harness::new(MidiLearn::in_memory());
+    let params = harness.plugin.synth_params().clone();
+    params.set_editor_open(true);
+    harness.midi_learn.arm("filter_1_cutoff");
+    harness.block(vec![cc(20, 0)]);
+    params.drain_midi_moved(|_| {});
+    let control = params.control("filter_1_cutoff").unwrap();
+
+    // Turning the knob: each value is forwarded, and the host echoes it
+    // while it is still current, recording it.
+    let mut recorded = Vec::new();
+    for value in [40, 80] {
+        harness.block(vec![cc(20, value)]);
+        params.drain_midi_moved(|name| {
+            let forwarded = normalized(control);
+            params.record_forwarded(name, forwarded);
+            recorded.push(forwarded);
+        });
+        host_sets(control, *recorded.last().unwrap());
+        harness.block(vec![]);
+    }
+    assert_eq!(harness.host_controls(), []);
+
+    // More than the echo window later (0.5 s at 44.1 kHz in 64-sample
+    // blocks), the host plays the recorded CC 40 point back.
+    for _ in 0..400 {
+        harness.block(vec![]);
+    }
+    host_sets(control, recorded[0]);
+    harness.block(vec![]);
+    let cc_40 = 40.0 / 127.0 * 128.0 + 8.0;
+    assert_eq!(harness.host_controls(), [("filter_1_cutoff", cc_40)]);
+    assert_eq!(harness.param("filter_1_cutoff"), cc_40);
+}

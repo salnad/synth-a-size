@@ -412,11 +412,14 @@ entry.*
     comes from the audio thread, and JUCE drops an echo equal to the current
     value), so the control never steps back. The port matches that: the
     editor records each value it forwards (as nice-plug's normalized bits),
-    and a host change equal to one of them while the last MIDI value
-    differs is the stale echo. It does not reach the engine; the parameter
-    takes the last MIDI value back and the next frame forwards it
+    and a host change equal to one of them, within 0.5 s of the control's
+    last MIDI move and while the last MIDI value differs, is the stale
+    echo. It does not reach the engine; the parameter takes the last MIDI
+    value back and the next frame forwards it
     (`SynthParams::take_stale_echo`, `port/crates/plugin/src/params.rs`).
-    Any other host change is automation and applies as before. The FL
+    Any other host change is automation and applies as before, including
+    automation the host recorded from forwarded values, played back once
+    the knob is idle. The FL
     Studio checklist (`decisions/gui-framework.md`, item 3) asks the owner
     to confirm there's no stepping and to check automation recording and
     undo with one gesture per frame.

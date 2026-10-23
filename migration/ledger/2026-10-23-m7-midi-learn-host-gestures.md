@@ -47,9 +47,14 @@ Option c (from the audio thread, with a framework change) is parked as
     (`EditorModel::midi_move_forwarded` → `SynthParams::record_forwarded`),
     in a ring of four atomic slots per control, since a host block can be
     longer than an editor frame.
+  - `set_from_midi` also stamps each control's last MIDI move with the
+    processor's running sample count (Graph Reviewer: forwarded values never
+    expire, since an echo of the current value fires no callback, and the
+    host records exactly those values as automation).
   - At the start of a block, `sync_parameters` asks `take_stale_echo` about
-    each host change. A change equal to a recorded forwarded value, while
-    the last MIDI value differs, is the stale echo: the slot is cleared, the
+    each host change. A change equal to a recorded forwarded value, within
+    0.5 s of the control's last MIDI move (a few frames and a long host
+    block), while the last MIDI value differs, is the stale echo: the slot is cleared, the
     parameter takes the last MIDI value back, `set_control` is skipped, and
     the control stays marked moved so the next frame forwards the current
     value. Any other host change is automation and applies; an echo equal
@@ -70,6 +75,11 @@ Option c (from the audio thread, with a framework change) is parked as
   parameter ends at the last CC; an echo of the current value changes
   nothing; host automation nobody forwarded applies while the knob is idle.
   Removing the guard fails it at the first stale echo.
+- `plugin/tests/midi_learn.rs`, `recorded_automation_of_forwarded_values_plays_back`
+  (Graph Reviewer's reproduction): CC 40 and CC 80 are forwarded and
+  echoed while current, then, more than the window later, the host plays
+  the recorded CC 40 point back and it reaches the engine. Without the
+  time bound the point is dropped.
 
 - `plugin/tests/midi_learn.rs`: moves are kept only while an editor window
   is open (a new window opening before the old one closes keeps reporting;

@@ -232,6 +232,9 @@ const FORWARDED_SLOTS: usize = 4;
 /// f32 bits nice-plug passes to the host.
 struct EchoGuard {
     midi: Box<[AtomicU32]>,
+    /// When MIDI last moved each control, in the processor's running sample
+    /// count (audio thread only).
+    midi_at: Box<[AtomicU64]>,
     forwarded: Box<[[AtomicU32; FORWARDED_SLOTS]]>,
     /// The editor's next slot per control (only the editor writes it).
     next: Box<[AtomicUsize]>,
@@ -241,6 +244,7 @@ impl EchoGuard {
     fn new(len: usize) -> EchoGuard {
         EchoGuard {
             midi: (0..len).map(|_| AtomicU32::new(NO_VALUE)).collect(),
+            midi_at: (0..len).map(|_| AtomicU64::new(0)).collect(),
             forwarded: (0..len)
                 .map(|_| std::array::from_fn(|_| AtomicU32::new(NO_VALUE)))
                 .collect(),
@@ -441,7 +445,8 @@ impl SynthParams {
     /// coming back through `parameterChanged`. While the editor is open it
     /// tells the host ([`drain_midi_moved`](Self::drain_midi_moved));
     /// otherwise the host is not told (see `migration/DIVERGENCES.md`, D16).
-    pub(crate) fn set_from_midi(&self, name: &str, value: f32) {
+    /// `now` is the processor's running sample count at the message.
+    pub(crate) fn set_from_midi(&self, name: &str, value: f32, now: u64) {
         let Some(&index) = self.by_name.get(name) else {
             return;
         };
@@ -463,6 +468,7 @@ impl SynthParams {
         self.changes.unmark(index);
         let normalized = self.controls[index].param.normalized();
         self.echo_guard.midi[index].store(normalized.to_bits(), Ordering::Release);
+        self.echo_guard.midi_at[index].store(now, Ordering::Release);
         if self.editor_windows.load(Ordering::Acquire) > 0 {
             self.midi_moved.mark(index);
         }
@@ -486,11 +492,21 @@ impl SynthParams {
     /// control stays marked moved so the editor forwards its current value
     /// next frame. Upstream's echo carries the current value and so never
     /// steps the control back.
-    pub(crate) fn take_stale_echo(&self, index: usize) -> bool {
+    ///
+    /// A stale echo arrives within a few frames of the MIDI move that
+    /// overtook it, so only a change within `window` samples of the last
+    /// MIDI move (at sample `now`) can be one. Later matches are automation
+    /// the host recorded from forwarded values, played back once the knob
+    /// went idle.
+    pub(crate) fn take_stale_echo(&self, index: usize, now: u64, window: u64) -> bool {
         let param = &self.controls[index].param;
         let host = param.normalized().to_bits();
         let midi = self.echo_guard.midi[index].load(Ordering::Acquire);
         if midi == NO_VALUE || host == midi {
+            return false;
+        }
+        let midi_at = self.echo_guard.midi_at[index].load(Ordering::Acquire);
+        if now.saturating_sub(midi_at) > window {
             return false;
         }
         let forwarded = self.echo_guard.forwarded[index].iter().any(|slot| {

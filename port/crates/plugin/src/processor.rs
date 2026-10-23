@@ -75,6 +75,9 @@ pub struct BlockProcessor<E: Engine> {
     sample_rate: f32,
     /// `SynthPlugin::last_seconds_time_`.
     last_seconds_time: f64,
+    /// Samples processed so far, bypassed or not: the clock the echo guard
+    /// times MIDI moves with.
+    samples: u64,
     /// The audio side of the edit bus whose producer the parameters hold:
     /// restored documents and edits arrive through it.
     edits: EditConsumer,
@@ -121,6 +124,7 @@ impl<E: Engine> BlockProcessor<E> {
             midi_learn_unpublished: false,
             sample_rate: 44_100.0,
             last_seconds_time: 0.0,
+            samples: 0,
             edits,
             keyboard,
             telemetry,
@@ -175,6 +179,7 @@ impl<E: Engine> BlockProcessor<E> {
             self.midi_learn_unpublished = true;
         }
         self.render(params, left, right, transport, next_event);
+        self.samples += left.len().min(right.len()) as u64;
         if self.engine.take_midi_learn_changed() {
             self.midi_learn_unpublished = true;
         }
@@ -265,8 +270,9 @@ impl<E: Engine> BlockProcessor<E> {
                         if let Some(message) = pending.take().as_ref().and_then(midi_message) {
                             self.keyboard.host_message(message);
                             self.engine.process_midi(message, sample_offset);
+                            let now = self.samples + (offset + sample_offset) as u64;
                             self.engine.drain_midi_value_changes(&mut |name, value| {
-                                params.set_from_midi(name, value)
+                                params.set_from_midi(name, value, now)
                             });
                         }
                         pending = next_event();
@@ -288,6 +294,13 @@ impl<E: Engine> BlockProcessor<E> {
         while next_event().is_some() {}
     }
 
+    /// How long after a learned MIDI move a host change can still be its
+    /// stale echo, in samples: a few editor frames and a long host block.
+    fn stale_echo_window(&self) -> u64 {
+        const STALE_ECHO_SECONDS: f32 = 0.5;
+        (STALE_ECHO_SECONDS * self.sample_rate) as u64
+    }
+
     /// The keyboard's next message, in the chunk starting at `offset`.
     fn play_keyboard(&mut self, offset: usize) {
         if let Some((position, message)) = self.keyboard.pop() {
@@ -302,10 +315,11 @@ impl<E: Engine> BlockProcessor<E> {
     fn sync_parameters(&mut self, params: &SynthParams) {
         let Some(restore) = self.edits.take_restore() else {
             self.engine.apply_edits(&mut self.edits);
+            let (now, window) = (self.samples, self.stale_echo_window());
             params.changes.drain(|index| {
                 // The host echoing a forwarded MIDI move that newer MIDI
                 // overtook is not a host change.
-                if params.take_stale_echo(index) {
+                if params.take_stale_echo(index, now, window) {
                     return;
                 }
                 let control = &params.controls()[index];
