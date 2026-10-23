@@ -46,6 +46,14 @@ pub enum QuadKind {
     /// `kGainMeterFragment` (with `kGainMeterVertex`): `color` to
     /// `alt_color` across the component.
     GainMeter = 14,
+    /// `kBarFragment` (`BarRenderer`'s bars): `color`, fading out towards
+    /// each edge. `shader_values[0]` and `[1]` are the bar vertex shaders'
+    /// `size` in pixels along x and y: the bar's full thickness across it,
+    /// and half its length × the display scale along it
+    /// (`BarRenderer::setBarSizes`), so the fade spans one pixel across and
+    /// two along at display scale 1. Additive bars go in
+    /// [`QuadBatch::additive`].
+    Bar = 15,
 }
 
 impl QuadKind {
