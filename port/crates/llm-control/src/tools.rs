@@ -249,6 +249,22 @@ pub fn specs() -> Vec<ToolSpec> {
             }),
         },
         ToolSpec {
+            name: "set_preset_info",
+            description: "Name the patch and describe it: name, author, comments, style, and \
+                          labels for the 4 macros (shown on their knobs). Only the given fields \
+                          change.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "author": {"type": "string"},
+                    "comments": {"type": "string"},
+                    "style": {"type": "string"},
+                    "macro_names": {"type": "array", "items": {"type": "string"}, "maxItems": 4}
+                }
+            }),
+        },
+        ToolSpec {
             name: "init_patch",
             description: "Start over from the init patch (undoable).",
             input_schema: json!({"type": "object", "properties": {}}),
@@ -303,6 +319,7 @@ pub(crate) fn call<S: SynthSession>(
         "load_preset" => load_preset(controller, args),
         "save_preset" => save_preset(controller, args),
         "init_patch" => init_patch(controller),
+        "set_preset_info" => set_preset_info(controller, args),
         _ => Err(ToolOutput::error(format!(
             "unknown tool {name:?}; tools: {}",
             specs()
@@ -815,4 +832,58 @@ fn init_patch<S: SynthSession>(controller: &mut Controller<S>) -> Result<ToolOut
     let state = PresetState::new(&InitContent { sample_seed: 0 });
     apply(controller, vec![Edit::LoadPreset(Box::new(state))])?;
     Ok(ToolOutput::ok(json!({"init": true})))
+}
+
+fn set_preset_info<S: SynthSession>(
+    controller: &mut Controller<S>,
+    args: &Value,
+) -> Result<ToolOutput, ToolOutput> {
+    #[derive(Deserialize)]
+    struct Args {
+        #[serde(default)]
+        name: Option<String>,
+        #[serde(default)]
+        author: Option<String>,
+        #[serde(default)]
+        comments: Option<String>,
+        #[serde(default)]
+        style: Option<String>,
+        #[serde(default)]
+        macro_names: Option<Vec<String>>,
+    }
+    let args: Args = parse("set_preset_info", args)?;
+    let mut info = controller.session().snapshot().info;
+    let macros = args.macro_names.unwrap_or_default();
+    if macros.len() > info.macros.len() {
+        return Err(ToolOutput::error(format!(
+            "there are {} macros",
+            info.macros.len()
+        )));
+    }
+    let given = [&args.name, &args.author, &args.comments, &args.style];
+    if given.iter().all(|field| field.is_none()) && macros.is_empty() {
+        return Err(ToolOutput::error("give at least one field to change"));
+    }
+    if let Some(name) = args.name {
+        info.preset_name = name;
+    }
+    if let Some(author) = args.author {
+        info.author = author;
+    }
+    if let Some(comments) = args.comments {
+        info.comments = comments;
+    }
+    if let Some(style) = args.style {
+        info.style = style;
+    }
+    for (slot, name) in info.macros.iter_mut().zip(macros) {
+        *slot = name;
+    }
+    let reply = json!({
+        "name": info.preset_name,
+        "style": info.style,
+        "macros": (0..info.macros.len()).map(|i| info.macro_name(i)).collect::<Vec<_>>(),
+    });
+    apply(controller, vec![Edit::SetInfo(Box::new(info))])?;
+    Ok(ToolOutput::ok(reply))
 }

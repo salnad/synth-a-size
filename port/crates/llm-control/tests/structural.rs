@@ -214,3 +214,27 @@ fn loading_a_loud_preset_waits_for_the_user() {
     assert_eq!(controller.session().control("volume"), Some(86.0 * 86.0));
     let _ = std::fs::remove_dir_all(&folder);
 }
+
+#[test]
+fn preset_info_names_the_patch_and_macros() {
+    let mut controller = controller();
+    let reply = ok(controller.call(
+        "set_preset_info",
+        &json!({"name": "Glass", "comments": "made in chat", "macro_names": ["Space"]}),
+    ));
+    assert_eq!(
+        reply["macros"],
+        json!(["Space", "MACRO 2", "MACRO 3", "MACRO 4"])
+    );
+    let info = &controller.session().state().info;
+    assert_eq!(info.preset_name, "Glass");
+    assert_eq!(info.comments, "made in chat");
+    assert!(err(controller.call("set_preset_info", &json!({}))).contains("at least one"));
+    assert!(err(controller.call(
+        "set_preset_info",
+        &json!({"macro_names": ["a", "b", "c", "d", "e"]})
+    ))
+    .contains("4 macros"));
+    controller.undo(1, None).unwrap();
+    assert_eq!(controller.session().state().info.preset_name, "");
+}

@@ -7,7 +7,7 @@
 //! (G0) and, for whole-preset loads, `GuiContext::set_state`.
 
 use sas_common::LineGenerator;
-use sas_preset::{InitContent, PresetState};
+use sas_preset::{InitContent, PresetState, SaveInfo};
 use sas_wavetable::creator::WavetableCreator;
 
 use crate::Error;
@@ -42,6 +42,8 @@ pub enum Edit {
     },
     /// Replaces the whole preset (a preset file or the init patch).
     LoadPreset(Box<PresetState>),
+    /// Replaces the preset's name, author, comments, style and macro names.
+    SetInfo(Box<SaveInfo>),
 }
 
 /// What applying an edit did, when the tools need to report it.
@@ -174,6 +176,7 @@ impl SynthSession for OfflineSession {
                 *slot = (**creator).clone();
             }
             Edit::LoadPreset(state) => self.state = (**state).clone(),
+            Edit::SetInfo(info) => self.state.info = (**info).clone(),
         }
         Ok(Applied::Done)
     }

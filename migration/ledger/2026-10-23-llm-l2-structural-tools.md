@@ -26,8 +26,10 @@ changes: it does not use `sas-llm-control` yet.
     with y = 0 bottom .. 1 top, stored inverted as upstream does),
     `set_wavetable` (1–64 keyframes at 0..256, each a basic shape or a
     harmonic spectrum, in one Wave Source with spectral morphing like the
-    init wavetable), `list_presets`, `load_preset`, `save_preset` and
-    `init_patch`. `find_params` marks modulatable controls.
+    init wavetable), `list_presets`, `load_preset`, `save_preset`,
+    `init_patch` and `set_preset_info` (name, author, comments, style and
+    macro labels; `Edit::SetInfo`). `find_params` marks modulatable
+    controls.
   - `library::PresetLibrary`: the preset folder, the only files the tools
     read or write. Names cannot contain path separators or start with a dot.
     Saving over an existing preset needs `overwrite`.
@@ -48,7 +50,7 @@ changes: it does not use `sas-llm-control` yet.
     also covers `llm/presets` (a tightening).
   - `migration/corpus/README.md`: the `llm/` section, the one corpus folder
     not written by `generate.py`.
-- `migration/DIVERGENCES.md` D12 extended for the connect rule, generated
+- `migration/DIVERGENCES.md` D13 extended for the connect rule, generated
   wavetables and the preset folder.
 
 **Measured** (local x86 build with the CI identity: Ubuntu 24.04, GCC
@@ -100,5 +102,15 @@ applies to other generated patches as well.
 - `init_patch` builds the init state with sample seed 0 in the offline
   session. The live session (L4) goes through `GuiContext::set_state`, as G0
   requires for whole-preset loads.
+
+**Review (#92).** Approved, conditional on green CI and the D13 renumber
+from #91. Nits applied:
+
+- The session names its preset through `set_preset_info` ("Glass Pad",
+  style Pad, macro 1 "Space") instead of inheriting `init_saw`'s name and
+  comments. Only the two `preset/state/llm_glass_pad` hashes changed; the
+  render hash is the same (save info does not reach the audio).
+- migration/AGENTS.md rule 3 now names authored LLM tool sessions in
+  `migration/corpus/llm/sessions/` as test content alongside `generate.py`.
 
 **Blocked:** nothing.
