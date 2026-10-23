@@ -15,7 +15,11 @@ still pending.
     confirmation, and a settings form (on/off, provider, model, base URL,
     API key, keyboard focus). It opens from a header button and draws over
     the right of the editor, as upstream's overlays do, until G7's drawer
-    exists.
+    exists. The panel's height leaves room for its title bar, and the header
+    button draws in front, so the panel never covers the button.
+  - `examples/chat_gallery.rs` renders the panel over the editor offscreen
+    in three states (off, a conversation with a held edit, the settings
+    form), as `gallery` does for the editor.
   - The panel only draws and forwards clicks. The plugin's `ChatHost` runs
     the chat, so `sas-gui` does not depend on the LLM crates.
   - `FocusMode`: `GrabOnClick` (the default) asks the plugin window for
@@ -38,6 +42,12 @@ still pending.
     the next message starts a new conversation with the new provider and
     key. The synth keeps its changes. A retired worker no longer updates
     the view.
+  - `SynthPlugin::new` and `in_memory()` (the constructors tests use)
+    build `PluginChat::in_memory`: no settings file, a key store that holds
+    nothing, no transport. Only `Default`, which hosts use, reads the
+    user's settings file and the Keychain (`PluginChat::new`).
+  - While the chat is off, the key store is never read: neither for the
+    provider nor for the settings form's "stored" hint.
   - Dropping the plugin stops the worker and waits up to 2 s for it to
     finish (a host may unload the library afterwards); a model call in
     flight cannot be interrupted.
@@ -59,7 +69,7 @@ still pending.
 
 **Measured**
 
-- `cargo test -p sas-plugin --test chat`: 9 tests, with a fake
+- `cargo test -p sas-plugin --test chat`: 11 tests, with a fake
   `GuiContext` and scripted provider replies:
   - off by default, sending nothing;
   - a missing key explained;
@@ -69,7 +79,9 @@ still pending.
   - the key store read once over 100 frames;
   - non-ASCII tool summaries cut safely;
   - a settings change starting a new conversation;
-  - dropping the plugin not hanging.
+  - dropping the plugin not hanging;
+  - an off chat never reading the key store;
+  - the in-memory chat staying off and keeping no keys.
 - `cargo test -p sas-gui --test chat`: 6 `egui_kittest` tests (the header
   button, Enter to send, Send/Stop while busy, undo/A/B/confirm reaching the
   host, the settings form while off, the focus setting).
@@ -91,5 +103,15 @@ still pending.
   provider, the Keychain prompt). That is the hands-on check for this PR.
 - `set_preset_info` still reloads the state through the host. It switches
   to Edit Bus's `EditHandle::set_info` once that PR lands.
+
+**Review (#101).** Parity Reviewer requested changes at 0c6b1e5:
+`SynthPlugin::new`, behind both the test constructors and `Default`, built
+`PluginChat::new`, so every plugin test read the real `chat.json` and could
+reach the Keychain, undoing #99's hermetic tests. Fixed as asked: `new` and
+`in_memory()` use the in-memory chat, and only `Default` uses the user's
+files. This follows #99's constructor pattern (`new` / `in_memory` /
+`Default`), so the two PRs conflict only mechanically in `lib.rs`. Also
+taken (non-blocking): `provider()` checks `enabled` before reading the key,
+so an off chat never touches the Keychain.
 
 **Blocked:** nothing. Merge waits for #100, which waits for #92 and #95.

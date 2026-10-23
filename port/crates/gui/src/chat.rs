@@ -136,6 +136,7 @@ impl ChatPanel {
     ) {
         host.run_frame();
         egui::Area::new(egui::Id::unique("chat_toggle"))
+            .order(egui::Order::Foreground)
             .fixed_pos(egui::pos2(area.max.x - 64.0, area.min.y + 8.0))
             .show(ctx, |ui| {
                 let label = if self.open { "Close chat" } else { "Chat" };
@@ -146,7 +147,9 @@ impl ChatPanel {
         if !self.open {
             return;
         }
-        let height = (area.height() - 56.0).max(200.0);
+        // Below the toggle, with room for the window's title bar and frame so
+        // egui never pushes the window up over the toggle.
+        let height = (area.height() - 44.0 - 52.0).max(200.0);
         egui::Window::new("Sound design chat")
             .anchor(Align2::RIGHT_TOP, [-8.0, 44.0])
             .fixed_size([PANEL_WIDTH, height])

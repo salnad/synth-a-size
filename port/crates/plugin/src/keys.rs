@@ -23,6 +23,18 @@ fn provider_variable(provider: &str) -> Option<&'static str> {
     }
 }
 
+/// A key store that holds nothing, for plugins built without user files.
+pub struct NoKeys;
+
+impl KeyStore for NoKeys {
+    fn get(&self, _provider: &str) -> Option<String> {
+        None
+    }
+    fn set(&self, _provider: &str, _key: &str) -> Result<(), String> {
+        Err("this plugin keeps no API keys".to_string())
+    }
+}
+
 /// Environment variables first, then the Keychain on macOS.
 pub struct SystemKeys;
 

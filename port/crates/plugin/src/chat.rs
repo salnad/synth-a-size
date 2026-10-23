@@ -27,7 +27,7 @@ use sas_llm_agent::{
 use sas_llm_control::{Controller, Policy, PresetLibrary, Side};
 
 use crate::chat_bridge::{ChatBridge, RemoteSession};
-use crate::keys::{KeyStore, SystemKeys};
+use crate::keys::{KeyStore, NoKeys, SystemKeys};
 use crate::live::LiveSession;
 use crate::params::SynthParams;
 
@@ -156,6 +156,18 @@ impl PluginChat {
         )
     }
 
+    /// A chat with no settings file, no keys and no network: it stays off.
+    /// Tests and in-memory plugins use this, so they never read the user's
+    /// settings or the Keychain.
+    pub fn in_memory(params: Arc<SynthParams>) -> PluginChat {
+        PluginChat::with(
+            params,
+            None,
+            Box::new(NoKeys),
+            Box::new(|_config| Err("this plugin has no network access".to_string())),
+        )
+    }
+
     pub fn with(
         params: Arc<SynthParams>,
         settings_path: Option<PathBuf>,
@@ -201,9 +213,14 @@ impl PluginChat {
         }
     }
 
+    /// The provider to use. The key store is not read while the chat is off.
     fn provider(&self) -> Result<ProviderConfig, String> {
         let settings = lock(&self.settings).clone();
-        let key = self.key(&settings.provider);
+        let key = if settings.enabled {
+            self.key(&settings.provider)
+        } else {
+            None
+        };
         settings.provider_config(key)
     }
 
@@ -400,7 +417,7 @@ impl ChatHost for PluginChat {
         let settings = lock(&self.settings).clone();
         ChatSettingsView {
             enabled: settings.enabled,
-            has_key: self.key(&settings.provider).is_some(),
+            has_key: settings.enabled && self.key(&settings.provider).is_some(),
             model: settings.model.clone().unwrap_or_default(),
             base_url: settings.base_url.clone().unwrap_or_default(),
             focus: match settings.keyboard_focus {

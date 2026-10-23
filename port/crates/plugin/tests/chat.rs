@@ -313,3 +313,28 @@ fn dropping_the_plugin_with_an_idle_chat_thread_does_not_hang() {
     drop(rig);
     assert!(started.elapsed() < Duration::from_secs(1));
 }
+
+#[test]
+fn an_off_chat_never_reads_the_key_store() {
+    let rig = rig("off-keys", None, Some("key"), Vec::new());
+    for _ in 0..10 {
+        rig.chat.run_frame();
+        let _ = rig.chat.view();
+    }
+    assert!(!rig.chat.settings().has_key);
+    rig.chat.send("hello".into());
+    assert_eq!(rig.key_reads.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn the_in_memory_chat_stays_off_and_keeps_no_keys() {
+    let (edits, _consumer) = EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+    let chat = PluginChat::in_memory(Arc::new(SynthParams::new(edits)));
+    assert!(!chat.view().enabled);
+    let settings = ChatSettingsView {
+        enabled: true,
+        ..chat.settings()
+    };
+    assert!(chat.save_settings(settings, Some("key".into())).is_err());
+    assert!(!chat.view().enabled);
+}
