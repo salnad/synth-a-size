@@ -257,3 +257,53 @@ parity cost), and where it came from.
   - Needs an owner decision and a recorded divergence.
 - **Source:** `ledger/2026-10-22-perf-benchmark.md` (perf profiles, Rust
   and C++).
+
+## I14. MCP bridge inside the plugin
+
+- **Idea:** let outside agents drive a running plugin instance in FL
+  Studio over MCP: a localhost-only server inside the plugin, off by
+  default, protected by a random token shown in the chat panel, one port
+  per instance. It would use the same tools as the built-in chat, through
+  the GUI's edit bus, so undo and the host-automation checks still apply.
+- **Why:** agents outside the DAW could shape the live sound, not only
+  write preset files.
+- **Tradeoff:**
+  - An open socket in a plugin is new attack surface, even on localhost.
+  - nice-plug's `GuiContext` exists only while the editor is open, so with
+    the editor closed parameter edits may not reach the host.
+  - No engine or parity cost.
+- **Status:** parked. The LLM plan starts with a standalone stdio MCP server
+  (`sas-mcp`, milestone L7) over an offline session.
+- **Source:** `docs/llm-plan.md` (project store), section 7;
+  `ledger/2026-10-23-llm-l1-tool-core.md`.
+
+## I15. Send preview audio to audio-capable models
+
+- **Idea:** in the LLM listen loop (L6), send the short offline preview
+  render itself to models that accept audio input, not only the analysis
+  features computed from it.
+- **Why:** a model that hears the sound may judge timbre better than one
+  reading a spectral summary.
+- **Tradeoff:**
+  - Audio costs far more tokens than the roughly 300-token analysis.
+  - It sends audio to a third party, which the working defaults rule out
+    ("the listen loop sends analysis only, never audio").
+  - Only some providers accept audio. No engine or parity cost.
+- **Status:** parked by the owner's working defaults (2026-10-22).
+- **Source:** `docs/llm-plan.md` (project store), section 5.
+
+## I16. Note preview through the live engine
+
+- **Idea:** let the LLM layer play a note or phrase through the running
+  plugin instance (MIDI injected into the processor), instead of rendering a
+  separate offline preview.
+- **Why:** the user hears exactly what the model changed, in context, with
+  the project's effects and tempo.
+- **Tradeoff:**
+  - Injected notes mix with the host's MIDI and would be recorded in a
+    bounce; it needs a clear UI and a guarantee that nothing plays during
+    export.
+  - It adds a MIDI path upstream does not have. The engine itself is
+    unchanged.
+- **Status:** parked. The listen loop (L6) renders offline.
+- **Source:** `docs/llm-plan.md` (project store), section 8.

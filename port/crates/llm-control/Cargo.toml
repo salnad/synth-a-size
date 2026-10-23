@@ -1,6 +1,6 @@
 [package]
 name = "sas-llm-control"
-description = "LLM control layer: set named parameters, connect modulations by name, generate preset and wavetable JSON, render offline."
+description = "LLM control layer: tools that read and edit the synth by parameter and modulation name, with validation, undo and a compact patch description."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,3 +10,6 @@ publish.workspace = true
 
 [dependencies]
 sas-preset.workspace = true
+# Tool arguments and results are JSON; both already in the tree via nice-plug.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

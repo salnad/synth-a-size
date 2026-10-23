@@ -294,6 +294,40 @@ What is **not** listed:
 - **Approved:** #62 (`migration/ledger/2026-10-21-tuning-kbm-validation.md`),
   reviewed by Graph Reviewer.
 
+### D12. LLM control layer: additions with no upstream counterpart
+
+*Started in the L1 PR (`sas-llm-control` tool core); later LLM milestones
+extend this entry.*
+
+- **Differs:** the port adds a layer that lets a language model read and
+  edit the synth by name: the tools in `port/crates/llm-control`, and later a
+  chat panel, a model provider client, an offline preview renderer and a
+  standalone MCP server (`docs/llm-plan.md` in the project store,
+  milestones L1–L8).
+- **Upstream:** has nothing like it.
+- **Port:**
+  - Every tool edit is one upstream's GUI can also make: a control value
+    clamped to its registry range, and later a modulation connect or
+    disconnect, an LFO shape or a wavetable. The engine reacts to it as it
+    would to the same edit made by hand, so no engine code path changes and
+    no host parameter is added.
+  - Values are given in display units and converted with upstream's
+    `ValueBridge` formulas (`sas_preset::display`, shared with the plugin's
+    host text entry, D1).
+  - The feature is off by default. Today the plugin does not use the crate
+    at all; once wired in, with the feature off or no API key set, the
+    plugin behaves exactly as without it and makes no network requests.
+  - Working defaults (owner, 2026-10-22, all reversible): edits apply at
+    once with undo; raising master volume above 0 dB waits for the user's
+    confirmation (`Policy::confirm_above`); chat history is not saved; the
+    listen loop sends analysis, never audio; the system prompt does not name
+    the upstream synth.
+- **Why:** the owner's next-phase goal is an LLM chat that drives the synth
+  inside FL Studio (`docs/project-context.md`).
+- **Approved:** owner (Salil), 2026-10-22, LLM plan and working defaults,
+  relayed by the coordinator. Recorded in
+  `migration/ledger/2026-10-23-llm-l1-tool-core.md`.
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change
