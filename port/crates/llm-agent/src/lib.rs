@@ -27,7 +27,7 @@ pub mod transport;
 pub use agent::{Agent, AgentConfig, AgentEvent, TurnReport};
 pub use message::Usage;
 pub use provider::{Provider, ProviderConfig, ProviderKind};
-pub use settings::ChatSettings;
+pub use settings::{ChatSettings, KeyboardFocus};
 pub use transport::{RecordingTransport, ReplayTransport, ScriptedTransport, Transport};
 
 #[cfg(feature = "http")]

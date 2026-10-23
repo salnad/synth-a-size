@@ -24,6 +24,8 @@
 //! - [`live`]: the LLM tools' session on the running plugin (host parameter
 //!   gestures, the edit bus, undo, outside-change detection; D13), and
 //!   [`chat_bridge`], how the chat worker reaches it on the GUI thread.
+//! - [`chat`]: the chat behind the editor's panel (off until the user turns
+//!   it on), with [`keys`] for its API key.
 //!
 //! The shipping build is an arm64 macOS VST3 (`scripts/bundle.sh`).
 //! CLAP export is kept because it costs nothing, but it is not tested or
@@ -38,10 +40,12 @@ use sas_engine::keyboard::{keyboard, KeyboardHandle};
 use sas_engine::telemetry::{AudioMemory, Telemetry};
 use sas_preset::InitContent;
 
+pub mod chat;
 pub mod chat_bridge;
 pub mod config;
 pub mod editor;
 pub mod engine;
+pub mod keys;
 pub mod live;
 pub mod midi_learn;
 pub mod params;
@@ -84,6 +88,9 @@ pub struct SynthPlugin<E: Engine> {
     keyboard: KeyboardHandle,
     /// The editor window's size, kept while the window is closed.
     editor_state: Arc<sas_gui::nice_plug_egui::EguiEditorState>,
+    /// The LLM chat (off until the user turns it on), kept while the window
+    /// is closed.
+    chat: Arc<chat::PluginChat>,
 }
 
 /// The plugin as shipped.
@@ -95,14 +102,36 @@ impl<E: Engine> SynthPlugin<E> {
     /// state, which the init document describes, and nothing more is drawn
     /// from the engine's random seed counter (a draw here would shift every
     /// later one, and the sound with it). No MIDI learn map is loaded or
-    /// saved; see [`with_midi_learn`](Self::with_midi_learn).
+    /// saved, and the chat reads no settings file or Keychain; see
+    /// [`with_midi_learn`](Self::with_midi_learn) and
+    /// [`with_chat`](Self::with_chat).
     pub fn new(engine: E) -> SynthPlugin<E> {
-        SynthPlugin::with_midi_learn(engine, Arc::new(MidiLearn::in_memory()))
+        SynthPlugin::with_parts(
+            engine,
+            Arc::new(MidiLearn::in_memory()),
+            chat::PluginChat::in_memory,
+        )
     }
 
     /// [`new`](Self::new), with MIDI learn loaded from and saved to
     /// `midi_learn`'s config file.
     pub fn with_midi_learn(engine: E, midi_learn: Arc<MidiLearn>) -> SynthPlugin<E> {
+        SynthPlugin::with_parts(engine, midi_learn, chat::PluginChat::in_memory)
+    }
+
+    /// [`new`](Self::new), with the chat `chat` builds for the parameters.
+    pub fn with_chat(
+        engine: E,
+        chat: impl FnOnce(Arc<SynthParams>) -> chat::PluginChat,
+    ) -> SynthPlugin<E> {
+        SynthPlugin::with_parts(engine, Arc::new(MidiLearn::in_memory()), chat)
+    }
+
+    fn with_parts(
+        engine: E,
+        midi_learn: Arc<MidiLearn>,
+        chat: impl FnOnce(Arc<SynthParams>) -> chat::PluginChat,
+    ) -> SynthPlugin<E> {
         // The init state carries the engine's own sample; an engine that
         // can't report one gets white noise from a local seed, never from
         // the global counter.
@@ -116,8 +145,10 @@ impl<E: Engine> SynthPlugin<E> {
             .unwrap_or_else(|| Arc::new(AudioMemory::default()));
         let (writer, telemetry) = Telemetry::new(audio_memory);
         let (keyboard, keyboard_consumer) = keyboard();
+        let params = Arc::new(SynthParams::new(edits));
         SynthPlugin {
-            params: Arc::new(SynthParams::new(edits)),
+            chat: Arc::new(chat(params.clone())),
+            params,
             processor: BlockProcessor::with_midi_learn(
                 engine,
                 consumer,
@@ -160,9 +191,9 @@ impl<E: Engine> SynthPlugin<E> {
 }
 
 impl<E: Engine + Default> SynthPlugin<E> {
-    /// The default engine with no user config: no saved MIDI learn map is
-    /// loaded and nothing is saved. Tests use this; hosts get
-    /// [`Default`], which reads the user config file.
+    /// The default engine with no user files: no saved MIDI learn map is
+    /// loaded and nothing is saved, and the chat reads no settings file or
+    /// Keychain. Tests use this; hosts get [`Default`], which reads them.
     pub fn in_memory() -> SynthPlugin<E> {
         SynthPlugin::new(E::default())
     }
@@ -170,13 +201,15 @@ impl<E: Engine + Default> SynthPlugin<E> {
 
 impl<E: Engine + Default> Default for SynthPlugin<E> {
     /// The plugin as a host creates it: MIDI learn uses the user config file
-    /// (`SynthBase`'s constructor loads it through `Startup`).
+    /// (`SynthBase`'s constructor loads it through `Startup`), and the chat
+    /// the user's settings file and the Keychain (still off until the user
+    /// turns it on).
     fn default() -> Self {
         let midi_learn = match config::config_file() {
             Some(path) => MidiLearn::with_config_file(path),
             None => MidiLearn::in_memory(),
         };
-        SynthPlugin::with_midi_learn(E::default(), Arc::new(midi_learn))
+        SynthPlugin::with_parts(E::default(), Arc::new(midi_learn), chat::PluginChat::new)
     }
 }
 
@@ -224,6 +257,7 @@ impl<E: Engine + Default> Plugin for SynthPlugin<E> {
             self.telemetry(),
             self.keyboard.clone(),
             self.processor.midi_learn().clone(),
+            Some(self.chat.clone()),
         );
         sas_gui::create_editor(self.editor_state.clone(), Arc::new(model))
     }

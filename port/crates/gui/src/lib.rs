@@ -10,6 +10,7 @@
 //! OpenGL. The plan is `gui-plan.md` (G1–G7) and the framework decision is
 //! `migration/decisions/gui-framework.md`.
 
+pub mod chat;
 pub mod colour;
 pub mod controls;
 pub mod editor;
@@ -28,6 +29,7 @@ pub mod section;
 pub mod sections;
 pub mod skin;
 
+pub use chat::{ChatHost, ChatPanel, ChatSettingsView, ChatView, FocusMode};
 pub use editor::{create as create_editor, default_state, Editor};
 pub use host::{Host, HostParam, OpenGestures};
 pub use interface::{EditorModel, Interface, Tab, PRODUCT_NAME};

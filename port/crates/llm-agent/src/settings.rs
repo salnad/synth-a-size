@@ -25,6 +25,24 @@ pub struct ChatSettings {
     pub model: Option<String>,
     /// Overrides the provider's default API base URL.
     pub base_url: Option<String>,
+    /// How the chat's text field gets the keyboard in hosts that keep it
+    /// from plugin windows (the FL Studio check is pending, so it is a
+    /// setting).
+    pub keyboard_focus: KeyboardFocus,
+    /// The folder the preset tools read and write; `None` for
+    /// [`default_preset_dir`].
+    pub preset_dir: Option<PathBuf>,
+}
+
+/// How the chat's text field gets the keyboard.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum KeyboardFocus {
+    /// Ask the plugin window for keyboard focus when the field is clicked.
+    #[default]
+    Grab,
+    /// Leave keyboard focus to the host.
+    Plain,
 }
 
 impl Default for ChatSettings {
@@ -34,6 +52,8 @@ impl Default for ChatSettings {
             provider: "anthropic".to_string(),
             model: None,
             base_url: None,
+            keyboard_focus: KeyboardFocus::Grab,
+            preset_dir: None,
         }
     }
 }
@@ -93,6 +113,19 @@ impl ChatSettings {
     }
 }
 
+impl ChatSettings {
+    /// The preset folder the tools use.
+    pub fn preset_folder(&self) -> Option<PathBuf> {
+        self.preset_dir.clone().or_else(default_preset_dir)
+    }
+}
+
+/// The preset folder until the user picks one: `~/Music/synth-a-size/Presets`
+/// (a working default; the GUI plan's user-folder question is open).
+pub fn default_preset_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(|home| PathBuf::from(home).join("Music/synth-a-size/Presets"))
+}
+
 /// The folder for per-user settings: `~/Library/Application Support/synth-a-size`
 /// on macOS, `$XDG_CONFIG_HOME/synth-a-size` (or `~/.config/synth-a-size`)
 /// elsewhere. `None` without a home directory.
@@ -147,6 +180,8 @@ mod tests {
             provider: "openai".into(),
             model: Some("local-model".into()),
             base_url: Some("http://localhost:11434/v1".into()),
+            keyboard_focus: KeyboardFocus::Plain,
+            preset_dir: Some("/tmp/presets".into()),
         };
         settings.save(&path).unwrap();
         assert_eq!(ChatSettings::load(&path), (settings.clone(), None));
@@ -171,5 +206,6 @@ mod tests {
         let parsed: ChatSettings = serde_json::from_str("{\"enabled\": true}").unwrap();
         assert!(parsed.enabled);
         assert_eq!(parsed.provider, "anthropic");
+        assert_eq!(parsed.keyboard_focus, KeyboardFocus::Grab);
     }
 }

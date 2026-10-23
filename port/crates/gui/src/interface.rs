@@ -18,6 +18,7 @@ use egui::{Ui, UiBuilder};
 use sas_engine::telemetry::Telemetry;
 use sas_engine::Tuning;
 
+use crate::chat::{ChatPlacement, ChatStyle};
 use crate::colour::Colour;
 use crate::controls::format;
 use crate::controls::oscilloscope;
@@ -126,6 +127,21 @@ pub trait EditorModel: Send + Sync + 'static {
     /// it) for control `name`, a MIDI-learned move, so the plugin can tell
     /// the host's echo of it from host automation.
     fn midi_move_forwarded(&self, _name: &str, _normalized: f32) {}
+
+    /// The editor window opened: the host context for parameter gestures
+    /// and state loads (GUI thread only), and a way to ask for a frame from
+    /// another thread.
+    fn attach(
+        &self,
+        _gui: nice_plug::context::gui::GuiContext,
+        _wake: Box<dyn Fn() + Send + Sync>,
+    ) {
+    }
+
+    /// The LLM chat, if the plugin has one.
+    fn chat(&self) -> Option<&dyn crate::chat::ChatHost> {
+        None
+    }
 }
 
 /// What the editor copies from the telemetry snapshot each frame.
@@ -388,6 +404,29 @@ impl Interface {
         self.overlay.show_menu(ui, host, pixels, &top, area);
 
         show_text_entry(&mut self.overlay, ui, host, pixels, &top);
+    }
+
+    /// Where the chat goes for an editor drawn in `area` (points): its
+    /// toggle in the logo section (D13, D14), the panel inside the editor
+    /// below the header, coloured from the Overlay skin section.
+    pub fn chat_placement(&self, area: egui::Rect, pixels_per_point: f32) -> ChatPlacement {
+        let width = (area.width() * pixels_per_point).round() as i32;
+        let height = (area.height() * pixels_per_point).round() as i32;
+        let layout = FullLayout::new(&self.skin, width, height);
+        let points = |rect: Rect| {
+            egui::Rect::from_min_size(
+                area.min + egui::vec2(rect.x as f32, rect.y as f32) / pixels_per_point,
+                egui::vec2(rect.width as f32, rect.height as f32) / pixels_per_point,
+            )
+        };
+        let overlay = self.top(&layout).within(&[Section::Overlay]);
+        ChatPlacement {
+            toggle: points(layout.header.logo),
+            editor: points(layout.bounds),
+            header_bottom: points(layout.header.bounds).max.y,
+            scale: layout.size_ratio / pixels_per_point,
+            style: ChatStyle::from_scope(&overlay, pixels_per_point),
+        }
     }
 
     fn top(&self, layout: &FullLayout) -> Scope<'_> {

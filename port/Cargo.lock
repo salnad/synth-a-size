@@ -2705,9 +2705,11 @@ dependencies = [
  "sas-common",
  "sas-engine",
  "sas-gui",
+ "sas-llm-agent",
  "sas-llm-control",
  "sas-parity",
  "sas-preset",
+ "security-framework",
  "serde_json",
 ]
 

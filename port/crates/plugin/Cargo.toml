@@ -16,11 +16,19 @@ nice-plug.workspace = true
 sas-common.workspace = true
 sas-engine.workspace = true
 sas-gui.workspace = true
-# The LLM tools' live session (pure; no network code).
+# The LLM tools' live session and the chat (no network code here; see the
+# macOS section below).
 sas-llm-control.workspace = true
+sas-llm-agent.workspace = true
 sas-preset.workspace = true
 # sas-engine's Tuning state is serde_json; already in the tree via nice-plug.
 serde_json = "1"
+
+# The chat's HTTPS (Security.framework, no OpenSSL) and the Keychain for its
+# API key exist only in the macOS plugin, the shipping target.
+[target.'cfg(target_os = "macos")'.dependencies]
+sas-llm-agent = { workspace = true, features = ["http"] }
+security-framework = "3"
 
 [features]
 # The G1 keyboard-focus check panel in the editor (FL Studio spike only).
