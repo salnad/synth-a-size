@@ -229,11 +229,12 @@ impl Skin {
     }
 
     /// `Skin::jsonToState`, after `Skin::updateJson`. Colours a skin leaves
-    /// out stay black and values read 0, as upstream.
+    /// out stay transparent black (a default-constructed JUCE `Colour`) and
+    /// values read 0, as upstream.
     pub fn from_json(data: &serde_json::Value) -> Skin {
         let data = update_json(data.clone());
         let mut skin = Skin {
-            colors: vec![Colour::BLACK; ColorId::ALL.len()],
+            colors: vec![Colour::TRANSPARENT_BLACK; ColorId::ALL.len()],
             values: vec![0.0; ValueId::ALL.len()],
             color_overrides: vec![BTreeMap::new(); Section::ALL.len()],
             value_overrides: vec![BTreeMap::new(); Section::ALL.len()],
@@ -369,6 +370,14 @@ mod tests {
                 "unknown section {section}"
             );
         }
+    }
+
+    #[test]
+    fn missing_keys_read_as_upstream_defaults() {
+        let skin = Skin::from_json(&serde_json::json!({ "synth_version": 0x700 }));
+        assert_eq!(skin.color(ColorId::Body), Colour::TRANSPARENT_BLACK);
+        assert_eq!(skin.value(ValueId::Padding), 0.0);
+        assert_eq!(skin.value(ValueId::WidgetFillBoost), 1.6);
     }
 
     #[test]

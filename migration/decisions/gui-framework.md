@@ -12,7 +12,10 @@ choice below is easy to change.
 - **What is ported:** upstream's interface code is the source of truth for
   layout, skin values, colours, fonts and behaviour. Layout code is
   translated line by line in integer pixels, so rectangles match upstream
-  exactly at every window size. The skin is upstream's
+  exactly at display scale 1 for every window size, and at higher display
+  scales when the window keeps the default aspect ratio. A letterboxed window
+  at a display scale above 1 follows the port's consistent layout instead of
+  upstream's mixed-unit one ([DIVERGENCES.md](../DIVERGENCES.md) D15). The skin is upstream's
   `vital/default.vitalskin`, read at build time (`Skin::from_json` loads any
   other skin file). The fonts are the five faces in `vital/fonts/`.
 - **What is new:** the rendering. Upstream paints backgrounds with JUCE's
@@ -32,9 +35,17 @@ choice below is easy to change.
   custom-drawn controls less well; a renderer of our own would need text,
   input and popups rebuilt.
 - OpenGL is deprecated on macOS; wgpu draws with Metal there.
-- The licences of every crate added (318 in the tree) are MIT, Apache-2.0,
-  ISC, Zlib, BSL-1.0 or Unlicense, all GPLv3-compatible. The fonts are
-  Apache-2.0 / OFL, as bundled upstream.
+- Every crate added has a GPLv3-compatible licence. The shipped tree
+  (aarch64-apple-darwin, normal and build dependencies) has 193 third-party
+  crates, under MIT, Apache-2.0, ISC, Zlib, Unlicense, BSD-2-Clause, 0BSD,
+  BlueOak-1.0.0 and Unicode-3.0 terms, alone or as alternatives. `self_cell`
+  (via egui) is "Apache-2.0 OR GPL-2.0-only", and we take Apache-2.0.
+  The rest of the lock file is dev-only and other-platform crates. It adds
+  BSL-1.0, BSD-3-Clause and LGPL-2.1-or-later alternatives, and MPL-2.0 for
+  `colored` (dev-only, through `egui_kittest`). None of these are shipped.
+- The fonts are OFL 1.1 (Lato, Montserrat) and Apache-2.0 (Droid Sans Mono),
+  as bundled upstream. The plugin bundle carries their notices and the OFL
+  and Apache texts in `Contents/Resources` (`port/crates/plugin/notices/`).
 
 ## Verification
 

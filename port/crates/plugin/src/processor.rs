@@ -184,8 +184,10 @@ impl<E: Engine> BlockProcessor<E> {
     /// Loads a newly restored preset, then pushes changed parameters.
     fn sync_parameters(&mut self, params: &SynthParams) {
         if params.document_generation.load(Ordering::Acquire) != self.document_generation {
-            // The main thread holds the lock only while saving or restoring;
-            // if it is busy, the preset is picked up next block.
+            // Other threads hold the lock only briefly: the host's thread
+            // while saving or restoring, and the editor reading the preset
+            // name once per new document. If it is busy, the preset is picked
+            // up next block.
             if let Some(document) = params.try_document() {
                 self.document_generation = params.document_generation.load(Ordering::Acquire);
                 self.engine.load_preset(&document.state);

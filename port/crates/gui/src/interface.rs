@@ -253,7 +253,9 @@ impl Interface {
         );
     }
 
-    /// `TabSelector::mouseEvent`: a click or drag selects the tab under it.
+    /// `TabSelector::mouseDown` / `mouseDrag` / `mouseUp`: the tab under the
+    /// pointer is selected as soon as the button goes down, and follows a
+    /// drag.
     fn handle_tabs(&mut self, ui: &mut Ui, pixels: &PixelPainter, layout: &FullLayout) {
         let bounds = layout.header.tabs;
         let response = ui.interact(
@@ -261,7 +263,7 @@ impl Interface {
             ui.scope_id().with("tabs"),
             Sense::click_and_drag(),
         );
-        if !(response.clicked() || response.dragged()) {
+        if !response.is_pointer_button_down_on() {
             return;
         }
         if let Some(pointer) = response.interact_pointer_pos() {

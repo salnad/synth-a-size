@@ -47,21 +47,37 @@ upstream's default skin and layout, the product name in place of the logo.
 - `check_names.sh` now also fails on string literals in the editor that name
   upstream (vital, vial, tytel), except paths into the vendored tree.
 - Records: `decisions/gui-framework.md` (new); DIVERGENCES.md D14 (product
-  name instead of the logo); IMPROVEMENTS.md I17 (custom skins, parked);
-  PLAN.md M10 rewritten for the decision.
+  name instead of the logo) and D15 (letterboxing at display scales above 1
+  in one unit, not upstream's mixed units); IMPROVEMENTS.md I17 (custom
+  skins, parked); PLAN.md M10 rewritten for the decision.
+- The plugin bundle carries `LICENSE.txt` (GPLv3), the font notices
+  (`port/crates/plugin/notices/THIRD_PARTY_NOTICES.md`) and the OFL 1.1 and
+  Apache-2.0 texts in `Contents/Resources`.
 
 **Measured**
 - Layout: all 22 checked upstream components equal the port's rectangles at
   1400×820, 1050×615, 700×410, 2800×1640, 1400×700 and 1000×820 (the last two
-  letterbox).
+  letterbox), all at display scale 1. A 2800×1640 window at scale 1 lays out
+  like a 1400×820 window at 2x; letterboxed windows at 2x differ by design
+  (D15).
 - Pixels: in the side-by-side gallery the tab labels, highlight strip and
   preset selector sit on the same pixels as upstream's. The text is
   rasterised differently (egui vs JUCE/FreeType), so it is not identical.
   The save and menu icons, volume meter and oscilloscope are not drawn yet.
-- Licences: every crate in the new dependency tree is MIT, Apache-2.0, ISC,
-  Zlib, BSL-1.0 or Unlicense.
+- Licences: all GPLv3-compatible. The shipped tree (aarch64-apple-darwin,
+  normal and build dependencies) has 193 third-party crates, under MIT,
+  Apache-2.0, ISC, Zlib, Unlicense, BSD-2-Clause, 0BSD, BlueOak-1.0.0 and
+  Unicode-3.0 terms, alone or as alternatives. `self_cell` is "Apache-2.0
+  OR GPL-2.0-only" (Apache taken). Dev-only and other-platform crates add
+  BSL-1.0, BSD-3-Clause, LGPL alternatives and MPL-2.0 (`colored`, via
+  `egui_kittest`). The fonts are OFL 1.1 and Apache-2.0.
 
 **Decisions**
+- Review of #93 (GUI Reviewer): tabs now select on button press and follow a
+  drag, as `TabSelector::mouseDown` / `mouseDrag` do (tests press without
+  releasing, drag across, and click at 1x and 2x). A colour a skin omits is
+  transparent black, like a default JUCE `Colour`. The layout test also
+  requires every path in `layout_paths.txt` in every fixture.
 - Upstream frames show its branding, so they live only in CI artifacts (and
   in owner-facing screenshots with the logo masked), never in git. The layout
   fixtures are plain numbers and are committed.

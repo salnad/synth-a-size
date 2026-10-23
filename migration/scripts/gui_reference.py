@@ -34,8 +34,9 @@ LAYOUT_DIR = CORPUS / "layout"
 LAYOUT_PATHS = CORPUS / "layout_paths.txt"
 VIEWS = CORPUS / "views.json"
 
-# Default size, smaller and larger scales, both letterbox directions and a 2x
-# (high-DPI) window.
+# Default size, smaller and larger scales, both letterbox directions, and a
+# window twice the default size (at display scale 1; Xvfb has no high-DPI
+# scaling).
 SIZES = [(1400, 820), (1050, 615), (700, 410), (2800, 1640), (1400, 700), (1000, 820)]
 XVFB_SCREEN = "3000x2000x24"
 

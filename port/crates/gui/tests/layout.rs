@@ -8,9 +8,23 @@ use std::path::PathBuf;
 use sas_gui::layout::{FullLayout, Rect};
 use sas_gui::skin::Skin;
 
+fn corpus() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../migration/corpus/gui")
+}
+
+/// `migration/corpus/gui/layout_paths.txt`: every component the port lays out.
+fn checked_paths() -> Vec<String> {
+    std::fs::read_to_string(corpus().join("layout_paths.txt"))
+        .unwrap()
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(str::to_string)
+        .collect()
+}
+
 fn fixtures() -> Vec<PathBuf> {
-    let dir =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../migration/corpus/gui/layout");
+    let dir = corpus().join("layout");
     let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
         .unwrap_or_else(|e| panic!("cannot read {}: {e}", dir.display()))
         .map(|entry| entry.unwrap().path())
@@ -59,7 +73,15 @@ fn layout_matches_upstream_at_every_size() {
         let width = data["width"].as_i64().unwrap() as i32;
         let height = data["height"].as_i64().unwrap() as i32;
         let layout = FullLayout::new(&skin, width, height);
-        for (path, entry) in data["components"].as_object().unwrap() {
+        let components = data["components"].as_object().unwrap();
+        for path in checked_paths() {
+            assert!(
+                components.contains_key(&path),
+                "{}: no entry for {path}; regenerate the fixtures",
+                file.display()
+            );
+        }
+        for (path, entry) in components {
             let bounds: Vec<i32> = entry["bounds"]
                 .as_array()
                 .unwrap()

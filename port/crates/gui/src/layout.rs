@@ -8,9 +8,14 @@
 //! `HeaderSection::resized` (`header_section.cpp`) and the preset selector's
 //! `resized` (`editor_components/synth_preset_selector.cpp`,
 //! `preset_selector.cpp`). Everything is in integer pixels with upstream's
-//! own float-to-int truncations, so the rectangles match upstream exactly at
-//! any window size. Upstream lays out in physical pixels on high-DPI screens,
-//! and so does the port: [`FullLayout::new`] takes the window size in pixels.
+//! own float-to-int truncations. [`FullLayout::new`] takes the window size in
+//! physical pixels, as upstream lays out on high-DPI screens.
+//!
+//! The rectangles match upstream exactly at display scale 1 for any window
+//! size, and at higher display scales when the window keeps the default
+//! aspect ratio. Upstream's letterbox branches mix logical and physical
+//! pixels when the display scale is above 1; the port letterboxes in physical
+//! pixels throughout (`migration/DIVERGENCES.md` D15).
 
 use crate::scope::Scope;
 use crate::skin::{Section, Skin, ValueId};

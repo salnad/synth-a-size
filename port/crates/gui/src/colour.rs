@@ -9,6 +9,8 @@ pub struct Colour(pub u32);
 
 impl Colour {
     pub const BLACK: Colour = Colour(0xff000000);
+    /// A default-constructed JUCE `Colour`.
+    pub const TRANSPARENT_BLACK: Colour = Colour(0);
 
     /// `Colour::fromString`: hex digits accumulate and anything else is
     /// skipped, so "8ffffff" is 0x08ffffff and "0" is transparent black.
