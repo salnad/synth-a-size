@@ -11,8 +11,8 @@
 use std::sync::Arc;
 
 use sas_engine::edit_bus::EditConsumer;
-use sas_engine::telemetry::{AudioMemory, TelemetryWriter};
 use sas_engine::midi_manager::MidiLearnMap;
+use sas_engine::telemetry::{AudioMemory, TelemetryWriter};
 use sas_engine::Tuning;
 use sas_preset::{PresetState, SampleState};
 

@@ -399,8 +399,10 @@ entry.*
 - **Why:** nice-plug offers no parameter edits from the audio thread; its
   begin/set/end calls are on the editor's `GuiContext`, which exists only
   while the editor is open.
-- **Approved:** pending, Graph Reviewer and Parity Reviewer on #99 (MIDI
-  learn).
+- **Approved:** Salil, 2026-10-23: accepted as is (option a). Telling the
+  host through the editor while it is open is a follow-up (option b);
+  doing it from the audio thread is parked as `IMPROVEMENTS.md` I19
+  (option c). Reviewed by Graph Reviewer and Parity Reviewer on #99.
 
 ### D17. The MIDI learn config loads without upstream's install check
 
@@ -424,8 +426,8 @@ entry.*
   (migration/AGENTS.md rule 3), so the install check would never pass and a
   learned map would never come back. Skipping unreadable entries replaces
   a crash or undefined behaviour.
-- **Approved:** pending, Graph Reviewer and Parity Reviewer on #99 (MIDI
-  learn).
+- **Approved:** Salil, 2026-10-23. Reviewed by Graph Reviewer and Parity
+  Reviewer on #99.
 
 ## Verification exceptions
 

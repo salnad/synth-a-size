@@ -349,3 +349,25 @@ parity cost), and where it came from.
     graph that every module relies on.
 - **Source:** `ledger/2026-10-23-g0-edit-bus.md` (the no-allocation
   stress tests leave the rewiring uncounted).
+
+## I19. Host notification of learned-controller changes from the audio thread
+
+- **Idea:** change the plugin framework (nice-plug) so the audio thread
+  can send the host a parameter edit (begin, set, end gesture)
+  without the editor: a lock-free queue from `process` to the wrapper,
+  drained into the host's edit calls where the format allows it (VST3
+  output parameter changes, CLAP's `out_events`).
+- **Why:** a MIDI-learned controller moves a parameter on the audio thread
+  (`SynthBase::valueChangedThroughMidi`). Upstream notifies the host there
+  (`setValueNotifyHost`), so hosts can record the movement as automation.
+  The port can do that only while the editor is open (D16).
+- **Tradeoff:**
+  - It needs a nice-plug change: contributed upstream, or carried in a
+    fork of our own.
+  - Format rules differ: VST3 output parameter changes from `process` are
+    allowed but not every host records them, and CLAP has its own event
+    flow. Each needs host testing.
+  - No audio or parity cost: it only restores upstream's host behaviour.
+- **Source:** D16 (MIDI learn, #99), option c of the owner's options
+  (Salil, 2026-10-23).
+
