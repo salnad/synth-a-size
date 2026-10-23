@@ -317,7 +317,7 @@ parity cost), and where it came from.
   feature away from the live engine's audio path;
   `ledger/2026-10-23-llm-l1-tool-core.md`.
 
-## I17. Allocation-free graph rewiring for modulation connections
+## I18. Allocation-free graph rewiring for modulation connections
 
 - **Idea:** make connecting and disconnecting a modulation allocation-free
   on the audio thread: preallocate each destination's spare inputs and
