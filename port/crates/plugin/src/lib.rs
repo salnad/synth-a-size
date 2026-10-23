@@ -154,6 +154,15 @@ impl<E: Engine> SynthPlugin<E> {
     }
 }
 
+impl<E: Engine + Default> SynthPlugin<E> {
+    /// The default engine with no user config: no saved MIDI learn map is
+    /// loaded and nothing is saved. Tests use this; hosts get
+    /// [`Default`], which reads the user config file.
+    pub fn in_memory() -> SynthPlugin<E> {
+        SynthPlugin::new(E::default())
+    }
+}
+
 impl<E: Engine + Default> Default for SynthPlugin<E> {
     /// The plugin as a host creates it: MIDI learn uses the user config file
     /// (`SynthBase`'s constructor loads it through `Startup`).

@@ -11,7 +11,7 @@ use sas_plugin::SynthASize;
 use sas_preset::{engine, registry, ValueScale};
 
 fn plugin() -> SynthASize {
-    SynthASize::default()
+    SynthASize::in_memory()
 }
 
 /// nice-plug's VST3 parameter ID (`wrapper::util::hash_param_id`).

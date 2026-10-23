@@ -415,7 +415,11 @@ entry.*
   when the map is saved.
 - **Port:** the map loads whenever the config file has one
   (`port/crates/plugin/src/config.rs`). Entries it cannot read are skipped,
-  and a config that is not an object is replaced by a new one on save.
+  and a config that is not an object is replaced by a new one on save. Of
+  `doStartupChecks` the port runs only `loadConfig`'s MIDI map part: it
+  does not stamp `synth_version` into the config (`saveVersionConfig`
+  after `wasUpgraded`), and reads none of `loadConfig`'s other items (the
+  computer keyboard layout).
 - **Why:** the port ships no factory content and has no data directory
   (migration/AGENTS.md rule 3), so the install check would never pass and a
   learned map would never come back. Skipping unreadable entries replaces

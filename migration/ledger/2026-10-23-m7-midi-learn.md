@@ -43,8 +43,10 @@ omitted upstream's MIDI-learn menu items. Upstream has it in
   `editor.rs`:
   - the shipped plugin (`Default`) loads the saved map into the engine at
     construction, as `SynthBase`'s constructor does through `Startup`.
-    `SynthPlugin::new` keeps it in memory; tests never touch the user's
-    config.
+    `SynthPlugin::new` and `SynthPlugin::in_memory` keep it in memory; the
+    plugin's tests build through `in_memory`, so they never read the
+    user's config (only the CI validator and sound check, which load the
+    plugin as a host does, go through `Default`).
   - The editor's arm, cancel and clear requests are queued and applied at
     the start of the next block, bypassed or not.
   - The editor reads a copy of the map that the audio thread publishes
