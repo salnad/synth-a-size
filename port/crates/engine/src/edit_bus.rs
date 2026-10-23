@@ -371,7 +371,9 @@ impl Batch<'_> {
     /// host saves them: they carry the new slot's power, amount, polarity,
     /// stereo and bypass, which a freed slot would otherwise keep from its
     /// old route. [`SlotValues::dragged_to`] gives upstream's values for a
-    /// drag onto a control.
+    /// drag onto a control. Put the slot's final values in `values` (and
+    /// still send `parameter_changes`) rather than following the connection
+    /// with separate parameter sets, which can land a block apart from it.
     pub fn connect_modulation(
         &mut self,
         source: &str,
