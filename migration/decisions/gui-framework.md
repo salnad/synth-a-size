@@ -63,6 +63,23 @@ choice below is easy to change.
   (no GPU needed), in the normal `cargo test`.
 - **Host:** FL Studio on the owner's Mac, from the arm64 bundle CI builds.
 
+### FL Studio checklist (owner's Retina Mac)
+
+Checks only the host can answer. Record each answer in the ledger of the
+PR that settles it.
+
+1. **Keyboard focus (G1).** Install the `...-focus-check` artifact in place
+   of the normal bundle and follow its panel: does the text field receive
+   keys, with and without the window asking for focus?
+2. **Knob drag speed (G2).** Open upstream and the port side by side at
+   their default size. In each, start Voice's VEL TRK at its default (0%,
+   the middle of its range), drag straight up 50 points (macOS's screenshot
+   crosshair, Cmd-Shift-4, reads in points) and note the value the popup
+   shows. The port reaches 50% (a quarter of the 200 points a full sweep
+   takes). If upstream reaches 100%, its 200 is in physical pixels on
+   Retina and the port should halve its drag length at display scale 2.
+   Record the answer next to D15 in `DIVERGENCES.md`.
+
 ## Vendored egui-baseview
 
 egui paint callbacks (how upstream's shader-drawn quads are drawn, from G2)
