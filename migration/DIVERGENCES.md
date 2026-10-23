@@ -317,9 +317,10 @@ entry.*
     no host parameter is added.
   - A modulation connect follows upstream's GUI
     (`SynthGuiInterface::connectModulation` and the drag path in
-    `ModulationManager`): a created slot gets the source's bipolar default,
-    a linear remap curve, power 0, stereo and bypass off, and the drag
-    path's default amount.
+    `ModulationManager`): a created slot gets a linear remap curve, power
+    0, stereo and bypass off, the drag path's default amount, and a
+    unipolar route unless the model asks for bipolar (a plain drag, with no
+    modifier key).
   - Wavetables the tools make are generated (basic shapes or harmonic
     spectra in a Wave Source); preset files are read and written only in
     the user's preset folder, and an existing file is replaced only on

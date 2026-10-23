@@ -144,8 +144,9 @@ pub fn specs() -> Vec<ToolSpec> {
                           modulatable control, as dragging a source onto a knob does. Optional \
                           slot settings: amount (-1..1 of the control's range), bipolar, stereo, \
                           bypass, power (curve). A new route starts as dragging a source onto the \
-                          knob does (amount from the knob's position, at least 0.25; stereo and \
-                          bypass off). Connecting an existing pair updates it.",
+                          knob does: unipolar unless you pass bipolar=true, amount from the \
+                          knob's position (at least 0.25), stereo and bypass off. Connecting an \
+                          existing pair updates it.",
             input_schema: modulation_schema(true),
         },
         ToolSpec {

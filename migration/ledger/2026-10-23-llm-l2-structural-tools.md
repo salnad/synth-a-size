@@ -14,18 +14,21 @@ changes: it does not use `sas-llm-control` yet.
     `SynthSession::apply` returns `Applied`, which carries a created or
     reused slot. A batch whose later edit fails restores the session, so a
     batch applies whole or not at all.
-  - The offline connect follows upstream's GUI
-    (`SynthGuiInterface::connectModulation`, `vital/src/common/synth_gui_interface.cpp:97-121`):
-    `PresetState::add_modulation` (slot, bipolar default), then for a
-    created slot a linear remap curve and `modulation_N_power` = 0, then the
-    drag path's slot settings (`ModulationManager::modulationDraggedToComponent`,
-    `modulation_manager.cpp:797-816`, `gui_connect_defaults`): stereo and
-    bypass off, and an amount from the destination's position (1 − p, or
-    min(1 − p, p) × 2 when bipolar), at least `kDefaultModulationRatio`
-    0.25. The model's own settings override these. G0 owns
-    the shared form, `PresetState::connect_modulation_from_gui`; the offline
-    session switches to it when G0's first PR lands. The rule is the same,
-    so the golden preset does not change.
+  - The offline connect follows upstream's editor when a source is dropped
+    on a control (`ModulationManager::modulationDraggedToComponent`,
+    `modulation_manager.cpp:797-816`): `SynthGuiInterface::connectModulation`
+    (`PresetState::add_modulation`, then `initModulationValues`: linear
+    remap curve, power 0), then `setModulationValues` with the drag's values
+    (`dragged_values`): unipolar unless the model passes `bipolar` (the
+    modifier key a model does not have), stereo and bypass off, and an
+    amount from the control's position, 1 − p (min(1 − p, p) × 2 when
+    bipolar), at least `kDefaultModulationRatio` 0.25, with p computed in
+    double as JUCE's `valueToProportionOfLength` does. The model's explicit
+    settings go on top. G0 (#94) owns the shared form in `sas-preset`
+    (`SlotValues`, `PresetState::dragged_values`,
+    `PresetState::connect_modulation_from_gui`), and this session's copy
+    follows it exactly. Whichever of #92 and #94 merges second switches to
+    the `sas-preset` form and deletes this copy.
   - New tools: `connect_modulation`, `update_modulation`,
     `disconnect_modulation`, `set_lfo_shape` (named shape, or 2–100 points
     with y = 0 bottom .. 1 top, stored inverted as upstream does),
@@ -123,11 +126,15 @@ from #91. Nits applied:
 - A created slot that reuses a freed one kept the previous route's amount,
   stereo and bypass, so a new route could arrive bypassed and silent. It
   now gets the drag path's settings above (`a_reused_slot_starts_like_a_dragged_route`,
-  `dragged_amounts_have_a_floor_and_follow_bipolar`). The bipolar switch
-  keeps `SynthBase::connectModulation`'s source default, as the shared
-  rule does: the drag path's bipolar flag is a modifier key a model does
-  not have, and the tool's `bipolar` argument stands in for it. Edit Bus is
-  told the shared rule needs the same defaults.
+  `dragged_amounts_follow_position_and_bipolar`, `dragged_amounts_have_a_floor`).
+  A first version kept `SynthBase::connectModulation`'s source default for
+  the bipolar switch. A plain upstream drag gives a unipolar route instead,
+  because `setModulationValues` takes the modifier key's state, so the
+  coordinator chose unipolar unless the model asks (2026-10-23). The tool
+  description tells the model so. The golden session asks for a bipolar
+  LFO 1 → cutoff route explicitly; its preset is byte-identical, so the
+  render and state hashes, the −63.43 dB margin and bit-exactness against
+  the no-fast-math reference all carry over unchanged.
 - `set_lfo_shape` now rejects a shape whose first point is not at x = 0
   or whose last is not at x = 1, as upstream's LineEditor pins them
   (`getMinX` / `getMaxX`).

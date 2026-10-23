@@ -25,7 +25,7 @@
       {"name": "volume", "value": -9}
     ]}},
     {"tool": "set_lfo_shape", "args": {"lfo": 1, "points": [[0, 0], [0.3, 1], [0.6, 0.35], [1, 0]], "powers": [2, -2, 0, 0], "name": "Swell"}},
-    {"tool": "connect_modulation", "args": {"source": "lfo_1", "destination": "filter_1_cutoff", "amount": 0.35}},
+    {"tool": "connect_modulation", "args": {"source": "lfo_1", "destination": "filter_1_cutoff", "amount": 0.35, "bipolar": true}},
     {"tool": "connect_modulation", "args": {"source": "env_2", "destination": "osc_1_wave_frame", "amount": 0.8, "bipolar": false}},
     {"tool": "connect_modulation", "args": {"source": "macro_control_1", "destination": "reverb_dry_wet", "amount": 0.5}},
     {"tool": "update_modulation", "args": {"source": "lfo_1", "destination": "filter_1_cutoff", "amount": 0.3}},

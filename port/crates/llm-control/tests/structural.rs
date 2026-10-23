@@ -47,8 +47,8 @@ fn connect_sets_the_slot_like_the_gui() {
     assert!((state.value("modulation_1_amount").unwrap() - 0.4).abs() < 1e-6);
     assert_eq!(state.value("modulation_1_stereo"), Some(1.0));
     assert_eq!(state.value("modulation_1_power"), Some(0.0));
-    // LFOs are bipolar by default (`isSourceDefaultBipolar`).
-    assert_eq!(state.value("modulation_1_bipolar"), Some(1.0));
+    // A plain drag makes a unipolar route, even from an LFO.
+    assert_eq!(state.value("modulation_1_bipolar"), Some(0.0));
     assert!(state.modulations()[0].line_mapping.is_linear());
 
     // Connecting the same pair again reuses the slot.
@@ -266,25 +266,52 @@ fn a_reused_slot_starts_like_a_dragged_route() {
 }
 
 #[test]
-fn dragged_amounts_have_a_floor_and_follow_bipolar() {
+fn dragged_amounts_follow_position_and_bipolar() {
     let mut controller = controller();
-    // osc_1_level defaults to 0.7071 of its range: unipolar 1 - 0.7071 is
-    // below the 0.25 floor.
+    // osc_1_level sits at 0.7071 of its range: 1 - 0.7071.
     ok(controller.call(
         "connect_modulation",
         &json!({"source": "env_3", "destination": "osc_1_level"}),
     ));
     let state = controller.session().state();
-    assert!((state.value("modulation_1_amount").unwrap() - 0.293).abs() < 1e-3);
-    // LFOs are bipolar by default: min(1 - p, p) * 2 for cutoff at 52/128.
+    assert!((state.value("modulation_1_amount").unwrap() - 0.2929).abs() < 1e-3);
+    // Asked for bipolar: min(1 - p, p) * 2 for cutoff at 52/128.
     ok(controller.call(
         "connect_modulation",
-        &json!({"source": "lfo_4", "destination": "filter_2_cutoff"}),
+        &json!({"source": "lfo_4", "destination": "filter_2_cutoff", "bipolar": true}),
+    ));
+    let state = controller.session().state();
+    let amount = state.value("modulation_2_amount").unwrap();
+    assert!((amount - (52.0 / 128.0) * 2.0).abs() < 1e-6, "{amount}");
+    assert_eq!(state.value("modulation_2_bipolar"), Some(1.0));
+    // A plain drag is unipolar even from an LFO: 1 - p.
+    ok(controller.call(
+        "connect_modulation",
+        &json!({"source": "lfo_5", "destination": "filter_2_cutoff"}),
+    ));
+    let state = controller.session().state();
+    let amount = state.value("modulation_3_amount").unwrap();
+    assert!((amount - (1.0 - 52.0 / 128.0)).abs() < 1e-6, "{amount}");
+    assert_eq!(state.value("modulation_3_bipolar"), Some(0.0));
+}
+
+#[test]
+fn dragged_amounts_have_a_floor() {
+    let mut controller = controller();
+    // Unipolar from a control near the top of its range: 1 - p is below
+    // kDefaultModulationRatio, so the amount is 0.25.
+    ok(controller.call(
+        "set_params",
+        &json!({"changes": [{"name": "filter_1_cutoff", "value": 70}]}),
+    ));
+    ok(controller.call(
+        "connect_modulation",
+        &json!({"source": "env_2", "destination": "filter_1_cutoff"}),
     ));
     let amount = controller
         .session()
         .state()
-        .value("modulation_2_amount")
+        .value("modulation_1_amount")
         .unwrap();
-    assert!((amount - (52.0 / 128.0) * 2.0).abs() < 1e-6, "{amount}");
+    assert_eq!(amount, 0.25);
 }
