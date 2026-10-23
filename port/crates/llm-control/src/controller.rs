@@ -5,7 +5,8 @@ use sas_preset::display::display_number;
 use sas_preset::PresetState;
 
 use crate::catalog::control;
-use crate::session::{Edit, SynthSession};
+use crate::library::PresetLibrary;
+use crate::session::{Applied, Edit, SynthSession};
 use crate::tools::{self, ToolOutput};
 use crate::Error;
 
@@ -31,11 +32,20 @@ impl Default for Policy {
 }
 
 /// A batch of edits held until the user confirms or rejects it.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Pending {
     pub edits: Vec<Edit>,
     /// Why it needs confirmation, for the user.
     pub reason: String,
+}
+
+/// What [`Controller::apply`] did with a batch.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum Outcome {
+    /// Applied, with one result per edit.
+    Applied(Vec<Applied>),
+    /// Held for the user's confirmation, for this reason.
+    Pending(String),
 }
 
 #[derive(Clone, Debug)]
@@ -52,6 +62,7 @@ pub struct Controller<S: SynthSession> {
     /// Whether the next edit starts a new undo step.
     needs_snapshot: bool,
     pending: Option<Pending>,
+    library: Option<PresetLibrary>,
 }
 
 impl<S: SynthSession> Controller<S> {
@@ -62,7 +73,18 @@ impl<S: SynthSession> Controller<S> {
             history: Vec::new(),
             needs_snapshot: true,
             pending: None,
+            library: None,
         }
+    }
+
+    /// Gives the preset tools a folder to read and write.
+    pub fn with_library(mut self, library: PresetLibrary) -> Controller<S> {
+        self.library = Some(library);
+        self
+    }
+
+    pub fn library(&self) -> Option<&PresetLibrary> {
+        self.library.as_ref()
     }
 
     pub fn session(&self) -> &S {
@@ -114,44 +136,69 @@ impl<S: SynthSession> Controller<S> {
     }
 
     /// Applies `edits` as one batch, or holds them for confirmation if the
-    /// policy says so. Returns the reason when they are held.
-    pub(crate) fn apply(&mut self, edits: Vec<Edit>) -> Result<Option<String>, Error> {
+    /// policy says so.
+    pub(crate) fn apply(&mut self, edits: Vec<Edit>) -> Result<Outcome, Error> {
         if let Some(reason) = self.needs_confirmation(&edits) {
             self.pending = Some(Pending {
                 edits,
                 reason: reason.clone(),
             });
-            return Ok(Some(reason));
+            return Ok(Outcome::Pending(reason));
         }
-        self.apply_now(&edits)?;
-        Ok(None)
+        self.apply_now(&edits).map(Outcome::Applied)
     }
 
-    fn apply_now(&mut self, edits: &[Edit]) -> Result<(), Error> {
+    /// Applies `edits` in order. If one fails, the batch's earlier edits are
+    /// undone, so a batch applies whole or not at all.
+    fn apply_now(&mut self, edits: &[Edit]) -> Result<Vec<Applied>, Error> {
         if self.needs_snapshot {
             self.push_snapshot(None);
         }
+        let before = (edits.len() > 1).then(|| self.session.snapshot());
+        let mut applied = Vec::with_capacity(edits.len());
         for edit in edits {
-            self.session.apply(edit)?;
+            match self.session.apply(edit) {
+                Ok(result) => applied.push(result),
+                Err(error) => {
+                    if let Some(state) = &before {
+                        self.session.restore(state)?;
+                    }
+                    return Err(error);
+                }
+            }
         }
-        Ok(())
+        Ok(applied)
     }
 
+    /// Why `edits` need the user's confirmation, if they do: one raises a
+    /// guarded control past its threshold, directly or by loading a preset.
     fn needs_confirmation(&self, edits: &[Edit]) -> Option<String> {
         for edit in edits {
-            let Edit::SetControl { name, value } = edit;
-            let Some((_, threshold)) = self.policy.confirm_above.iter().find(|(n, _)| n == name)
-            else {
-                continue;
+            let changes: Vec<(&str, f32)> = match edit {
+                Edit::SetControl { name, value } => vec![(name, *value)],
+                Edit::LoadPreset(state) => self
+                    .policy
+                    .confirm_above
+                    .iter()
+                    .filter_map(|(name, _)| Some((*name, state.value(name)?)))
+                    .collect(),
+                _ => Vec::new(),
             };
-            let info = control(name)?;
-            let current = self.session.control(name).unwrap_or(info.default_value);
-            let new_display = display_number(info, *value);
-            if *value > current && new_display > *threshold {
-                return Some(format!(
-                    "{name} would rise to {new_display:.2}{}, above {threshold}{}",
-                    info.display_units, info.display_units
-                ));
+            for (name, value) in changes {
+                let Some((_, threshold)) =
+                    self.policy.confirm_above.iter().find(|(n, _)| *n == name)
+                else {
+                    continue;
+                };
+                let info = control(name)?;
+                let current = self.session.control(name).unwrap_or(info.default_value);
+                let new_display = display_number(info, value);
+                if value > current && new_display > *threshold {
+                    return Some(format!(
+                        "{name} would rise to {new_display:.2}{}, above {threshold}{}",
+                        info.display_units, info.display_units
+                    ));
+                }
             }
         }
         None

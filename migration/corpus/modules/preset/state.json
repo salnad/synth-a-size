@@ -249,6 +249,16 @@
         "state.json": "json",
         "roundtrip.json": "json"
       }
+    },
+    "llm_glass_pad": {
+      "params": {
+        "preset": "llm/presets/glass_pad.vital",
+        "roundtrip": true
+      },
+      "artifacts": {
+        "state.json": "json",
+        "roundtrip.json": "json"
+      }
     }
   }
 }

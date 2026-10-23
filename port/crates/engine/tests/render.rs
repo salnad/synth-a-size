@@ -19,7 +19,7 @@ use sas_preset::{InitContent, PresetState};
 /// Every `renders` case in `migration/corpus/cases.json` without an edit
 /// script. Cases with one are played through the plugin's edit bus in
 /// `sas-plugin`'s `tests/live_edit_parity.rs`.
-const CASES: [&str; 16] = [
+const CASES: [&str; 17] = [
     "render/init_saw__single_note",
     "render/init_saw__chords",
     "render/init_saw__single_note_48k_b128",
@@ -36,6 +36,7 @@ const CASES: [&str; 16] = [
     "render/random_macro_shapes__pad_93bpm",
     "render/mpe_expression__expression",
     "render/tuned_glide__septimal_run",
+    "render/llm_glass_pad__chords",
 ];
 
 /// The engine RNG's seed counter is process-wide, so the tests here build

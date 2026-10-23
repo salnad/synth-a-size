@@ -281,7 +281,7 @@ fn every_preset_has_a_state_case() {
         .into_iter()
         .filter_map(|(_, preset)| preset)
         .collect();
-    for directory in ["presets", "preset_tests"] {
+    for directory in ["presets", "preset_tests", "llm/presets"] {
         for entry in std::fs::read_dir(repo().join("migration/corpus").join(directory)).unwrap() {
             let name = entry.unwrap().file_name().to_string_lossy().to_string();
             if name.ends_with(".vital") {

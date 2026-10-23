@@ -8,13 +8,14 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use sas_preset::display::{engine_from_display, value_from_text};
-use sas_preset::ValueScale;
+use sas_preset::{engine, InitContent, PresetState, ValueScale};
 
 use crate::catalog::{self, control, controls, range_text, value_view};
-use crate::controller::Controller;
+use crate::controller::{Controller, Outcome};
 use crate::names::suggest;
 use crate::patch;
-use crate::session::{Edit, SynthSession};
+use crate::session::{Applied, Edit, SynthSession};
+use crate::shapes::{self, FrameSpec, LAST_FRAME, LFO_SHAPES, MAX_HARMONICS, WAVE_SHAPES};
 
 /// A tool as offered to a model.
 #[derive(Clone, Debug, PartialEq)]
@@ -137,6 +138,121 @@ pub fn specs() -> Vec<ToolSpec> {
                 }
             }),
         },
+        ToolSpec {
+            name: "connect_modulation",
+            description: "Route a modulation source (LFO, envelope, macro, velocity...) to a \
+                          modulatable control, as dragging a source onto a knob does. Optional \
+                          slot settings: amount (-1..1 of the control's range), bipolar, stereo, \
+                          bypass, power (curve). Connecting an existing pair updates it.",
+            input_schema: modulation_schema(true),
+        },
+        ToolSpec {
+            name: "update_modulation",
+            description: "Change the settings of an existing modulation route.",
+            input_schema: modulation_schema(false),
+        },
+        ToolSpec {
+            name: "disconnect_modulation",
+            description: "Remove a modulation route.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "source": {"type": "string"},
+                    "destination": {"type": "string"}
+                },
+                "required": ["source", "destination"]
+            }),
+        },
+        ToolSpec {
+            name: "set_lfo_shape",
+            description: "Set an LFO's shape: a named shape, or 2 to 100 points (x = phase 0..1, \
+                          y = value 0 bottom..1 top, x not decreasing) with optional per-point \
+                          curve powers (-20..20, 0 straight). Rate, sync and mode are controls \
+                          (lfo_N_*), set with set_params.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "lfo": {"type": "integer", "minimum": 1, "maximum": 8},
+                    "shape": {"type": "string", "enum": LFO_SHAPES},
+                    "points": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}
+                    },
+                    "powers": {"type": "array", "items": {"type": "number"}},
+                    "smooth": {"type": "boolean", "default": false},
+                    "name": {"type": "string"}
+                },
+                "required": ["lfo"]
+            }),
+        },
+        ToolSpec {
+            name: "set_wavetable",
+            description: "Replace an oscillator's wavetable with generated keyframes. Each frame \
+                          sits at a position 0..256 (osc_N_wave_frame scans them) and is a basic \
+                          shape or a harmonic spectrum (amplitudes of harmonics 1, 2, 3...). \
+                          Frames between keyframes morph spectrally.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "oscillator": {"type": "integer", "minimum": 1, "maximum": 3},
+                    "name": {"type": "string"},
+                    "frames": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 64,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "position": {"type": "integer", "minimum": 0, "maximum": LAST_FRAME},
+                                "shape": {"type": "string", "enum": WAVE_SHAPES},
+                                "harmonics": {"type": "array", "items": {"type": "number"}, "minItems": 1, "maxItems": MAX_HARMONICS}
+                            },
+                            "required": ["position"]
+                        }
+                    }
+                },
+                "required": ["oscillator", "frames"]
+            }),
+        },
+        ToolSpec {
+            name: "list_presets",
+            description: "List presets in the user's preset folder, optionally filtered by name.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {"query": {"type": "string"}}
+            }),
+        },
+        ToolSpec {
+            name: "load_preset",
+            description:
+                "Load a preset from the user's preset folder (replaces the patch; undoable).",
+            input_schema: json!({
+                "type": "object",
+                "properties": {"name": {"type": "string"}},
+                "required": ["name"]
+            }),
+        },
+        ToolSpec {
+            name: "save_preset",
+            description: "Save the current patch to the user's preset folder. An existing preset \
+                          is only replaced with overwrite=true, after asking the user.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "author": {"type": "string"},
+                    "comments": {"type": "string"},
+                    "style": {"type": "string"},
+                    "overwrite": {"type": "boolean", "default": false}
+                },
+                "required": ["name"]
+            }),
+        },
+        ToolSpec {
+            name: "init_patch",
+            description: "Start over from the init patch (undoable).",
+            input_schema: json!({"type": "object", "properties": {}}),
+        },
     ]
 }
 
@@ -178,6 +294,15 @@ pub(crate) fn call<S: SynthSession>(
         "set_params" => set_params(controller, args),
         "checkpoint" => checkpoint(controller, args),
         "undo" => undo(controller, args),
+        "connect_modulation" => connect_modulation(controller, args),
+        "update_modulation" => update_modulation(controller, args),
+        "disconnect_modulation" => disconnect_modulation(controller, args),
+        "set_lfo_shape" => set_lfo_shape(controller, args),
+        "set_wavetable" => set_wavetable(controller, args),
+        "list_presets" => list_presets(controller, args),
+        "load_preset" => load_preset(controller, args),
+        "save_preset" => save_preset(controller, args),
+        "init_patch" => init_patch(controller),
         _ => Err(ToolOutput::error(format!(
             "unknown tool {name:?}; tools: {}",
             specs()
@@ -201,6 +326,7 @@ fn describe_control<S: SynthSession>(controller: &Controller<S>, name: &str) -> 
         "range": range_text(info),
         "default": value_view(info, info.default_value),
         "value": value_view(info, value),
+        "modulatable": engine::is_modulation_destination(name),
     }))
 }
 
@@ -305,15 +431,7 @@ fn set_params<S: SynthSession>(
             errors.join("; ")
         )));
     }
-    match controller.apply(edits) {
-        Ok(None) => Ok(ToolOutput::ok(json!({"set": landed}))),
-        Ok(Some(reason)) => Ok(ToolOutput::ok(json!({
-            "status": "needs_confirmation",
-            "reason": reason,
-            "note": "Nothing was changed yet. Ask the user; the change applies only if they confirm.",
-        }))),
-        Err(error) => Err(ToolOutput::error(error.to_string())),
-    }
+    apply(controller, edits).map(|_| ToolOutput::ok(json!({"set": landed})))
 }
 
 fn checkpoint<S: SynthSession>(
@@ -349,4 +467,352 @@ fn undo<S: SynthSession>(
         Ok(count) => Ok(ToolOutput::ok(json!({"undone": count}))),
         Err(error) => Err(ToolOutput::error(error.to_string())),
     }
+}
+
+/// Applies `edits`, mapping the outcome to the replies the tools share.
+fn apply<S: SynthSession>(
+    controller: &mut Controller<S>,
+    edits: Vec<Edit>,
+) -> Result<Vec<Applied>, ToolOutput> {
+    match controller.apply(edits) {
+        Ok(Outcome::Applied(applied)) => Ok(applied),
+        Ok(Outcome::Pending(reason)) => Err(ToolOutput::ok(json!({
+            "status": "needs_confirmation",
+            "reason": reason,
+            "note": "Nothing was changed yet. Ask the user; the change applies only if they confirm.",
+        }))),
+        Err(error) => Err(ToolOutput::error(format!("nothing was changed: {error}"))),
+    }
+}
+
+/// Modulation slot settings a model may give, with their `modulation_N_`
+/// suffixes.
+const SLOT_SETTINGS: &[&str] = &["amount", "bipolar", "stereo", "bypass", "power"];
+
+fn modulation_schema(connect: bool) -> Value {
+    let mut schema = json!({
+        "type": "object",
+        "properties": {
+            "source": {"type": "string"},
+            "destination": {"type": "string"},
+            "amount": {"type": "number", "minimum": -1, "maximum": 1},
+            "bipolar": {"type": "boolean"},
+            "stereo": {"type": "boolean"},
+            "bypass": {"type": "boolean"},
+            "power": {"type": "number"}
+        },
+        "required": ["source", "destination"]
+    });
+    if connect {
+        schema["properties"]["source"]["enum"] = json!(engine::modulation_sources());
+    }
+    schema
+}
+
+#[derive(Deserialize)]
+struct ModulationArgs {
+    source: String,
+    destination: String,
+    #[serde(default)]
+    amount: Option<Value>,
+    #[serde(default)]
+    bipolar: Option<bool>,
+    #[serde(default)]
+    stereo: Option<bool>,
+    #[serde(default)]
+    bypass: Option<bool>,
+    #[serde(default)]
+    power: Option<Value>,
+}
+
+impl ModulationArgs {
+    /// The given slot settings as (`modulation_N_` suffix, engine value),
+    /// converted with slot 1's ranges (every slot has the same).
+    fn settings(&self) -> Result<Vec<(&'static str, f32)>, String> {
+        let flag = |value: bool| Value::from(if value { 1 } else { 0 });
+        let given = [
+            self.amount.clone(),
+            self.bipolar.map(flag),
+            self.stereo.map(flag),
+            self.bypass.map(flag),
+            self.power.clone(),
+        ];
+        let mut settings = Vec::new();
+        for (suffix, value) in SLOT_SETTINGS.iter().zip(given) {
+            if let Some(value) = value {
+                let (_, engine, _) = engine_value(&format!("modulation_1_{suffix}"), &value)?;
+                settings.push((*suffix, engine));
+            }
+        }
+        Ok(settings)
+    }
+
+    fn check_names(&self) -> Result<(), String> {
+        if !engine::is_modulation_source(&self.source) {
+            let sources = engine::modulation_sources();
+            let close = suggest(&self.source, sources.iter().map(String::as_str), 3);
+            return Err(format!(
+                "unknown modulation source {:?}; did you mean {}? Sources: {}",
+                self.source,
+                close.join(", "),
+                sources.join(", ")
+            ));
+        }
+        if !engine::is_modulation_destination(&self.destination) {
+            let destinations = engine::modulation_destinations();
+            let close = suggest(&self.destination, destinations.iter().copied(), 3);
+            return Err(format!(
+                "{:?} is not a modulatable control; did you mean {}?",
+                self.destination,
+                close.join(", ")
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// The reply for a modulation route: its slot and settings.
+fn route_reply<S: SynthSession>(controller: &Controller<S>, slot: usize, created: bool) -> Value {
+    let mut reply = json!({"slot": slot + 1, "created": created});
+    for suffix in SLOT_SETTINGS {
+        let name = format!("modulation_{}_{suffix}", slot + 1);
+        if let (Some(info), Some(value)) = (control(&name), controller.session().control(&name)) {
+            reply[*suffix] = Value::String(value_view(info, value));
+        }
+    }
+    reply
+}
+
+fn connect_modulation<S: SynthSession>(
+    controller: &mut Controller<S>,
+    args: &Value,
+) -> Result<ToolOutput, ToolOutput> {
+    let args: ModulationArgs = parse("connect_modulation", args)?;
+    args.check_names().map_err(ToolOutput::error)?;
+    let settings = args.settings().map_err(ToolOutput::error)?;
+    let applied = apply(
+        controller,
+        vec![Edit::ConnectModulation {
+            source: args.source,
+            destination: args.destination,
+            settings,
+        }],
+    )?;
+    match applied.first() {
+        Some(Applied::Connected { slot, created }) => {
+            Ok(ToolOutput::ok(route_reply(controller, *slot, *created)))
+        }
+        _ => Ok(ToolOutput::ok(json!({"connected": true}))),
+    }
+}
+
+fn update_modulation<S: SynthSession>(
+    controller: &mut Controller<S>,
+    args: &Value,
+) -> Result<ToolOutput, ToolOutput> {
+    let args: ModulationArgs = parse("update_modulation", args)?;
+    let slot = controller
+        .session()
+        .snapshot()
+        .modulation_index(&args.source, &args.destination)
+        .ok_or_else(|| {
+            ToolOutput::error(format!(
+                "{} is not connected to {}; use connect_modulation",
+                args.source, args.destination
+            ))
+        })?;
+    let settings = args.settings().map_err(ToolOutput::error)?;
+    if settings.is_empty() {
+        return Err(ToolOutput::error("give at least one setting to change"));
+    }
+    let edits = settings
+        .into_iter()
+        .map(|(suffix, value)| {
+            let name = control(&format!("modulation_{}_{suffix}", slot + 1)).expect("slot control");
+            Edit::SetControl {
+                name: name.name.as_str(),
+                value,
+            }
+        })
+        .collect();
+    apply(controller, edits)?;
+    Ok(ToolOutput::ok(route_reply(controller, slot, false)))
+}
+
+fn disconnect_modulation<S: SynthSession>(
+    controller: &mut Controller<S>,
+    args: &Value,
+) -> Result<ToolOutput, ToolOutput> {
+    #[derive(Deserialize)]
+    struct Args {
+        source: String,
+        destination: String,
+    }
+    let args: Args = parse("disconnect_modulation", args)?;
+    apply(
+        controller,
+        vec![Edit::DisconnectModulation {
+            source: args.source,
+            destination: args.destination,
+        }],
+    )?;
+    Ok(ToolOutput::ok(json!({"disconnected": true})))
+}
+
+fn set_lfo_shape<S: SynthSession>(
+    controller: &mut Controller<S>,
+    args: &Value,
+) -> Result<ToolOutput, ToolOutput> {
+    #[derive(Deserialize)]
+    struct Args {
+        lfo: usize,
+        #[serde(default)]
+        shape: Option<String>,
+        #[serde(default)]
+        points: Option<Vec<(f32, f32)>>,
+        #[serde(default)]
+        powers: Option<Vec<f32>>,
+        #[serde(default)]
+        smooth: bool,
+        #[serde(default)]
+        name: Option<String>,
+    }
+    let args: Args = parse("set_lfo_shape", args)?;
+    if !(1..=8).contains(&args.lfo) {
+        return Err(ToolOutput::error("lfo must be 1..8"));
+    }
+    let line = match (&args.shape, &args.points) {
+        (Some(shape), None) => shapes::named_lfo(shape),
+        (None, Some(points)) => shapes::lfo_from_points(
+            points,
+            args.powers.as_deref(),
+            args.smooth,
+            args.name.as_deref().unwrap_or("Custom"),
+        ),
+        _ => Err("give either a shape or points".to_string()),
+    }
+    .map_err(ToolOutput::error)?;
+    let points = line.num_points();
+    apply(
+        controller,
+        vec![Edit::SetLfoShape {
+            lfo: args.lfo - 1,
+            line: Box::new(line),
+        }],
+    )?;
+    Ok(ToolOutput::ok(json!({"lfo": args.lfo, "points": points})))
+}
+
+fn set_wavetable<S: SynthSession>(
+    controller: &mut Controller<S>,
+    args: &Value,
+) -> Result<ToolOutput, ToolOutput> {
+    #[derive(Deserialize)]
+    struct Args {
+        oscillator: usize,
+        #[serde(default)]
+        name: Option<String>,
+        frames: Vec<FrameSpec>,
+    }
+    let args: Args = parse("set_wavetable", args)?;
+    if !(1..=3).contains(&args.oscillator) {
+        return Err(ToolOutput::error("oscillator must be 1..3"));
+    }
+    let name = args.name.unwrap_or_else(|| "Generated".to_string());
+    let creator = shapes::wavetable(&name, &args.frames).map_err(ToolOutput::error)?;
+    let frames = creator.last_keyframe_position();
+    apply(
+        controller,
+        vec![Edit::SetWavetable {
+            oscillator: args.oscillator - 1,
+            creator: Box::new(creator),
+        }],
+    )?;
+    Ok(ToolOutput::ok(json!({
+        "oscillator": args.oscillator,
+        "keyframes": args.frames.len(),
+        "last_frame": frames,
+    })))
+}
+
+fn library<S: SynthSession>(
+    controller: &Controller<S>,
+) -> Result<crate::library::PresetLibrary, ToolOutput> {
+    controller
+        .library()
+        .cloned()
+        .ok_or_else(|| ToolOutput::error("no preset folder is configured"))
+}
+
+fn list_presets<S: SynthSession>(
+    controller: &mut Controller<S>,
+    args: &Value,
+) -> Result<ToolOutput, ToolOutput> {
+    #[derive(Deserialize)]
+    struct Args {
+        #[serde(default)]
+        query: String,
+    }
+    let args: Args = parse("list_presets", args)?;
+    let names = library(controller)?
+        .list(&args.query, 50)
+        .map_err(ToolOutput::error)?;
+    Ok(ToolOutput::ok(json!({"presets": names})))
+}
+
+fn load_preset<S: SynthSession>(
+    controller: &mut Controller<S>,
+    args: &Value,
+) -> Result<ToolOutput, ToolOutput> {
+    #[derive(Deserialize)]
+    struct Args {
+        name: String,
+    }
+    let args: Args = parse("load_preset", args)?;
+    let state = library(controller)?
+        .load(&args.name, &controller.session().snapshot())
+        .map_err(ToolOutput::error)?;
+    apply(controller, vec![Edit::LoadPreset(Box::new(state))])?;
+    Ok(ToolOutput::ok(json!({"loaded": args.name})))
+}
+
+fn save_preset<S: SynthSession>(
+    controller: &mut Controller<S>,
+    args: &Value,
+) -> Result<ToolOutput, ToolOutput> {
+    #[derive(Deserialize)]
+    struct Args {
+        name: String,
+        #[serde(default)]
+        author: Option<String>,
+        #[serde(default)]
+        comments: Option<String>,
+        #[serde(default)]
+        style: Option<String>,
+        #[serde(default)]
+        overwrite: bool,
+    }
+    let args: Args = parse("save_preset", args)?;
+    let library = library(controller)?;
+    let mut state = controller.session().snapshot();
+    state.info.preset_name = args.name.clone();
+    if let Some(author) = args.author {
+        state.info.author = author;
+    }
+    if let Some(comments) = args.comments {
+        state.info.comments = comments;
+    }
+    if let Some(style) = args.style {
+        state.info.style = style;
+    }
+    library
+        .save(&args.name, &state, args.overwrite)
+        .map_err(ToolOutput::error)?;
+    Ok(ToolOutput::ok(json!({"saved": args.name})))
+}
+
+fn init_patch<S: SynthSession>(controller: &mut Controller<S>) -> Result<ToolOutput, ToolOutput> {
+    let state = PresetState::new(&InitContent { sample_seed: 0 });
+    apply(controller, vec![Edit::LoadPreset(Box::new(state))])?;
+    Ok(ToolOutput::ok(json!({"init": true})))
 }

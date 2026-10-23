@@ -3,20 +3,57 @@
 //! Every [`Edit`] is one the upstream GUI can also make, so the engine
 //! reacts to it exactly as it would to the same edit made by hand. The
 //! offline session edits a [`PresetState`]; the plugin's live session (L4 in
-//! the LLM plan) maps edits onto host parameter gestures and the GUI's edit
-//! bus (G0).
+//! the LLM plan) maps edits onto host parameter gestures, the GUI's edit bus
+//! (G0) and, for whole-preset loads, `GuiContext::set_state`.
 
+use sas_common::LineGenerator;
 use sas_preset::{InitContent, PresetState};
+use sas_wavetable::creator::WavetableCreator;
 
 use crate::Error;
 
 /// One edit, already validated against the registry. Control values are
 /// engine values.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum Edit {
     /// Sets a control (a host parameter).
     SetControl { name: &'static str, value: f32 },
+    /// Connects `source` to `destination` as upstream's GUI does
+    /// (`SynthGuiInterface::connectModulation`), then sets the slot's own
+    /// controls: `settings` pairs a `modulation_N_` suffix (`amount`,
+    /// `bipolar`, ...) with an engine value.
+    ConnectModulation {
+        source: String,
+        destination: String,
+        settings: Vec<(&'static str, f32)>,
+    },
+    /// `SynthGuiInterface::disconnectModulation`: frees the slot.
+    DisconnectModulation { source: String, destination: String },
+    /// Replaces LFO `lfo`'s shape (0-based).
+    SetLfoShape {
+        lfo: usize,
+        line: Box<LineGenerator>,
+    },
+    /// Replaces oscillator `oscillator`'s wavetable (0-based).
+    SetWavetable {
+        oscillator: usize,
+        creator: Box<WavetableCreator>,
+    },
+    /// Replaces the whole preset (a preset file or the init patch).
+    LoadPreset(Box<PresetState>),
+}
+
+/// What applying an edit did, when the tools need to report it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Applied {
+    Done,
+    /// The connection's 0-based slot, and whether it was created (rather
+    /// than reused).
+    Connected {
+        slot: usize,
+        created: bool,
+    },
 }
 
 /// A synth state the tools can read and change.
@@ -28,7 +65,7 @@ pub trait SynthSession {
     fn control(&self, name: &str) -> Option<f32>;
 
     /// Applies `edit`.
-    fn apply(&mut self, edit: &Edit) -> Result<(), Error>;
+    fn apply(&mut self, edit: &Edit) -> Result<Applied, Error>;
 
     /// Returns to `state` (undo).
     fn restore(&mut self, state: &PresetState) -> Result<(), Error>;
@@ -60,6 +97,30 @@ impl OfflineSession {
     }
 }
 
+/// `SynthGuiInterface::connectModulation` on a preset state:
+/// `SynthBase::connectModulation` (slot and bipolar default, in
+/// `PresetState::add_modulation`), then, for a created slot,
+/// `initModulationValues` (linear remap curve, `modulation_N_power` = 0).
+///
+/// G0 adds the shared form of this rule to `sas-preset`
+/// (`PresetState::connect_modulation_from_gui`); this session switches to it
+/// when that lands.
+fn connect_from_gui(
+    state: &mut PresetState,
+    source: &str,
+    destination: &str,
+) -> Result<(usize, bool), Error> {
+    let existed = state.modulation_index(source, destination).is_some();
+    let slot = state.add_modulation(source, destination)?;
+    if !existed {
+        if let Some(line) = state.line_mapping_mut(slot) {
+            line.init_linear();
+        }
+        state.set_value(&format!("modulation_{}_power", slot + 1), 0.0)?;
+    }
+    Ok((slot, !existed))
+}
+
 impl SynthSession for OfflineSession {
     fn snapshot(&self) -> PresetState {
         self.state.clone()
@@ -69,11 +130,52 @@ impl SynthSession for OfflineSession {
         self.state.value(name)
     }
 
-    fn apply(&mut self, edit: &Edit) -> Result<(), Error> {
+    fn apply(&mut self, edit: &Edit) -> Result<Applied, Error> {
         match edit {
             Edit::SetControl { name, value } => self.state.set_value(name, *value)?,
+            Edit::ConnectModulation {
+                source,
+                destination,
+                settings,
+            } => {
+                let (slot, created) = connect_from_gui(&mut self.state, source, destination)?;
+                for (suffix, value) in settings {
+                    self.state
+                        .set_value(&format!("modulation_{}_{suffix}", slot + 1), *value)?;
+                }
+                return Ok(Applied::Connected { slot, created });
+            }
+            Edit::DisconnectModulation {
+                source,
+                destination,
+            } => {
+                self.state
+                    .remove_modulation(source, destination)
+                    .ok_or_else(|| {
+                        Error::Invalid(format!("{source} is not connected to {destination}"))
+                    })?;
+            }
+            Edit::SetLfoShape { lfo, line } => {
+                let slot = self
+                    .state
+                    .lfos
+                    .get_mut(*lfo)
+                    .ok_or_else(|| Error::Invalid(format!("no LFO {}", lfo + 1)))?;
+                *slot = (**line).clone();
+            }
+            Edit::SetWavetable {
+                oscillator,
+                creator,
+            } => {
+                let slot =
+                    self.state.wavetables.get_mut(*oscillator).ok_or_else(|| {
+                        Error::Invalid(format!("no oscillator {}", oscillator + 1))
+                    })?;
+                *slot = (**creator).clone();
+            }
+            Edit::LoadPreset(state) => self.state = (**state).clone(),
         }
-        Ok(())
+        Ok(Applied::Done)
     }
 
     fn restore(&mut self, state: &PresetState) -> Result<(), Error> {
