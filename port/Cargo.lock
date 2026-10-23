@@ -547,6 +547,8 @@ name = "sas-llm-control"
 version = "0.0.1"
 dependencies = [
  "sas-preset",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

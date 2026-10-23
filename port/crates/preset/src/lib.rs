@@ -31,6 +31,7 @@
 //! ```
 
 pub mod constants;
+pub mod display;
 pub mod engine;
 mod json;
 pub mod registry;
