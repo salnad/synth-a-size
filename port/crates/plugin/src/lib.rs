@@ -29,6 +29,7 @@ use std::sync::Arc;
 
 use nice_plug::prelude::*;
 use sas_engine::edit_bus::{EditBus, EditHandle};
+use sas_engine::telemetry::{AudioMemory, Telemetry};
 use sas_preset::InitContent;
 
 pub mod editor;
@@ -59,6 +60,7 @@ pub const UPSTREAM_SOURCES: &[&str] = &[
 pub struct SynthPlugin<E: Engine> {
     params: Arc<SynthParams>,
     processor: BlockProcessor<E>,
+    telemetry: Telemetry,
     /// The editor window's size, kept while the window is closed.
     editor_state: Arc<sas_gui::nice_plug_egui::EguiEditorState>,
 }
@@ -81,11 +83,21 @@ impl<E: Engine> SynthPlugin<E> {
             document.state.sample = sample;
         }
         let (edits, consumer) = EditBus::new(document);
+        let audio_memory = engine
+            .audio_memory()
+            .unwrap_or_else(|| Arc::new(AudioMemory::default()));
+        let (writer, telemetry) = Telemetry::new(audio_memory);
         SynthPlugin {
             params: Arc::new(SynthParams::new(edits)),
-            processor: BlockProcessor::new(engine, consumer),
+            processor: BlockProcessor::new(engine, consumer, writer),
+            telemetry,
             editor_state: sas_gui::default_state(),
         }
+    }
+
+    /// What the editor shows of the playing engine (`sas_engine::telemetry`).
+    pub fn telemetry(&self) -> Telemetry {
+        self.telemetry.clone()
     }
 
     /// The edit bus, for the editor and the chat worker.

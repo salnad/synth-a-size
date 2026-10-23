@@ -8,7 +8,10 @@
 //! plugin runs on [`crate::SoundEngineHost`]; [`SilentEngine`] outputs
 //! silence, for tests that need no engine.
 
+use std::sync::Arc;
+
 use sas_engine::edit_bus::EditConsumer;
+use sas_engine::telemetry::{AudioMemory, TelemetryWriter};
 use sas_engine::Tuning;
 use sas_preset::{PresetState, SampleState};
 
@@ -69,6 +72,16 @@ pub trait Engine: Send + 'static {
     fn apply_edits(&mut self, edits: &mut EditConsumer) {
         edits.apply_edits(&mut ());
     }
+
+    /// The memory of recent output the spectrogram reads, if the engine
+    /// keeps one (`SynthBase::audio_memory_`).
+    fn audio_memory(&self) -> Option<Arc<AudioMemory>> {
+        None
+    }
+
+    /// Fills and publishes the editor's telemetry snapshot at the end of a
+    /// block. An engine without telemetry publishes nothing.
+    fn publish_telemetry(&mut self, _telemetry: &mut TelemetryWriter) {}
 }
 
 /// An engine that outputs silence (tests that need no sound engine).

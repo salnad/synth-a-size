@@ -16,10 +16,12 @@
 
 use std::collections::BTreeMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use sas_common::LineGenerator;
 use sas_dsp_core::constants::MAX_MODULATION_CONNECTIONS;
-use sas_dsp_core::ProcessorRef;
+use sas_dsp_core::sas_simd::{utils, PolyFloat};
+use sas_dsp_core::{Output, ProcessorRef, StatusOutput};
 use sas_modulation::ModulationConnectionProcessor;
 use sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_oscillators::sas_wavetable::Wavetable;
@@ -30,6 +32,10 @@ use crate::midi_file::TimedMessage;
 use crate::midi_manager::MidiManager;
 use crate::sound_engine::{ModulationChange, SoundEngine};
 use crate::synth_voice_handler::SynthVoiceHandler;
+use crate::telemetry::{
+    destination_names, status_names, AudioMemory, TelemetryWriter, OSCILLOSCOPE_MEMORY_RESOLUTION,
+    OSCILLOSCOPE_MEMORY_SAMPLE_RATE, OSCILLOSCOPE_SAMPLES,
+};
 use crate::tuning::Tuning;
 
 /// `kMaxBufferSize`: the longest engine sub-block.
@@ -42,6 +48,37 @@ pub const NUM_LFOS: usize = 8;
 /// growing its queue: a full bank's worth plus a full edit queue.
 const MODULATION_CHANGE_CAPACITY: usize =
     MAX_MODULATION_CONNECTIONS + crate::edit_bus::EDIT_QUEUE_CAPACITY;
+
+/// `kOutputWindowMinNote` / `kOutputWindowMaxNote`.
+const OUTPUT_WINDOW_MIN_NOTE: f32 = 16.0;
+const OUTPUT_WINDOW_MAX_NOTE: f32 = 128.0;
+
+/// `SynthBase`'s oscilloscope state (`updateMemoryOutput`).
+struct OscilloscopeMemory {
+    last_played_note: f32,
+    last_num_pressed: i32,
+    reset_period: f32,
+    input_offset: i32,
+    index: i32,
+    /// `oscilloscope_memory_`: the last complete window.
+    memory: Box<[PolyFloat]>,
+    /// `oscilloscope_memory_write_`: the window being filled.
+    write: Box<[PolyFloat]>,
+}
+
+impl Default for OscilloscopeMemory {
+    fn default() -> Self {
+        OscilloscopeMemory {
+            last_played_note: 0.0,
+            last_num_pressed: 0,
+            reset_period: OSCILLOSCOPE_MEMORY_RESOLUTION as f32,
+            input_offset: 0,
+            index: 0,
+            memory: vec![PolyFloat::zero(); OSCILLOSCOPE_SAMPLES].into_boxed_slice(),
+            write: vec![PolyFloat::zero(); OSCILLOSCOPE_SAMPLES].into_boxed_slice(),
+        }
+    }
+}
 
 /// The synth: a [`SoundEngine`] with its MIDI manager, tuning and wavetable
 /// creators.
@@ -59,6 +96,14 @@ pub struct Synth {
     mod_connections: Vec<usize>,
     /// `modulation_change_queue_`.
     modulation_change_queue: Vec<ModulationChange>,
+    /// Every status output, in [`status_names`] order.
+    status_outputs: Vec<Rc<StatusOutput>>,
+    /// Each destination's mono and poly modulation totals, in
+    /// [`destination_names`] order.
+    modulation_totals: Vec<(Rc<Output>, Option<Rc<Output>>)>,
+    oscilloscope: OscilloscopeMemory,
+    /// `audio_memory_`.
+    audio_memory: Arc<AudioMemory>,
 }
 
 impl Default for Synth {
@@ -87,7 +132,31 @@ impl Synth {
             wavetable_creators: Vec::new(),
             mod_connections: Vec::with_capacity(MAX_MODULATION_CONNECTIONS),
             modulation_change_queue: Vec::with_capacity(MODULATION_CHANGE_CAPACITY),
+            status_outputs: Vec::new(),
+            modulation_totals: Vec::new(),
+            oscilloscope: OscilloscopeMemory::default(),
+            audio_memory: Arc::new(AudioMemory::default()),
         };
+        synth.status_outputs = status_names()
+            .iter()
+            .map(|name| {
+                synth
+                    .engine
+                    .get_status_output(name)
+                    .unwrap_or_else(|| panic!("the engine registers status output {name}"))
+            })
+            .collect();
+        let mono = synth.engine.get_mono_modulations();
+        let poly = synth.engine.get_poly_modulations();
+        synth.modulation_totals = destination_names()
+            .iter()
+            .map(|name| {
+                let total = mono
+                    .get(*name)
+                    .unwrap_or_else(|| panic!("destination {name} has a mono modulation total"));
+                (total.clone(), poly.get(*name).cloned())
+            })
+            .collect();
         synth.set_tuning(&Tuning::new());
         for i in 0..NUM_OSCILLATORS {
             let mut creator = WavetableCreator::new();
@@ -530,6 +599,86 @@ impl Synth {
             left[i] = frame.get(0);
             right[i] = frame.get(1);
         }
+        self.update_memory_output(num_samples);
+    }
+
+    /// `updateMemoryOutput(samples, audio)` on the engine's output: the
+    /// audio memory, and the oscilloscope window, which restarts on a new
+    /// note and spans whole periods of the last note played. The editor
+    /// reads both; the audio is unaffected.
+    fn update_memory_output(&mut self, samples: usize) {
+        let output = self.engine.output(0);
+        for i in 0..samples {
+            let frame = output.at(i);
+            self.audio_memory.push(frame.get(0), frame.get(1));
+        }
+
+        let (last_played, num_pressed) = self
+            .with_engine(|engine| (engine.last_active_note(), engine.num_pressed_notes() as i32));
+        let last_played = utils::clamp(last_played, OUTPUT_WINDOW_MIN_NOTE, OUTPUT_WINDOW_MAX_NOTE);
+        let sample_rate = self.engine.sample_rate();
+        let output_inc = (sample_rate / OSCILLOSCOPE_MEMORY_SAMPLE_RATE).max(1);
+        let oscilloscope_samples = OSCILLOSCOPE_SAMPLES as i32;
+        let memory = &mut self.oscilloscope;
+
+        if last_played != 0.0
+            && (memory.last_played_note != last_played || num_pressed > memory.last_num_pressed)
+        {
+            memory.last_played_note = last_played;
+            let frequency = utils::midi_note_to_frequency(memory.last_played_note);
+            let period = sample_rate as f32 / frequency;
+            let window_length = output_inc * OSCILLOSCOPE_MEMORY_RESOLUTION as i32;
+            memory.reset_period = period;
+            while memory.reset_period < window_length as f32 {
+                memory.reset_period += memory.reset_period;
+            }
+            memory.reset_period = memory.reset_period.min(2.0 * window_length as f32);
+            memory.index = 0;
+            memory.memory.copy_from_slice(&memory.write);
+        }
+        memory.last_num_pressed = num_pressed;
+
+        while memory.input_offset < samples as i32 {
+            let input_index = memory.input_offset.clamp(0, samples as i32);
+            memory.index = memory.index.clamp(0, oscilloscope_samples - 1);
+            memory.write[memory.index as usize] = output.at(input_index as usize);
+            memory.index += 1;
+            if (memory.index * output_inc) as f32 >= memory.reset_period {
+                // `int += float`: the sum in float, truncated.
+                memory.input_offset = (memory.input_offset as f32
+                    + (memory.reset_period - (memory.index * output_inc) as f32))
+                    as i32;
+                memory.index = 0;
+                memory.memory.copy_from_slice(&memory.write);
+            }
+            memory.input_offset += output_inc;
+        }
+        memory.input_offset -= samples as i32;
+    }
+
+    /// The spectrogram's audio memory (`SynthBase::audio_memory_`), shared
+    /// with the editor.
+    pub fn audio_memory(&self) -> Arc<AudioMemory> {
+        self.audio_memory.clone()
+    }
+
+    /// Fills the writer's snapshot with every status output, each
+    /// destination's modulation totals and the oscilloscope memory, and
+    /// publishes it. Nothing is allocated.
+    pub fn write_telemetry(&self, writer: &mut TelemetryWriter) {
+        let (status, totals, oscilloscope) = writer.snapshot_mut().parts_mut();
+        for (value, output) in status.iter_mut().zip(&self.status_outputs) {
+            *value = output.value().to_array();
+        }
+        for (total, (mono, poly)) in totals.iter_mut().zip(&self.modulation_totals) {
+            total.mono = mono.trigger_value().to_array();
+            total.poly = poly.as_ref().map(|poly| poly.trigger_value().to_array());
+            total.enabled = mono.owner().is_some_and(|owner| owner.enabled());
+        }
+        for (frame, value) in oscilloscope.iter_mut().zip(self.oscilloscope.memory.iter()) {
+            *frame = [value.get(0), value.get(1)];
+        }
+        writer.publish();
     }
 
     /// `RenderSynth::prepare`: sample rate, bpm, modulation switches.

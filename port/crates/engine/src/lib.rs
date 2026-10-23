@@ -20,7 +20,9 @@
 //!   `Parameters::getDetails`;
 //! - [`edit_bus`]: live edits from the editor and the chat layer (modulation
 //!   routing, shapes, wavetables, the sample) and the producers' mirror of
-//!   the [`document::PresetDocument`] (milestone G0 of the GUI plan).
+//!   the [`document::PresetDocument`] (milestone G0 of the GUI plan);
+//! - [`telemetry`]: what the editor shows of the playing engine (status
+//!   outputs, modulation totals, oscilloscope and audio memory).
 //!
 //! The upstream per-ISA sites (`migration/decisions/reference-arm.md`) are
 //! reached only through `sas-simd`; the `aarch64-semantics` feature forwards
@@ -42,6 +44,7 @@ mod slot_queue;
 pub mod sound_engine;
 pub mod synth;
 pub mod synth_voice_handler;
+pub mod telemetry;
 pub mod tuning;
 pub mod voice_handler;
 

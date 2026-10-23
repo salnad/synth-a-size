@@ -207,6 +207,23 @@ fn a_host_restore_drops_edits_queued_before_it() {
     assert_eq!(first_difference(&actual, &expected), None);
 }
 
+/// Each block that runs the engine publishes the editor's telemetry.
+#[test]
+fn each_block_publishes_telemetry() {
+    let _rng = ENGINE_RNG.lock().unwrap_or_else(|p| p.into_inner());
+    let mut plugin = new_plugin(&corpus("presets/init_saw.vital"));
+    let telemetry = plugin.telemetry();
+    play(&mut plugin, 50);
+    telemetry.read(|snapshot| {
+        assert_eq!(snapshot.block, 49);
+        assert_eq!(snapshot.status_by_name("num_voices").unwrap()[0], 1.0);
+        assert!(snapshot.status_by_name("peak_meter").unwrap()[0] > 0.0);
+    });
+    let mut latest = [[0.0f32; 2]; 64];
+    telemetry.audio_memory().read_latest(&mut latest);
+    assert!(latest.iter().any(|frame| frame[0] != 0.0));
+}
+
 /// Edits apply before the block's host parameter changes: a host change to a
 /// new slot's amount made right after the connection wins over the drag's
 /// amount the connection carries.
