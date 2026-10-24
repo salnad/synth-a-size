@@ -36,10 +36,25 @@ jobs:
   macos-15:
     name: macOS 15 arm64 reference and parity (advisory)
     runs-on: macos-15
+    # Line tables keep panic backtraces readable at a fraction of full debug
+    # info's size; debug-info level does not change generated code. Job-level
+    # so rust-cache keys on it.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      # The runner's free disk no longer fits the reference trees plus the
+      # workspace's debug test build (run 40077324174 failed linking with
+      # ENOSPC). The job never uses the preinstalled Android SDK.
+      - name: Free disk space
+        run: |
+          df -h /
+          for d in "$HOME/Library/Android" "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}"; do
+            if [ -n "$d" ] && [ -d "$d" ]; then sudo rm -rf "$d"; fi
+          done
+          df -h /
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |

@@ -93,8 +93,23 @@ jobs:
     outputs:
       missing_only: ${{ steps.classify.outputs.missing_only }}
       reason: ${{ steps.classify.outputs.reason }}
+    # Line tables keep panic backtraces readable at a fraction of full debug
+    # info's size; debug-info level does not change generated code. Job-level
+    # so rust-cache keys on it.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@v7
+      # The runner's free disk no longer fits the reference trees plus the
+      # workspace's debug test build (run 40077324174 failed linking with
+      # ENOSPC). The job never uses the preinstalled Android SDK.
+      - name: Free disk space
+        run: |
+          df -h /
+          for d in "$HOME/Library/Android" "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}"; do
+            if [ -n "$d" ] && [ -d "$d" ]; then sudo rm -rf "$d"; fi
+          done
+          df -h /
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
@@ -172,6 +187,9 @@ jobs:
         run: |
           set -o pipefail
           cargo test --workspace --locked --no-fail-fast --manifest-path port/Cargo.toml 2>&1 | tee build/parity.log
+      - name: Disk left after the parity build
+        if: ${{ !cancelled() }}
+        run: df -h / && du -sh port/target build/platform 2>/dev/null || true
       # Strict on main: a missing or changed macOS hash is an error.
       - name: Hashes match the committed macOS arm64 identity
         id: hashes
