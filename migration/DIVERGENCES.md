@@ -563,6 +563,47 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
 - **Approved:** coordinator relaying the review of #128 (GUI Reviewer,
   Voice tab and modulation, 2026-10-26).
 
+### D20. Text to Wavetable is absent
+
+- **Differs:** a feature upstream has and the port doesn't: generating a
+  wavetable from typed text.
+- **Upstream:** the wavetable view's right-click menu always has "Text to
+  Wavetable" (or "Text to Wavetable - Log in" when signed out;
+  `Wavetable3d::mouseDown`), and the oscillator section has the
+  text-to-wavetable field it opens (`OscillatorSection::textToWavetable`,
+  `ttwt_`, `ttwt_settings_`). The text goes to upstream's online service,
+  which needs the user signed in.
+- **Port:** neither the menu item nor the field exists
+  (`port/crates/gui/src/controls/wavetable_3d.rs`,
+  `port/crates/gui/src/sections/oscillator.rs`).
+- **Why:** it depends on sign-in and an online account, which the port
+  drops (migration/AGENTS.md rule 4). A local or offline alternative is
+  parked as I20.
+- **Approved:** coordinator, relaying UI Reviewer's review of #137.
+
+### D21. Pasting wavetable JSON that can't be read leaves the oscillator unchanged
+
+- **Differs:** what pasting wavetable JSON onto an oscillator does when the
+  text passes the validity check but can't be read.
+- **Upstream:** the paste checks `WavetableCreator::isValidJson` (an object
+  with `version`, `name` and an array of `groups`, or a line shape) and then
+  calls `WavetableEditSection::loadWavetable`. That clears the creator, and
+  `jsonToState` clears it again, sets the name and author, and reads the
+  groups. If a group can't be read (for example `"groups": [7]`), the
+  exception is caught and nothing re-renders, so the creator is left
+  cleared and partly loaded while the oscillator keeps playing its old
+  table.
+- **Port:** `EditorModel::load_wavetable_json` reads the JSON into a copy of
+  the oscillator's creator and sets it only if reading succeeds
+  (`PluginModel`, `port/crates/plugin/src/editor.rs`). Unreadable JSON
+  returns false and leaves the creator, the table and the edit bus revision
+  unchanged.
+- **Why:** upstream's result is a creator that no longer matches the sound,
+  and saving the preset then would store the partial state. Rejecting the
+  paste keeps the two consistent. Valid JSON loads exactly as upstream's.
+- **Approved:** coordinator, relaying UI Reviewer's and Graph Reviewer's
+  reviews of #137.
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change

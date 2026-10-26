@@ -7,8 +7,9 @@
 //! (`vital/src/interface/editor_sections/oscillator_section.cpp`), and the
 //! FM/RM dependency check of `SynthesisInterface::distortionTypeChanged`.
 //!
-//! The wavetable view is `controls::wavetable_3d`. The wavetable's browser,
-//! the text-to-wavetable field and the edit button's action come later.
+//! The wavetable view is `controls::wavetable_3d`. The wavetable's browser
+//! and the edit button's action come later. The text-to-wavetable field is
+//! absent (D20: it needs sign-in).
 
 use std::cell::RefCell;
 

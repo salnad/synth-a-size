@@ -2633,6 +2633,7 @@ dependencies = [
 name = "sas-gui"
 version = "0.0.1"
 dependencies = [
+ "copypasta",
  "egui",
  "egui-wgpu",
  "egui_kittest",

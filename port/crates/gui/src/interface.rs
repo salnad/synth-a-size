@@ -192,6 +192,25 @@ pub trait EditorModel: Send + Sync + 'static {
         String::new()
     }
 
+    /// Oscillator `oscillator`'s wavetable creator as upstream's JSON
+    /// (`FullInterface::getWavetableJson`), for copying. None past the
+    /// oscillators, or without an engine.
+    fn wavetable_json(&self, _oscillator: usize) -> Option<String> {
+        None
+    }
+
+    /// Loads wavetable JSON into oscillator `oscillator`
+    /// (`FullInterface::loadWavetable`): a creator's state or a line shape,
+    /// as `WavetableCreator::isValidJson` accepts. Returns false, changing
+    /// nothing, when `json` isn't one or can't be read or rendered.
+    fn load_wavetable_json(&self, _oscillator: usize, _json: &str) -> bool {
+        false
+    }
+
+    /// Resets oscillator `oscillator`'s wavetable to the default one
+    /// (`FullInterface::loadDefaultWavetable`: `WavetableCreator::init`).
+    fn load_default_wavetable(&self, _oscillator: usize) {}
+
     /// Calls `f` with the sample oscillator's audio, read in place: nothing
     /// is copied. `left` is the mono or left channel `SampleViewer` draws
     /// (`Sample::buffer`, `originalLength`). `f` is not called when there is
