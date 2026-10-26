@@ -95,6 +95,12 @@ pub trait EditorModel: Send + Sync + 'static {
         true
     }
 
+    /// `LoadSave::displayHzFrequency`: cutoff sliders show hertz rather
+    /// than their note value (the "hz_frequency" setting, off by default).
+    fn hz_frequency_display(&self) -> bool {
+        false
+    }
+
     /// `SynthBase::getTuningName`: the name of the tuning the synth plays.
     fn tuning_name(&self) -> String {
         String::new()

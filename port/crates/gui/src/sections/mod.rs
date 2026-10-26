@@ -216,6 +216,7 @@ impl<'a, 'b> Panel<'a, 'b> {
     /// Shows `slider` at `bounds`: handles its mouse, routes its popup, menu
     /// and text entry to the overlay, and draws it.
     pub fn slider(&mut self, slider: &Slider, bounds: Rect) {
+        let slider = &slider.displayed(self.host.model().hz_frequency_display());
         let (value, hover) = self.slider_input(slider, bounds);
         slider.paint(
             self.pixels,
@@ -273,6 +274,7 @@ impl<'a, 'b> Panel<'a, 'b> {
     /// returns the value to draw (the held value while dragging, so the
     /// drawing doesn't lag the host) and whether the pointer is over it.
     pub fn slider_input(&mut self, slider: &Slider, bounds: Rect) -> (f32, bool) {
+        let slider = &slider.displayed(self.host.model().hz_frequency_display());
         let event = slider.interact(self.ui, self.host, self.pixels, bounds);
         let value = event.value.unwrap_or_else(|| self.host.value(slider.name));
         if event.popup {

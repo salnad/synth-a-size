@@ -463,7 +463,7 @@ impl FilterSection {
             kind,
             names,
             on: SynthButton::power(names.on),
-            cutoff: linear(names.cutoff, "Cutoff: "),
+            cutoff: linear(names.cutoff, "Cutoff: ").hz_alternate(),
             formant_x: linear(names.formant_x, "Formant X: "),
             mix: Slider::new(names.mix, SliderStyle::Rotary),
             blend: linear(names.blend, "Blend: ")

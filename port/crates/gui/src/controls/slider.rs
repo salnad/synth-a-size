@@ -126,6 +126,9 @@ pub struct Slider {
     /// `snapToValue`: a drag within 5% of the range of this value lands on
     /// it, unless Command is held.
     pub snap_to: Option<f32>,
+    /// `SynthSection::setSliderHasHzAlternateDisplay`: with the hertz
+    /// setting on, the value reads in hertz (see [`Slider::displayed`]).
+    pub hz_alternate: bool,
 }
 
 impl Slider {
@@ -148,6 +151,7 @@ impl Slider {
             text_component_offset: None,
             double_click_value: None,
             popup_prefix: None,
+            hz_alternate: false,
             snap_to: None,
         }
     }
@@ -172,6 +176,25 @@ impl Slider {
             }
             _ => value,
         }
+    }
+
+    /// `setSliderHasHzAlternateDisplay`.
+    pub fn hz_alternate(mut self) -> Slider {
+        self.hz_alternate = true;
+        self
+    }
+
+    /// The slider as it displays its value now (`getDisplayDetails`): an
+    /// hertz-alternate slider with the setting on reads its value through
+    /// the hertz details, exponential in semitones from MIDI note 0's
+    /// frequency.
+    pub fn displayed(&self, hz_frequency: bool) -> Slider {
+        let mut slider = *self;
+        if self.hz_alternate && hz_frequency {
+            slider.info = hz_details(self.info);
+            slider.format.exponential_base = 2.0f32.powf(1.0 / 12.0);
+        }
+        slider
     }
 
     /// `setPopupPrefix`: the popup reads "prefix value" (a text slider's
@@ -817,6 +840,30 @@ pub fn power_scale(value: f32, power: f32) -> f32 {
     numerator / denominator
 }
 
+/// `vital::kMidi0Frequency`.
+#[allow(clippy::excessive_precision)]
+const MIDI_0_FREQUENCY: f32 = 8.175_798_915_6;
+
+/// `setSliderHasHzAlternateDisplay`'s `hz_details`: the parameter's details
+/// as hertz. Made once per parameter.
+fn hz_details(info: &'static ParamInfo) -> &'static ParamInfo {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static DETAILS: OnceLock<Mutex<HashMap<String, &'static ParamInfo>>> = OnceLock::new();
+    let mut details = DETAILS
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    details.entry(info.name.clone()).or_insert_with(|| {
+        let mut hz = info.clone();
+        hz.value_scale = ValueScale::Exponential;
+        hz.post_offset = 0.0;
+        hz.display_units = " Hz";
+        hz.display_multiply = MIDI_0_FREQUENCY;
+        Box::leak(Box::new(hz))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -874,5 +921,28 @@ mod tests {
         assert_eq!(power_scale(0.5, 0.0), 0.5);
         let expected = ((2.0f32 * 0.5).exp() - 1.0) / (2.0f32.exp() - 1.0);
         assert_eq!(power_scale(0.5, 2.0), expected);
+    }
+}
+
+#[cfg(test)]
+mod hz_tests {
+    use super::*;
+
+    /// A cutoff of MIDI note 60 reads as middle C's frequency with the
+    /// hertz setting on, and typing a frequency sets its note.
+    #[test]
+    fn cutoffs_read_in_hertz_with_the_setting_on() {
+        let cutoff = Slider::new("filter_1_cutoff", SliderStyle::Horizontal)
+            .popup_prefix("Cutoff: ")
+            .hz_alternate();
+        let hz = cutoff.displayed(true);
+        assert_eq!(hz.popup_text(60.0), "Cutoff: 261.6 Hz");
+        let note = format::value_from_text(hz.info, &hz.format, "440");
+        assert!((note - 69.0).abs() < 1e-3, "{note}");
+        assert!(!cutoff.displayed(false).popup_text(60.0).contains("Hz"));
+        // A slider without the alternate never changes.
+        let plain = Slider::new("filter_1_cutoff", SliderStyle::Horizontal);
+        assert_eq!(plain.displayed(true).info.name, plain.info.name);
+        assert!(!plain.displayed(true).popup_text(60.0).contains("Hz"));
     }
 }
