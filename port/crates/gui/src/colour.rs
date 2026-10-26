@@ -54,6 +54,28 @@ impl Colour {
         Colour((alpha << 24) | (self.0 & 0x00ff_ffff))
     }
 
+    /// `Colour::overlaidWith`: `src` composited over this colour, in JUCE's
+    /// integer steps.
+    pub fn overlaid_with(self, src: Colour) -> Colour {
+        let dest_alpha = self.alpha() as i32;
+        if dest_alpha <= 0 {
+            return src;
+        }
+        let inv_a = 0xff - src.alpha() as i32;
+        let res_a = 0xff - (((0xff - dest_alpha) * inv_a) >> 8);
+        if res_a <= 0 {
+            return self;
+        }
+        let da = (inv_a * dest_alpha) / res_a;
+        let mix = |dest: u8, src: u8| (src as i32 + (((dest as i32 - src as i32) * da) >> 8)) as u8;
+        Colour(
+            ((res_a as u32) << 24)
+                | ((mix(self.red(), src.red()) as u32) << 16)
+                | ((mix(self.green(), src.green()) as u32) << 8)
+                | mix(self.blue(), src.blue()) as u32,
+        )
+    }
+
     /// `Colour::withSaturation(0.0f)`: the grey of the colour's HSB
     /// brightness (its brightest channel).
     pub fn desaturated(self) -> Colour {

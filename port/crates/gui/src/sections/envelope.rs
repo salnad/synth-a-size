@@ -5,10 +5,10 @@
 //! under the envelope editor. Ports `EnvelopeSection`
 //! (`vital/src/interface/editor_sections/envelope_section.cpp`).
 //!
-//! The editor itself (`EnvelopeEditor`) and its magnifying glass come
-//! later; its backdrop is drawn here.
+//! The magnifying glass comes later.
 
 use super::Panel;
+use crate::controls::envelope_editor::{EnvelopeEditor, EnvelopeNames};
 use crate::controls::slider::{Slider, SliderStyle};
 use crate::layout::Rect;
 use crate::paint::PixelPainter;
@@ -88,9 +88,29 @@ macro_rules! envelope_names {
 /// Each envelope's knob parameters, in `LABELS` order.
 const NAMES: [[&str; 6]; NUM_ENVELOPES] = envelope_names!("1", "2", "3", "4", "5", "6");
 
+macro_rules! editor_names {
+    ($($n:literal),*) => {
+        [$(EnvelopeNames {
+            delay: concat!("env_", $n, "_delay"),
+            attack: concat!("env_", $n, "_attack"),
+            hold: concat!("env_", $n, "_hold"),
+            decay: concat!("env_", $n, "_decay"),
+            sustain: concat!("env_", $n, "_sustain"),
+            release: concat!("env_", $n, "_release"),
+            attack_power: concat!("env_", $n, "_attack_power"),
+            decay_power: concat!("env_", $n, "_decay_power"),
+            release_power: concat!("env_", $n, "_release_power"),
+        }),*]
+    };
+}
+
+/// Each envelope's editor parameters.
+const POWER_NAMES: [EnvelopeNames; NUM_ENVELOPES] = editor_names!("1", "2", "3", "4", "5", "6");
+
 /// One envelope's controls (`EnvelopeSection`'s constructor).
 pub struct EnvelopeSection {
     knobs: [Slider; 6],
+    editor: EnvelopeEditor,
 }
 
 impl EnvelopeSection {
@@ -98,6 +118,9 @@ impl EnvelopeSection {
     pub fn new(index: usize) -> EnvelopeSection {
         EnvelopeSection {
             knobs: NAMES[index].map(|name| Slider::new(name, SliderStyle::Rotary)),
+            editor: EnvelopeEditor {
+                names: POWER_NAMES[index],
+            },
         }
     }
 
@@ -113,9 +136,9 @@ impl EnvelopeSection {
     }
 
     pub fn show(&self, panel: &mut Panel, layout: &EnvelopeLayout) {
+        self.editor.show(panel, layout.editor);
         for (knob, bounds) in self.knobs.iter().zip(layout.knobs) {
             panel.slider(knob, bounds);
         }
-        panel.widget_corners(layout.editor);
     }
 }

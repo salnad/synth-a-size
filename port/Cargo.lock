@@ -2639,6 +2639,7 @@ dependencies = [
  "naga",
  "nice-plug",
  "nice-plug-egui",
+ "sas-common",
  "sas-engine",
  "sas-filters",
  "sas-preset",

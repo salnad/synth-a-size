@@ -14,6 +14,7 @@ use nice_plug::context::PluginApi;
 use nice_plug::prelude::PluginState;
 use nice_plug::prelude::{FloatParam, FloatRange, IntParam, IntRange, Param, ParamPtr};
 use sas_gui::controls::button::SynthButton;
+use sas_gui::controls::envelope_editor::{EnvelopeNames, Shape, Values as EnvelopeValues};
 use sas_gui::controls::slider::Slider;
 use sas_gui::controls::tab_selector::TabSelector;
 use sas_gui::layout::{FullLayout, Rect};
@@ -70,6 +71,15 @@ const CONTROLS: &[&str] = &[
     "filter_1_filter_input",
     "filter_2_filter_input",
     "osc_2_destination",
+    "env_1_delay",
+    "env_1_attack",
+    "env_1_hold",
+    "env_1_decay",
+    "env_1_sustain",
+    "env_1_release",
+    "env_1_attack_power",
+    "env_1_decay_power",
+    "env_1_release_power",
 ];
 
 enum TestParam {
@@ -1971,4 +1981,144 @@ fn a_release_over_the_filter_input_after_a_press_elsewhere_changes_nothing() {
     );
     assert_eq!(fixture.synth.value("filter_1_filter_input"), 0.0);
     assert_eq!(fixture.synth.value("filter_2_filter_input"), 1.0);
+}
+
+const ENV_1: EnvelopeNames = EnvelopeNames {
+    delay: "env_1_delay",
+    attack: "env_1_attack",
+    hold: "env_1_hold",
+    decay: "env_1_decay",
+    sustain: "env_1_sustain",
+    release: "env_1_release",
+    attack_power: "env_1_attack_power",
+    decay_power: "env_1_decay_power",
+    release_power: "env_1_release_power",
+};
+
+/// The first envelope's editor and its shape at the synth's values.
+fn envelope_shape(fixture: &Fixture) -> (Rect, Shape) {
+    let editor = {
+        let m = modulation_layout(fixture);
+        let interface = fixture.interface.borrow();
+        EnvelopeLayout::new(&section_scope(interface.skin(), envelope::SKIN), m.envelope).editor
+    };
+    let s = &fixture.synth;
+    let values = EnvelopeValues {
+        delay: s.value("env_1_delay"),
+        attack: s.value("env_1_attack"),
+        hold: s.value("env_1_hold"),
+        decay: s.value("env_1_decay"),
+        sustain: s.value("env_1_sustain"),
+        release: s.value("env_1_release"),
+        attack_power: s.value("env_1_attack_power"),
+        decay_power: s.value("env_1_decay_power"),
+        release_power: s.value("env_1_release_power"),
+    };
+    let shape = Shape::new(
+        &ENV_1,
+        values,
+        editor.width as f32,
+        editor.height as f32,
+        4.0,
+    );
+    (editor, shape)
+}
+
+fn editor_point(editor: Rect, shape: &Shape, x: f32, y: f32) -> Pos2 {
+    Pos2::new(
+        editor.x as f32 + shape.pad_x(x),
+        editor.y as f32 + shape.pad_y(y),
+    )
+}
+
+#[test]
+fn dragging_the_attack_point_lengthens_the_attack() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let (editor, shape) = envelope_shape(&fixture);
+    let attack = fixture.synth.value("env_1_attack");
+    let start = editor_point(editor, &shape, shape.attack_x, 0.0);
+    harness.event(Event::PointerMoved(start));
+    harness.step();
+    fixture.take_log();
+    drag(
+        &mut harness,
+        start,
+        start + egui::vec2(60.0, 0.0),
+        Modifiers::NONE,
+    );
+    assert!(fixture.synth.value("env_1_attack") > attack);
+    let log = fixture.take_log();
+    assert_eq!(log.first().map(String::as_str), Some("begin env_1_attack"));
+    assert_eq!(log.last().map(String::as_str), Some("end env_1_attack"));
+    assert_eq!(
+        fixture.synth.value("env_1_decay"),
+        registry().get("env_1_decay").unwrap().default_value
+    );
+}
+
+#[test]
+fn dragging_the_sustain_point_sets_decay_and_sustain() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    fixture.synth.set("env_1_sustain", 0.5);
+    harness.step();
+    let (editor, shape) = envelope_shape(&fixture);
+    let decay = fixture.synth.value("env_1_decay");
+    let start = editor_point(editor, &shape, shape.decay_x, shape.sustain_y);
+    harness.event(Event::PointerMoved(start));
+    harness.step();
+    drag(
+        &mut harness,
+        start,
+        start + egui::vec2(30.0, 20.0),
+        Modifiers::NONE,
+    );
+    assert!(fixture.synth.value("env_1_decay") > decay);
+    assert!(fixture.synth.value("env_1_sustain") < 0.5);
+}
+
+#[test]
+fn a_double_click_straightens_a_power() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    fixture.synth.set("env_1_attack", 1.0);
+    fixture.synth.set("env_1_attack_power", 3.0);
+    harness.step();
+    let (editor, shape) = envelope_shape(&fixture);
+    let dot = editor_point(
+        editor,
+        &shape,
+        (shape.delay_x + shape.attack_x) / 2.0,
+        shape.attack_value(0.5),
+    );
+    harness.event(Event::PointerMoved(dot));
+    harness.step();
+    fixture.take_log();
+    click(&mut harness, dot);
+    click(&mut harness, dot);
+    assert_eq!(fixture.synth.value("env_1_attack_power"), 0.0);
+    // One gesture, from the double click; the clicks themselves open none.
+    assert_eq!(
+        fixture.take_log(),
+        [
+            "begin env_1_attack_power",
+            "set env_1_attack_power",
+            "end env_1_attack_power"
+        ]
+    );
+}
+
+/// A click that doesn't move sends no gesture.
+#[test]
+fn an_envelope_click_without_moving_sends_nothing() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let (editor, shape) = envelope_shape(&fixture);
+    let attack = editor_point(editor, &shape, shape.attack_x, 0.0);
+    harness.event(Event::PointerMoved(attack));
+    harness.step();
+    fixture.take_log();
+    click(&mut harness, attack);
+    assert!(fixture.take_log().is_empty());
 }
