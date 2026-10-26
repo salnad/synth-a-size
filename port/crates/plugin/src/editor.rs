@@ -5,6 +5,7 @@
 use std::sync::{Arc, Mutex};
 
 use nice_plug::context::gui::GuiContext;
+use sas_common::line_generator::LineGenerator;
 use sas_engine::keyboard::KeyboardHandle;
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::telemetry::Telemetry;
@@ -87,6 +88,16 @@ impl EditorModel for PluginModel {
 
     fn held_notes(&self) -> u128 {
         self.keyboard.held_notes()
+    }
+
+    fn lfo_shape(&self, index: usize) -> Option<LineGenerator> {
+        self.params
+            .edit_handle()
+            .with_document(|document| document.state.lfos.get(index).cloned())
+    }
+
+    fn set_lfo_shape(&self, index: usize, line: LineGenerator) -> bool {
+        self.params.edit_handle().set_lfo_shape(index, line).is_ok()
     }
 
     fn tuning_name(&self) -> String {

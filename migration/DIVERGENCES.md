@@ -506,6 +506,30 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
 - **Approved:** Salil, 2026-10-23. Reviewed by Graph Reviewer and Parity
   Reviewer on #99.
 
+### D19. "Set Start Point" on an LFO grid cell sets the phase
+
+*Proposed in #128.*
+
+- **Differs:** what the LFO editor's right-click "Set Start Point" does when
+  it was opened over a grid cell in paint mode (no point or power under the
+  pointer).
+- **Upstream:** `LfoEditor::mouseDown` captures the hovered point and power
+  for the menu's callback but not the grid cell; `respondToCallback`'s
+  `kSetPhaseToGrid` reads `getActiveGridSection()` when the choice arrives
+  (`vital/src/interface/editor_components/lfo_editor.cpp:123`). By then the
+  pointer has moved onto the popup, `LineEditor::mouseExit` has run
+  `clearActiveMouseActions()` and the section is -1, so the choice does
+  nothing.
+- **Port:** `LineEditor` (`port/crates/gui/src/controls/line_editor.rs`)
+  captures the cell with the point and power when the menu opens
+  (`LineAction::grid_section`), so the choice sets the LFO's phase to the
+  cell's start, as the menu item says.
+- **Why:** upstream offers the item and then can't carry it out; there is no
+  meaningful behaviour to reproduce. This follows D1's and D15's precedent
+  of not replicating upstream bugs.
+- **Approved:** coordinator relaying the review of #128 (GUI Reviewer,
+  Voice tab and modulation, 2026-10-26).
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change

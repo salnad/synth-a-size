@@ -27,6 +27,7 @@ pub mod volume;
 use egui::Ui;
 
 use crate::controls::button::SynthButton;
+use crate::controls::line_editor::LineAction;
 use crate::controls::slider::Slider;
 use crate::host::Host;
 use crate::layer::Layer;
@@ -64,6 +65,9 @@ pub enum MenuOwner {
         model: &'static str,
         style: &'static str,
     },
+    /// An LFO editor's menu; the editor carries out the choice
+    /// (`Overlay::line_action`).
+    Line(LineAction),
 }
 
 /// Room for each filter model's styles in a [`MenuOwner::FilterType`] id.
@@ -102,6 +106,8 @@ pub struct Overlay {
     pub menu: Option<Menu<MenuOwner>>,
     /// The two-column selector (`FullInterface::dualPopupSelector`).
     pub dual_menu: Option<DualMenu<MenuOwner>>,
+    /// A choice from an LFO editor's menu, for that editor's next frame.
+    pub line_action: Option<LineAction>,
     pub text_entry: Option<TextEntry>,
 }
 
@@ -138,6 +144,12 @@ impl Overlay {
                             }
                         }
                         MenuOwner::FilterType { .. } => apply_choice(host, menu.owner, id),
+                        MenuOwner::Line(action) => {
+                            self.line_action = Some(LineAction {
+                                choice: id,
+                                ..action
+                            })
+                        }
                     }
                 }
             }

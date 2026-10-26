@@ -123,6 +123,9 @@ pub struct Slider {
     pub double_click_value: Option<f32>,
     /// `setPopupPrefix`.
     pub popup_prefix: Option<&'static str>,
+    /// `snapToValue`: a drag within 5% of the range of this value lands on
+    /// it, unless Command is held.
+    pub snap_to: Option<f32>,
 }
 
 impl Slider {
@@ -145,6 +148,29 @@ impl Slider {
             text_component_offset: None,
             double_click_value: None,
             popup_prefix: None,
+            snap_to: None,
+        }
+    }
+
+    /// `snapToValue(true, value)`.
+    pub fn snap_to_value(mut self, value: f32) -> Slider {
+        self.snap_to = Some(value);
+        self
+    }
+
+    /// `SynthSlider::snapValue` for a drag.
+    fn snapped(&self, value: f32, sensitive: bool) -> f32 {
+        const PERCENT: f32 = 0.05;
+        match self.snap_to {
+            Some(snap) if !sensitive => {
+                let radius = PERCENT * (self.info.max - self.info.min);
+                if (value - snap).abs() <= radius {
+                    snap
+                } else {
+                    value
+                }
+            }
+            _ => value,
         }
     }
 
@@ -639,7 +665,10 @@ impl Slider {
                     state.proportion =
                         self.dragged_proportion(&state, pointer, bounds, ppp, modifiers);
                     state.last = pointer;
-                    let value = self.value_from_proportion(state.proportion);
+                    let value = self.snapped(
+                        self.value_from_proportion(state.proportion),
+                        modifiers.command,
+                    );
                     if value != state.value {
                         host.set(self.name, value);
                         state.value = value;

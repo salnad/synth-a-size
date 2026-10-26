@@ -17,6 +17,7 @@
 use egui::{Ui, UiBuilder};
 use std::sync::Arc;
 
+use sas_common::line_generator::LineGenerator;
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::telemetry::Telemetry;
 use sas_engine::Tuning;
@@ -30,6 +31,7 @@ use crate::controls::tab_selector::{self, TabSelector};
 use crate::fonts::Face;
 use crate::host::{Host, HostParam};
 use crate::layout::{FullLayout, Rect};
+use crate::local::LocalValues;
 use crate::paint::{PixelPainter, RectF};
 use crate::scope::Scope;
 use crate::sections::bend::{self, BendLayout, BendSection};
@@ -76,6 +78,20 @@ pub trait EditorModel: Send + Sync + 'static {
     /// oscilloscope, modulation values). None draws them at rest.
     fn telemetry(&self) -> Option<Telemetry> {
         None
+    }
+
+    /// LFO `index`'s shape (`SynthBase::getLfoSource`). None draws the
+    /// init shape.
+    fn lfo_shape(&self, index: usize) -> Option<LineGenerator> {
+        let _ = index;
+        None
+    }
+
+    /// Replaces LFO `index`'s shape. False when the synth can't take it
+    /// now (its edit queue is full); the editor tries again next frame.
+    fn set_lfo_shape(&self, index: usize, line: LineGenerator) -> bool {
+        let _ = (index, line);
+        true
     }
 
     /// `SynthBase::getTuningName`: the name of the tuning the synth plays.
@@ -256,6 +272,7 @@ pub struct Interface {
     modulation: ModulationInterface,
     playing_note: PlayingNote,
     overlay: Overlay,
+    locals: Arc<LocalValues>,
 }
 
 impl Default for Interface {
@@ -277,6 +294,7 @@ impl Interface {
             modulation: ModulationInterface::default(),
             playing_note: PlayingNote::default(),
             overlay: Overlay::default(),
+            locals: Arc::default(),
         }
     }
 
@@ -311,6 +329,8 @@ impl Interface {
 
     /// Draws the editor into `area` (points) and handles its input.
     pub fn show_in(&mut self, ui: &mut Ui, area: egui::Rect, host: &Host) {
+        let locals = self.locals.clone();
+        let host = &host.with_locals(&locals);
         let pixels_per_point = ui.ctx().pixels_per_point();
         let width = (area.width() * pixels_per_point).round() as i32;
         let height = (area.height() * pixels_per_point).round() as i32;

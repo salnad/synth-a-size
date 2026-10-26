@@ -21,6 +21,7 @@ pub mod host;
 pub mod interface;
 pub mod layer;
 pub mod layout;
+pub mod local;
 pub mod paint;
 pub mod popup;
 pub mod primitives;

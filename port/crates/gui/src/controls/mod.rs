@@ -9,6 +9,7 @@ pub mod filter_response;
 pub mod filter_view;
 pub mod format;
 pub mod icon;
+pub mod line_editor;
 pub mod modulation_button;
 pub mod oscilloscope;
 pub mod path;
