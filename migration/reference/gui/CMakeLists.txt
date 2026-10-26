@@ -49,6 +49,8 @@ add_executable(ref-gui
 target_include_directories(ref-gui PRIVATE
   # First: our AppConfig.h / JuceHeader.h; BinaryData.h comes from upstream.
   "${CMAKE_CURRENT_SOURCE_DIR}/juce_config"
+  # The audio reference's render loop (render_synth.h), header only.
+  "${REPO_ROOT}/migration/reference/src"
   "${VITAL_DIR}/standalone/JuceLibraryCode"
   "${JUCE_MODULES}"
   "${VITAL_DIR}/src/common"

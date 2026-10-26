@@ -19,35 +19,42 @@
 
 namespace harness {
 
-class RenderSynth : public HeadlessSynth {
+// SynthPlugin::prepareToPlay and processBlock on any SynthBase, so ref-render,
+// ref-bench and ref-gui drive the engine the same way.
+template <class Base>
+class RenderLoop : public Base {
   public:
     void prepare(int sample_rate, double bpm) {
-      engine_->setSampleRate(sample_rate);
-      engine_->setBpm(static_cast<float>(bpm));
-      engine_->updateAllModulationSwitches();
-      midi_manager_->setSampleRate(sample_rate);
+      this->engine_->setSampleRate(sample_rate);
+      this->engine_->setBpm(static_cast<float>(bpm));
+      this->engine_->updateAllModulationSwitches();
+      this->midi_manager_->setSampleRate(sample_rate);
     }
 
     // Mirrors SynthPlugin::processBlock with a transport that is always
     // playing from t=0 and no bypass.
     void renderBlock(AudioSampleBuffer& buffer, MidiBuffer& midi, double& seconds_time, int sample_rate) {
       int total_samples = buffer.getNumSamples();
-      processModulationChanges();
+      this->processModulationChanges();
       if (total_samples)
-        processKeyboardEvents(midi, total_samples);
+        this->processKeyboardEvents(midi, total_samples);
 
       double sample_time = 1.0 / sample_rate;
       for (int sample_offset = 0; sample_offset < total_samples;) {
         int num_samples = std::min<int>(total_samples - sample_offset, vital::kMaxBufferSize);
 
-        engine_->correctToTime(seconds_time);
-        processMidi(midi, sample_offset, sample_offset + num_samples);
-        processAudio(&buffer, buffer.getNumChannels(), num_samples, sample_offset);
+        this->engine_->correctToTime(seconds_time);
+        this->processMidi(midi, sample_offset, sample_offset + num_samples);
+        this->processAudio(&buffer, buffer.getNumChannels(), num_samples, sample_offset);
 
         seconds_time += num_samples * sample_time;
         sample_offset += num_samples;
       }
     }
+};
+
+class RenderSynth : public RenderLoop<HeadlessSynth> {
+  public:
 
     json state() { return saveToJson(); }
 

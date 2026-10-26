@@ -13,7 +13,9 @@ Commands:
            committed file differs instead of writing it.
   frames   Render every view in migration/corpus/gui/views.json to
            OUT/<name>.png. These show upstream's branding, so they are CI
-           artifacts only and are never committed.
+           artifacts only and are never committed. A view may run the engine
+           first ("midi", "seconds") and draw the animated views from it
+           ("animate"); see live_args.
 
 Without a DISPLAY the script re-runs itself under xvfb-run. Mesa's software
 OpenGL (LIBGL_ALWAYS_SOFTWARE=1) is used either way.
@@ -39,6 +41,8 @@ VIEWS = CORPUS / "views.json"
 # Presets the layout fixtures and views may load: authored ones from
 # migration/corpus/generate.py, never factory content.
 GUI_PRESETS = "migration/corpus/gui/presets/"
+# MIDI a view may play before its frame: the authored corpus files.
+MIDI_DIR = "migration/corpus/midi/"
 
 # Default size, smaller and larger scales, both letterbox directions, and a
 # window twice the default size (at display scale 1; Xvfb has no high-DPI
@@ -78,6 +82,34 @@ def check_preset(preset, where):
         sys.exit(f"gui_reference.py: {where}: preset {preset} is not in {GUI_PRESETS}")
     if not (REPO / preset).is_file():
         sys.exit(f"gui_reference.py: {where}: no preset {preset}")
+
+
+def live_args(view):
+    """ref-gui options for a view's running engine: "midi" (an authored file
+    in migration/corpus/midi/), "seconds" of audio to render (default: up to
+    the last MIDI event) and "animate" (true draws the animated views from the
+    engine's outputs, and needs a render that isn't empty: midi, or seconds
+    above 0)."""
+    args = []
+    name = view.get("name", "?")
+    midi = view.get("midi")
+    if midi:
+        if not midi.startswith(MIDI_DIR) or ".." in Path(midi).parts:
+            sys.exit(f"gui_reference.py: {VIEWS.name}: {name}: MIDI {midi} is not in {MIDI_DIR}")
+        if not (REPO / midi).is_file():
+            sys.exit(f"gui_reference.py: {VIEWS.name}: {name}: no MIDI file {midi}")
+        args += ["--midi", str(REPO / midi)]
+    if "seconds" in view:
+        seconds = view["seconds"]
+        if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or seconds < 0:
+            sys.exit(f"gui_reference.py: {VIEWS.name}: {name}: seconds must be a number >= 0")
+        args += ["--seconds", repr(float(seconds))]
+    if view.get("animate"):
+        seconds = view.get("seconds")
+        if not ((midi and seconds != 0) or (seconds is not None and seconds > 0)):
+            sys.exit(f"gui_reference.py: {VIEWS.name}: {name}: animate needs midi or seconds above 0")
+        args += ["--animate", "on"]
+    return args
 
 
 def layout_paths():
@@ -164,6 +196,7 @@ def frames(out):
                 "--tab", view.get("tab", "voice"),
                 "--width", str(view.get("width", 1400)),
                 "--height", str(view.get("height", 820))]
+        args += live_args(view)
         if view.get("preset"):
             check_preset(view["preset"], VIEWS.name)
             args += ["--preset", str(REPO / view["preset"])]
