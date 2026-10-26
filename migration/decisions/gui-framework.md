@@ -122,7 +122,6 @@ repeat the check in FL Studio where the note says so.
      access to the app that asks, which is the host, so an "Always Allow"
      given to REAPER says nothing about FL Studio's prompt. Repeat it in FL
      Studio.
-
 5. **Dragging a file into the editor (G5).** Drag an audio file from
    Finder onto oscillator 1's wavetable view. While it hovers, the view
    shows the import overlay (WAVETABLE, VOCODE, PITCH SPLICE) and the
@@ -133,6 +132,20 @@ repeat the check in FL Studio where the note says so.
      decides whether a drag over a plugin window reaches the plugin. Try a
      drag from Finder and one from REAPER's media explorer. FL Studio still
      needs checking.
+6. **Effects tab drags (G6a).** Turn every effect on (the effect order's
+   power buttons), then:
+   - drag across the delay's echoes (feedback), the distortion's curve
+     (drive) and the filter responses (chorus, delay, distortion, flanger,
+     phaser: cutoff or centre across, spread, resonance or feedback up and
+     down);
+   - drag an effect in the order list to another place.
+
+   Each drag should be one gesture: one undo step, and with automation
+   recording, a smooth curve rather than steps at the editor's frame rate.
+   After the reorder, the sections should follow the new order, and saving
+   and reopening the project should keep it.
+   - *REAPER:* gives an interim answer. Gestures, undo steps and the
+     automation curve are the host's, so repeat the check in FL Studio.
 
 ## Vendored egui-baseview
 

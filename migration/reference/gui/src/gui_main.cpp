@@ -8,6 +8,10 @@
 // Usage:
 //   ref-gui [--out frame.png] [--layout layout.jsonl] [--preset file.vital]
 //           [--tab voice|effects|matrix|advanced] [--width 1400] [--height 820] [--frames 30]
+//           [--effects-scroll 0]
+//
+// --effects-scroll scrolls the effects column down that many pixels (the
+// viewport keeps it within the column).
 //
 // --layout writes the bounds of every named component, relative to the
 // interface, so the port's layout can be checked exactly. Without --out
@@ -17,6 +21,7 @@
 
 #include "JuceHeader.h"
 
+#include "effects_interface.h"
 #include "full_interface.h"
 #include "sound_engine.h"
 #include "synth_base.h"
@@ -35,6 +40,7 @@ struct Options {
   int width = vital::kDefaultWindowWidth;
   int height = vital::kDefaultWindowHeight;
   int frames = 30;
+  int effects_scroll = 0;
   std::string layout;
 };
 
@@ -45,6 +51,16 @@ int tabIndex(const std::string& tab) {
       return i;
   }
   return -1;
+}
+
+EffectsViewport* findEffectsViewport(Component* component) {
+  if (auto* viewport = dynamic_cast<EffectsViewport*>(component))
+    return viewport;
+  for (Component* child : component->getChildren()) {
+    if (EffectsViewport* found = findEffectsViewport(child))
+      return found;
+  }
+  return nullptr;
 }
 
 TabSelector* findTabSelector(Component* component) {
@@ -184,13 +200,16 @@ class RefGuiApplication : public JUCEApplication {
           options.frames = std::stoi(value);
         else if (key == "--layout")
           options.layout = value;
+        else if (key == "--effects-scroll")
+          options.effects_scroll = std::stoi(value);
         else
           return fail("unknown option " + key);
       }
       int tab = tabIndex(options.tab);
       if ((options.out.empty() && options.layout.empty()) || tab < 0)
         return fail("usage: ref-gui (--out frame.png | --layout layout.jsonl) [--preset file.vital] "
-                    "[--tab voice|effects|matrix|advanced] [--width W] [--height H] [--frames N]");
+                    "[--tab voice|effects|matrix|advanced] [--width W] [--height H] [--frames N] "
+                    "[--effects-scroll Y]");
 
       synth_ = std::make_unique<RefGuiSynth>(options);
       if (options.preset.empty()) {
@@ -220,6 +239,13 @@ class RefGuiApplication : public JUCEApplication {
         selector->setValue(tab, sendNotificationSync);
       else if (tab != 0)
         return fail("tab selector not found");
+
+      if (options.effects_scroll) {
+        EffectsViewport* viewport = findEffectsViewport(gui);
+        if (viewport == nullptr)
+          return fail("effects viewport not found");
+        viewport->setViewPosition(0, options.effects_scroll);
+      }
 
       if (!options.layout.empty()) {
         std::string out;

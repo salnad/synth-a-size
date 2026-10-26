@@ -22,6 +22,136 @@ use sas_gui::sections::voice::{self, VoiceLayout};
 use sas_gui::sections::volume::VolumeLayout;
 use sas_gui::skin::Skin;
 
+/// G6: the Effects tab, laid out with every effect on
+/// (`migration/corpus/gui/presets/all_effects.vital`).
+mod effects {
+    use sas_gui::layout::{FullLayout, Rect};
+    use sas_gui::scope::Scope;
+    use sas_gui::sections::effects::chorus::ChorusLayout;
+    use sas_gui::sections::effects::delay::{DelayLayout, STYLE_MONO};
+    use sas_gui::sections::effects::distortion::DistortionLayout;
+    use sas_gui::sections::effects::flanger::FlangerLayout;
+    use sas_gui::sections::effects::order::OrderLayout;
+    use sas_gui::sections::effects::phaser::PhaserLayout;
+    use sas_gui::sections::effects::{self, Effect, EffectsLayout, NUM_EFFECTS};
+    use sas_gui::skin::Skin;
+
+    pub const ALL_EFFECTS: &str = "migration/corpus/gui/presets/all_effects.vital";
+
+    pub fn all_effects_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> {
+        let top = Scope::top(skin, layout.size_ratio);
+        let scope = top.within(effects::SKIN);
+        let order: [usize; NUM_EFFECTS] = std::array::from_fn(|i| i);
+        let fx = EffectsLayout::new(&scope, layout.effects, order, [true; NUM_EFFECTS]);
+        let order_layout = OrderLayout::new(&scope, fx.order, order);
+        let section = |effect: Effect| fx.effects[effect as usize].unwrap();
+        let in_effect = |effect: Effect| top.within(effect.skin());
+        let path = path.strip_prefix("effects/")?;
+        if path == "effect_chain_order" {
+            return Some(fx.order);
+        }
+        if path == "container" {
+            return Some(fx.container);
+        }
+        if let Some(rest) = path.strip_prefix("effect_chain_order/") {
+            let (name, button) = rest.split_once('/').unwrap_or((rest, ""));
+            let effect = Effect::ALL.into_iter().find(|e| e.name() == name)?;
+            return Some(if button.is_empty() {
+                order_layout.tiles[effect as usize]
+            } else {
+                order_layout.power_buttons[effect as usize]
+            });
+        }
+        let rest = path.strip_prefix("container/")?;
+        let (title, control) = rest.split_once('/').unwrap_or((rest, ""));
+        let effect = Effect::ALL.into_iter().find(|e| e.title() == title)?;
+        let bounds = section(effect);
+        if control.is_empty() {
+            return Some(bounds);
+        }
+        let scope = in_effect(effect);
+        Some(match effect {
+            Effect::Chorus => {
+                let l = ChorusLayout::new(&scope, bounds);
+                match control {
+                    "chorus_on" => l.on,
+                    "chorus_voices" => l.voices,
+                    "chorus_frequency" | "chorus_tempo" => l.frequency,
+                    "chorus_sync" => l.sync,
+                    "chorus_mod_depth" => l.mod_depth,
+                    "chorus_delay_1" => l.delay_1,
+                    "chorus_delay_2" => l.delay_2,
+                    "chorus_feedback" => l.feedback,
+                    "chorus_dry_wet" => l.dry_wet,
+                    "chorus_cutoff" => l.cutoff,
+                    "chorus_spread" => l.spread,
+                    _ => return None,
+                }
+            }
+            Effect::Delay => {
+                let l = DelayLayout::new(&scope, bounds, STYLE_MONO);
+                match control {
+                    "delay_on" => l.on,
+                    "delay_frequency" | "delay_tempo" => l.frequency,
+                    "delay_sync" => l.sync,
+                    "delay_aux_frequency" | "delay_aux_tempo" => l.aux_frequency,
+                    "delay_aux_sync" => l.aux_sync,
+                    "delay_style" => l.style,
+                    "delay_feedback" => l.feedback,
+                    "delay_dry_wet" => l.dry_wet,
+                    "delay_filter_cutoff" => l.filter_cutoff,
+                    "delay_filter_spread" => l.filter_spread,
+                    _ => return None,
+                }
+            }
+            Effect::Distortion => {
+                let l = DistortionLayout::new(&scope, bounds);
+                match control {
+                    "distortion_on" => l.on,
+                    "distortion_type" => l.kind,
+                    "distortion_filter_order" => l.filter_order,
+                    "distortion_drive" => l.drive,
+                    "distortion_mix" => l.mix,
+                    "distortion_filter_cutoff" => l.filter_cutoff,
+                    "distortion_filter_resonance" => l.filter_resonance,
+                    "distortion_filter_blend" => l.filter_blend,
+                    _ => return None,
+                }
+            }
+            Effect::Flanger => {
+                let l = FlangerLayout::new(&scope, bounds);
+                match control {
+                    "flanger_on" => l.on,
+                    "flanger_frequency" | "flanger_tempo" => l.frequency,
+                    "flanger_sync" => l.sync,
+                    "flanger_phase_offset" => l.phase_offset,
+                    "flanger_feedback" => l.feedback,
+                    "flanger_dry_wet" => l.dry_wet,
+                    "flanger_center" => l.center,
+                    "flanger_mod_depth" => l.mod_depth,
+                    _ => return None,
+                }
+            }
+            Effect::Phaser => {
+                let l = PhaserLayout::new(&scope, bounds);
+                match control {
+                    "phaser_on" => l.on,
+                    "phaser_frequency" | "phaser_tempo" => l.frequency,
+                    "phaser_sync" => l.sync,
+                    "phaser_phase_offset" => l.phase_offset,
+                    "phaser_blend" => l.blend,
+                    "phaser_feedback" => l.feedback,
+                    "phaser_dry_wet" => l.dry_wet,
+                    "phaser_center" => l.center,
+                    "phaser_mod_depth" => l.mod_depth,
+                    _ => return None,
+                }
+            }
+            _ => return None,
+        })
+    }
+}
+
 fn corpus() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../migration/corpus/gui")
 }
@@ -348,8 +478,11 @@ fn layout_matches_upstream_at_every_size() {
             // Entries laid out with a preset (`@preset` in layout_paths.txt)
             // name it; the port must lay the path out for that preset.
             let preset = entry.get("preset").map(|preset| preset.as_str().unwrap());
-            let actual = port_rect(&skin, &layout, path, preset)
-                .unwrap_or_else(|| panic!("{}: no port rectangle for {path}", file.display()));
+            let actual = match preset {
+                Some(effects::ALL_EFFECTS) => effects::all_effects_rect(&skin, &layout, path),
+                _ => port_rect(&skin, &layout, path, preset),
+            }
+            .unwrap_or_else(|| panic!("{}: no port rectangle for {path}", file.display()));
             assert_eq!(actual, expected, "{path} at {width}x{height}");
             checked += 1;
         }

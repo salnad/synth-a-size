@@ -11,6 +11,7 @@
 //! the interface and its changes to the host.
 
 pub mod bend;
+pub mod effects;
 pub mod envelope;
 pub mod filter;
 pub mod keyboard;

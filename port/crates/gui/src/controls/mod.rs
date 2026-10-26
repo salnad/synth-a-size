@@ -3,6 +3,7 @@
 //! The controls sections are built from, each porting an upstream
 //! `editor_components` class.
 
+pub mod bars;
 pub mod button;
 pub mod envelope_editor;
 pub mod filter_response;

@@ -1,0 +1,112 @@
+## 2026-10-26: GUI G6a: the Effects tab, with Chorus, Delay, Distortion, Flanger and Phaser
+
+**Changed**
+
+- `sections::effects::EffectsTab` (`EffectsInterface`):
+  - The effect order list (`DragDropEffectOrder`, `DraggableEffect`):
+    one tile per effect, with its icon and power button. Dragging a tile
+    reorders `effect_chain_order`. The drag starts on the press, with the
+    tile where the press began (`mouseDown`). It keeps its working order,
+    which the tab draws and sends rather than reading it back from the
+    host. The whole drag is one host gesture: begin at the first move, a
+    set for each new order, end on release.
+  - The column of enabled sections, scrolled by the wheel or the scroll
+    bar (`EffectsViewport`, `OpenGlScrollBar`). The bar is upstream's
+    `OpenGlScrollQuad` with `setShrinkLeft`: the left half of its track
+    at rest, widening by 0.2 a frame while hovered, and drawn in its
+    colour overlaid on itself while pressed. Dragging the thumb scrolls
+    with it, and a press on the track beside it pages
+    (`ScrollBar::mouseDown`, without the repeat timer).
+  - `EffectsLayout` and `OrderLayout` hold the bounds; the layout
+    fixtures check them.
+- The Chorus, Delay, Distortion, Flanger and Phaser sections, using
+  main's shared widgets:
+  - Each has its sideways heading (`section::paint_container`,
+    `Heading::Sideways`) and its power button on top
+    (`SynthSection::setActivator`).
+  - Rates use the shared `TempoSelector` (#122); Delay's style and
+    Distortion's type and filter order are `Slider::selector`s with
+    upstream's long names.
+  - Distortion's filter knobs show disabled while its filter order is
+    None.
+- Their displays (`sections::effects::viewers`):
+  - `ChorusViewer`: a bar per voice at its delay, from the
+    `chorus_delays` status outputs.
+  - `DelayViewer`: the dry tap and echoes fading by the feedback, per
+    stereo style and tempo mode.
+  - `DelayFilterViewer`, for the chorus and the delay.
+  - `DistortionViewer`: the transfer curve, through
+    `Distortion::get_drive_value` and `get_driven_value`.
+  - `DistortionFilterResponse`, `FlangerResponse` and `PhaserResponse`:
+    the engine's own `DigitalSvf`, `CombFilter` and `PhaserFilter` are set
+    up as upstream's viewers set theirs up, then drawn through #119's
+    evaluators. The flanger's line spans three widths and slides with
+    `flanger_delay_frequency`, and feeds the comb y `(i / 2) % 2`.
+  - Each reads a control as upstream's `getValue(output, slider)` does:
+    the mono modulation total from telemetry while its processor is
+    enabled, else the control's value.
+  - Dragging a display moves its controls as upstream's `mouseDrag` does,
+    as one host gesture per drag. The values are kept between frames, so
+    a host that applies sets a frame late can't skew them (#118).
+- `controls::bars::BarRenderer` (`BarRenderer`), drawn with #108's
+  `QuadKind::Bar`; bars at non-finite positions are skipped.
+- `Colour::float_alpha` and `Colour::with_float_alpha` (JUCE's
+  `getFloatAlpha` and `withAlpha(float)`; #125 has the byte `withAlpha` as
+  `with_alpha`). `overlaid_with` is the copy #126 brought to main.
+  `colour.rs` gets rule 1's JUCE line (`juce_graphics`, GPL-3.0-only),
+  as #120 gives it.
+- Side-by-side views: the gallery loads a view's preset, and a view can
+  scroll the effects column (`effects_scroll`, `ref-gui --effects-scroll`,
+  `Interface::set_effects_scroll`). New views `all_effects` and
+  `all_effects_bottom` show all nine sections between them.
+- The FL Studio checklist gets item 6, the Effects tab drags, with a
+  REAPER note.
+
+Not in G6a: Compressor, EQ and Reverb (G6b). The Effects tab's filter
+comes from GUI Builder's `FilterSection::fx()`, placed once it lands.
+
+**Known difference.** The side-by-side frames differ for the displays
+that read the engine's outputs (the chorus bars, the flanger's position,
+the phaser's cutoff and the distortion filter's modulated values).
+`ref-gui`'s engine hasn't run when it captures, so upstream's outputs read
+0, while the gallery has no engine and shows the controls' values. Running
+it here crashed because the blocks were 256 samples, over upstream's
+128-sample buffers. Harness Builder's #129 runs the engine in `ref-gui`;
+once it lands, the all-effects views play a MIDI clip on both sides. In
+the plugin, telemetry carries the live values.
+
+**Tests**
+
+- `sas-gui` layout fixtures: 80 Effects tab paths, laid out with
+  `all_effects.vital`, at all six sizes.
+- `sas-gui` unit tests:
+  - `sections::effects::moving_an_effect_shifts_the_ones_between`
+    (`moveEffect`).
+  - `sections::effects::delay::a_stereo_delay_splits_its_tempo_controls`.
+  - `controls::bars::vertical_bars_follow_the_vertex_shader`.
+  - The viewers' uniform setup, against upstream's filter setups:
+    `phaser_uniforms_follow_the_filter_setup`,
+    `flanger_uniforms_clamp_the_comb_feedback` and
+    `distortion_uniforms_keep_the_cutoff_above_the_minimum`.
+- `sas-gui` interaction tests (`tests/effects.rs`, a host that applies
+  sets at the next frame or only when asked):
+  - `a_slow_order_drag_moves_the_pressed_tile_in_one_gesture` and
+    `a_fast_order_drag_moves_the_pressed_tile` (one move past egui's drag
+    threshold before the drag starts);
+  - `an_order_drag_works_with_a_host_that_applies_at_release`;
+  - `an_order_power_button_toggles_its_effect_in_one_gesture`;
+  - `a_display_drag_is_one_gesture_per_control` (the delay's filter
+    display, cutoff and spread);
+  - `scrolling_stays_within_the_column`.
+  Sending each order change as its own gesture fails the slow and
+  release-only order tests.
+- Review (UI, #124): the order drag re-read the order from the host each
+  frame (with deferred sets the wrong tile moved), was built after egui's
+  drag threshold (a quick drag grabbed the tile under the pointer then)
+  and sent a gesture per change; the scroll bar lacked upstream's hover
+  and press states. All fixed above.
+- Side by side with `ref-gui` (local): the Chorus and Delay filter
+  responses, the Delay bars, the Distortion curve and the Phaser response
+  match. Text and knob edges show the known anti-aliasing difference.
+
+No audio change.

@@ -1,5 +1,6 @@
 // Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
-// SPDX-License-Identifier: GPL-3.0-or-later
+// Portions Copyright (c) 2020 Raw Material Software Limited (JUCE 6: juce_graphics, GPL-3.0-only).
+// SPDX-License-Identifier: GPL-3.0-or-later AND GPL-3.0-only
 
 //! JUCE's `Colour` as the skin stores it: 0xAARRGGBB, not premultiplied.
 
@@ -41,6 +42,17 @@ impl Colour {
     /// `Colour::withAlpha` (a byte).
     pub fn with_alpha(self, alpha: u8) -> Colour {
         Colour(((alpha as u32) << 24) | (self.0 & 0x00ff_ffff))
+    }
+
+    /// `Colour::getFloatAlpha`.
+    pub fn float_alpha(self) -> f32 {
+        self.alpha() as f32 / 255.0
+    }
+
+    /// `Colour::withAlpha(float)`: the alpha rounded to a byte.
+    pub fn with_float_alpha(self, alpha: f32) -> Colour {
+        let alpha = (255.0 * alpha).round().clamp(0.0, 255.0) as u32;
+        Colour((alpha << 24) | (self.0 & 0x00ff_ffff))
     }
 
     /// `Colour::withMultipliedAlpha` (`withAlpha` rounds to a byte).
