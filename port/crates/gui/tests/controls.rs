@@ -23,6 +23,7 @@ use sas_gui::layout::{FullLayout, Rect};
 use sas_gui::paint::PixelPainter;
 use sas_gui::scope::Scope;
 use sas_gui::sections::envelope::{self, EnvelopeLayout};
+use sas_gui::sections::extra_mod::ExtraModLayout;
 use sas_gui::sections::filter::{self, FilterLayout, Kind};
 use sas_gui::sections::lfo::{self, LfoLayout};
 use sas_gui::sections::modulation::ModulationLayout;
@@ -76,6 +77,7 @@ const CONTROLS: &[&str] = &[
     "filter_1_filter_input",
     "filter_2_filter_input",
     "osc_2_destination",
+    "macro_control_1",
     "env_1_delay",
     "env_1_attack",
     "env_1_hold",
@@ -2408,4 +2410,31 @@ fn leaving_the_wavetable_hides_the_frame_popup() {
     move_to(&mut harness, Pos2::new(350.0, 250.0));
     harness.step();
     assert!(overlay.borrow().value_popup.is_none());
+}
+
+#[test]
+fn a_macro_knob_drags_its_control() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let knob = {
+        let interface = fixture.interface.borrow();
+        let layout = FullLayout::new(interface.skin(), 1400, 820);
+        let top = Scope::top(interface.skin(), layout.size_ratio);
+        ExtraModLayout::new(&top, layout.extra_mod).macros[0].knob
+    };
+    let before = fixture.synth.value("macro_control_1");
+    fixture.take_log();
+    drag(
+        &mut harness,
+        centre(knob),
+        centre(knob) + egui::vec2(0.0, -30.0),
+        Modifiers::NONE,
+    );
+    assert!(fixture.synth.value("macro_control_1") > before);
+    let log = fixture.take_log();
+    assert_eq!(
+        log.first().map(String::as_str),
+        Some("begin macro_control_1")
+    );
+    assert_eq!(log.last().map(String::as_str), Some("end macro_control_1"));
 }

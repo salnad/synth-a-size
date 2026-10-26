@@ -13,6 +13,7 @@
 pub mod bend;
 pub mod effects;
 pub mod envelope;
+pub mod extra_mod;
 pub mod filter;
 pub mod keyboard;
 pub mod lfo;

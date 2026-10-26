@@ -36,6 +36,7 @@ use crate::paint::{PixelPainter, RectF};
 use crate::scope::Scope;
 use crate::sections::bend::{self, BendLayout, BendSection};
 use crate::sections::effects::EffectsTab;
+use crate::sections::extra_mod::{self, ExtraModLayout, ExtraModSection};
 use crate::sections::keyboard::{self, KeyboardLayout, PlayingNote};
 use crate::sections::modulation::ModulationInterface;
 use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
@@ -93,6 +94,12 @@ pub trait EditorModel: Send + Sync + 'static {
     fn set_lfo_shape(&self, index: usize, line: LineGenerator) -> bool {
         let _ = (index, line);
         true
+    }
+
+    /// `SynthBase::getMacroName`: macro `index`'s (0-based) name, "MACRO n"
+    /// when blank.
+    fn macro_name(&self, index: usize) -> String {
+        format!("MACRO {}", index + 1)
     }
 
     /// `LoadSave::displayHzFrequency`: cutoff sliders show hertz rather
@@ -278,6 +285,7 @@ pub struct Interface {
     synthesis: SynthesisInterface,
     modulation: ModulationInterface,
     playing_note: PlayingNote,
+    extra_mod: ExtraModSection,
     overlay: Overlay,
     locals: Arc<LocalValues>,
     effects: EffectsTab,
@@ -301,6 +309,7 @@ impl Interface {
             synthesis: SynthesisInterface::default(),
             modulation: ModulationInterface::default(),
             playing_note: PlayingNote::default(),
+            extra_mod: ExtraModSection::default(),
             overlay: Overlay::default(),
             locals: Arc::default(),
             effects: EffectsTab::default(),
@@ -441,6 +450,19 @@ impl Interface {
 
         self.modulation
             .show(ui, host, pixels, &top, &mut self.overlay, layout.modulation);
+
+        let extra_layout = ExtraModLayout::new(&top, layout.extra_mod);
+        self.extra_mod.paint_background(pixels, &top, &extra_layout);
+        let mut panel = Panel::new(
+            ui,
+            host,
+            pixels,
+            top.within(extra_mod::MACRO_SKIN),
+            &mut self.overlay,
+            layout.extra_mod,
+        );
+        self.extra_mod.show(&mut panel, &extra_layout);
+        panel.finish();
 
         let scope = top.within(voice::SKIN);
         let voice_layout = VoiceLayout::new(&scope, layout.voice);
