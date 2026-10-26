@@ -22,6 +22,7 @@ pub mod interface;
 pub mod layer;
 pub mod layout;
 pub mod local;
+pub mod modulation;
 pub mod paint;
 pub mod popup;
 pub mod primitives;
@@ -35,7 +36,7 @@ pub use chat::{
 };
 pub use editor::{create as create_editor, default_state, Editor};
 pub use host::{Host, HostParam, OpenGestures};
-pub use interface::{EditorModel, Interface, Tab, PRODUCT_NAME};
+pub use interface::{EditorModel, Interface, Route, Tab, PRODUCT_NAME};
 pub use nice_plug_egui;
 
 /// Milestone in `migration/PLAN.md` that ports this crate.

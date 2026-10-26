@@ -15,11 +15,13 @@ use egui::Ui;
 use super::envelope::{self, EnvelopeLayout, EnvelopeSection, NUM_ENVELOPES};
 use super::lfo::{self, LfoLayout, LfoSection, NUM_LFOS};
 use super::random::{self, RandomLayout, RandomSection, NUM_RANDOM_LFOS};
-use super::{Overlay, Panel};
+use super::{MenuOwner, Overlay, Panel};
 use crate::controls::modulation_button::ModulationTabSelector;
 use crate::host::Host;
 use crate::layout::Rect;
+use crate::modulation::{disconnect_menu, ModulationManager};
 use crate::paint::PixelPainter;
+use crate::popup::Menu;
 use crate::scope::Scope;
 use crate::section::{paint_body, paint_border, paint_tab_shadow};
 use crate::skin::{ColorId, ValueId};
@@ -172,14 +174,10 @@ impl Default for ModulationInterface {
 }
 
 impl ModulationInterface {
-    /// Whether source `name` has a modulation. Connections come with
-    /// drag-to-modulate.
-    fn connected(_name: &str) -> bool {
-        false
-    }
-
-    fn selectors(&self) -> [(&ModulationTabSelector, usize); 5] {
-        let shown = |s: &ModulationTabSelector| s.num_shown(Self::connected);
+    /// Each selector with the number of its tabs shown, which depends on the
+    /// sources with a modulation.
+    fn selectors(&self, modulation: &ModulationManager) -> [(&ModulationTabSelector, usize); 5] {
+        let shown = |s: &ModulationTabSelector| s.num_shown(|name| modulation.is_connected(name));
         [
             (&self.envelope_tabs, shown(&self.envelope_tabs)),
             (&self.lfo_tabs, shown(&self.lfo_tabs)),
@@ -190,7 +188,13 @@ impl ModulationInterface {
     }
 
     /// `ModulationInterface::paintBackground` and its children's.
-    fn paint_background(&self, pixels: &PixelPainter, top: &Scope, layout: &ModulationLayout) {
+    fn paint_background(
+        &self,
+        pixels: &PixelPainter,
+        top: &Scope,
+        layout: &ModulationLayout,
+        modulation: &ModulationManager,
+    ) {
         pixels.fill_rect(layout.bounds, top.color(ColorId::Background));
         for bounds in [
             layout.envelope_tabs,
@@ -217,7 +221,7 @@ impl ModulationInterface {
         }
 
         // paintChildrenBackgrounds, each clipped to its child.
-        let [env_tabs, lfo_tabs, random_tabs, top_row, bottom_row] = self.selectors();
+        let [env_tabs, lfo_tabs, random_tabs, top_row, bottom_row] = self.selectors(modulation);
         let [envelope, lfo, random] = self.selected;
         let tab_bounds = [layout.envelope_tabs, layout.lfo_tabs, layout.random_tabs];
         let paint_tabs =
@@ -273,7 +277,7 @@ impl ModulationInterface {
         bounds: Rect,
     ) {
         let layout = ModulationLayout::new(top, bounds);
-        let selectors = self.selectors();
+        let selectors = self.selectors(&overlay.modulation);
         let all_bounds = [
             layout.envelope_tabs,
             layout.lfo_tabs,
@@ -284,9 +288,17 @@ impl ModulationInterface {
         let mut clicked = [None; 3];
         for (kind, ((selector, shown), bounds)) in selectors.iter().zip(all_bounds).enumerate() {
             let id = ui.scope_id().with(("modulation tabs", kind));
-            let click = selector.interact(ui, pixels, id, bounds, *shown);
+            let input = selector.interact(ui, pixels, &mut overlay.modulation, id, bounds, *shown);
             if kind < 3 {
-                clicked[kind] = click;
+                clicked[kind] = input.clicked;
+            }
+            if let Some((source, position)) = input.menu {
+                let items = disconnect_menu(overlay.modulation.routes(), source);
+                overlay.menu = Some(Menu::new(
+                    items,
+                    position,
+                    MenuOwner::ModulationSource(source),
+                ));
             }
         }
         for (selected, click) in self.selected.iter_mut().zip(clicked) {
@@ -295,7 +307,7 @@ impl ModulationInterface {
             }
         }
 
-        self.paint_background(pixels, top, &layout);
+        self.paint_background(pixels, top, &layout, &overlay.modulation);
 
         let [envelope, lfo, random] = self.selected;
         let scope = top.within(envelope::SKIN);

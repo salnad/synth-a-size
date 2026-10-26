@@ -30,10 +30,11 @@ use egui::Ui;
 
 use crate::controls::button::SynthButton;
 use crate::controls::line_editor::LineAction;
-use crate::controls::slider::Slider;
+use crate::controls::slider::{Slider, SliderStyle};
 use crate::host::Host;
 use crate::layer::Layer;
 use crate::layout::Rect;
+use crate::modulation::{rotary_fill, Destination, DestinationShape, ModulationManager};
 use crate::paint::{PixelPainter, RectF};
 use crate::popup::{DualMenu, Menu, MenuItem, MenuOutcome, ValuePopup};
 use crate::scope::Scope;
@@ -70,6 +71,8 @@ pub enum MenuOwner {
     /// An LFO editor's menu; the editor carries out the choice
     /// (`Overlay::line_action`).
     Line(LineAction),
+    /// A modulation source's disconnect menu.
+    ModulationSource(&'static str),
 }
 
 /// Room for each filter model's styles in a [`MenuOwner::FilterType`] id.
@@ -111,6 +114,8 @@ pub struct Overlay {
     /// A choice from an LFO editor's menu, for that editor's next frame.
     pub line_action: Option<LineAction>,
     pub text_entry: Option<TextEntry>,
+    /// The modulation sources: the selected one and a drag in progress.
+    pub modulation: ModulationManager,
 }
 
 impl Overlay {
@@ -151,6 +156,9 @@ impl Overlay {
                                 choice: id,
                                 ..action
                             })
+                        }
+                        MenuOwner::ModulationSource(source) => {
+                            crate::modulation::disconnect_choice(host, source, id)
                         }
                     }
                 }
@@ -218,6 +226,7 @@ impl<'a, 'b> Panel<'a, 'b> {
     /// and text entry to the overlay, and draws it.
     pub fn slider(&mut self, slider: &Slider, bounds: Rect) {
         let slider = &slider.displayed(self.host.model().hz_frequency_display());
+        self.register_destination(slider, bounds);
         let (value, hover) = self.slider_input(slider, bounds);
         slider.paint(
             self.pixels,
@@ -227,6 +236,29 @@ impl<'a, 'b> Panel<'a, 'b> {
             value,
             hover,
         );
+    }
+
+    /// `ModulationManager`'s `ModulationDestination` for `slider`, if a
+    /// source can modulate it now: it is a modulation destination and its
+    /// section is on.
+    fn register_destination(&mut self, slider: &Slider, bounds: Rect) {
+        if !slider.active || !sas_preset::engine::is_modulation_destination(slider.name) {
+            return;
+        }
+        let shape = match slider.style {
+            SliderStyle::Text | SliderStyle::Curve => DestinationShape::Rectangle,
+            SliderStyle::Rotary => {
+                DestinationShape::Rotary(rotary_fill(&self.scope, bounds, slider.knob_size_scale))
+            }
+            SliderStyle::Horizontal | SliderStyle::Arrow { .. } => DestinationShape::Horizontal,
+            SliderStyle::Vertical | SliderStyle::Wheel { .. } => DestinationShape::Vertical,
+        };
+        self.overlay.modulation.register_destination(Destination {
+            name: slider.name,
+            bounds,
+            clip: self.clip,
+            shape,
+        });
     }
 
     /// A text toggle whose state isn't a parameter, with id `salt`; true

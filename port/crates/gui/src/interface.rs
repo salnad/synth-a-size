@@ -21,7 +21,7 @@ use sas_common::line_generator::LineGenerator;
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::telemetry::Telemetry;
 use sas_engine::Tuning;
-use sas_preset::SampleState;
+use sas_preset::{GuiConnection, SampleState, SlotValues};
 
 use crate::chat::{ChatPlacement, ChatStyle};
 use crate::controls::format;
@@ -45,6 +45,15 @@ use crate::sections::voice::{self, VoiceLayout, VoiceSection};
 use crate::sections::volume::{PeakLevels, VolumeLayout, VolumeSection};
 use crate::sections::{Overlay, Panel};
 use crate::skin::{ColorId, Section, Skin, ValueId};
+
+/// A connected modulation slot.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Route {
+    /// The bank slot (0-based; its controls are `modulation_{slot + 1}_*`).
+    pub slot: usize,
+    pub source: String,
+    pub destination: String,
+}
 
 /// What the editor shows of the synth's state.
 pub trait EditorModel: Send + Sync + 'static {
@@ -100,6 +109,43 @@ pub trait EditorModel: Send + Sync + 'static {
     /// when blank.
     fn macro_name(&self, index: usize) -> String {
         format!("MACRO {}", index + 1)
+    }
+
+    /// The modulation bank's connected slots, in slot order
+    /// (`ModulationConnectionBank`).
+    fn modulations(&self) -> Arc<[Route]> {
+        Arc::from([])
+    }
+
+    /// `SynthGuiInterface::connectModulation` with `values` for a new slot
+    /// (`setModulationValues`). The engine takes the values with the
+    /// connection; the caller sets the returned `parameter_changes` on the
+    /// host parameters when the user's action ends. None when the synth
+    /// can't connect them now (no free slot, or its edit queue is full).
+    fn connect_modulation(
+        &self,
+        source: &str,
+        destination: &str,
+        values: SlotValues,
+    ) -> Option<GuiConnection> {
+        let _ = (source, destination, values);
+        None
+    }
+
+    /// `SynthGuiInterface::setModulationValues` for modulation slot `slot`
+    /// in the engine; the caller tells the host when the user's action
+    /// ends. False when the synth can't take it now (its edit queue is
+    /// full).
+    fn set_connection_values(&self, slot: usize, values: SlotValues) -> bool {
+        let _ = (slot, values);
+        true
+    }
+
+    /// `SynthGuiInterface::disconnectModulation`; the slot, if they were
+    /// connected and the synth took the change.
+    fn disconnect_modulation(&self, source: &str, destination: &str) -> Option<usize> {
+        let _ = (source, destination);
+        None
     }
 
     /// `LoadSave::displayHzFrequency`: cutoff sliders show hertz rather
@@ -338,9 +384,20 @@ impl Interface {
         self.effects.scroll()
     }
 
+    /// The modulation column.
+    pub fn modulation(&self) -> &ModulationInterface {
+        &self.modulation
+    }
+
     /// The open popups.
     pub fn overlay(&self) -> &Overlay {
         &self.overlay
+    }
+
+    /// The connection a drag to modulate has made, for writing to the host
+    /// if the window closes mid-drag.
+    pub fn pending_connection(&self) -> crate::modulation::PendingConnection {
+        self.overlay.modulation.pending_connection()
     }
 
     /// The note the on-screen keyboard is playing, for releasing it when the
@@ -366,6 +423,9 @@ impl Interface {
         let painter = ui.painter_at(area);
         let pixels = PixelPainter::new(&painter, area, pixels_per_point);
 
+        self.overlay
+            .modulation
+            .begin_frame(host.model().modulations());
         self.paint_background(&pixels, &layout, width, height);
         self.paint_header(&pixels, &layout, host.model());
         self.handle_tabs(ui, &pixels, &layout);
@@ -377,6 +437,8 @@ impl Interface {
         self.show_header(ui, host, &pixels, &layout, live.as_ref());
         self.show_tab(ui, host, &pixels, &layout);
         self.show_sections(ui, host, &pixels, &layout);
+        let top = Scope::top(&self.skin, layout.size_ratio);
+        self.overlay.modulation.finish_frame(host, &pixels, &top);
         self.show_overlay(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
     }
 

@@ -94,11 +94,15 @@ impl NiceEguiApp for App {
         // egui-baseview does.
         let (model, open) = (self.model.clone(), self.open_gestures.clone());
         let context = gui_context.clone();
-        // Likewise a key the on-screen keyboard is still playing.
+        // Likewise a key the on-screen keyboard is still playing, and a
+        // modulation a drag has connected but not yet written to the host.
         let playing_note = self.interface.playing_note();
+        let pending = self.interface.pending_connection();
         frame.on_close(move || {
             model.set_editor_open(false);
-            Host::tracking(model.as_ref(), Some(&context), &open).end_open_gestures();
+            let host = Host::tracking(model.as_ref(), Some(&context), &open);
+            host.end_open_gestures();
+            pending.commit(&host);
             playing_note.release(model.as_ref());
         });
         let repaint = egui_ctx.clone();
