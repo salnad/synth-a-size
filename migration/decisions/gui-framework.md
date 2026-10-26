@@ -62,15 +62,24 @@ choice below is easy to change.
 - **Interaction:** `egui_kittest` drives the editor with simulated input
   (no GPU needed), in the normal `cargo test`.
 - **Host:** FL Studio on the owner's Mac, from the arm64 bundle CI builds.
+  REAPER on the same Mac is the interim test host until FL Studio is
+  installed; it doesn't replace FL Studio as the target.
 
 ### FL Studio checklist (owner's Retina Mac)
 
 Checks only the host can answer. Record each answer in the ledger of the
-PR that settles it.
+PR that settles it. FL Studio stays the host that settles each check. Until
+it is installed, the REAPER notes say which checks can also run in REAPER
+and what a REAPER answer settles. Record a REAPER answer as REAPER's, and
+repeat the check in FL Studio where the note says so.
 
 1. **Keyboard focus (G1).** Install the `...-focus-check` artifact in place
    of the normal bundle and follow its panel: does the text field receive
    keys, with and without the window asking for focus?
+   - *REAPER:* runs there too, but only answers for REAPER: each host
+     routes keys to plugins its own way. Try it with the FX window's
+     "Send all keyboard input to plug-in" option (its + menu) off, then
+     on. FL Studio still needs checking.
 2. **Knob drag speed (G2).** Open upstream and the port side by side at
    their default size. In each, start Voice's VEL TRK at its default (0%,
    the middle of its range), drag straight up 50 points (macOS's screenshot
@@ -79,6 +88,14 @@ PR that settles it.
    takes). If upstream reaches 100%, its 200 is in physical pixels on
    Retina and the port should halve its drag length at display scale 2.
    Record the answer next to D15 in `DIVERGENCES.md`.
+   - *REAPER:* settles it, if both editors run at display scale 2. The
+     question is how upstream measures drags against the window's backing
+     scale (`getDisplayScale()`), not anything the host does, so a
+     side-by-side in REAPER answers D15 (upstream's VST3 is needed there
+     too). Precondition: REAPER is not set to "Open in Low Resolution"
+     (Finder, Get Info), and both editors' text is crisp, not blurred. In
+     low resolution the backing scale is 1, both sides measure in points,
+     and the check doesn't settle D15.
 3. **A learned knob with the editor open (D16).** MIDI-learn a knob
    (right-click a control, learn, turn a hardware knob), keep the editor
    open, start playback and turn the hardware knob steadily for a few
@@ -91,11 +108,20 @@ PR that settles it.
      gesture per frame)?
    - Undo after turning: one step, or many?
    Record the answers next to D16 in `DIVERGENCES.md`.
+   - *REAPER:* gives an interim answer. Arm the track with the hardware
+     controller as MIDI input and monitoring on; set the track's automation
+     mode to Touch or Latch to record. The zipper question is mostly the
+     plugin's, but the echo, the automation curve and undo steps are the
+     host's, so repeat all three in FL Studio.
 4. **The chat's Keychain prompt (L5).** Turn the chat on, store an API key
    in its settings, quit FL Studio and reopen the project. Does macOS ask
    for Keychain access when the chat reads the key, and does it ask again
    after installing a rebuilt bundle? Ad-hoc signed builds may prompt after
    each rebuild; note whether "Always Allow" sticks.
+   - *REAPER:* runs there, but only answers for REAPER. Keychain grants
+     access to the app that asks, which is the host, so an "Always Allow"
+     given to REAPER says nothing about FL Studio's prompt. Repeat it in FL
+     Studio.
 
 ## Vendored egui-baseview
 
