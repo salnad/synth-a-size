@@ -35,7 +35,9 @@ pub mod text;
 pub use chat::{
     ChatHost, ChatPanel, ChatPlacement, ChatSettingsView, ChatStyle, ChatView, FocusMode,
 };
-pub use editor::{create as create_editor, default_state, Editor};
+pub use editor::{
+    create as create_editor, default_state, Editor, EditorError, EditorHandle, EditorWindow,
+};
 pub use host::{Host, HostParam, OpenGestures};
 pub use interface::{EditorModel, Interface, Route, Tab, PRODUCT_NAME};
 pub use nice_plug_egui;

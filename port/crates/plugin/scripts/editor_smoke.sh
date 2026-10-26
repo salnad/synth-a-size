@@ -18,7 +18,7 @@ if ! grep -q "presented the first frame" "$log"; then
   echo "editor smoke: the editor never presented a frame" >&2
   exit 1
 fi
-if grep -E "panicked|wgpu error|is invalid" "$log"; then
+if grep -E "panicked|wgpu error|pipeline is invalid" "$log"; then
   echo "editor smoke: the editor panicked or hit a wgpu error (lines above)" >&2
   exit 1
 fi

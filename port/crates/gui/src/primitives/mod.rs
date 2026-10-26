@@ -515,7 +515,13 @@ pub(crate) fn validated<T>(
             nice_plug::nice_error!("the {what} pipeline is invalid, so it draws nothing: {error}");
             None
         }
-        Poll::Ready(None) | Poll::Pending => Some(built),
+        Poll::Ready(None) => Some(built),
+        Poll::Pending => {
+            nice_plug::nice_warn!(
+                "the {what} pipeline's validation is still pending; drawing with it unchecked"
+            );
+            Some(built)
+        }
     }
 }
 
