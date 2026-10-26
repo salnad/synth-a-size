@@ -175,6 +175,20 @@ impl EditorModel for Synth {
 struct Recorder {
     synth: Arc<Synth>,
     log: Mutex<Vec<String>>,
+    /// Sets the host hasn't applied yet. nice-plug's wrappers don't update
+    /// a parameter at once (CLAP queues an event; VST3 waits while a block
+    /// is processing), so by default the sets apply at the start of the
+    /// next frame, as if a block ran in between.
+    pending: Mutex<Vec<(ParamPtr, f32)>>,
+    deferred: bool,
+}
+
+impl Recorder {
+    fn apply_pending(&self) {
+        for (param, normalized) in self.pending.lock().unwrap().drain(..) {
+            unsafe { param._internal_set_normalized_value(normalized) };
+        }
+    }
 }
 
 impl GuiContextInner for Recorder {
@@ -190,7 +204,11 @@ impl GuiContextInner for Recorder {
     }
 
     unsafe fn raw_set_parameter_normalized(&self, param: ParamPtr, normalized: f32) {
-        unsafe { param._internal_set_normalized_value(normalized) };
+        if self.deferred {
+            self.pending.lock().unwrap().push((param, normalized));
+        } else {
+            unsafe { param._internal_set_normalized_value(normalized) };
+        }
         self.log
             .lock()
             .unwrap()
@@ -223,10 +241,18 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Fixture {
+        Fixture::with_sets(true)
+    }
+
+    /// A fixture whose host applies sets at once (`deferred` false) or at
+    /// the next frame.
+    fn with_sets(deferred: bool) -> Fixture {
         let synth = Synth::new();
         let recorder = Arc::new(Recorder {
             synth: synth.clone(),
             log: Mutex::new(Vec::new()),
+            pending: Mutex::new(Vec::new()),
+            deferred,
         });
         let context = GuiContext::new(recorder.clone());
         Fixture {
@@ -245,6 +271,7 @@ impl Fixture {
             .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
             .build_ui(|ui| {
                 let screen = ui.ctx().content_rect();
+                self.recorder.apply_pending();
                 let host = Host::tracking(self.synth.as_ref(), Some(&self.context), &self.open);
                 self.interface.borrow_mut().show_in(ui, screen, &host)
             });
@@ -278,6 +305,9 @@ fn centre(rect: Rect) -> Pos2 {
     )
 }
 
+/// Each input is followed by a second frame, as if an audio block ran in
+/// between: the recording host applies the GUI's sets at the start of a
+/// frame, so a set shows from the next one.
 fn press(harness: &mut Harness, pos: Pos2, button: PointerButton, modifiers: Modifiers) {
     harness.event(Event::ModifiersChanged(modifiers));
     harness.event(Event::PointerMoved(pos));
@@ -287,6 +317,7 @@ fn press(harness: &mut Harness, pos: Pos2, button: PointerButton, modifiers: Mod
         pressed: true,
         modifiers,
     });
+    harness.step();
     harness.step();
 }
 
@@ -299,6 +330,7 @@ fn release(harness: &mut Harness, pos: Pos2, button: PointerButton, modifiers: M
     });
     harness.step();
     harness.event(Event::ModifiersChanged(Modifiers::NONE));
+    harness.step();
 }
 
 fn drag(harness: &mut Harness, from: Pos2, to: Pos2, modifiers: Modifiers) {
@@ -314,6 +346,7 @@ fn drag(harness: &mut Harness, from: Pos2, to: Pos2, modifiers: Modifiers) {
 fn move_to(harness: &mut Harness, pos: Pos2) {
     harness.event(Event::PointerMoved(pos));
     harness.step();
+    harness.step();
 }
 
 fn key(harness: &mut Harness, key: Key) {
@@ -324,6 +357,7 @@ fn key(harness: &mut Harness, key: Key) {
         repeat: false,
         modifiers: Modifiers::NONE,
     });
+    harness.step();
     harness.step();
 }
 
@@ -811,6 +845,7 @@ fn drags_are_measured_in_points() {
         .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
         .build_ui(|ui| {
             let screen = ui.ctx().content_rect();
+            fixture.recorder.apply_pending();
             let host = Host::tracking(
                 fixture.synth.as_ref(),
                 Some(&fixture.context),
@@ -1030,6 +1065,7 @@ fn widget_harness_with_tabs<'a>(
         .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
         .build_ui(move |ui| {
             let area = ui.ctx().content_rect();
+            fixture.recorder.apply_pending();
             let host = Host::tracking(
                 fixture.synth.as_ref(),
                 Some(&fixture.context),
@@ -1192,6 +1228,7 @@ fn learned_midi_moves_reach_the_host_as_gestures() {
     };
     let moved_to = fixture.synth.value("volume");
     fixture.synth.midi_moved.lock().unwrap().push("volume");
+    fixture.recorder.apply_pending();
     let host = Host::tracking(
         fixture.synth.as_ref(),
         Some(&fixture.context),
@@ -1221,6 +1258,7 @@ fn learned_midi_moves_reach_the_host_as_gestures() {
 #[test]
 fn a_learned_move_during_a_drag_sends_only_the_value() {
     let fixture = Fixture::new();
+    fixture.recorder.apply_pending();
     let host = Host::tracking(
         fixture.synth.as_ref(),
         Some(&fixture.context),
@@ -1322,6 +1360,7 @@ fn the_open_chat_panel_composes_with_the_editor() {
         .build_ui(|ui| {
             // As `App::ui` composes them.
             let screen = ui.ctx().content_rect();
+            fixture.recorder.apply_pending();
             let host = Host::tracking(
                 fixture.synth.as_ref(),
                 Some(&fixture.context),
@@ -1600,4 +1639,30 @@ fn the_sample_destination_wraps_round() {
     click(&mut harness, centre(smp.next_destination));
     click(&mut harness, centre(smp.next_destination));
     assert_eq!(fixture.synth.value("sample_destination"), 4.0);
+}
+
+#[test]
+fn an_fm_loop_chosen_from_the_menu_is_broken() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    fixture.synth.set("osc_1_distortion_type", 7.0);
+    harness.step();
+    let osc = oscillator_layout(&fixture, 1);
+    press(
+        &mut harness,
+        centre(osc.distortion_selector),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    release(
+        &mut harness,
+        centre(osc.distortion_selector),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    // Row 9 is "FM <- Osc 1" (rows 1 and 8 are dividers). The host applies
+    // the choice a frame later; the follow-up must not read it back.
+    choose_row(&mut harness, osc.distortion_selector, 9);
+    assert_eq!(fixture.synth.value("osc_2_distortion_type"), 7.0);
+    assert_eq!(fixture.synth.value("osc_1_distortion_type"), 0.0);
 }

@@ -46,10 +46,12 @@ pub enum MenuOwner {
     Selector(Slider),
     /// A section's list for control `name`: the selected id is the value,
     /// set in one gesture (`SynthBase::valueChangedInternal`), then `then`
-    /// runs (the section's follow-up, e.g. resolving an FM cycle).
+    /// runs with it (the section's follow-up, e.g. resolving an FM cycle).
+    /// The host applies the set later, so `then` takes the value rather
+    /// than reading it back.
     Control {
         name: &'static str,
-        then: Option<fn(&Host)>,
+        then: Option<fn(&Host, f32)>,
     },
 }
 
@@ -116,7 +118,7 @@ impl Overlay {
                         MenuOwner::Control { name, then } => {
                             host.set_once(name, id as f32);
                             if let Some(then) = then {
-                                then(host);
+                                then(host, id as f32);
                             }
                         }
                     }
@@ -194,7 +196,7 @@ impl<'a, 'b> Panel<'a, 'b> {
 
     fn slider_drawn(&mut self, slider: &Slider, bounds: Rect, draw: bool) {
         let event = slider.interact(self.ui, self.host, self.pixels, bounds);
-        let value = self.host.value(slider.name);
+        let value = event.value.unwrap_or_else(|| self.host.value(slider.name));
         if event.popup {
             let popup = ValuePopup {
                 text: slider.popup_text(value),

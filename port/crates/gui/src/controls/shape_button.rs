@@ -145,7 +145,10 @@ pub fn show(
 }
 
 /// `Paths::prev` / `Paths::next`: a chevron in unit coordinates of the
-/// button's square, stroked 0.05 of its size with round ends.
+/// button's square, stroked 0.05 of its size with round ends. Upstream
+/// fills the outline of a curved-join, round-cap stroke scaled to fit; this
+/// draws it as egui's polyline until `controls::path`'s stroking (#116) is
+/// on main.
 pub fn paint_chevron(pixels: &PixelPainter, bounds: Rect, path: &[(f32, f32)], colour: Colour) {
     let size = bounds.width.min(bounds.height) as f32;
     let points: Vec<(f32, f32)> = path

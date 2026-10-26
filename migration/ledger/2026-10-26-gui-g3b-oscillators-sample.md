@@ -18,7 +18,14 @@ sections' places, which the filter PR fills.
   button, which steps `osc_N_view_2d` back through 3D, 2D and spectrum.
 - Choosing a wave morph type that closes an FM/RM loop between oscillators
   resets the last oscillator in the loop, as
-  `SynthesisInterface::distortionTypeChanged` does.
+  `SynthesisInterface::distortionTypeChanged` does. The check takes the
+  chosen type rather than reading it back: nice-plug applies a set later
+  (CLAP queues an event; VST3 waits while a block is processing).
+- Read-after-set audit (UI Reviewer): a slider now keeps its own value
+  while it is held, as JUCE's `Slider` does. Drags compare against it (not
+  the host's possibly stale value), the pitch wheel springs back from it,
+  and the slider and its popup draw it, so they no longer lag a frame
+  behind the pointer. Menu follow-ups get the chosen value.
 - Sample (`sections/sample.rs`, `SampleSection`): power button and off
   overlay, PITCH joint control with the quantize dots, level, pan, the
   destination with its menu and arrows, and the backgrounds of the
@@ -51,6 +58,9 @@ sections' places, which the filter PR fills.
   (`media/gui/g3b-oscillators-sample-side-by-side.png`, and the port at
   2x in `g3b-port-oscillators-2x.png`): the sections match apart from what
   is still to come; the off overlay matches upstream's to the pixel.
+- The test host now applies sets at the start of the next frame by
+  default (as if a block ran in between), and every test passes that way;
+  both FM loop tests (arrows and menu) fail with the old read-back.
 - Interaction tests: the destination menu and arrows (one gesture, wrap
   round), the wave morph menu's dividers and modulator names, an FM loop
   broken on the last oscillator, morph knobs' double-click values by type,

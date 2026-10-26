@@ -601,7 +601,8 @@ impl Slider {
                 state.last = pointer;
                 state.second_click = follows_press;
                 state.moved = false;
-                state.proportion = self.proportion(host.value(self.name));
+                state.value = host.value(self.name);
+                state.proportion = self.proportion(state.value);
                 state.last_press = Some((now, pointer));
                 host.begin(self.name);
                 event.popup = true;
@@ -618,8 +619,9 @@ impl Slider {
                         self.dragged_proportion(&state, pointer, bounds, ppp, modifiers);
                     state.last = pointer;
                     let value = self.value_from_proportion(state.proportion);
-                    if value != host.value(self.name) {
+                    if value != state.value {
                         host.set(self.name, value);
+                        state.value = value;
                     }
                 }
                 event.popup = true;
@@ -632,10 +634,12 @@ impl Slider {
             if let SliderStyle::Wheel { spring_back: true } = self.style {
                 // PitchWheel::mouseUp: back to the centre after the gesture.
                 // JUCE's setValue sends nothing when the value is unchanged.
-                if host.value(self.name) != 0.0 {
+                if state.value != 0.0 {
                     host.set_once(self.name, 0.0);
+                    state.value = 0.0;
                 }
             }
+            event.value = Some(state.value);
             let long_press = state
                 .last_press
                 .is_some_and(|(time, _)| now - time > LONG_PRESS);
@@ -643,8 +647,12 @@ impl Slider {
                 // Slider::mouseDoubleClick: back to the default value.
                 let value = self.double_click_value.unwrap_or(self.info.default_value);
                 host.set_once(self.name, value);
+                event.value = Some(value);
                 event.popup = true;
             }
+        }
+        if state.down {
+            event.value = Some(state.value);
         }
 
         if self.show_popup_on_hover && response.hovered() {
@@ -703,6 +711,9 @@ pub struct SliderEvent {
     pub text_entry: bool,
     /// A `TextSelector` was pressed: open its options.
     pub selector: bool,
+    /// The slider's own value while it is held and as it is released, for
+    /// drawing it and its popup: the host shows a set only later.
+    pub value: Option<f32>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -714,6 +725,10 @@ struct DragState {
     /// The unsnapped position (JUCE's `valueWhenLastDragged`); only the
     /// value sent to the host is snapped.
     proportion: f64,
+    /// The slider's own value (JUCE's `Slider::getValue`), which a drag
+    /// changes at once. The host applies a set later (a CLAP event, or after
+    /// a VST3 block), so its value can lag.
+    value: f32,
     /// The time and place (points) of the last press.
     last_press: Option<(f64, Pos2)>,
     /// This press followed the previous one closely enough to make a
@@ -761,6 +776,7 @@ mod tests {
             down: true,
             last: Pos2::new(10.0, 10.0),
             proportion: 0.5,
+            value: 0.0,
             last_press: None,
             second_click: false,
             moved: false,

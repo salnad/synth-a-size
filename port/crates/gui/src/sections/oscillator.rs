@@ -280,11 +280,20 @@ macro_rules! names {
 pub const NAMES: [Names; NUM_OSCILLATORS] = [names!("1"), names!("2"), names!("3")];
 
 /// `SynthesisInterface::distortionTypeChanged`: after oscillator `index`'s
-/// wave morph type changes, follow which oscillator each FM/RM type reads.
-/// If that comes back round, the last oscillator in the loop stops reading
-/// another (`resetOscillatorModulationDistortionType`).
-pub fn resolve_modulation_cycle(host: &Host, index: usize) {
-    let kind = |i: usize| host.value(NAMES[i].distortion_type) as usize;
+/// wave morph type is set to `chosen`, follow which oscillator each FM/RM
+/// type reads. If that comes back round, the last oscillator in the loop
+/// stops reading another (`resetOscillatorModulationDistortionType`).
+/// `chosen` is passed in because the host applies the set later; reading
+/// it back would see the old type.
+pub fn resolve_modulation_cycle(host: &Host, index: usize, chosen: usize) {
+    let start = index;
+    let kind = |i: usize| {
+        if i == start {
+            chosen
+        } else {
+            host.value(NAMES[i].distortion_type) as usize
+        }
+    };
     let mut dependents = [false; NUM_OSCILLATORS];
     let mut index = index;
     let mut last_index = index;
@@ -307,10 +316,10 @@ pub fn resolve_modulation_cycle(host: &Host, index: usize) {
 }
 
 /// The follow-up for each oscillator's wave morph menu.
-const RESOLVE_CYCLE: [fn(&Host); NUM_OSCILLATORS] = [
-    |host| resolve_modulation_cycle(host, 0),
-    |host| resolve_modulation_cycle(host, 1),
-    |host| resolve_modulation_cycle(host, 2),
+const RESOLVE_CYCLE: [fn(&Host, f32); NUM_OSCILLATORS] = [
+    |host, chosen| resolve_modulation_cycle(host, 0, chosen as usize),
+    |host, chosen| resolve_modulation_cycle(host, 1, chosen as usize),
+    |host, chosen| resolve_modulation_cycle(host, 2, chosen as usize),
 ];
 
 /// `OscillatorSection::resized`, in interface pixels.
@@ -937,7 +946,7 @@ impl OscillatorSection {
         }
         if let Some(new_kind) = new_kind {
             host.set_once(self.names.distortion_type, new_kind as f32);
-            resolve_modulation_cycle(host, index);
+            resolve_modulation_cycle(host, index, new_kind);
         }
 
         // Destination.
@@ -1042,7 +1051,7 @@ fn open_menu(
     items: Vec<MenuItem>,
     bounds: Rect,
     name: &'static str,
-    then: Option<fn(&Host)>,
+    then: Option<fn(&Host, f32)>,
 ) {
     panel.overlay.menu = Some(Menu::new(
         items,
