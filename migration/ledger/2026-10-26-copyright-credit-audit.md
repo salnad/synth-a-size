@@ -73,10 +73,12 @@ Not credited, because they aren't translations:
 - `common/src/random.rs` and `wavetable/src/complex.rs` emulate C++
   standard-library results, not library code.
 
-`controls/path.rs` (`Path`, `PathStrokeType`) is only on #116's branch. It
-needs the same `Portions` line with `juce_graphics, GPL-3.0-only` and the
-compound SPDX line; Tabs Builder adds them. The notices already list
-`juce_graphics` paths for it.
+`controls/path.rs` (`Path`, `PathStrokeType`) merged with #116 without
+the JUCE line. It gets the same `Portions` line, `juce_graphics,
+GPL-3.0-only`, and the compound SPDX line, identical to Tabs Builder's G6a
+branch, so the two merge cleanly. `controls/icon.rs` (its own rasteriser)
+and `controls/shape_button.rs` (upstream's button, with JUCE's behaviour
+only) aren't JUCE translations.
 
 **The plugin as a whole is GPLv3 only.** With GPL-3.0-only portions, the
 combined plugin can be distributed under GPL version 3 only. Statements
