@@ -322,7 +322,9 @@ impl LfoSection {
             fade: Slider::new(names.fade_time, SliderStyle::Rotary),
             smooth: Slider::new(names.smooth_time, SliderStyle::Rotary),
             delay: Slider::new(names.delay_time, SliderStyle::Rotary),
-            stereo: Slider::new(names.stereo, SliderStyle::Rotary).bipolar(),
+            stereo: Slider::new(names.stereo, SliderStyle::Rotary)
+                .bipolar()
+                .snap_to_value(0.0),
             editor: LineEditor { lfo: index },
             grid_size_x: grid_slider(local::GRID_SIZE_X[index], "X Grid"),
             grid_size_y: grid_slider(local::GRID_SIZE_Y[index], "Y Grid"),

@@ -468,17 +468,23 @@ impl FilterSection {
             mix: Slider::new(names.mix, SliderStyle::Rotary),
             blend: linear(names.blend, "Blend: ")
                 .bipolar()
-                .popup_placement(Placement::Above),
+                .popup_placement(Placement::Above)
+                .snap_to_value(1.0),
             formant_transpose: linear(names.formant_transpose, "Formant Transpose: ")
                 .bipolar()
-                .popup_placement(Placement::Above),
+                .popup_placement(Placement::Above)
+                .snap_to_value(0.0),
             resonance: vertical(names.resonance, "Resonance: "),
             formant_y: vertical(names.formant_y, "Formant Y: "),
             drive: Slider::new(names.drive, SliderStyle::Rotary),
             formant_resonance: Slider::new(names.formant_resonance, SliderStyle::Rotary),
-            formant_spread: Slider::new(names.formant_spread, SliderStyle::Rotary).bipolar(),
+            formant_spread: Slider::new(names.formant_spread, SliderStyle::Rotary)
+                .bipolar()
+                .snap_to_value(0.0),
             blend_transpose: Slider::new(names.blend_transpose, SliderStyle::Rotary),
-            keytrack: Slider::new(names.keytrack, SliderStyle::Rotary).bipolar(),
+            keytrack: Slider::new(names.keytrack, SliderStyle::Rotary)
+                .bipolar()
+                .snap_to_value(0.0),
             filter_input: SynthButton::text(names.filter_input, filter_input_text),
             response: RefCell::new(None),
         }
