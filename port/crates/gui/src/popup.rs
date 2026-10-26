@@ -17,6 +17,7 @@ use crate::paint::{PixelPainter, RectF};
 use crate::primitives::{Quad, QuadBatch, QuadKind};
 use crate::scope::Scope;
 use crate::skin::{ColorId, Section, ValueId};
+use crate::text::{Justify, Overflow};
 
 /// `PopupDisplay::kHeight` / `PopupList::kRowHeight`.
 const POPUP_HEIGHT: f32 = 24.0;
@@ -78,12 +79,12 @@ impl ValuePopup {
         quads.push(border);
         quads.paint(pixels, RectF::from(bounds));
         let font_size = (POPUP_HEIGHT * top.size_ratio()) as i32 as f32 * 0.5;
-        pixels.text_centred(
+        pixels.text_line(
             &self.text,
             bounds,
-            Face::Light,
-            font_size,
-            scope.color(ColorId::BodyText),
+            (Face::Light, font_size, scope.color(ColorId::BodyText)),
+            Justify::Centred,
+            Overflow::Fit,
         );
     }
 }
@@ -268,7 +269,8 @@ impl<T> Menu<T> {
                     list.width - 2 * padding,
                     row_height,
                 );
-                pixels.text_left(&item.name, row, Face::Light, font_size, text_colour);
+                let style = (Face::Light, font_size, text_colour);
+                pixels.text_line(&item.name, row, style, Justify::Left, Overflow::Ellipsis);
             }
         }
 
@@ -484,7 +486,8 @@ impl<T> DualMenu<T> {
                     list.width - 2 * padding,
                     row_height,
                 );
-                pixels.text_left(name, row, Face::Light, font_size, text_colour);
+                let style = (Face::Light, font_size, text_colour);
+                pixels.text_line(name, row, style, Justify::Left, Overflow::Ellipsis);
             }
         }
 

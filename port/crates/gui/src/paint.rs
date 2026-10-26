@@ -9,11 +9,12 @@
 //! takes the same pixel coordinates and converts them to egui points. The
 //! shader-drawn widgets get their own wgpu primitives in a later milestone.
 
-use egui::{Align2, Color32, CornerRadius, Pos2, Stroke, StrokeKind, Vec2};
+use egui::{Color32, CornerRadius, Pos2, Stroke, StrokeKind, Vec2};
 
 use crate::colour::Colour;
 use crate::fonts::Face;
 use crate::layout::Rect;
+use crate::text::{Justify, LineFit, Overflow};
 
 /// A float rectangle in pixels (`juce::Rectangle<float>`).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -260,8 +261,8 @@ impl<'a> PixelPainter<'a> {
         self.painter.extend(shapes);
     }
 
-    /// `Graphics::drawText(text, rect, Justification::centred)` with `face`
-    /// at JUCE point height `point_height` (pixels).
+    /// `Graphics::drawText(text, rect, Justification::centred, false)` with
+    /// `face` at JUCE point height `point_height` (pixels).
     pub fn text_centred(
         &self,
         text: &str,
@@ -270,14 +271,95 @@ impl<'a> PixelPainter<'a> {
         point_height: f32,
         colour: Colour,
     ) {
+        let style = (face, point_height, colour);
+        self.text_line(text, rect, style, Justify::Centred, Overflow::Curtail);
+    }
+
+    /// One line of `text` in `rect` (pixels), with `style`'s face at its
+    /// JUCE point height (pixels) in its colour, shortened as `overflow`
+    /// says when it doesn't fit, and centred vertically.
+    pub fn text_line(
+        &self,
+        text: &str,
+        rect: impl Into<RectF>,
+        (face, point_height, colour): (Face, f32, Colour),
+        justify: Justify,
+        overflow: Overflow,
+    ) {
+        let text = if overflow == Overflow::Fit {
+            text.trim()
+        } else {
+            text
+        };
+        if text.is_empty() {
+            return;
+        }
         let rect = self.rect(rect.into());
-        self.painter.text(
-            rect.center(),
-            Align2::CENTER_CENTER,
-            text,
-            face.at(self.points(point_height)),
-            colour.to_egui(),
-        );
+        let font = face.at(self.points(point_height));
+        let colour = colour.to_egui();
+        let galley = self
+            .painter
+            .layout_no_wrap(text.to_owned(), font.clone(), colour);
+        let glyphs: Vec<&egui::epaint::text::Glyph> =
+            galley.rows.iter().flat_map(|row| &row.row.glyphs).collect();
+        // `getGlyphPositions`: each glyph ends where the next starts, and the
+        // last where the line does (egui snaps glyphs, not the line's width).
+        let edges: Vec<f32> = glyphs
+            .iter()
+            .skip(1)
+            .map(|glyph| glyph.pos.x)
+            .chain([galley.rect.width()])
+            .map(|right| right * self.pixels_per_point)
+            .collect();
+        let dot = self.full_stop_advance(&font);
+        let width = rect.width() * self.pixels_per_point;
+        let fit = LineFit::new(&edges, dot, width, overflow);
+        let Some((left, right)) =
+            fit.extent(&edges, dot, justify, |i| glyphs[i].chr.is_whitespace())
+        else {
+            return;
+        };
+        let start = match justify {
+            Justify::Left => -left,
+            Justify::Centred => (width - (right - left)) / 2.0 - left,
+        } / self.pixels_per_point
+            + rect.min.x;
+        let top = rect.center().y - galley.size().y / 2.0;
+
+        let kept = if fit.kept == glyphs.len() {
+            galley
+        } else {
+            let end = text
+                .char_indices()
+                .nth(fit.kept)
+                .map_or(text.len(), |(i, _)| i);
+            self.painter
+                .layout_no_wrap(text[..end].to_owned(), font.clone(), colour)
+        };
+        if fit.kept > 0 {
+            let kept = if fit.scale == 1.0 {
+                kept
+            } else {
+                std::sync::Arc::new(squeezed(&kept, fit.scale))
+            };
+            self.painter.galley(egui::pos2(start, top), kept, colour);
+        }
+        if fit.dots > 0 {
+            let dots = self
+                .painter
+                .layout_no_wrap(".".repeat(fit.dots), font, colour);
+            let x = start + fit.dots_x / self.pixels_per_point;
+            self.painter.galley(egui::pos2(x, top), dots, colour);
+        }
+    }
+
+    /// A full stop's advance in `font` (pixels), as
+    /// `GlyphArrangement::insertEllipsis` measures it.
+    fn full_stop_advance(&self, font: &egui::FontId) -> f32 {
+        let galley = self
+            .painter
+            .layout_no_wrap(".".to_owned(), font.clone(), Color32::WHITE);
+        galley.rect.width() * self.pixels_per_point
     }
 
     /// Text centred in `rect` (pixels), turned by `angle` radians about its
@@ -437,7 +519,7 @@ impl<'a> PixelPainter<'a> {
         galley.size().x * self.pixels_per_point
     }
 
-    /// `Graphics::drawText(text, rect, Justification::centredLeft)`.
+    /// `Graphics::drawText(text, rect, Justification::centredLeft, false)`.
     pub fn text_left(
         &self,
         text: &str,
@@ -446,19 +528,38 @@ impl<'a> PixelPainter<'a> {
         point_height: f32,
         colour: Colour,
     ) {
-        let rect = self.rect(rect.into());
-        self.painter.text(
-            egui::pos2(rect.min.x, rect.center().y),
-            Align2::LEFT_CENTER,
-            text,
-            face.at(self.points(point_height)),
-            colour.to_egui(),
-        );
+        let style = (face, point_height, colour);
+        self.text_line(text, rect, style, Justify::Left, Overflow::Curtail);
     }
 
     pub fn egui_color(colour: Colour) -> Color32 {
         colour.to_egui()
     }
+}
+
+/// `galley` drawn `scale` as wide from its left (`stretchRangeOfGlyphs`).
+fn squeezed(galley: &egui::Galley, scale: f32) -> egui::Galley {
+    let squeeze_rect = |rect: &mut egui::Rect| {
+        rect.min.x *= scale;
+        rect.max.x *= scale;
+    };
+    let mut galley = galley.clone();
+    for placed in &mut galley.rows {
+        placed.pos.x *= scale;
+        let row = std::sync::Arc::make_mut(&mut placed.row);
+        row.size.x *= scale;
+        for glyph in &mut row.glyphs {
+            glyph.pos.x *= scale;
+            glyph.advance_width *= scale;
+        }
+        for vertex in &mut row.visuals.mesh.vertices {
+            vertex.pos.x *= scale;
+        }
+        squeeze_rect(&mut row.visuals.mesh_bounds);
+    }
+    squeeze_rect(&mut galley.rect);
+    squeeze_rect(&mut galley.mesh_bounds);
+    galley
 }
 
 /// How a [`Gradient`] spreads (`ColourGradient::isRadial`).

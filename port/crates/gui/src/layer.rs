@@ -10,6 +10,7 @@ use crate::colour::Colour;
 use crate::fonts::Face;
 use crate::paint::{PixelPainter, RectF};
 use crate::primitives::{Quad, QuadBatch};
+use crate::text::{Justify, Overflow};
 
 enum Image {
     Text {
@@ -18,6 +19,7 @@ enum Image {
         face: Face,
         point_height: f32,
         colour: Colour,
+        overflow: Overflow,
     },
     Polygon {
         points: Vec<(f32, f32)>,
@@ -59,7 +61,8 @@ impl Layer {
         self.additive.push(quad);
     }
 
-    /// Text centred in `rect` (pixels), drawn over the quads.
+    /// Text centred in `rect` (pixels), drawn over the quads and curtailed
+    /// like `Graphics::drawText(..., false)`.
     pub fn text_centred(
         &mut self,
         text: &str,
@@ -68,12 +71,38 @@ impl Layer {
         point_height: f32,
         colour: Colour,
     ) {
+        self.text(text, rect, face, point_height, colour, Overflow::Curtail);
+    }
+
+    /// A `PlainTextComponent`'s centred text in `rect` (pixels), drawn over
+    /// the quads and fitted like `Graphics::drawFittedText`.
+    pub fn fitted_text(
+        &mut self,
+        text: &str,
+        rect: impl Into<RectF>,
+        face: Face,
+        point_height: f32,
+        colour: Colour,
+    ) {
+        self.text(text, rect, face, point_height, colour, Overflow::Fit);
+    }
+
+    fn text(
+        &mut self,
+        text: &str,
+        rect: impl Into<RectF>,
+        face: Face,
+        point_height: f32,
+        colour: Colour,
+        overflow: Overflow,
+    ) {
         self.images.push(Image::Text {
             text: text.to_string(),
             rect: rect.into(),
             face,
             point_height,
             colour,
+            overflow,
         });
     }
 
@@ -99,7 +128,14 @@ impl Layer {
                     face,
                     point_height,
                     colour,
-                } => pixels.text_centred(&text, rect, face, point_height, colour),
+                    overflow,
+                } => pixels.text_line(
+                    &text,
+                    rect,
+                    (face, point_height, colour),
+                    Justify::Centred,
+                    overflow,
+                ),
                 Image::Polygon { points, colour } => pixels.fill_polygon(&points, colour),
                 Image::Custom(paint) => paint(pixels),
             }

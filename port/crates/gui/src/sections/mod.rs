@@ -410,8 +410,22 @@ impl<'a, 'b> Panel<'a, 'b> {
         );
     }
 
-    /// Text over the section's controls.
+    /// A `PlainTextComponent`'s centred text over the section's controls,
+    /// fitted like `Graphics::drawFittedText`.
     pub fn text_centred(
+        &mut self,
+        text: &str,
+        bounds: Rect,
+        face: crate::fonts::Face,
+        size: f32,
+        colour: crate::colour::Colour,
+    ) {
+        self.layer.fitted_text(text, bounds, face, size, colour);
+    }
+
+    /// Centred text over the section's controls, curtailed like
+    /// `Graphics::drawText(..., false)`.
+    pub fn curtailed_text(
         &mut self,
         text: &str,
         bounds: Rect,

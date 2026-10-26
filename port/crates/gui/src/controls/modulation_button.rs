@@ -19,6 +19,7 @@ use crate::layout::Rect;
 use crate::paint::{Gradient, GradientKind, PixelPainter, RectF};
 use crate::scope::Scope;
 use crate::skin::{ColorId, ValueId};
+use crate::text::{Justify, Overflow};
 
 /// `ModulationButton::kFontAreaHeightRatio`.
 const FONT_AREA_HEIGHT_RATIO: f32 = 0.3;
@@ -146,7 +147,7 @@ impl ModulationButton {
         }
 
         let font_area_height = (FONT_AREA_HEIGHT_RATIO * width as f32) as i32;
-        pixels.text_centred(
+        pixels.text_line(
             &self.text(),
             Rect::new(
                 meter.right(),
@@ -154,9 +155,13 @@ impl ModulationButton {
                 bounds.right() - meter.right(),
                 font_area_height,
             ),
-            Face::Regular,
-            style.font_size,
-            scope.color(ColorId::BodyText),
+            (
+                Face::Regular,
+                style.font_size,
+                scope.color(ColorId::BodyText),
+            ),
+            Justify::Centred,
+            Overflow::Ellipsis,
         );
 
         if style.connect_right && !style.selected {
