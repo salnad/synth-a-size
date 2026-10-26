@@ -43,11 +43,18 @@ same.
 - **`--animate on|off`**, default off. #125 turned animation off for every
   frame, because a silent engine's outputs are idle (a filter response at
   cutoff 0). With a running engine, the animated views are meaningful, so
-  a view can choose `--animate on`, which needs `--midi` or `--seconds`. The
-  default stays #125's.
+  a view can choose `--animate on`. It needs a render that isn't empty
+  (`--midi`, or `--seconds` above 0), checked in both `ref-gui` and
+  `gui_reference.py`. The default stays #125's. Bad values of `--seconds`,
+  `--block-size` and `--animate` get their own error messages
+  (UI Reviewer's nits).
 - **`gui_reference.py frames`** reads `"midi"`, `"seconds"` and `"animate"`
   from each view (`live_args`). The MIDI must be an authored file in
   `migration/corpus/midi/`. Tests are in `test_gui_reference.py`.
+
+Until the port's gallery runs its engine, a view with these fields compares
+live upstream against a static port; the `ref-gui` README says so. A
+follow-up PR makes the gallery render the same view through `sas-engine`.
 
 `views.json` gets no new views here. Tabs Builder's G6a and GUI Builder's
 #125 add the effects and filter views, and can give them these fields.
@@ -59,6 +66,9 @@ after #125. It touches different lines of `gui_main.cpp` and
 Checks:
 
 - `test_gui_reference.py` passes (9 tests).
+- `ref-gui` refuses an empty render with `--animate on`, a bad
+  `--seconds` or `--block-size`, and `--animate maybe`, each with its own
+  message.
 - `ref-gui` renders the live views without a crash, under gdb and under
   AddressSanitizer.
 - The audio reference rebuilt with `RenderLoop` matches all pinned render

@@ -88,7 +88,8 @@ def live_args(view):
     """ref-gui options for a view's running engine: "midi" (an authored file
     in migration/corpus/midi/), "seconds" of audio to render (default: up to
     the last MIDI event) and "animate" (true draws the animated views from the
-    engine's outputs, and needs midi or seconds)."""
+    engine's outputs, and needs a render that isn't empty: midi, or seconds
+    above 0)."""
     args = []
     name = view.get("name", "?")
     midi = view.get("midi")
@@ -104,8 +105,9 @@ def live_args(view):
             sys.exit(f"gui_reference.py: {VIEWS.name}: {name}: seconds must be a number >= 0")
         args += ["--seconds", repr(float(seconds))]
     if view.get("animate"):
-        if not args:
-            sys.exit(f"gui_reference.py: {VIEWS.name}: {name}: animate needs midi or seconds")
+        seconds = view.get("seconds")
+        if not ((midi and seconds != 0) or (seconds is not None and seconds > 0)):
+            sys.exit(f"gui_reference.py: {VIEWS.name}: {name}: animate needs midi or seconds above 0")
         args += ["--animate", "on"]
     return args
 

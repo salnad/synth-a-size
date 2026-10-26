@@ -49,8 +49,14 @@ level meter and held keys.
 
 `--animate on` draws the animated views (filter responses, envelope and LFO
 positions and the like) from the engine's outputs, as the plugin's editor
-does by default. It needs a running engine, because a silent engine's
-outputs are idle (a filter response at cutoff 0).
+does by default. It needs a render that isn't empty (`--midi`, or
+`--seconds` above 0), because a silent engine's outputs are idle (a filter
+response at cutoff 0).
+
+The port's gallery doesn't run its engine yet, so a view that sets `"midi"`,
+`"seconds"` or `"animate"` compares **live upstream against a static port**:
+those displays differ by design until the gallery renders the same view
+through `sas-engine`.
 
 In `views.json`, a view sets these with `"midi"` (an authored file in
 `migration/corpus/midi/`), `"seconds"` and `"animate": true`.

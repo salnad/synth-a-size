@@ -26,7 +26,8 @@
 //
 // [--animate on|off] (default off) draws the animated views (filter
 // responses, envelope and LFO positions, meters, the oscilloscope) from the
-// engine's outputs, as the plugin's editor does. It needs --midi or --seconds.
+// engine's outputs, as the plugin's editor does. It needs a render that
+// isn't empty (--midi, or --seconds above 0).
 //
 // Runs on any X display; CI uses Xvfb with Mesa's software OpenGL.
 
@@ -41,10 +42,19 @@
 
 #include "render_synth.h"
 
+#include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 
 namespace {
+
+// A whole-string decimal number; false on anything else.
+bool parseNumber(const std::string& text, double& value) {
+  char* end = nullptr;
+  value = std::strtod(text.c_str(), &end);
+  return !text.empty() && end == text.c_str() + text.size() && std::isfinite(value);
+}
 
 struct Options {
   std::string midi;
@@ -205,12 +215,22 @@ class RefGuiApplication : public JUCEApplication {
         std::string value = args[i + 1].unquoted().toStdString();
         if (key == "--midi")
           options.midi = value;
-        else if (key == "--seconds")
-          options.seconds = std::stod(value);
-        else if (key == "--block-size")
-          options.block_size = std::stoi(value);
-        else if (key == "--animate" && (value == "on" || value == "off"))
+        else if (key == "--seconds") {
+          if (!parseNumber(value, options.seconds) || !(options.seconds >= 0.0))
+            return fail("--seconds takes a number >= 0");
+        }
+        else if (key == "--block-size") {
+          double block_size = 0.0;
+          if (!parseNumber(value, block_size) || block_size != std::floor(block_size) ||
+              block_size < 1.0 || block_size > 65536.0)
+            return fail("--block-size takes a whole number from 1 to 65536");
+          options.block_size = static_cast<int>(block_size);
+        }
+        else if (key == "--animate") {
+          if (value != "on" && value != "off")
+            return fail("--animate takes on or off");
           options.animate = value == "on";
+        }
         else if (key == "--out")
           options.out = value;
         else if (key == "--preset")
@@ -251,9 +271,12 @@ class RefGuiApplication : public JUCEApplication {
       if (options.animate && !live)
         return fail("--animate on needs a running engine (--midi or --seconds)");
       if (live) {
-        std::string error = renderLive(options);
+        long long rendered = 0;
+        std::string error = renderLive(options, rendered);
         if (!error.empty())
           return fail(error);
+        if (options.animate && rendered == 0)
+          return fail("--animate on needs a running engine: the render is empty");
       }
 
       FullInterface* gui = synth_->getGui();
@@ -310,10 +333,8 @@ class RefGuiApplication : public JUCEApplication {
     // ref-render's block loop (render_main.cpp) at its default sample rate
     // and tempo, without writing the audio. Runs before the interface is on
     // screen, so no frame is drawn while the engine is processing.
-    std::string renderLive(const Options& options) {
+    std::string renderLive(const Options& options, long long& rendered) {
       const int sample_rate = vital::kDefaultSampleRate;
-      if (options.block_size <= 0 || options.block_size > 65536)
-        return "--block-size out of range";
 
       std::vector<harness::TimedMessage> events;
       double last_event_seconds = 0.0;
@@ -342,6 +363,7 @@ class RefGuiApplication : public JUCEApplication {
         }
         synth_->renderBlock(buffer, midi, seconds_time, sample_rate);
       }
+      rendered = total_samples;
       return "";
     }
 

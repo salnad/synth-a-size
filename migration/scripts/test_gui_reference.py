@@ -83,9 +83,14 @@ class LiveArgsTest(unittest.TestCase):
         self.assertEqual(gui_reference.live_args({"name": "v", "seconds": 0, "animate": False}),
                          ["--seconds", "0.0"])
 
-    def test_animate_needs_a_running_engine(self):
-        with self.assertRaises(SystemExit):
-            gui_reference.live_args({"name": "v", "animate": True})
+    def test_animate_needs_a_render_that_is_not_empty(self):
+        for view in ({"animate": True},
+                     {"seconds": 0, "animate": True},
+                     {"midi": self.MIDI, "seconds": 0, "animate": True}):
+            with self.assertRaises(SystemExit):
+                gui_reference.live_args({"name": "v", **view})
+        self.assertEqual(gui_reference.live_args({"name": "v", "midi": self.MIDI, "animate": True})[-2:],
+                         ["--animate", "on"])
 
     def test_midi_comes_from_the_corpus_midi_folder(self):
         for midi in ("migration/corpus/gui/presets/all_effects.vital",
