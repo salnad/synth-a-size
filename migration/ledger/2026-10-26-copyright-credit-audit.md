@@ -82,7 +82,9 @@ JUCE's behaviour only) aren't JUCE translations. Two editors merged with #126 an
 `controls/envelope_editor.rs` and `controls/line_editor.rs`, repeat the
 slider's JUCE multiple-click rules (`MouseInputSource`, `mouseDoubleClick`),
 so they get the `juce_gui_basics, GPL-3.0-only` line and the compound SPDX
-line.
+line. `preset/src/user_folders.rs` (#148) ports JUCE's `String::compareNatural`
+(`juce_core`), so it gets the ISC line. `gui/src/text.rs` (#145) arrived
+with its own JUCE line.
 
 **The plugin as a whole is GPLv3 only.** With GPL-3.0-only portions, the
 combined plugin can be distributed under GPL version 3 only. Statements
