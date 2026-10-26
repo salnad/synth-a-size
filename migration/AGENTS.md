@@ -22,11 +22,13 @@ the upstream pin in [UPSTREAM.md](UPSTREAM.md).
 
 ## Hard rules
 
-1. **License: GPLv3.** Everything stays GPL-3.0-or-later. Do not add
-   dependencies whose licenses are incompatible with GPLv3 (proprietary,
-   SSPL, non-commercial, GPL-2.0-only, etc.). The port is a derivative
-   work of GPLv3 code. Keep upstream copyright notices when you translate
-   a file, and say in the module docs which upstream file it ports.
+1. **License: GPLv3.** Our code is GPL-3.0-or-later. Files with portions
+   translated from JUCE's GPL modules are also GPL-3.0-only, so the plugin
+   as a whole is distributed under GPLv3 only. Do not add dependencies
+   whose licenses are incompatible with GPLv3 (proprietary, SSPL,
+   non-commercial, GPL-2.0-only, etc.). The port is a derivative work of
+   GPLv3 code. Keep upstream copyright notices when you translate a file,
+   and say in the module docs which upstream file it ports.
    - A port file starts with the credit lines, then a blank line, then its
      module docs:
 
@@ -40,11 +42,18 @@ the upstream pin in [UPSTREAM.md](UPSTREAM.md).
      including tables copied from it. The `Portions` line goes on any file
      that reproduces a JUCE function's logic (from
      `vital/third_party/JUCE/modules`), naming each module and the licence
-     its file header states: `ISC` for `juce_core`, `juce_audio_basics`
-     and the other ISC modules, `GPL-3.0 option` for `juce_dsp`,
-     `juce_graphics`, `juce_gui_basics` and the rest. Drawing the same
-     result another way (egui instead of `Graphics`), or matching one
-     observable behaviour, isn't a translation.
+     its file header states: `ISC` for `juce_core`, `juce_audio_basics`,
+     `juce_audio_devices` and `juce_events`, and `GPL-3.0-only` for every
+     other module (`juce_dsp`, `juce_graphics`, `juce_gui_basics`,
+     `juce_data_structures` and the rest; JUCE's GPL option is version 3
+     only). Drawing the same result another way (egui instead of
+     `Graphics`), or matching one observable behaviour, isn't a
+     translation.
+   - A file with a `GPL-3.0-only` portion uses
+     `// SPDX-License-Identifier: GPL-3.0-or-later AND GPL-3.0-only`, and
+     its crate's `Cargo.toml` says
+     `license = "GPL-3.0-or-later AND GPL-3.0-only"` instead of inheriting
+     the workspace licence. ISC portions need neither.
    - A newly translated third-party library, or a JUCE module not yet
      listed, also goes in the bundle's
      `port/crates/plugin/notices/THIRD_PARTY_NOTICES.md`. That file is user

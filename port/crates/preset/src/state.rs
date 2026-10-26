@@ -1,6 +1,6 @@
 // Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
-// Portions Copyright (c) 2020 Raw Material Software Limited (JUCE 6: juce_gui_basics, GPL-3.0 option; juce_core, ISC).
-// SPDX-License-Identifier: GPL-3.0-or-later
+// Portions Copyright (c) 2020 Raw Material Software Limited (JUCE 6: juce_gui_basics, GPL-3.0-only; juce_core, ISC).
+// SPDX-License-Identifier: GPL-3.0-or-later AND GPL-3.0-only
 
 //! The preset state and its JSON load/save.
 //!

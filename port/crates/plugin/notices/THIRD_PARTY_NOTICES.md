@@ -1,8 +1,11 @@
 # Third-party notices
 
 synth-a-size is free software under the GNU General Public License,
-version 3 or later (`LICENSE.txt`). It is a port of an open-source GPLv3
-synthesizer and bundles the following third-party material.
+version 3 (`LICENSE.txt`). It includes code translated from JUCE under
+version 3 only, so the plugin as a whole is distributed under version 3
+only. Source files without such code are also available under version 3
+or later. It is a port of an open-source GPLv3 synthesizer and bundles the
+following third-party material.
 
 ## Fonts
 
@@ -30,7 +33,7 @@ as follows:
 - `juce_dsp` (the FFT), `juce_graphics` (colours, paths and path
   strokes), `juce_gui_basics` (slider dragging, click and double-click
   timing, buttons, colour lookup) and `juce_data_structures` (the config
-  file location), under the GNU General Public License, version 3;
+  file location), under the GNU General Public License, version 3 only;
 - `juce_core` (base64, string and file-name helpers) and
   `juce_audio_basics` (on-screen keyboard state, MIDI file reading, MPE
   zones, MIDI event ordering, flush-to-zero), under the ISC licence:
