@@ -27,10 +27,22 @@ enum Image {
     Custom(Box<dyn FnOnce(&PixelPainter)>),
 }
 
-#[derive(Default)]
 pub struct Layer {
     quads: QuadBatch,
+    /// Quads blended additively (`BarRenderer`'s default), drawn after the
+    /// others.
+    additive: QuadBatch,
     images: Vec<Image>,
+}
+
+impl Default for Layer {
+    fn default() -> Layer {
+        Layer {
+            quads: QuadBatch::new(),
+            additive: QuadBatch::additive(),
+            images: Vec::new(),
+        }
+    }
 }
 
 impl Layer {
@@ -40,6 +52,11 @@ impl Layer {
 
     pub fn quad(&mut self, quad: Quad) {
         self.quads.push(quad);
+    }
+
+    /// A quad blended additively.
+    pub fn additive_quad(&mut self, quad: Quad) {
+        self.additive.push(quad);
     }
 
     /// Text centred in `rect` (pixels), drawn over the quads.
@@ -73,6 +90,7 @@ impl Layer {
     /// Paints the quads, clipped to `clip` (pixels), then the images.
     pub fn paint(self, pixels: &PixelPainter, clip: RectF) {
         self.quads.paint(pixels, clip);
+        self.additive.paint(pixels, clip);
         for image in self.images {
             match image {
                 Image::Text {

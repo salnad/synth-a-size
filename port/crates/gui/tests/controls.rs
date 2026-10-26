@@ -19,7 +19,10 @@ use sas_gui::controls::tab_selector::TabSelector;
 use sas_gui::layout::{FullLayout, Rect};
 use sas_gui::paint::PixelPainter;
 use sas_gui::scope::Scope;
+use sas_gui::sections::oscillator::{self, OscillatorLayout};
 use sas_gui::sections::portamento::{self, PortamentoLayout};
+use sas_gui::sections::sample::{self, SampleLayout};
+use sas_gui::sections::synthesis::SynthesisLayout;
 use sas_gui::sections::voice::{self, VoiceLayout};
 use sas_gui::sections::{MenuOwner, Overlay, Panel};
 use sas_gui::{EditorModel, Host, HostParam, Interface, OpenGestures};
@@ -41,6 +44,14 @@ const CONTROLS: &[&str] = &[
     "volume",
     "chorus_on",
     "distortion_type",
+    "osc_1_on",
+    "osc_1_destination",
+    "osc_1_distortion_type",
+    "osc_1_distortion_amount",
+    "osc_1_spectral_morph_type",
+    "osc_1_view_2d",
+    "osc_2_distortion_type",
+    "sample_destination",
 ];
 
 enum TestParam {
@@ -116,6 +127,14 @@ impl Synth {
     fn value(&self, name: &str) -> f32 {
         unsafe { self.params[name].ptr().unmodulated_plain_value() }
     }
+
+    /// Sets a parameter as a preset load would, without a gesture.
+    fn set(&self, name: &str, plain: f32) {
+        unsafe {
+            let ptr = self.params[name].ptr();
+            ptr._internal_set_normalized_value(ptr.preview_normalized(plain));
+        }
+    }
 }
 
 impl EditorModel for Synth {
@@ -156,6 +175,20 @@ impl EditorModel for Synth {
 struct Recorder {
     synth: Arc<Synth>,
     log: Mutex<Vec<String>>,
+    /// Sets the host hasn't applied yet. nice-plug's wrappers don't update
+    /// a parameter at once (CLAP queues an event; VST3 waits while a block
+    /// is processing), so by default the sets apply at the start of the
+    /// next frame, as if a block ran in between.
+    pending: Mutex<Vec<(ParamPtr, f32)>>,
+    deferred: bool,
+}
+
+impl Recorder {
+    fn apply_pending(&self) {
+        for (param, normalized) in self.pending.lock().unwrap().drain(..) {
+            unsafe { param._internal_set_normalized_value(normalized) };
+        }
+    }
 }
 
 impl GuiContextInner for Recorder {
@@ -171,7 +204,11 @@ impl GuiContextInner for Recorder {
     }
 
     unsafe fn raw_set_parameter_normalized(&self, param: ParamPtr, normalized: f32) {
-        unsafe { param._internal_set_normalized_value(normalized) };
+        if self.deferred {
+            self.pending.lock().unwrap().push((param, normalized));
+        } else {
+            unsafe { param._internal_set_normalized_value(normalized) };
+        }
         self.log
             .lock()
             .unwrap()
@@ -204,10 +241,18 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Fixture {
+        Fixture::with_sets(true)
+    }
+
+    /// A fixture whose host applies sets at once (`deferred` false) or at
+    /// the next frame.
+    fn with_sets(deferred: bool) -> Fixture {
         let synth = Synth::new();
         let recorder = Arc::new(Recorder {
             synth: synth.clone(),
             log: Mutex::new(Vec::new()),
+            pending: Mutex::new(Vec::new()),
+            deferred,
         });
         let context = GuiContext::new(recorder.clone());
         Fixture {
@@ -226,6 +271,7 @@ impl Fixture {
             .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
             .build_ui(|ui| {
                 let screen = ui.ctx().content_rect();
+                self.recorder.apply_pending();
                 let host = Host::tracking(self.synth.as_ref(), Some(&self.context), &self.open);
                 self.interface.borrow_mut().show_in(ui, screen, &host)
             });
@@ -259,6 +305,9 @@ fn centre(rect: Rect) -> Pos2 {
     )
 }
 
+/// Each input is followed by a second frame, as if an audio block ran in
+/// between: the recording host applies the GUI's sets at the start of a
+/// frame, so a set shows from the next one.
 fn press(harness: &mut Harness, pos: Pos2, button: PointerButton, modifiers: Modifiers) {
     harness.event(Event::ModifiersChanged(modifiers));
     harness.event(Event::PointerMoved(pos));
@@ -268,6 +317,7 @@ fn press(harness: &mut Harness, pos: Pos2, button: PointerButton, modifiers: Mod
         pressed: true,
         modifiers,
     });
+    harness.step();
     harness.step();
 }
 
@@ -280,6 +330,7 @@ fn release(harness: &mut Harness, pos: Pos2, button: PointerButton, modifiers: M
     });
     harness.step();
     harness.event(Event::ModifiersChanged(Modifiers::NONE));
+    harness.step();
 }
 
 fn drag(harness: &mut Harness, from: Pos2, to: Pos2, modifiers: Modifiers) {
@@ -295,6 +346,7 @@ fn drag(harness: &mut Harness, from: Pos2, to: Pos2, modifiers: Modifiers) {
 fn move_to(harness: &mut Harness, pos: Pos2) {
     harness.event(Event::PointerMoved(pos));
     harness.step();
+    harness.step();
 }
 
 fn key(harness: &mut Harness, key: Key) {
@@ -305,6 +357,7 @@ fn key(harness: &mut Harness, key: Key) {
         repeat: false,
         modifiers: Modifiers::NONE,
     });
+    harness.step();
     harness.step();
 }
 
@@ -792,6 +845,7 @@ fn drags_are_measured_in_points() {
         .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
         .build_ui(|ui| {
             let screen = ui.ctx().content_rect();
+            fixture.recorder.apply_pending();
             let host = Host::tracking(
                 fixture.synth.as_ref(),
                 Some(&fixture.context),
@@ -1011,6 +1065,7 @@ fn widget_harness_with_tabs<'a>(
         .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
         .build_ui(move |ui| {
             let area = ui.ctx().content_rect();
+            fixture.recorder.apply_pending();
             let host = Host::tracking(
                 fixture.synth.as_ref(),
                 Some(&fixture.context),
@@ -1173,6 +1228,7 @@ fn learned_midi_moves_reach_the_host_as_gestures() {
     };
     let moved_to = fixture.synth.value("volume");
     fixture.synth.midi_moved.lock().unwrap().push("volume");
+    fixture.recorder.apply_pending();
     let host = Host::tracking(
         fixture.synth.as_ref(),
         Some(&fixture.context),
@@ -1202,6 +1258,7 @@ fn learned_midi_moves_reach_the_host_as_gestures() {
 #[test]
 fn a_learned_move_during_a_drag_sends_only_the_value() {
     let fixture = Fixture::new();
+    fixture.recorder.apply_pending();
     let host = Host::tracking(
         fixture.synth.as_ref(),
         Some(&fixture.context),
@@ -1303,6 +1360,7 @@ fn the_open_chat_panel_composes_with_the_editor() {
         .build_ui(|ui| {
             // As `App::ui` composes them.
             let screen = ui.ctx().content_rect();
+            fixture.recorder.apply_pending();
             let host = Host::tracking(
                 fixture.synth.as_ref(),
                 Some(&fixture.context),
@@ -1374,4 +1432,237 @@ fn the_open_chat_panel_composes_with_the_editor() {
     assert!(fixture
         .take_log()
         .contains(&"begin portamento_time".to_string()));
+}
+
+fn oscillator_layout(fixture: &Fixture, index: usize) -> OscillatorLayout {
+    let interface = fixture.interface.borrow();
+    let layout = FullLayout::new(interface.skin(), 1400, 820);
+    let top = Scope::top(interface.skin(), layout.size_ratio);
+    let synthesis = SynthesisLayout::new(&top, layout.main);
+    OscillatorLayout::new(
+        &top.within(oscillator::SKIN),
+        synthesis.oscillators[index],
+        false,
+    )
+}
+
+fn sample_layout(fixture: &Fixture) -> SampleLayout {
+    let interface = fixture.interface.borrow();
+    let layout = FullLayout::new(interface.skin(), 1400, 820);
+    let top = Scope::top(interface.skin(), layout.size_ratio);
+    let synthesis = SynthesisLayout::new(&top, layout.main);
+    SampleLayout::new(&top.within(sample::SKIN), synthesis.sample)
+}
+
+/// Clicks row `row` (0-based, dividers count) of a menu that opened below
+/// `selector`.
+fn choose_row(harness: &mut Harness, selector: Rect, row: usize) {
+    // Rows are 24 pixels from the top of the list, under the body rounding.
+    let pos = Pos2::new(
+        selector.x as f32 + 20.0,
+        selector.bottom() as f32 + 12.0 + 24.0 * row as f32,
+    );
+    harness.event(Event::PointerMoved(pos));
+    harness.step();
+    click(harness, pos);
+}
+
+#[test]
+fn an_oscillator_destination_is_chosen_from_its_menu_or_arrows() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let osc = oscillator_layout(&fixture, 0);
+    assert_eq!(fixture.synth.value("osc_1_destination"), 0.0);
+    // The selector opens on mouse down, below itself, and choosing sets the
+    // value in one gesture.
+    press(
+        &mut harness,
+        centre(osc.destination),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    release(
+        &mut harness,
+        centre(osc.destination),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    {
+        let interface = fixture.interface.borrow();
+        let menu = interface.overlay().menu.as_ref().unwrap();
+        let names: Vec<_> = menu.items.iter().map(|item| item.name.as_str()).collect();
+        assert_eq!(names, oscillator::DESTINATION_MENU_NAMES);
+        assert_eq!(
+            menu.position,
+            Pos2::new(osc.destination.x as f32, osc.destination.bottom() as f32)
+        );
+    }
+    fixture.take_log();
+    choose_row(&mut harness, osc.destination, 3);
+    assert_eq!(fixture.synth.value("osc_1_destination"), 3.0);
+    assert_eq!(
+        fixture.take_log(),
+        [
+            "begin osc_1_destination",
+            "set osc_1_destination",
+            "end osc_1_destination"
+        ]
+    );
+
+    // The arrows step through the destinations and wrap round.
+    for _ in 0..30 {
+        harness.step();
+    }
+    click(&mut harness, centre(osc.next_destination));
+    assert_eq!(fixture.synth.value("osc_1_destination"), 4.0);
+    for _ in 0..30 {
+        harness.step();
+    }
+    click(&mut harness, centre(osc.next_destination));
+    assert_eq!(fixture.synth.value("osc_1_destination"), 0.0);
+    for _ in 0..30 {
+        harness.step();
+    }
+    click(&mut harness, centre(osc.prev_destination));
+    assert_eq!(fixture.synth.value("osc_1_destination"), 4.0);
+}
+
+#[test]
+fn the_wave_morph_menu_has_dividers_and_names_the_modulator() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let osc = oscillator_layout(&fixture, 1);
+    press(
+        &mut harness,
+        centre(osc.distortion_selector),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    release(
+        &mut harness,
+        centre(osc.distortion_selector),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    let interface = fixture.interface.borrow();
+    let menu = interface.overlay().menu.as_ref().unwrap();
+    let names: Vec<_> = menu
+        .items
+        .iter()
+        .map(|item| (item.id, item.name.as_str()))
+        .collect();
+    assert_eq!(names[0], (0, "None"));
+    assert_eq!(names[1], (-1, ""));
+    assert_eq!(names[2], (1, "Sync"));
+    assert_eq!(names[8], (-1, ""));
+    // Oscillator 2's first modulator is oscillator 1, its second is 3.
+    assert_eq!(names[9], (7, "FM <- Osc 1"));
+    assert_eq!(names[10], (8, "FM <- Osc 3"));
+    assert_eq!(names[13], (11, "RM <- Osc 3"));
+}
+
+#[test]
+fn an_fm_loop_between_oscillators_is_broken() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    // Oscillator 1 reads oscillator 2 (FM <- Osc 2); oscillator 2 is on
+    // Pulse, one before FM <- Osc 1.
+    fixture.synth.set("osc_1_distortion_type", 7.0);
+    fixture.synth.set("osc_2_distortion_type", 6.0);
+    harness.step();
+    let osc = oscillator_layout(&fixture, 1);
+    click(&mut harness, centre(osc.next_distortion));
+    // Oscillator 2 now reads oscillator 1, so oscillator 1, the last in the
+    // loop, stops reading (SynthesisInterface::distortionTypeChanged).
+    assert_eq!(fixture.synth.value("osc_2_distortion_type"), 7.0);
+    assert_eq!(fixture.synth.value("osc_1_distortion_type"), 0.0);
+}
+
+#[test]
+fn morph_knobs_return_to_their_type_centre_on_double_click() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let osc = oscillator_layout(&fixture, 0);
+    let knob = centre(osc.distortion_amount);
+    // With no wave morph the knob is bipolar and returns to the centre.
+    drag(
+        &mut harness,
+        knob,
+        knob + egui::vec2(0.0, -40.0),
+        Modifiers::NONE,
+    );
+    for _ in 0..30 {
+        harness.step();
+    }
+    click(&mut harness, knob);
+    click(&mut harness, knob);
+    assert_eq!(fixture.synth.value("osc_1_distortion_amount"), 0.5);
+    // Quantize is one-sided: back to the start.
+    fixture.synth.set("osc_1_distortion_type", 3.0);
+    for _ in 0..30 {
+        harness.step();
+    }
+    click(&mut harness, knob);
+    click(&mut harness, knob);
+    assert_eq!(fixture.synth.value("osc_1_distortion_amount"), 0.0);
+}
+
+#[test]
+fn the_dimension_button_steps_back_through_the_views() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let osc = oscillator_layout(&fixture, 0);
+    let start = fixture.synth.value("osc_1_view_2d") as i32;
+    click(&mut harness, centre(osc.dimension));
+    assert_eq!(fixture.synth.value("osc_1_view_2d") as i32, (start + 2) % 3);
+    assert_eq!(
+        fixture.take_log(),
+        [
+            "begin osc_1_view_2d",
+            "set osc_1_view_2d",
+            "end osc_1_view_2d"
+        ]
+    );
+}
+
+#[test]
+fn the_sample_destination_wraps_round() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let smp = sample_layout(&fixture);
+    assert_eq!(fixture.synth.value("sample_destination"), 3.0);
+    click(&mut harness, centre(smp.prev_destination));
+    assert_eq!(fixture.synth.value("sample_destination"), 2.0);
+    for _ in 0..30 {
+        harness.step();
+    }
+    click(&mut harness, centre(smp.next_destination));
+    click(&mut harness, centre(smp.next_destination));
+    assert_eq!(fixture.synth.value("sample_destination"), 4.0);
+}
+
+#[test]
+fn an_fm_loop_chosen_from_the_menu_is_broken() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    fixture.synth.set("osc_1_distortion_type", 7.0);
+    harness.step();
+    let osc = oscillator_layout(&fixture, 1);
+    press(
+        &mut harness,
+        centre(osc.distortion_selector),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    release(
+        &mut harness,
+        centre(osc.distortion_selector),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    // Row 9 is "FM <- Osc 1" (rows 1 and 8 are dividers). The host applies
+    // the choice a frame later; the follow-up must not read it back.
+    choose_row(&mut harness, osc.distortion_selector, 9);
+    assert_eq!(fixture.synth.value("osc_2_distortion_type"), 7.0);
+    assert_eq!(fixture.synth.value("osc_1_distortion_type"), 0.0);
 }

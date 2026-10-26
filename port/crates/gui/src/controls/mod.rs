@@ -9,6 +9,8 @@ pub mod format;
 pub mod icon;
 pub mod oscilloscope;
 pub mod path;
+pub mod shape_button;
 pub mod slider;
 pub mod tab_selector;
+pub mod transpose_quantize;
 pub mod wheel;

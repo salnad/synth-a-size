@@ -111,6 +111,13 @@ pub struct Slider {
     /// `TextSelector::long_lookup_`: the names the list shows, when they
     /// differ from the ones the slider shows.
     pub long_lookup: Option<&'static [&'static str]>,
+    /// `text_entry_width_percent_` (`setTextEntrySizePercent`).
+    pub text_entry_width_percent: f32,
+    /// `overrideValue(Skin::kTextComponentOffset, ...)`.
+    pub text_component_offset: Option<f32>,
+    /// `setDoubleClickReturnValue`: the value a double click sets, when it
+    /// isn't the parameter's default.
+    pub double_click_value: Option<f32>,
 }
 
 impl Slider {
@@ -129,7 +136,41 @@ impl Slider {
             active: true,
             text_selector: false,
             long_lookup: None,
+            text_entry_width_percent: TEXT_ENTRY_WIDTH_PERCENT,
+            text_component_offset: None,
+            double_click_value: None,
         }
+    }
+
+    /// `setMaxDisplayCharacters` and `setMaxDecimalPlaces`.
+    pub fn display(mut self, characters: usize, decimal_places: usize) -> Slider {
+        self.format.max_characters = characters;
+        self.format.max_decimal_places = decimal_places;
+        self
+    }
+
+    /// `setTextEntrySizePercent(width, ...)` (upstream reads only the
+    /// width) and `overrideValue(Skin::kTextComponentOffset, offset)`, as
+    /// the oscillator and sample text sliders set them.
+    pub fn text_entry(mut self, width_percent: f32, offset: Option<f32>) -> Slider {
+        self.text_entry_width_percent = width_percent;
+        self.text_component_offset = offset;
+        self
+    }
+
+    pub fn knob_size_scale(mut self, scale: f32) -> Slider {
+        self.knob_size_scale = scale;
+        self
+    }
+
+    pub fn popup_placement(mut self, placement: Placement) -> Slider {
+        self.popup_placement = placement;
+        self
+    }
+
+    fn text_offset(&self, scope: &Scope) -> f32 {
+        self.text_component_offset
+            .unwrap_or_else(|| scope.value(ValueId::TextComponentOffset))
     }
 
     /// A `TextSelector` (a text slider whose press opens its options),
@@ -410,7 +451,7 @@ impl Slider {
         } else {
             bounds.height as f32 * self.text_height_percentage
         };
-        let offset = scope.value(ValueId::TextComponentOffset).round();
+        let offset = self.text_offset(scope).round();
         let mut colour = scope.color(ColorId::TextComponentText);
         if !self.active {
             colour = colour.with_multiplied_alpha(0.5);
@@ -484,9 +525,9 @@ impl Slider {
         let font_size = scope.value(ValueId::TextComponentFontSize);
         let text_height = (font_size / TEXT_ENTRY_HEIGHT_PERCENT) as i32;
         if self.style.is_rotary() {
-            let text_width = (bounds.width as f32 * TEXT_ENTRY_WIDTH_PERCENT) as i32;
+            let text_width = (bounds.width as f32 * self.text_entry_width_percent) as i32;
             let y_offset = if self.style == SliderStyle::Text {
-                scope.value(ValueId::TextComponentOffset)
+                self.text_offset(scope)
             } else {
                 0.0
             };
@@ -560,7 +601,8 @@ impl Slider {
                 state.last = pointer;
                 state.second_click = follows_press;
                 state.moved = false;
-                state.proportion = self.proportion(host.value(self.name));
+                state.value = host.value(self.name);
+                state.proportion = self.proportion(state.value);
                 state.last_press = Some((now, pointer));
                 host.begin(self.name);
                 event.popup = true;
@@ -577,8 +619,9 @@ impl Slider {
                         self.dragged_proportion(&state, pointer, bounds, ppp, modifiers);
                     state.last = pointer;
                     let value = self.value_from_proportion(state.proportion);
-                    if value != host.value(self.name) {
+                    if value != state.value {
                         host.set(self.name, value);
+                        state.value = value;
                     }
                 }
                 event.popup = true;
@@ -591,18 +634,25 @@ impl Slider {
             if let SliderStyle::Wheel { spring_back: true } = self.style {
                 // PitchWheel::mouseUp: back to the centre after the gesture.
                 // JUCE's setValue sends nothing when the value is unchanged.
-                if host.value(self.name) != 0.0 {
+                if state.value != 0.0 {
                     host.set_once(self.name, 0.0);
+                    state.value = 0.0;
                 }
             }
+            event.value = Some(state.value);
             let long_press = state
                 .last_press
                 .is_some_and(|(time, _)| now - time > LONG_PRESS);
             if state.second_click && !state.moved && !long_press {
                 // Slider::mouseDoubleClick: back to the default value.
-                host.set_once(self.name, self.info.default_value);
+                let value = self.double_click_value.unwrap_or(self.info.default_value);
+                host.set_once(self.name, value);
+                event.value = Some(value);
                 event.popup = true;
             }
+        }
+        if state.down {
+            event.value = Some(state.value);
         }
 
         if self.show_popup_on_hover && response.hovered() {
@@ -661,6 +711,9 @@ pub struct SliderEvent {
     pub text_entry: bool,
     /// A `TextSelector` was pressed: open its options.
     pub selector: bool,
+    /// The slider's own value while it is held and as it is released, for
+    /// drawing it and its popup: the host shows a set only later.
+    pub value: Option<f32>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -672,6 +725,10 @@ struct DragState {
     /// The unsnapped position (JUCE's `valueWhenLastDragged`); only the
     /// value sent to the host is snapped.
     proportion: f64,
+    /// The slider's own value (JUCE's `Slider::getValue`), which a drag
+    /// changes at once. The host applies a set later (a CLAP event, or after
+    /// a VST3 block), so its value can lag.
+    value: f32,
     /// The time and place (points) of the last press.
     last_press: Option<(f64, Pos2)>,
     /// This press followed the previous one closely enough to make a
@@ -719,6 +776,7 @@ mod tests {
             down: true,
             last: Pos2::new(10.0, 10.0),
             proportion: 0.5,
+            value: 0.0,
             last_press: None,
             second_click: false,
             moved: false,

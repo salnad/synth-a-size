@@ -117,6 +117,34 @@ impl Quad {
         }
     }
 
+    /// One of a vertical `BarRenderer`'s bars in `component` (pixels): `x`,
+    /// `bottom` and `top` are the bar's position in the component's -1 to 1
+    /// coordinates, `width_percent` its width in them (the vertex shader's
+    /// `width_percent` uniform), and `display_scale` the pixels per point.
+    pub fn vertical_bar(
+        component: RectF,
+        x: f32,
+        bottom: f32,
+        top: f32,
+        width_percent: f32,
+        colour: Colour,
+        display_scale: f32,
+    ) -> Quad {
+        let (w, h) = (component.width, component.height);
+        let rect = RectF::new(
+            component.x + (x + 1.0) * 0.5 * w,
+            component.y + (1.0 - top) * 0.5 * h,
+            width_percent * 0.5 * w,
+            (top - bottom) * 0.5 * h,
+        );
+        let mut quad = Quad::new(QuadKind::Bar, rect, colour);
+        // kBarVerticalVertex: size.x = width_percent * dimensions.x / 2,
+        // size.y = position.z * dimensions.y / 2 (setBarSizes' position.z).
+        let length = (top - bottom).abs() * 0.5 * display_scale;
+        quad.shader_values = [width_percent * w / 2.0, length * h / 2.0, 0.0, 0.0];
+        quad
+    }
+
     /// `OpenGlCorners::setCorners`: four quads that paint `colour` outside
     /// rounded corners of radius `rounding` (pixels) on `bounds`.
     pub fn corners(bounds: RectF, rounding: f32, colour: Colour) -> [Quad; 4] {

@@ -308,7 +308,7 @@ impl HeaderLayout {
 impl PresetSelectorLayout {
     /// `PresetSelector::resized` without a text component, with the
     /// selector at `bounds`.
-    fn new(bounds: Rect) -> PresetSelectorLayout {
+    pub fn new(bounds: Rect) -> PresetSelectorLayout {
         /// `PresetSelector::kDefaultFontHeightRatio`.
         const FONT_HEIGHT_RATIO: f32 = 0.63;
         let height = bounds.height;

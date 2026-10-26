@@ -19,9 +19,9 @@ use sas_engine::telemetry::Telemetry;
 use sas_engine::Tuning;
 
 use crate::chat::{ChatPlacement, ChatStyle};
-use crate::colour::Colour;
 use crate::controls::format;
 use crate::controls::oscilloscope;
+use crate::controls::shape_button;
 use crate::controls::tab_selector::{self, TabSelector};
 use crate::fonts::Face;
 use crate::host::{Host, HostParam};
@@ -31,6 +31,7 @@ use crate::scope::Scope;
 use crate::sections::bend::{self, BendLayout, BendSection};
 use crate::sections::keyboard::{self, KeyboardLayout, PlayingNote};
 use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
+use crate::sections::synthesis::SynthesisInterface;
 use crate::sections::voice::{self, VoiceLayout, VoiceSection};
 use crate::sections::volume::{PeakLevels, VolumeLayout, VolumeSection};
 use crate::sections::{Overlay, Panel};
@@ -208,6 +209,7 @@ pub struct Interface {
     portamento: PortamentoSection,
     volume: VolumeSection,
     bend: BendSection,
+    synthesis: SynthesisInterface,
     playing_note: PlayingNote,
     overlay: Overlay,
 }
@@ -227,6 +229,7 @@ impl Interface {
             portamento: PortamentoSection::default(),
             volume: VolumeSection::default(),
             bend: BendSection::default(),
+            synthesis: SynthesisInterface::default(),
             playing_note: PlayingNote::default(),
             overlay: Overlay::default(),
         }
@@ -325,10 +328,12 @@ impl Interface {
     /// of the synthesis, effects, matrix and master controls interfaces).
     /// The sections below them show on every tab.
     fn show_tab(&mut self, ui: &mut Ui, host: &Host, pixels: &PixelPainter, layout: &FullLayout) {
-        let _ = (ui, host, pixels, layout);
+        let top = Scope::top(&self.skin, layout.size_ratio);
         match self.tab {
-            // G3b: oscillators, sample and filters.
-            Tab::Voice => {}
+            Tab::Voice => {
+                self.synthesis
+                    .show(ui, host, pixels, &top, &mut self.overlay, layout.main)
+            }
             // G6: the effects interface, in `layout.effects`.
             Tab::Effects => {}
             // G4: the modulation matrix.
@@ -519,18 +524,8 @@ impl Interface {
         );
 
         let arrow = header.color(ColorId::IconButtonOff);
-        paint_arrow(
-            pixels,
-            preset.previous,
-            &[(0.65, 0.3), (0.35, 0.5), (0.65, 0.7)],
-            arrow,
-        );
-        paint_arrow(
-            pixels,
-            preset.next,
-            &[(0.35, 0.3), (0.65, 0.5), (0.35, 0.7)],
-            arrow,
-        );
+        shape_button::paint_chevron(pixels, preset.previous, &shape_button::PREV, arrow);
+        shape_button::paint_chevron(pixels, preset.next, &shape_button::NEXT, arrow);
     }
 
     /// `TabSelector::mouseDown` / `mouseDrag` / `mouseUp`: the tab under the
@@ -605,15 +600,4 @@ fn show_text_entry(
         }
         overlay.text_entry = None;
     }
-}
-
-/// An `OpenGlShapeButton` arrow: `PresetSelector`'s chevron path (unit
-/// coordinates), stroked 0.05 of the button's size with round ends.
-fn paint_arrow(pixels: &PixelPainter, bounds: Rect, path: &[(f32, f32)], colour: Colour) {
-    let size = bounds.width.min(bounds.height) as f32;
-    let points: Vec<(f32, f32)> = path
-        .iter()
-        .map(|&(x, y)| (bounds.x as f32 + x * size, bounds.y as f32 + y * size))
-        .collect();
-    pixels.polyline(&points, 0.05 * size, colour);
 }
