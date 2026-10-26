@@ -176,6 +176,9 @@ repeat the check in FL Studio where the note says so.
      the pitch of held notes; cancelling should change nothing.
    - Closing the plugin window while the dialog is open should neither
      crash nor leave the sheet behind.
+   - Removing the plugin from the track, or closing the project, while the
+     dialog is open should not crash. `rfd` can't cancel the sheet, and its
+     completion handler is code in the plugin binary.
    - *REAPER:* settles the sheet and drawing behaviour, which come from
      AppKit and the plugin window rather than the host. FL Studio wraps
      plugins in its own windows, so repeat the parenting check there.

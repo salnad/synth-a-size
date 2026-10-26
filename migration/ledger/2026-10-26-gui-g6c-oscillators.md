@@ -23,6 +23,18 @@ telemetry (mono plus poly while the processor runs), drawn with
 `Panel::off_overlay` draws a section's off overlay on top, for sections
 whose activator lives elsewhere; `Panel::activator` uses it.
 
+**Follow-ups**
+
+- File dialog (review, UI, #142): the editor clears the dialogs' parent
+  window when its window closes, so an X11 handle doesn't keep its
+  connection open until the next window. FL item 8 adds removing the
+  plugin, or closing the project, while the dialog is open (`rfd` can't
+  cancel the sheet, and its completion handler is in the plugin binary).
+- The reverb's labels are drawn at `size_ratio * 10` points, the font its
+  `paintBackground` sets before `drawLabelForComponent`, instead of the
+  label height (GUI Builder found them about 9% too large).
+  `section::draw_label_with_size` draws a label at a given size.
+
 **Tests**
 
 - Layout fixtures: 36 paths (each oscillator's section, subsections and

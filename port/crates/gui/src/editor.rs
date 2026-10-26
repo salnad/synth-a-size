@@ -101,7 +101,11 @@ impl NiceEguiApp for App {
         let context = gui_context.clone();
         // Likewise a key the on-screen keyboard is still playing.
         let playing_note = self.interface.playing_note();
+        let dialogs = egui_ctx.clone();
         frame.on_close(move || {
+            // The window handle (on X11, with its connection) goes with the
+            // window.
+            crate::controls::file_dialog::set_parent(&dialogs, None);
             model.set_editor_open(false);
             Host::tracking(model.as_ref(), Some(&context), &open).end_open_gestures();
             playing_note.release(model.as_ref());

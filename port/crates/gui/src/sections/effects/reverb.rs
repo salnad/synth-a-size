@@ -15,7 +15,7 @@ use crate::host::Host;
 use crate::layout::Rect;
 use crate::paint::PixelPainter;
 use crate::scope::Scope;
-use crate::section::{draw_label, place_knobs_in_area};
+use crate::section::{draw_label_with_size, place_knobs_in_area};
 use crate::sections::{Overlay, Panel};
 use crate::skin::ValueId;
 
@@ -210,7 +210,9 @@ impl ReverbSection {
             ("SIZE", l.size),
             ("MIX", l.dry_wet),
         ] {
-            draw_label(pixels, scope, text, rect, false);
+            // paintBackground sets proportional_regular at size_ratio * 10
+            // rather than setLabelFont's label height.
+            draw_label_with_size(pixels, scope, text, rect, false, scope.size_ratio() * 10.0);
         }
 
         let live = Live::new(host);
