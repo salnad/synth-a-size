@@ -12,9 +12,20 @@ lossy-decoder note.
   - WAV keeps the port's own reader, which Graph Reviewer found
     sample-exact against JUCE in #151. It now also matches JUCE on
     malformed files: an extensible `fmt ` chunk shorter than 40 bytes, or
-    with a sub-format GUID other than PCM, float or their ambisonic forms,
-    is refused, and a `data` chunk longer than the file reads its declared
-    frames with zeros past the end.
+    with a sub-format GUID other than PCM, float or PCM-ambisonic (the
+    three JUCE takes), is refused, and a `data` chunk longer than the file
+    reads its declared frames with zeros past the end, within bounds: a declared length of
+    `0xFFFFFFFF` or 0 (the streamed "unknown length" markers) reads the
+    rest of the file, and one more than double the bytes present or past
+    2^24 frames reads only the bytes present (D23). Graph Reviewer
+    reproduced an 8.6 GB allocation and abort from a `0xFFFFFFFF` header
+    in the first version.
+  - Allocation audit: every buffer sized from a file (the WAV reader's
+    output, the decoded channel) is reserved with `try_reserve`, and a
+    failure returns `None`. A `fmt ` chunk with 0 or more than 64 bits per
+    sample is refused, so the frame size can't be zero. The `clm ` text
+    and chunk walks only slice the bytes present. Symphonia's own
+    allocations follow its decoders' limits.
   - The other formats decode with Symphonia 0.6.1 (MPL-2.0), with features
     `pcm`, `wav`, `aiff`, `flac`, `ogg`, `vorbis`, `mp3`, `aac` and
     `isomp4` only. The first channel is kept, and integer samples convert
@@ -53,7 +64,10 @@ lossy-decoder note.
     zero-fills;
   - every offered extension refuses an empty and a corrupt file;
   - the offered set is upstream's macOS set without CAF.
-- `audio_file` unit tests: the new extensible and truncated-data cases.
+- `audio_file` unit tests: the new extensible and truncated-data cases,
+  and `unknown_and_absurd_data_lengths_read_the_bytes_present`
+  (`0xFFFFFFFF`, 0, `0x7FFFFFF0` and a million declared frames over three
+  present read the three; 0 bits per sample is refused).
 - sas-plugin, `a_dropped_wav_becomes_the_oscillators_wavetable`: an empty
   and a corrupt file of every offered type, lossy ones included, are
   refused with the revision unchanged.

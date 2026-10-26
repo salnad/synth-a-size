@@ -165,6 +165,10 @@ fn decode(bytes: Vec<u8>, extension: &str) -> Option<Audio> {
                 sample_rate = sample_rate.or(Some(decoded.spec().rate()));
                 interleaved.clear();
                 decoded.copy_to_vec_interleaved(&mut interleaved);
+                // No input may abort the process: refuse what doesn't fit.
+                first_channel
+                    .try_reserve(interleaved.len() / channels)
+                    .ok()?;
                 first_channel.extend(interleaved.iter().step_by(channels));
             }
             // A damaged packet is skipped, as symphonia's players do.
@@ -186,9 +190,9 @@ const FORMAT_PCM: u16 = 1;
 const FORMAT_FLOAT: u16 = 3;
 const FORMAT_EXTENSIBLE: u16 = 0xfffe;
 
-/// `WAVE_FORMAT_EXTENSIBLE` sub-formats JUCE's WAV reader takes: PCM and
-/// IEEE float, and their ambisonic B-format forms.
-const EXTENSIBLE_SUB_FORMATS: [&[u8]; 4] = [
+/// `WAVE_FORMAT_EXTENSIBLE` sub-formats JUCE's WAV reader takes: PCM, IEEE
+/// float, and PCM in the ambisonic B-format form.
+const EXTENSIBLE_SUB_FORMATS: [&[u8]; 3] = [
     &[
         1, 0, 0, 0, 0, 0, 0x10, 0, 0x80, 0, 0, 0xaa, 0, 0x38, 0x9b, 0x71,
     ],
@@ -198,10 +202,15 @@ const EXTENSIBLE_SUB_FORMATS: [&[u8]; 4] = [
     &[
         1, 0, 0, 0, 0x21, 0x07, 0xd3, 0x11, 0x86, 0x44, 0xc8, 0xc1, 0xca, 0, 0, 0,
     ],
-    &[
-        3, 0, 0, 0, 0x21, 0x07, 0xd3, 0x11, 0x86, 0x44, 0xc8, 0xc1, 0xca, 0, 0, 0,
-    ],
 ];
+
+/// A `data` chunk length meaning "unknown" (streamed WAVs from pipes write
+/// it, as they write 0): the samples run to the end of the file.
+const UNKNOWN_LENGTH: usize = 0xffff_ffff;
+/// The most frames a truncated `data` chunk is zero-filled to (about six
+/// minutes at 44.1 kHz); a longer declared length reads only the bytes
+/// present (D23).
+const MAX_ZERO_FILLED_FRAMES: usize = 1 << 24;
 
 /// Reads a WAV file's first channel as JUCE's `WavAudioFormatReader` and
 /// `AudioData` conversions give it: integer samples scaled by
@@ -221,6 +230,11 @@ pub fn read_wav(bytes: &[u8]) -> Option<Audio> {
         let end = start.saturating_add(length).min(bytes.len());
         match label {
             b"fmt " => format = Some(&bytes[start..end]),
+            // An unknown length: the samples are the rest of the file.
+            b"data" if length == UNKNOWN_LENGTH || length == 0 => {
+                data = Some((&bytes[start..], length));
+                break;
+            }
             // The declared length counts, even past the end of the file.
             b"data" => data = Some((&bytes[start..end], length)),
             _ => {}
@@ -245,14 +259,28 @@ pub fn read_wav(bytes: &[u8]) -> Option<Audio> {
         }
         tag = u16_at(format, 24)?;
     }
-    if channels == 0 || sample_rate <= 0 {
+    if channels == 0 || sample_rate <= 0 || bits == 0 || bits > 64 {
         return None;
     }
     let bytes_per_sample = (bits as usize).div_ceil(8);
     let frame_size = bytes_per_sample * channels;
-    // JUCE reads the declared number of frames and zero-fills what the
-    // file doesn't hold.
-    let frames = data_length / frame_size;
+    let present_frames = data.len() / frame_size;
+    let frames = if data_length == UNKNOWN_LENGTH || data_length == 0 {
+        present_frames
+    } else {
+        // JUCE reads the declared number of frames and zero-fills what the
+        // file doesn't hold, but only within bounds here: a declared length
+        // more than double the bytes present, or past the cap, reads only
+        // the bytes present (D23).
+        let declared = data_length / frame_size;
+        if declared <= present_frames
+            || (declared <= 2 * present_frames.max(1) && declared <= MAX_ZERO_FILLED_FRAMES)
+        {
+            declared
+        } else {
+            present_frames
+        }
+    };
     let zeros = [0u8; 8];
     let sample = |frame: usize| -> &[u8] {
         let at = frame * frame_size;
@@ -260,40 +288,22 @@ pub fn read_wav(bytes: &[u8]) -> Option<Audio> {
             .unwrap_or(&zeros[..bytes_per_sample])
     };
 
-    let first_channel: Vec<f32> = match (tag, bits) {
-        (FORMAT_PCM, 8) => (0..frames)
-            .map(|f| (sample(f)[0] as i32 - 128) as f32 * (1.0 / 128.0))
-            .collect(),
-        (FORMAT_PCM, 16) => (0..frames)
-            .map(|f| i16::from_le_bytes([sample(f)[0], sample(f)[1]]) as f32 * (1.0 / 32_768.0))
-            .collect(),
-        (FORMAT_PCM, 24) => (0..frames)
-            .map(|f| {
-                let s = sample(f);
-                let value = i32::from_le_bytes([0, s[0], s[1], s[2]]) >> 8;
-                value as f32 * (1.0 / 8_388_608.0)
-            })
-            .collect(),
-        (FORMAT_PCM, 32) => (0..frames)
-            .map(|f| {
-                let s = sample(f);
-                i32::from_le_bytes([s[0], s[1], s[2], s[3]]) as f32 * (1.0 / 2_147_483_648.0)
-            })
-            .collect(),
-        (FORMAT_FLOAT, 32) => (0..frames)
-            .map(|f| {
-                let s = sample(f);
-                f32::from_le_bytes([s[0], s[1], s[2], s[3]])
-            })
-            .collect(),
-        (FORMAT_FLOAT, 64) => (0..frames)
-            .map(|f| {
-                let s = sample(f);
-                f64::from_le_bytes(s.try_into().unwrap()) as f32
-            })
-            .collect(),
+    let mut first_channel: Vec<f32> = Vec::new();
+    first_channel.try_reserve_exact(frames).ok()?;
+    let convert: fn(&[u8]) -> f32 = match (tag, bits) {
+        (FORMAT_PCM, 8) => |s| (s[0] as i32 - 128) as f32 * (1.0 / 128.0),
+        (FORMAT_PCM, 16) => |s| i16::from_le_bytes([s[0], s[1]]) as f32 * (1.0 / 32_768.0),
+        (FORMAT_PCM, 24) => {
+            |s| (i32::from_le_bytes([0, s[0], s[1], s[2]]) >> 8) as f32 * (1.0 / 8_388_608.0)
+        }
+        (FORMAT_PCM, 32) => {
+            |s| i32::from_le_bytes([s[0], s[1], s[2], s[3]]) as f32 * (1.0 / 2_147_483_648.0)
+        }
+        (FORMAT_FLOAT, 32) => |s| f32::from_le_bytes([s[0], s[1], s[2], s[3]]),
+        (FORMAT_FLOAT, 64) => |s| f64::from_le_bytes(s.try_into().unwrap()) as f32,
         _ => return None,
     };
+    first_channel.extend((0..frames).map(|frame| convert(sample(frame))));
     Some(Audio {
         first_channel,
         sample_rate,
@@ -384,6 +394,57 @@ mod tests {
         unknown[30] ^= 0xff;
         let unknown = riff(&[(b"fmt ", unknown), (b"data", vec![0; 2])]);
         assert!(read_wav(&unknown).is_none());
+    }
+
+    /// A mono 16-bit file holding `frames` frames whose data chunk declares
+    /// `declared` bytes.
+    fn declaring(declared: u32, frames: &[i16]) -> Vec<u8> {
+        let mut file = riff(&[
+            (b"fmt ", fmt(FORMAT_PCM, 1, 44_100, 16)),
+            (
+                b"data",
+                frames.iter().flat_map(|s| s.to_le_bytes()).collect(),
+            ),
+        ]);
+        let length_at = file.len() - 2 * frames.len() - 4;
+        file[length_at..length_at + 4].copy_from_slice(&declared.to_le_bytes());
+        file
+    }
+
+    #[test]
+    fn unknown_and_absurd_data_lengths_read_the_bytes_present() {
+        let frames = [16_384i16, -16_384, 8_192];
+        let expected = [0.5, -0.5, 0.25];
+        // The streamed-WAV markers: the samples run to the end of the file.
+        assert_eq!(
+            read_wav(&declaring(0xffff_ffff, &frames))
+                .unwrap()
+                .first_channel,
+            expected
+        );
+        assert_eq!(
+            read_wav(&declaring(0, &frames)).unwrap().first_channel,
+            expected
+        );
+        // A declared length far past the file doesn't zero-fill gigabytes.
+        assert_eq!(
+            read_wav(&declaring(0x7fff_fff0, &frames))
+                .unwrap()
+                .first_channel,
+            expected
+        );
+        assert_eq!(
+            read_wav(&declaring(1_000_000, &frames))
+                .unwrap()
+                .first_channel,
+            expected
+        );
+        // A format with no sample size is refused rather than divided by.
+        let no_bits = riff(&[
+            (b"fmt ", fmt(FORMAT_PCM, 1, 44_100, 0)),
+            (b"data", vec![0; 4]),
+        ]);
+        assert!(read_wav(&no_bits).is_none());
     }
 
     #[test]

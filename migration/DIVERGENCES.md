@@ -678,6 +678,15 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
     (rounding, and the encoder delay and padding they trim). An empty or
     corrupt file of each type is refused without changing anything.
   - **CAF and the rarer CoreAudio types** aren't read.
+  - **WAV data lengths:** JUCE reads the frames a `data` chunk declares
+    and zero-fills what the file lacks, sizing its buffer from the header.
+    The port does the same only within bounds. A declared length of
+    `0xFFFFFFFF` or 0, the "unknown length" markers streamed WAVs (ffmpeg
+    or sox writing to a pipe) carry, reads the rest of the file. A
+    declared length more than double the bytes present, or past 2^24
+    frames, reads only the bytes present. Buffers are reserved fallibly,
+    so no file can make the plugin abort the host, where JUCE would try to
+    allocate gigabytes for such a header.
 - **Why:** parity first. The port matches upstream's macOS formats with an
   open-source decoder, since CoreAudio isn't available to it everywhere
   and JUCE's readers aren't part of the port. CAF and the rarer types are
