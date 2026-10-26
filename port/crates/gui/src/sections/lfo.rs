@@ -5,17 +5,24 @@
 //! fade or smooth time, delay and stereo. Ports `LfoSection`
 //! (`vital/src/interface/editor_sections/lfo_section.cpp`).
 //!
-//! The LFO editor with its grid, paint and smooth controls and the LFO's
-//! name and browser come later; the editor's backdrop and the top row's
-//! backgrounds are drawn here. The sync selector comes with the shared
-//! `TempoSelector`; until then its slot is empty and the rate slider
-//! follows the sync value.
+//! The LFO editor (`controls::line_editor`) sits above, with its grid size,
+//! paint, paint pattern and smooth controls and the shape's name. The
+//! paint and smooth buttons' icons and the LFO browser come later. The sync
+//! selector comes with the shared `TempoSelector`; until then its slot is
+//! empty and the rate slider follows the sync value.
 
 use super::{MenuOwner, Panel};
+use crate::colour::Colour;
+use crate::controls::icon::fill_path;
+use crate::controls::line_editor::{
+    paint_pattern as line_paint_pattern, LineEditor, LineSettings, PAINT_PATTERN_NAMES,
+};
+use crate::controls::path::{Path, Transform};
 use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
 use crate::controls::slider::{Slider, SliderStyle};
 use crate::fonts::Face;
 use crate::layout::{PresetSelectorLayout, Rect};
+use crate::local;
 use crate::paint::PixelPainter;
 use crate::popup::{Menu, MenuItem};
 use crate::primitives::{Quad, QuadKind};
@@ -274,6 +281,19 @@ pub struct LfoSection {
     smooth: Slider,
     delay: Slider,
     stereo: Slider,
+    editor: LineEditor,
+    grid_size_x: Slider,
+    grid_size_y: Slider,
+}
+
+/// `LfoSection`'s grid size sliders.
+fn grid_slider(name: &'static str, prefix: &'static str) -> Slider {
+    let mut slider = Slider::new(name, SliderStyle::Text)
+        .sensitivity(0.2)
+        .popup_prefix(prefix);
+    slider.text_component_offset = Some(0.0);
+    slider.text_height_percentage = 0.6;
+    slider
 }
 
 impl LfoSection {
@@ -303,6 +323,9 @@ impl LfoSection {
             smooth: Slider::new(names.smooth_time, SliderStyle::Rotary),
             delay: Slider::new(names.delay_time, SliderStyle::Rotary),
             stereo: Slider::new(names.stereo, SliderStyle::Rotary).bipolar(),
+            editor: LineEditor { lfo: index },
+            grid_size_x: grid_slider(local::GRID_SIZE_X[index], "X Grid"),
+            grid_size_y: grid_slider(local::GRID_SIZE_Y[index], "Y Grid"),
         }
     }
 
@@ -436,6 +459,137 @@ impl LfoSection {
         };
         panel.shape_button(("lfo prev", self.index), prev, preset.previous);
         panel.shape_button(("lfo next", self.index), next, preset.next);
-        panel.widget_corners(layout.editor);
+
+        self.show_editor(panel, layout);
     }
+
+    /// The editor and the controls that set it up: the grid sizes, paint
+    /// and its pattern, smooth, and the shape's name in the strip.
+    fn show_editor(&self, panel: &mut Panel, layout: &LfoLayout) {
+        let host = panel.host;
+        let settings = LineSettings {
+            grid_size_x: host.value(local::GRID_SIZE_X[self.index]) as usize,
+            grid_size_y: host.value(local::GRID_SIZE_Y[self.index]) as usize,
+            paint: host.value(local::PAINT[self.index]) != 0.0,
+            paint_pattern: host.value(local::PAINT_PATTERN[self.index]) as usize,
+            phase: self.names.phase,
+        };
+        let event = self.editor.show(panel, layout.editor, settings);
+        panel.slider(&self.grid_size_x, layout.grid_size_x);
+        panel.slider(&self.grid_size_y, layout.grid_size_y);
+
+        let colours = ShapeColours::icon(&panel.scope);
+        let button = ShapeButton {
+            shape: Shape::None,
+            colours,
+        };
+        if panel
+            .shape_button(("lfo paint", self.index), button, layout.paint)
+            .clicked
+        {
+            host.set_once(
+                local::PAINT[self.index],
+                if event.painting { 0.0 } else { 1.0 },
+            );
+        }
+        if panel
+            .shape_button(("lfo smooth", self.index), button, layout.smooth)
+            .clicked
+        {
+            self.editor.set_smooth(panel, !event.smooth);
+        }
+
+        // PaintPatternSelector: the pattern's shape; a click lists them.
+        if panel
+            .shape_button(
+                ("lfo paint pattern", self.index),
+                button,
+                layout.paint_pattern,
+            )
+            .pressed
+        {
+            let items = PAINT_PATTERN_NAMES
+                .iter()
+                .enumerate()
+                .map(|(i, name)| MenuItem::new(i as i32, *name))
+                .collect();
+            panel.overlay.menu = Some(Menu::new(
+                items,
+                egui::pos2(
+                    layout.paint_pattern.x as f32,
+                    layout.paint_pattern.bottom() as f32,
+                ),
+                MenuOwner::Control {
+                    name: local::PAINT_PATTERN[self.index],
+                    then: None,
+                },
+            ));
+        }
+        paint_pattern_selector(
+            panel,
+            layout.paint_pattern,
+            settings.paint_pattern,
+            event.painting,
+        );
+
+        let preset = layout.preset_selector;
+        let name = self.editor.shape(panel).name().to_string();
+        panel.text_centred(
+            &name,
+            preset.text,
+            Face::Title,
+            preset.text_size,
+            panel.scope.color(ColorId::PresetText),
+        );
+    }
+}
+
+/// `PaintPatternSelector::paint`: the pattern filled and outlined, in the
+/// widget colours while painting and the lighten colour otherwise.
+fn paint_pattern_selector(panel: &mut Panel, bounds: Rect, pattern: usize, active: bool) {
+    const LINE_WIDTH_HEIGHT_RATIO: f32 = 0.05;
+    let scope = panel.scope;
+    let padding = scope.widget_margin() as i32;
+    let height = (bounds.height - 2 * padding - 1) as f32;
+    let width = (bounds.width - 2 * padding - 1) as f32;
+    let buffer = padding as f32 + 0.5;
+    let (x0, y0) = (bounds.x as f32, bounds.y as f32);
+    let mut points = vec![(x0 + buffer, y0 + buffer + height)];
+    for &(x, y) in line_paint_pattern(pattern) {
+        points.push((x0 + buffer + x * width, y0 + buffer + (1.0 - y) * height));
+    }
+    points.push((x0 + buffer + width, y0 + buffer + height));
+    let mut path = Path::new();
+    path.move_to(points[0].0, points[0].1);
+    for &(x, y) in &points[1..] {
+        path.line_to(x, y);
+    }
+    path.close();
+    let fills: Vec<Colour> = if active {
+        vec![
+            scope.color(ColorId::WidgetSecondary1),
+            scope.color(ColorId::WidgetSecondary2),
+        ]
+    } else {
+        vec![scope.color(ColorId::LightenScreen)]
+    };
+    let stroke = if active {
+        scope.color(ColorId::WidgetCenterLine)
+    } else {
+        scope.color(ColorId::LightenScreen)
+    };
+    let mut line_width = (bounds.height as f32 * LINE_WIDTH_HEIGHT_RATIO) as i32;
+    line_width += (line_width + 1) % 2;
+    let key = format!(
+        "lfo paint pattern {pattern} {}x{}",
+        bounds.width, bounds.height
+    );
+    panel.layer().custom(move |pixels| {
+        for fill in fills {
+            fill_path(pixels, &key, &path, Transform::IDENTITY, fill);
+        }
+        // Upstream strokes with curved joints and rounded ends, which
+        // controls::path doesn't port yet; a round-ended polyline matches.
+        pixels.polyline(&points, line_width as f32, stroke);
+    });
 }

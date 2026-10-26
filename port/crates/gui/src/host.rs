@@ -15,12 +15,14 @@ use nice_plug::prelude::ParamPtr;
 use sas_preset::registry::{registry, ParamInfo};
 
 use crate::interface::EditorModel;
+use crate::local::{self, LocalValues};
 
 /// Reads and writes the synth's controls by registry name.
 pub struct Host<'a> {
     model: &'a dyn EditorModel,
     context: Option<&'a GuiContext>,
     open: Option<&'a OpenGestures>,
+    locals: Option<&'a LocalValues>,
 }
 
 /// The controls with a host gesture in progress, kept across frames so the
@@ -35,6 +37,7 @@ impl<'a> Host<'a> {
             model,
             context,
             open: None,
+            locals: None,
         }
     }
 
@@ -48,6 +51,17 @@ impl<'a> Host<'a> {
             model,
             context,
             open: Some(open),
+            locals: None,
+        }
+    }
+
+    /// This host, keeping the editor's own controls in `locals`.
+    pub fn with_locals<'b>(&'b self, locals: &'b LocalValues) -> Host<'b> {
+        Host {
+            model: self.model,
+            context: self.context,
+            open: self.open,
+            locals: Some(locals),
         }
     }
 
@@ -70,6 +84,7 @@ impl<'a> Host<'a> {
     pub fn info(name: &str) -> &'static ParamInfo {
         registry()
             .get(name)
+            .or_else(|| local::info(name))
             .unwrap_or_else(|| panic!("{name} is not a registry parameter"))
     }
 
@@ -80,7 +95,10 @@ impl<'a> Host<'a> {
             // SAFETY: `EditorModel::param` returns pointers that stay valid
             // while the model is alive, and the model outlives this host.
             Some(param) => unsafe { param.unmodulated_plain_value() },
-            None => Host::info(name).default_value,
+            None => self
+                .locals
+                .and_then(|locals| locals.get(name))
+                .unwrap_or_else(|| Host::info(name).default_value),
         }
     }
 
@@ -98,6 +116,9 @@ impl<'a> Host<'a> {
     /// `SynthBase::valueChanged`: sets control `name` to engine value
     /// `value`. Call between [`begin`](Self::begin) and [`end`](Self::end).
     pub fn set(&self, name: &str, value: f32) {
+        if self.locals.is_some_and(|locals| locals.set(name, value)) {
+            return;
+        }
         if let (Some(context), Some(param)) = (self.context, self.model.param(name)) {
             // SAFETY: as in `value`.
             unsafe {

@@ -13,6 +13,7 @@ use nice_plug::context::gui::{GuiContext, GuiContextInner};
 use nice_plug::context::PluginApi;
 use nice_plug::prelude::PluginState;
 use nice_plug::prelude::{FloatParam, FloatRange, IntParam, IntRange, Param, ParamPtr};
+use sas_common::line_generator::LineGenerator;
 use sas_gui::controls::button::SynthButton;
 use sas_gui::controls::slider::Slider;
 use sas_gui::controls::tab_selector::TabSelector;
@@ -96,6 +97,8 @@ struct Synth {
     midi_moved: Mutex<Vec<&'static str>>,
     /// The values the editor said it forwards for MIDI moves.
     midi_forwarded: Mutex<Vec<(String, f32)>>,
+    /// The LFO shapes the editor set.
+    lfos: Mutex<HashMap<usize, LineGenerator>>,
 }
 
 impl Synth {
@@ -131,6 +134,7 @@ impl Synth {
             notes: Mutex::new(Vec::new()),
             midi_moved: Mutex::new(Vec::new()),
             midi_forwarded: Mutex::new(Vec::new()),
+            lfos: Mutex::default(),
         })
     }
 
@@ -158,6 +162,15 @@ impl Synth {
 impl EditorModel for Synth {
     fn preset_name(&self) -> String {
         String::new()
+    }
+
+    fn lfo_shape(&self, index: usize) -> Option<LineGenerator> {
+        self.lfos.lock().unwrap().get(&index).cloned()
+    }
+
+    fn set_lfo_shape(&self, index: usize, line: LineGenerator) -> bool {
+        self.lfos.lock().unwrap().insert(index, line);
+        true
     }
 
     fn param(&self, name: &str) -> Option<HostParam> {
@@ -1971,4 +1984,109 @@ fn a_release_over_the_filter_input_after_a_press_elsewhere_changes_nothing() {
     );
     assert_eq!(fixture.synth.value("filter_1_filter_input"), 0.0);
     assert_eq!(fixture.synth.value("filter_2_filter_input"), 1.0);
+}
+
+fn lfo_layout(fixture: &Fixture) -> LfoLayout {
+    let m = modulation_layout(fixture);
+    let interface = fixture.interface.borrow();
+    LfoLayout::new(&section_scope(interface.skin(), lfo::SKIN), m.lfo)
+}
+
+/// LFO 1's shape as the editor last set it.
+fn lfo_1_shape(fixture: &Fixture) -> LineGenerator {
+    fixture.synth.lfo_shape(0).expect("the editor set a shape")
+}
+
+/// A point of the editor at fractions of its width and height (the y
+/// padded as the editor draws it).
+fn lfo_point(editor: Rect, x: f32, y: f32) -> Pos2 {
+    let pad = 6.0;
+    let height = editor.height as f32;
+    Pos2::new(
+        editor.x as f32 + x * editor.width as f32,
+        editor.y as f32 + y * height * (height - 2.0 * pad) / height + pad,
+    )
+}
+
+#[test]
+fn dragging_an_lfo_point_moves_it() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let editor = lfo_layout(&fixture).editor;
+    // The init triangle's peak, halfway across at the top.
+    let peak = lfo_point(editor, 0.5, 0.0);
+    harness.event(Event::PointerMoved(peak));
+    harness.step();
+    drag(
+        &mut harness,
+        peak,
+        peak + egui::vec2(0.0, 40.0),
+        Modifiers::NONE,
+    );
+    let line = lfo_1_shape(&fixture);
+    assert_eq!(line.num_points(), 3);
+    assert!(line.point(1).1 > 0.1, "{:?}", line.point(1));
+    assert!((line.point(1).0 - 0.5).abs() < 0.001);
+}
+
+#[test]
+fn a_double_click_adds_an_lfo_point() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let editor = lfo_layout(&fixture).editor;
+    let empty = lfo_point(editor, 0.25, 0.9);
+    harness.event(Event::PointerMoved(empty));
+    harness.step();
+    click(&mut harness, empty);
+    click(&mut harness, empty);
+    let line = lfo_1_shape(&fixture);
+    assert_eq!(line.num_points(), 4);
+}
+
+#[test]
+fn painting_draws_the_pattern_into_a_grid_cell() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let layout = lfo_layout(&fixture);
+    click(&mut harness, centre(layout.paint));
+    for _ in 0..3 {
+        harness.step();
+    }
+    // The first of eight cells, with the default pattern (down).
+    let cell = lfo_point(layout.editor, 1.0 / 16.0, 0.5);
+    harness.event(Event::PointerMoved(cell));
+    harness.step();
+    click(&mut harness, cell);
+    let line = lfo_1_shape(&fixture);
+    assert!(line.num_points() > 3);
+    assert_eq!(line.point(1).0, 0.0);
+    assert!((line.point(2).0 - 0.125).abs() < 0.001);
+}
+
+#[test]
+fn the_lfo_menu_flips_the_shape() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let editor = lfo_layout(&fixture).editor;
+    let at = lfo_point(editor, 0.7, 0.9);
+    harness.event(Event::PointerMoved(at));
+    harness.step();
+    press(&mut harness, at, PointerButton::Secondary, Modifiers::NONE);
+    release(&mut harness, at, PointerButton::Secondary, Modifiers::NONE);
+    let (items, position) = {
+        let interface = fixture.interface.borrow();
+        let menu = interface.overlay().menu.as_ref().expect("the LFO menu");
+        (menu.items.clone(), menu.position)
+    };
+    let names: Vec<&str> = items.iter().map(|item| item.name.as_str()).collect();
+    assert_eq!(names, ["Copy", "Flip Horizontal", "Flip Vertical"]);
+    let row = Pos2::new(position.x + 20.0, position.y + 12.0 + 24.0 * 2.0);
+    harness.event(Event::PointerMoved(row));
+    harness.step();
+    click(&mut harness, row);
+    for _ in 0..2 {
+        harness.step();
+    }
+    let line = lfo_1_shape(&fixture);
+    assert_eq!(line.point(1), (0.5, 1.0));
 }
