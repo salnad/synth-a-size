@@ -48,10 +48,10 @@ pub enum QuadKind {
     GainMeter = 14,
     /// `kBarFragment` (`BarRenderer`'s bars): `color`, fading out towards
     /// each edge. `shader_values[0]` and `[1]` are the bar vertex shaders'
-    /// `size` in pixels along x and y: the bar's full thickness across it,
-    /// and half its length × the display scale along it
-    /// (`BarRenderer::setBarSizes`), so the fade spans one pixel across and
-    /// two along at display scale 1. Additive bars go in
+    /// `size` in interface pixels along x and y: the bar's full thickness
+    /// across it, and half its length along it (`BarRenderer::setBarSizes`;
+    /// its `display_scale_` is always 1), so the fade spans one pixel across
+    /// and two along. Additive bars go in
     /// [`QuadBatch::additive`].
     Bar = 15,
 }
@@ -120,7 +120,8 @@ impl Quad {
     /// One of a vertical `BarRenderer`'s bars in `component` (pixels): `x`,
     /// `bottom` and `top` are the bar's position in the component's -1 to 1
     /// coordinates, `width_percent` its width in them (the vertex shader's
-    /// `width_percent` uniform), and `display_scale` the pixels per point.
+    /// `width_percent` uniform). Sizes are in interface pixels at any
+    /// display scale, as upstream's are.
     pub fn vertical_bar(
         component: RectF,
         x: f32,
@@ -128,7 +129,6 @@ impl Quad {
         top: f32,
         width_percent: f32,
         colour: Colour,
-        display_scale: f32,
     ) -> Quad {
         let (w, h) = (component.width, component.height);
         let rect = RectF::new(
@@ -140,7 +140,7 @@ impl Quad {
         let mut quad = Quad::new(QuadKind::Bar, rect, colour);
         // kBarVerticalVertex: size.x = width_percent * dimensions.x / 2,
         // size.y = position.z * dimensions.y / 2 (setBarSizes' position.z).
-        let length = (top - bottom).abs() * 0.5 * display_scale;
+        let length = (top - bottom).abs() * 0.5;
         quad.shader_values = [width_percent * w / 2.0, length * h / 2.0, 0.0, 0.0];
         quad
     }
