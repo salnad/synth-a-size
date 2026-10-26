@@ -19,7 +19,9 @@ Commands:
            tab ("overlay": "preset_browser"); see overlay_args.
 
 ref-gui runs with HOME and XDG_DATA_HOME in a fresh temporary folder, so
-upstream reads no config, favourites or presets from the machine running it.
+upstream reads no config, favourites or presets from the machine running it,
+and with migration/corpus/gui/data (written by migration/corpus/generate.py)
+as its data folder, which the port's gallery uses too.
 
 Without a DISPLAY the script re-runs itself under xvfb-run. Mesa's software
 OpenGL (LIBGL_ALWAYS_SOFTWARE=1) is used either way.
@@ -45,6 +47,9 @@ VIEWS = CORPUS / "views.json"
 # Presets the layout fixtures and views may load: authored ones from
 # migration/corpus/generate.py, never factory content.
 GUI_PRESETS = "migration/corpus/gui/presets/"
+# The data folder ref-gui and the gallery read presets from (authored by
+# migration/corpus/generate.py).
+GUI_DATA = CORPUS / "data"
 # MIDI a view may play before its frame: the authored corpus files.
 MIDI_DIR = "migration/corpus/midi/"
 
@@ -86,6 +91,7 @@ def run_ref_gui(args):
         authority = Path.home() / ".Xauthority"
         if "XAUTHORITY" not in env and authority.exists():
             env["XAUTHORITY"] = str(authority)
+        args = [*args, "--data-dir", str(GUI_DATA)]
         subprocess.run([str(REF_GUI), *args], check=True, env=env, timeout=300)
 
 

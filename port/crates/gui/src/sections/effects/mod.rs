@@ -279,12 +279,13 @@ use super::{Overlay, Panel};
 use crate::colour::Colour;
 use crate::controls::button::SynthButton;
 use crate::controls::icon::UpstreamIcon;
+use crate::controls::scroll_bar::ScrollBar;
 use crate::controls::slider::Slider;
 use crate::fonts::Face;
 use crate::host::Host;
 use crate::layout::FullLayout;
 use crate::paint::{PixelPainter, RectF};
-use crate::primitives::{Quad, QuadBatch, QuadKind};
+use crate::primitives::Quad;
 use crate::section::{self, paint_border, Heading};
 use crate::skin::ColorId;
 use crate::text::{Justify, Overflow};
@@ -328,18 +329,8 @@ struct Drag {
 
 /// The Effects tab (`EffectsInterface` and its sections).
 pub struct EffectsTab {
-    /// `viewport_.getViewPositionY()`, in pixels.
-    scroll: f32,
-    /// The scroll bar's `OpenGlScrollQuad::hover_amount_`.
-    scroll_hover: f32,
-    /// Whether the scroll bar is pressed (`OpenGlScrollBar::mouseDown`).
-    scroll_pressed: bool,
-    /// Whether that press began on the thumb, so a drag moves it
-    /// (`ScrollBar::isDraggingThumb`).
-    scroll_thumb_drag: bool,
-    /// When a press held beside the thumb pages again
-    /// (`ScrollBar::timerCallback`), in egui's time.
-    scroll_page_at: Option<f64>,
+    /// `viewport_`'s view position, in pixels, and its scroll bar.
+    scroll: ScrollBar,
     drag: Option<Drag>,
     /// `currently_hovered_`: the tile under the pointer.
     hovered: Option<usize>,
@@ -358,11 +349,7 @@ pub struct EffectsTab {
 impl Default for EffectsTab {
     fn default() -> EffectsTab {
         EffectsTab {
-            scroll: 0.0,
-            scroll_hover: -1.0,
-            scroll_pressed: false,
-            scroll_thumb_drag: false,
-            scroll_page_at: None,
+            scroll: ScrollBar::default(),
             drag: None,
             hovered: None,
             power_buttons: Effect::ALL.map(|effect| SynthButton::power(effect.enable_control())),
@@ -383,12 +370,12 @@ impl EffectsTab {
     /// `viewport_.setViewPosition(0, y)`: scrolls the column down `y`
     /// pixels, kept within the column when next drawn.
     pub fn set_scroll(&mut self, y: f32) {
-        self.scroll = y;
+        self.scroll.position = y;
     }
 
     /// `viewport_.getViewPositionY()`.
     pub fn scroll(&self) -> f32 {
-        self.scroll
+        self.scroll.position
     }
 
     /// Draws the tab in `layout.effects` and handles its input.
@@ -427,17 +414,23 @@ impl EffectsTab {
         };
         self.show_order(ui, host, pixels, top, overlay, &fx, &order_layout, enabled);
 
-        let max_scroll = (fx.container.height - fx.viewport.height).max(0) as f32;
-        self.handle_scrolling(ui, pixels, &fx, max_scroll);
-        self.show_container(ui, host, pixels, top, overlay, &fx, enabled);
-        paint_scroll_bar(
+        // The viewport's wheel and its OpenGlScrollBar.
+        let (total, visible) = (fx.container.height as f32, fx.viewport.height as f32);
+        let id = ui.scope_id().with("effects scroll bar");
+        let ppp = pixels.pixels_per_point();
+        self.scroll.handle(
+            ui,
             pixels,
-            &scope,
-            &fx,
-            self.scroll,
-            self.scroll_hover,
-            self.scroll_pressed,
+            id,
+            fx.viewport,
+            fx.scroll_bar,
+            total,
+            visible,
+            ppp,
         );
+        self.show_container(ui, host, pixels, top, overlay, &fx, enabled);
+        self.scroll
+            .paint(pixels, &scope, fx.scroll_bar, total, visible);
     }
 
     /// `DragDropEffectOrder`'s mouse handling: hover, press, drag, release.
@@ -575,96 +568,6 @@ impl EffectsTab {
         }
     }
 
-    /// Wheel scrolling over the column (`Viewport`), when its contents are
-    /// taller than it, and the scroll bar (`OpenGlScrollBar`): dragging its
-    /// thumb scrolls with it, and a press on the track beside the thumb
-    /// pages towards the press (`ScrollBar::mouseDown`).
-    fn handle_scrolling(
-        &mut self,
-        ui: &mut Ui,
-        pixels: &PixelPainter,
-        fx: &EffectsLayout,
-        max_scroll: f32,
-    ) {
-        /// `OpenGlScrollQuad::kHoverChange`.
-        const HOVER_CHANGE: f32 = 0.2;
-        let viewport = pixels.rect(fx.viewport.into());
-        if max_scroll > 0.0 && ui.rect_contains_pointer(viewport) {
-            let wheel = ui.input(|input| input.smooth_scroll_delta.y);
-            self.scroll -= wheel * pixels.pixels_per_point();
-        }
-        let mut hover = false;
-        self.scroll_pressed = false;
-        if max_scroll > 0.0 {
-            let bar = pixels.rect(fx.scroll_bar.into());
-            let response = ui.interact(
-                bar,
-                ui.scope_id().with("effects scroll bar"),
-                Sense::click_and_drag(),
-            );
-            hover = response.hovered() || response.dragged();
-            self.scroll_pressed = response.is_pointer_button_down_on();
-            let ppp = pixels.pixels_per_point();
-            let total = fx.container.height as f32;
-            let scale = total / fx.scroll_bar.height as f32;
-            /// `ScrollBar::mouseDown`'s first timer, then `timerCallback`'s.
-            const FIRST_REPEAT: f64 = 0.4;
-            const REPEAT: f64 = 0.04;
-            let (pressed, now) = ui.input(|input| (input.pointer.primary_pressed(), input.time));
-            let page_towards = |scroll: &mut f32, pos: egui::Pos2| -> bool {
-                let y = (pos.y - bar.min.y) * ppp * scale;
-                let page = fx.viewport.height as f32;
-                if y < *scroll {
-                    *scroll -= page;
-                } else if y > *scroll + page {
-                    *scroll += page;
-                } else {
-                    return false;
-                }
-                true
-            };
-            if pressed && response.is_pointer_button_down_on() {
-                self.scroll_thumb_drag = false;
-                self.scroll_page_at = None;
-                if let Some(pos) = response.interact_pointer_pos() {
-                    if page_towards(&mut self.scroll, pos) {
-                        self.scroll_page_at = Some(now + FIRST_REPEAT);
-                    } else {
-                        self.scroll_thumb_drag = true;
-                    }
-                }
-            } else if response.is_pointer_button_down_on() {
-                // A press held beside the thumb keeps paging towards the
-                // pointer while it stays beside it.
-                if let (Some(at), Some(pos)) =
-                    (self.scroll_page_at, response.interact_pointer_pos())
-                {
-                    if now >= at {
-                        page_towards(&mut self.scroll, pos);
-                        self.scroll_page_at = Some(now + REPEAT);
-                    }
-                    ui.ctx().request_repaint();
-                }
-            } else {
-                self.scroll_page_at = None;
-            }
-            if response.dragged() && self.scroll_thumb_drag {
-                self.scroll += response.drag_delta().y * ppp * scale;
-            }
-        }
-        // OpenGlScrollQuad::render: the bar widens while hovered.
-        let last_hover = self.scroll_hover;
-        self.scroll_hover = if hover {
-            (self.scroll_hover + HOVER_CHANGE).min(1.0)
-        } else {
-            (self.scroll_hover - HOVER_CHANGE).max(0.0)
-        };
-        if self.scroll_hover != last_hover {
-            ui.ctx().request_repaint();
-        }
-        self.scroll = self.scroll.clamp(0.0, max_scroll);
-    }
-
     /// The enabled effects, scrolled and clipped to the viewport.
     #[allow(clippy::too_many_arguments)]
     fn show_container(
@@ -696,7 +599,7 @@ impl EffectsTab {
             fx.viewport.height,
         );
         child.set_clip_rect(pixels.rect(sections.into()));
-        let scroll = self.scroll.round() as i32;
+        let scroll = self.scroll.position.round() as i32;
         for effect in Effect::ALL {
             let index = effect as usize;
             let Some(bounds) = fx.effects[index].filter(|_| enabled[index]) else {
@@ -877,46 +780,6 @@ fn tile_icon(effect: Effect) -> UpstreamIcon {
         Effect::Phaser => UpstreamIcon::Phaser,
         Effect::Reverb => UpstreamIcon::Reverb,
     }
-}
-
-/// `OpenGlScrollBar`: a rounded bar over the visible part of the column,
-/// shown while the column is taller than the viewport (JUCE's auto-hide).
-#[allow(clippy::too_many_arguments)]
-fn paint_scroll_bar(
-    pixels: &PixelPainter,
-    scope: &Scope,
-    fx: &EffectsLayout,
-    scroll: f32,
-    hover: f32,
-    pressed: bool,
-) {
-    let total = fx.container.height as f32;
-    let visible = fx.viewport.height as f32;
-    if total <= visible || total <= 0.0 {
-        return;
-    }
-    let bar = fx.scroll_bar;
-    let start = scroll / total;
-    let end = (scroll + visible) / total;
-    // setShrinkLeft: the left half of the track at rest, all of it hovered.
-    let width = bar.width as f32 * (1.0 + hover.max(0.0)) / 2.0;
-    let rect = RectF::new(
-        bar.x as f32,
-        bar.y as f32 + start * bar.height as f32,
-        width,
-        (end - start) * bar.height as f32,
-    );
-    let color = scope.color(ColorId::LightenScreen);
-    let color = if pressed {
-        color.overlaid_with(color)
-    } else {
-        color
-    };
-    let mut quad = Quad::new(QuadKind::RoundedRectangle, rect, color);
-    quad.rounding = bar.width as f32 * 0.25;
-    let mut batch = QuadBatch::new();
-    batch.push(quad);
-    batch.paint(pixels, RectF::from(bar));
 }
 
 /// `SynthSection::paintBackground` for an effect section at `bounds`:

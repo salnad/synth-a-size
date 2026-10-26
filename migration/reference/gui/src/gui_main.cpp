@@ -8,13 +8,17 @@
 // Usage:
 //   ref-gui [--out frame.png] [--layout layout.jsonl] [--preset file.vital]
 //           [--tab voice|effects|matrix|advanced] [--width 1400] [--height 820] [--frames 30]
-//           [--effects-scroll 0] [--overlay preset_browser]
+//           [--effects-scroll 0] [--overlay preset_browser] [--data-dir folder]
 //
 // --effects-scroll scrolls the effects column down that many pixels (the
 // viewport keeps it within the column).
 //
 // --overlay preset_browser opens the preset browser over the tab, as the
 // header's preset selector does.
+//
+// --data-dir sets upstream's data folder (LoadSave::saveDataDirectory, in
+// the config under HOME) before the interface is built, so its browsers
+// read the presets there.
 //
 // --layout writes the bounds of every named component, relative to the
 // interface, so the port's layout can be checked exactly. Without --out
@@ -39,6 +43,7 @@
 #include "default_look_and_feel.h"
 #include "effects_interface.h"
 #include "full_interface.h"
+#include "load_save.h"
 #include "sound_engine.h"
 #include "synth_base.h"
 #include "synth_gui_interface.h"
@@ -74,6 +79,7 @@ struct Options {
   int effects_scroll = 0;
   std::string layout;
   std::string overlay;
+  std::string data_dir;
 };
 
 int tabIndex(const std::string& tab) {
@@ -257,6 +263,8 @@ class RefGuiApplication : public JUCEApplication {
           options.effects_scroll = std::stoi(value);
         else if (key == "--overlay")
           options.overlay = value;
+        else if (key == "--data-dir")
+          options.data_dir = value;
         else
           return fail("unknown option " + key);
       }
@@ -264,9 +272,16 @@ class RefGuiApplication : public JUCEApplication {
       if ((options.out.empty() && options.layout.empty()) || tab < 0)
         return fail("usage: ref-gui (--out frame.png | --layout layout.jsonl) [--preset file.vital] "
                     "[--tab voice|effects|matrix|advanced] [--width W] [--height H] [--frames N] "
-                    "[--effects-scroll Y] [--overlay preset_browser]");
+                    "[--effects-scroll Y] [--overlay preset_browser] [--data-dir folder]");
       if (!options.overlay.empty() && options.overlay != "preset_browser")
         return fail("unknown overlay " + options.overlay);
+
+      if (!options.data_dir.empty()) {
+        File folder = File::getCurrentWorkingDirectory().getChildFile(options.data_dir);
+        if (!folder.isDirectory())
+          return fail("no data folder " + options.data_dir);
+        LoadSave::saveDataDirectory(folder);
+      }
 
       synth_ = std::make_unique<RefGuiSynth>(options);
       if (options.preset.empty()) {

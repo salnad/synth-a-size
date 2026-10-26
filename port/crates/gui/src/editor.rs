@@ -88,6 +88,8 @@ impl NiceEguiApp for App {
         frame: &mut Frame,
     ) -> Result<(), nice_plug_egui::baseview::HandlerError> {
         egui_ctx.set_fonts(fonts::definitions());
+        // Upstream's browser reads the presets when the editor is built.
+        self.interface.reload_presets();
         // Open and save dialogs attach to this window.
         crate::controls::file_dialog::set_parent(
             &egui_ctx,
@@ -135,6 +137,17 @@ impl NiceEguiApp for App {
         // gestures, before this frame draws them.
         host.forward_midi_moves();
         self.interface.show(ui, &host);
+        if crate::controls::text_editor::take_window_focus_request(ui.ctx()) {
+            // As the chat's fields: ask for the keyboard when the focus
+            // setting does (its default without a chat).
+            let grab = self
+                .model
+                .chat()
+                .is_none_or(|chat| chat.settings().focus == crate::FocusMode::GrabOnClick);
+            if grab {
+                let _ = frame.baseview_window().focus();
+            }
+        }
         if let Some(chat) = self.model.chat() {
             let placement = self
                 .interface

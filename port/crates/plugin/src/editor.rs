@@ -320,6 +320,23 @@ impl EditorModel for PluginModel {
         *lock(&self.data_directory) = Some(folder);
     }
 
+    fn favourites(&self) -> Vec<PathBuf> {
+        self.midi_learn
+            .config_file()
+            .map(|config| crate::config::favourites(&crate::config::favourites_file(config)))
+            .unwrap_or_default()
+    }
+
+    fn set_favourite(&self, path: &Path, favourite: bool) {
+        if let Some(config) = self.midi_learn.config_file() {
+            let _ = crate::config::save_favourite(
+                &crate::config::favourites_file(config),
+                path,
+                favourite,
+            );
+        }
+    }
+
     fn active_preset_file(&self) -> Option<PathBuf> {
         lock(&self.active_file).clone()
     }

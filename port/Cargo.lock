@@ -2771,6 +2771,7 @@ dependencies = [
 name = "sas-preset"
 version = "0.0.1"
 dependencies = [
+ "libc",
  "sas-common",
  "sas-parity",
  "sas-wavetable",

@@ -98,7 +98,7 @@ pub fn compare_paths(a: &Path, b: &Path) -> Ordering {
 /// JUCE's `String::compareNatural`, for the paths' characters: digit runs
 /// compare by value (then by length, so leading zeros sort first), other
 /// characters by code point.
-fn compare_natural(a: &str, b: &str) -> Ordering {
+pub fn compare_natural(a: &str, b: &str) -> Ordering {
     let (mut a, mut b) = (a.chars().peekable(), b.chars().peekable());
     loop {
         match (a.peek().copied(), b.peek().copied()) {
