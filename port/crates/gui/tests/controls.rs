@@ -71,6 +71,7 @@ const CONTROLS: &[&str] = &[
     "filter_1_filter_input",
     "filter_2_filter_input",
     "osc_2_destination",
+    "lfo_1_stereo",
 ];
 
 enum TestParam {
@@ -2089,4 +2090,32 @@ fn the_lfo_menu_flips_the_shape() {
     }
     let line = lfo_1_shape(&fixture);
     assert_eq!(line.point(1), (0.5, 1.0));
+}
+
+/// `snapToValue(true, 0)` on the LFO stereo knob: a drag that stays within
+/// 5% of the range of 0 lands on 0, except in fine (Command) mode.
+#[test]
+fn the_lfo_stereo_knob_snaps_to_centre() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let knob = centre(lfo_layout(&fixture).stereo);
+    assert_eq!(fixture.synth.value("lfo_1_stereo"), 0.0);
+    drag(
+        &mut harness,
+        knob,
+        knob + egui::vec2(0.0, -3.0),
+        Modifiers::NONE,
+    );
+    assert_eq!(fixture.synth.value("lfo_1_stereo"), 0.0);
+    for _ in 0..30 {
+        harness.step();
+    }
+    drag(
+        &mut harness,
+        knob,
+        knob + egui::vec2(0.0, -3.0),
+        Modifiers::COMMAND,
+    );
+    let fine = fixture.synth.value("lfo_1_stereo");
+    assert!(fine > 0.0 && fine < 0.1, "{fine}");
 }

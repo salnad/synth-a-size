@@ -16,7 +16,10 @@ controls around it.
   Command held) draws the paint pattern into the grid cell under the
   pointer (`paintLine`). The right-click menu sets the start phase (to a
   point, a power's middle or a grid cell), removes a point, resets a
-  power, copies the shape as JSON and flips it.
+  power, copies the shape as JSON and flips it. "Set Start Point" on a
+  grid cell keeps the cell it was opened on, so it works where upstream's
+  has already lost the cell by the time the choice arrives (D18 in
+  `migration/DIVERGENCES.md`).
 - The editor keeps its own copy while editing and until the synth has it,
   so it never draws a stale shape.
 - `EditorModel::lfo_shape` / `set_lfo_shape`: the shape from the edit
@@ -59,6 +62,8 @@ controls around it.
   to come.
 - Unit tests: level ends move together, painting fills one cell, powers
   clamp.
+- `the_lfo_stereo_knob_snaps_to_centre`: a small drag from 0 lands on 0,
+  and with Command held it doesn't (it fails without the snap).
 - Interaction tests (through the editor, with a model that stores the
   shapes): dragging a point moves it, a double click adds a point,
   painting draws the pattern into a cell, and the menu flips the shape.

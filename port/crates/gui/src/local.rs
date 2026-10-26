@@ -1,10 +1,12 @@
+// Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Controls the editor keeps itself: upstream's sliders that aren't synth
-//! parameters (each LFO section's grid sizes and paint pattern). They
-//! behave as sliders through [`crate::host::Host`], which stores their
-//! values here instead of in the host, so they aren't saved or automated,
-//! as upstream's aren't.
+//! parameters (each LFO section's grid sizes, paint pattern and paint
+//! button, from `vital/src/interface/editor_sections/lfo_section.cpp` with
+//! the limits in `editor_components/line_editor.h`). They behave as sliders
+//! through [`crate::host::Host`], which stores their values here instead of
+//! in the host, so they aren't saved or automated, as upstream's aren't.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
