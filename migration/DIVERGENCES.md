@@ -527,8 +527,8 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
 - **Why:** upstream offers the item and then can't carry it out; there is no
   meaningful behaviour to reproduce. This follows D1's and D15's precedent
   of not replicating upstream bugs.
-- **Approved:** coordinator, 2026-10-26, on Voice Reviewer's review of
-  #128 (keep the working behaviour, following D1 and D15).
+- **Approved:** coordinator relaying the review of #128 (GUI Reviewer,
+  Voice tab and modulation, 2026-10-26).
 
 ## Verification exceptions
 
