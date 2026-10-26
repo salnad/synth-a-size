@@ -162,8 +162,12 @@ pub trait EditorModel: Send + Sync + 'static {
 
     /// Calls `f` with the sample oscillator's audio, read in place: nothing
     /// is copied. `left` is the mono or left channel `SampleViewer` draws
-    /// (`Sample::buffer`, `originalLength`). Keep `f` short; the plugin may
-    /// hold a lock while it runs.
+    /// (`Sample::buffer`, `originalLength`). `f` is not called when there is
+    /// no sample (the default, without a plugin).
+    ///
+    /// The plugin runs `f` holding the edit bus's mirror lock, which is not
+    /// reentrant: calling any other `EditorModel` method from inside `f`
+    /// deadlocks the GUI thread. Copy out what you need and return.
     fn with_sample(&self, _f: &mut dyn FnMut(&SampleState)) {}
 
     /// `Sample::getName`.
@@ -174,7 +178,9 @@ pub trait EditorModel: Send + Sync + 'static {
     /// Moves on whenever the wavetables, the sample or anything else the
     /// plugin keeps besides its host parameters may have changed (each
     /// edit, preset load and state restore), so drawings of them can be
-    /// cached against it.
+    /// cached against it. Read it before the content you cache: a change
+    /// that lands in between then moves the revision past the one stored,
+    /// and the next frame reads the content again.
     fn content_revision(&self) -> u64 {
         0
     }
