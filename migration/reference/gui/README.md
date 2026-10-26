@@ -69,10 +69,13 @@ does by default. It needs a render that isn't empty (`--midi`, or
 `--seconds` above 0), because a silent engine's outputs are idle (a filter
 response at cutoff 0).
 
-The port's gallery doesn't run its engine yet, so a view that sets `"midi"`,
-`"seconds"` or `"animate"` compares **live upstream against a static port**:
-those displays differ by design until the gallery renders the same view
-through `sas-engine`.
+The port's gallery (`port/crates/gui/examples/gallery.rs`) runs its engine
+the same way for such a view: the preset and MIDI through
+`sas_engine::synth::render` at 44.1 kHz and 120 BPM in 64-sample blocks,
+then the editor reads that engine's telemetry and held notes. Live views
+compare like for like. One difference remains: the port's editor has no
+animate switch yet, so a live view without `"animate": true` still draws its
+animated views from the engine (the gallery prints a note).
 
 In `views.json`, a view sets these with `"midi"` (an authored file in
 `migration/corpus/midi/`), `"seconds"` and `"animate": true`.

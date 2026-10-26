@@ -5,6 +5,11 @@
 //!     cargo run -p sas-gui --example gallery -- OUT [--scale 2]
 //!
 //! Uses wgpu on whatever adapter the machine has (Mesa's lavapipe in CI).
+//!
+//! A view with `"midi"` or `"seconds"` runs the engine first, as `ref-gui`
+//! does for the upstream frame: the view's preset and MIDI through
+//! `sas_engine::synth::render` at 44.1 kHz and 120 BPM, in 64-sample host
+//! blocks. The editor then reads that engine's telemetry and held notes.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -14,7 +19,10 @@ use std::sync::Arc;
 use egui_kittest::Harness;
 use nice_plug::prelude::{FloatParam, FloatRange, IntParam, IntRange, Param};
 use sas_engine::edit_bus::PreparedWavetable;
+use sas_engine::midi_file::{read_midi_file, TimedMessage};
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
+use sas_engine::synth::{render, RenderSettings, Synth};
+use sas_engine::telemetry::Telemetry;
 use sas_gui::{EditorModel, Host, HostParam, Interface, Route, Tab};
 use sas_preset::registry::{registry, ValueScale};
 use sas_preset::{InitContent, PresetState, SampleState};
@@ -42,6 +50,68 @@ struct ViewPreset {
     state: PresetState,
     /// The preset's wavetables, rendered as the engine renders them.
     wavetables: Vec<Option<Arc<Wavetable>>>,
+    /// What the view's engine left, when the view runs one.
+    live: Option<Live>,
+}
+
+/// `ref-gui`'s sample rate, tempo and block size for a running engine
+/// (`renderLive`, `migration/reference/gui/src/gui_main.cpp`).
+const LIVE_SAMPLE_RATE: i32 = 44100;
+const LIVE_BPM: f64 = 120.0;
+const LIVE_BLOCK_SIZE: usize = 64;
+/// The authored MIDI a view may play (`gui_reference.py`'s `MIDI_DIR`).
+const MIDI_DIR: &str = "migration/corpus/midi/";
+
+/// The engine's state after a view's render: its telemetry snapshot and the
+/// notes still held (bit n is note n).
+struct Live {
+    telemetry: Telemetry,
+    held_notes: u128,
+}
+
+impl Live {
+    /// Renders `seconds` of `events` (default: up to the last event) on a
+    /// synth with `state` loaded. None for an empty render.
+    fn render(state: &PresetState, events: &[TimedMessage], seconds: Option<f64>) -> Option<Live> {
+        let last_event = events.iter().map(|e| e.seconds).fold(0.0f64, f64::max);
+        let seconds = seconds.unwrap_or(last_event);
+        let frames = (seconds * LIVE_SAMPLE_RATE as f64).ceil() as usize;
+        if frames == 0 {
+            return None;
+        }
+        let mut synth = Synth::new();
+        synth.load_preset(state);
+        let settings = RenderSettings {
+            sample_rate: LIVE_SAMPLE_RATE,
+            block_size: LIVE_BLOCK_SIZE,
+            bpm: LIVE_BPM,
+            frames,
+        };
+        render(&mut synth, events, &settings);
+        let (mut writer, telemetry) =
+            Telemetry::with_equalizer_memory(synth.audio_memory(), synth.equalizer_memory());
+        synth.write_telemetry(&mut writer);
+
+        // MidiKeyboardState over the events the render played.
+        let mut held_notes = 0u128;
+        for event in events {
+            let sample = (event.seconds * LIVE_SAMPLE_RATE as f64 + 0.5).floor() as i64;
+            if sample >= frames as i64 {
+                break;
+            }
+            let [status, note, velocity] = event.message;
+            let bit = 1u128 << (note & 0x7f);
+            match status & 0xf0 {
+                0x90 if velocity > 0 => held_notes |= bit,
+                0x80 | 0x90 => held_notes &= !bit,
+                _ => {}
+            }
+        }
+        Some(Live {
+            telemetry,
+            held_notes,
+        })
+    }
 }
 
 impl ViewPreset {
@@ -95,6 +165,7 @@ impl ViewPreset {
             params,
             state,
             wavetables,
+            live: None,
         }
     }
 }
@@ -148,6 +219,61 @@ impl EditorModel for ViewPreset {
     fn sample_name(&self) -> String {
         self.state.sample.name.clone()
     }
+
+    fn telemetry(&self) -> Option<Telemetry> {
+        self.live.as_ref().map(|live| live.telemetry.clone())
+    }
+
+    fn held_notes(&self) -> u128 {
+        self.live.as_ref().map_or(0, |live| live.held_notes)
+    }
+}
+
+/// A view's running engine (`"midi"`, `"seconds"`, `"animate"`), checked as
+/// `gui_reference.py`'s `live_args` checks it for the upstream frame.
+fn live_view(
+    name: &str,
+    view: &serde_json::Value,
+    repo: &Path,
+    state: &PresetState,
+) -> Option<Live> {
+    let midi = view.get("midi").and_then(|v| v.as_str());
+    let seconds = view.get("seconds").map(|v| {
+        v.as_f64()
+            .filter(|s| *s >= 0.0)
+            .unwrap_or_else(|| panic!("{name}: seconds must be a number >= 0"))
+    });
+    let animate = view
+        .get("animate")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if midi.is_none() && seconds.is_none() {
+        assert!(!animate, "{name}: animate needs midi or seconds");
+        return None;
+    }
+    let events = match midi {
+        Some(midi) => {
+            assert!(
+                midi.starts_with(MIDI_DIR) && !midi.split('/').any(|part| part == ".."),
+                "{name}: MIDI {midi} is not in {MIDI_DIR}"
+            );
+            let data =
+                std::fs::read(repo.join(midi)).unwrap_or_else(|e| panic!("{name}: {midi}: {e}"));
+            read_midi_file(&data).unwrap_or_else(|e| panic!("{name}: {midi}: {e}"))
+        }
+        None => Vec::new(),
+    };
+    let live = Live::render(state, &events, seconds);
+    assert!(
+        live.is_some() || !animate,
+        "{name}: animate needs a render that isn't empty"
+    );
+    if live.is_some() && !animate {
+        // The editor has no animate switch yet: its animated views always
+        // read the telemetry, while ref-gui draws them at rest.
+        println!("{name}: no animate switch in the port; animated views read the engine");
+    }
+    live
 }
 
 fn tab(name: &str) -> Tab {
@@ -188,7 +314,8 @@ fn main() {
             .get("preset")
             .and_then(|p| p.as_str())
             .map(|p| repo.join(p));
-        let model = ViewPreset::new(preset_path.as_deref());
+        let mut model = ViewPreset::new(preset_path.as_deref());
+        model.live = live_view(name, view, &repo, &model.state);
         let width = view.get("width").and_then(|v| v.as_f64()).unwrap_or(1400.0) as f32;
         let height = view.get("height").and_then(|v| v.as_f64()).unwrap_or(820.0) as f32;
         let interface = RefCell::new(Interface::default());
