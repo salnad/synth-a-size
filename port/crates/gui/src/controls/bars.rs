@@ -67,23 +67,27 @@ impl BarRenderer {
         self.bottom[index] = bottom;
     }
 
-    /// The bars' quads for a component at `bounds` (pixels), at
-    /// `display_scale` (`BarRenderer::display_scale_`).
-    pub fn quads(&self, bounds: RectF, display_scale: f32) -> Vec<Quad> {
+    /// The bars' quads for a component at `bounds` (pixels).
+    ///
+    /// Upstream's layout already includes the display scale and it never
+    /// sets `BarRenderer::display_scale_` (so it stays 1): the vertex
+    /// shaders' dimensions are the component's size in pixels, and the
+    /// four-pixel minimum width is four pixels at any scale.
+    pub fn quads(&self, bounds: RectF) -> Vec<Quad> {
         let (width, height) = (bounds.width, bounds.height);
         if width <= 0.0 || height <= 0.0 {
             return Vec::new();
         }
-        // The vertex shaders' uniforms, with the dimensions in logical
-        // pixels as upstream's components measure them.
-        let dimensions = if self.vertical { width } else { height } / display_scale;
-        let min_width = 4.0 / dimensions;
+        let dimensions = if self.vertical { width } else { height };
+        // Upstream's minimum is four pixels of the width whichever way the
+        // bars run (`4.0f / getWidth()`).
+        let min_width = 4.0 / width;
         let width_percent =
             min_width.max(self.bar_width * self.scale * 2.0 / self.num_points as f32);
         let mut quads = Vec::with_capacity(self.total_points());
         for i in 0..self.total_points() {
-            // setBarSizes: half the bar's length, times the display scale.
-            let length = (self.y[i] - self.bottom[i]).abs() * 0.5 * display_scale;
+            // setBarSizes: half the bar's length (times a display scale of 1).
+            let length = (self.y[i] - self.bottom[i]).abs() * 0.5;
             let along = self.scale * (self.x[i] + 1.0) - 1.0 + self.offset;
             let (rect, size) = if self.vertical {
                 let left = bounds.x + (along + 1.0) / 2.0 * width;
@@ -91,10 +95,7 @@ impl BarRenderer {
                 let bottom = bounds.y + (1.0 - self.y[i].min(self.bottom[i])) / 2.0 * height;
                 (
                     RectF::new(left, top, width_percent / 2.0 * width, bottom - top),
-                    [
-                        width_percent * dimensions / 2.0,
-                        length * height / display_scale / 2.0,
-                    ],
+                    [width_percent * dimensions / 2.0, length * height / 2.0],
                 )
             } else {
                 // kBarHorizontalVertex: the bar runs along x from its
@@ -111,10 +112,7 @@ impl BarRenderer {
                         (to - from) / 2.0 * width,
                         width_percent / 2.0 * height,
                     ),
-                    [
-                        length * width / display_scale / 2.0,
-                        width_percent * dimensions / 2.0,
-                    ],
+                    [length * width / 2.0, width_percent * dimensions / 2.0],
                 )
             };
             let finite = [rect.x, rect.y, rect.width, rect.height]
@@ -138,7 +136,7 @@ impl BarRenderer {
         } else {
             QuadBatch::new()
         };
-        for quad in self.quads(bounds, pixels.pixels_per_point()) {
+        for quad in self.quads(bounds) {
             batch.push(quad);
         }
         if !batch.is_empty() {
@@ -158,7 +156,7 @@ mod tests {
         bars.set_x(1, -0.5);
         bars.set_y(1, 0.5);
         bars.set_bottom(1, -0.5);
-        let quads = bars.quads(RectF::new(10.0, 20.0, 100.0, 40.0), 1.0);
+        let quads = bars.quads(RectF::new(10.0, 20.0, 100.0, 40.0));
         // Bar 1: x from 25% across; 0.15 of the spacing wide (at least four
         // pixels); from y = 0.5 down to -0.5, the middle half.
         let bar = quads.iter().find(|q| q.rect.x == 10.0 + 25.0).unwrap();
@@ -168,5 +166,56 @@ mod tests {
         // size: the thickness across, half the length along.
         assert!((bar.shader_values[0] - 7.5).abs() < 1e-5);
         assert!((bar.shader_values[1] - 10.0).abs() < 1e-5);
+    }
+
+    /// At display scale 2 the component is twice as many pixels and the
+    /// bars scale with it, as upstream's (its `display_scale_` stays 1):
+    /// twice as wide, with twice the shader size, and the minimum width is
+    /// still four pixels' worth of the component, not eight.
+    #[test]
+    fn bars_scale_with_the_component_at_2x() {
+        let mut bars = BarRenderer::new(4, true);
+        bars.bar_width = 0.3;
+        bars.set_x(1, -0.5);
+        bars.set_y(1, 0.5);
+        bars.set_bottom(1, -0.5);
+        let one = bars.quads(RectF::new(10.0, 20.0, 100.0, 40.0));
+        let two = bars.quads(RectF::new(20.0, 40.0, 200.0, 80.0));
+        let bar = |quads: &[Quad]| {
+            *quads
+                .iter()
+                .find(|q| q.rect.height > 0.0 && q.rect.y > 0.0 && q.rect.height < q.rect.y)
+                .unwrap()
+        };
+        let (one, two) = (bar(&one), bar(&two));
+        assert!((two.rect.width - 2.0 * one.rect.width).abs() < 1e-4);
+        assert!((two.shader_values[0] - 15.0).abs() < 1e-4);
+        assert!((two.shader_values[1] - 20.0).abs() < 1e-4);
+
+        let mut thin = BarRenderer::new(100, true);
+        thin.bar_width = 0.3;
+        thin.set_y(0, 1.0);
+        for (width, expected) in [(100.0, 2.0), (200.0, 2.0)] {
+            let quads = thin.quads(RectF::new(0.0, 0.0, width, 40.0));
+            // min_width = 4 / w: four device units of 2/w, half of which
+            // is the quad's width.
+            assert!((quads[0].rect.width - expected).abs() < 1e-4);
+            assert!((quads[0].shader_values[0] - 2.0).abs() < 1e-4);
+        }
+    }
+
+    /// Horizontal bars' minimum thickness is 4 / width too, as upstream's,
+    /// though their thickness is measured against the height: a thin bar in
+    /// a 200 × 40 component is (4 / 200) / 2 of the height, 0.4 pixels, with
+    /// a shader size of 0.4.
+    #[test]
+    fn horizontal_bars_take_the_minimum_from_the_width() {
+        let mut thin = BarRenderer::new(100, false);
+        thin.bar_width = 0.3;
+        thin.set_y(0, 1.0);
+        let quads = thin.quads(RectF::new(0.0, 0.0, 200.0, 40.0));
+        let bar = quads[0];
+        assert!((bar.rect.height - 0.4).abs() < 1e-4, "{}", bar.rect.height);
+        assert!((bar.shader_values[1] - 0.4).abs() < 1e-4);
     }
 }
