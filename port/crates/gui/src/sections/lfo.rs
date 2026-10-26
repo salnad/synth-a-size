@@ -7,9 +7,8 @@
 //!
 //! The LFO editor (`controls::line_editor`) sits above, with its grid size,
 //! paint, paint pattern and smooth controls and the shape's name. The
-//! paint and smooth buttons' icons and the LFO browser come later. The sync
-//! selector comes with the shared `TempoSelector`; until then its slot is
-//! empty and the rate slider follows the sync value.
+//! LFO browser comes later. The sync
+//! selector is the shared `TempoSelector`.
 
 use super::{MenuOwner, Panel};
 use crate::colour::Colour;
@@ -18,8 +17,10 @@ use crate::controls::line_editor::{
     paint_pattern as line_paint_pattern, LineEditor, LineSettings, PAINT_PATTERN_NAMES,
 };
 use crate::controls::path::{Path, Transform};
+use crate::controls::paths::Icon;
 use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
 use crate::controls::slider::{Slider, SliderStyle};
+use crate::controls::tempo::{self, TempoSelector};
 use crate::fonts::Face;
 use crate::layout::{PresetSelectorLayout, Rect};
 use crate::local;
@@ -28,9 +29,9 @@ use crate::popup::{Menu, MenuItem};
 use crate::primitives::{Quad, QuadKind};
 use crate::scope::Scope;
 use crate::section::{
-    draw_label, draw_tempo_divider, draw_text_component_background, keytrack_divider,
-    label_background_bounds, label_font, paint_widget_background, place_knobs_in_area,
-    place_tempo_controls, slider_overlap, slider_width, title_width,
+    draw_label, draw_text_component_background, keytrack_divider, label_background_bounds,
+    label_font, paint_widget_background, place_knobs_in_area, place_tempo_controls, slider_overlap,
+    slider_width, title_width,
 };
 use crate::skin::{ColorId, Section, ValueId};
 
@@ -52,32 +53,6 @@ pub const SYNC_NAMES: [&str; 6] = [
 
 /// `strings::kSmoothModeNames`.
 pub const SMOOTH_MODE_NAMES: [&str; 2] = ["FADE IN", "SMOOTH"];
-
-/// `TempoSelector::MenuOptions`: the sync parameter's values.
-pub mod sync {
-    pub const SECONDS: usize = 0;
-    pub const KEYTRACK: usize = 4;
-}
-
-/// An LFO's or random LFO's rate sliders, by the sync value
-/// (`TempoSelector::valueChanged`): free in seconds, keytracked as
-/// transpose and tune, otherwise tempo.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Rate {
-    Free,
-    Tempo,
-    Keytrack,
-}
-
-impl Rate {
-    pub fn from_sync(sync: f32) -> Rate {
-        match sync as usize {
-            sync::SECONDS => Rate::Free,
-            sync::KEYTRACK => Rate::Keytrack,
-            _ => Rate::Tempo,
-        }
-    }
-}
 
 /// The parameter names of LFO `index` (0-based).
 #[derive(Clone, Copy, Debug)]
@@ -271,6 +246,7 @@ impl LfoLayout {
 pub struct LfoSection {
     index: usize,
     names: Names,
+    sync: TempoSelector,
     frequency: Slider,
     tempo: Slider,
     keytrack_transpose: Slider,
@@ -307,6 +283,7 @@ impl LfoSection {
         LfoSection {
             index,
             names,
+            sync: TempoSelector::new(names.sync),
             frequency: Slider::new(names.frequency, SliderStyle::Text),
             tempo: Slider::new(names.tempo, SliderStyle::Text)
                 .sensitivity(TEMPO_DRAG_SENSITIVITY)
@@ -344,7 +321,7 @@ impl LfoSection {
         );
         draw_text_component_background(pixels, scope, layout.sync_type, true);
         draw_text_component_background(pixels, scope, frequency, true);
-        draw_tempo_divider(pixels, scope, layout.sync);
+        tempo::paint_divider(pixels, scope, layout.sync);
         draw_label(pixels, scope, "MODE", layout.sync_type, true);
         draw_label(pixels, scope, "FREQUENCY", frequency, true);
         draw_label(pixels, scope, "DELAY", layout.delay, false);
@@ -393,17 +370,18 @@ impl LfoSection {
 
     pub fn show(&self, panel: &mut Panel, layout: &LfoLayout) {
         let host = panel.host;
-        let rate = Rate::from_sync(host.value(self.names.sync));
-        match rate {
-            Rate::Free => panel.slider(&self.frequency, layout.rate),
-            Rate::Tempo => panel.slider(&self.tempo, layout.rate),
-            Rate::Keytrack => {
-                panel.slider(&self.keytrack_transpose, layout.keytrack_transpose);
-                panel.slider(&self.keytrack_tune, layout.keytrack_tune);
-                let colour = panel.scope.color(ColorId::LightenScreen);
-                panel.quad(Quad::new(QuadKind::Color, layout.divider.into(), colour));
-            }
+        let mode = self.sync.mode(host);
+        if mode.shows_free_slider() {
+            panel.slider(&self.frequency, layout.rate);
+        } else if mode.shows_tempo_slider() {
+            panel.slider(&self.tempo, layout.rate);
+        } else {
+            panel.slider(&self.keytrack_transpose, layout.keytrack_transpose);
+            panel.slider(&self.keytrack_tune, layout.keytrack_tune);
+            let colour = panel.scope.color(ColorId::LightenScreen);
+            panel.quad(Quad::new(QuadKind::Color, layout.divider.into(), colour));
         }
+        self.sync.show(panel, layout.sync);
         panel.slider(&self.sync_type, layout.sync_type);
         panel.slider(&self.phase, layout.phase);
 
@@ -485,8 +463,23 @@ impl LfoSection {
             shape: Shape::None,
             colours,
         };
+        let toggled = |on: bool| {
+            if on {
+                ShapeColours::icon_on(&panel.scope)
+            } else {
+                colours
+            }
+        };
+        let paint = ShapeButton {
+            shape: Shape::from(Icon::PaintBrush),
+            colours: toggled(event.painting),
+        };
+        let smooth = ShapeButton {
+            shape: Shape::from(Icon::HalfSinCurve),
+            colours: toggled(event.smooth),
+        };
         if panel
-            .shape_button(("lfo paint", self.index), button, layout.paint)
+            .shape_button(("lfo paint", self.index), paint, layout.paint)
             .clicked
         {
             host.set_once(
@@ -495,7 +488,7 @@ impl LfoSection {
             );
         }
         if panel
-            .shape_button(("lfo smooth", self.index), button, layout.smooth)
+            .shape_button(("lfo smooth", self.index), smooth, layout.smooth)
             .clicked
         {
             self.editor.set_smooth(panel, !event.smooth);

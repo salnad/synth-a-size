@@ -4,14 +4,15 @@
 //! The sample section: pitch, level and pan, and the destination. Ports
 //! `SampleSection` (`vital/src/interface/editor_sections/sample_section.cpp`).
 //!
-//! The sample's waveform (`SampleViewer`) and name are drawn here; the
-//! browser, dropping a file, and the keytrack, loop, random phase and
-//! bounce icon buttons come later.
+//! The sample's waveform (`SampleViewer`), its name, and the keytrack,
+//! random phase, loop and bounce toggles are drawn here; the browser and
+//! dropping a file come later.
 
 use std::cell::RefCell;
 
 use super::{MenuOwner, Panel};
 use crate::controls::button::SynthButton;
+use crate::controls::paths::Icon;
 use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
 use crate::controls::slider::{Slider, SliderStyle};
 use crate::controls::transpose_quantize::{self, QuantizeColours};
@@ -175,6 +176,8 @@ impl SampleLayout {
 /// The section's controls (`SampleSection`'s constructor).
 pub struct SampleSection {
     on: SynthButton,
+    /// Keytrack, random phase, loop and bounce.
+    toggles: [SynthButton; 4],
     transpose: Slider,
     tune: Slider,
     level: Slider,
@@ -188,6 +191,12 @@ impl Default for SampleSection {
         let text = |name| Slider::new(name, SliderStyle::Text).text_entry(1.0, Some(0.0));
         SampleSection {
             on: SynthButton::power("sample_on"),
+            toggles: [
+                SynthButton::icon("sample_keytrack", Icon::Keyboard),
+                SynthButton::icon("sample_random_phase", Icon::Shuffle),
+                SynthButton::icon("sample_loop", Icon::Loop),
+                SynthButton::icon("sample_bounce", Icon::Bounce),
+            ],
             transpose: text("sample_transpose").sensitivity(TRANSPOSE_MOUSE_SENSITIVITY),
             tune: text("sample_tune").display(3, 0),
             level: Slider::new("sample_level", SliderStyle::Rotary),
@@ -267,6 +276,16 @@ impl SampleSection {
             let mut slider = *slider;
             slider.active = active;
             panel.slider(&slider, bounds);
+        }
+
+        let places = [
+            layout.keytrack,
+            layout.random_phase,
+            layout.loop_button,
+            layout.bounce,
+        ];
+        for (toggle, bounds) in self.toggles.iter().zip(places) {
+            panel.button(toggle, bounds);
         }
 
         let quantize = host.value("sample_transpose_quantize");

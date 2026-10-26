@@ -11,7 +11,7 @@
 //! widens it.
 //!
 //! Not yet: the playing voices' positions and the animated line (from the
-//! engine's telemetry), and zooming with the wheel or the magnifying glass.
+//! engine's telemetry), and zooming with the wheel.
 
 use egui::{Pos2, Sense};
 use sas_common::scalar::power_scale;
@@ -354,6 +354,8 @@ struct EditorState {
     last: Pos2,
     /// The last press's time and place, for JUCE's double-click rules.
     last_press: Option<(f64, Pos2)>,
+    /// This press is a double click's second, acted on at its release.
+    double_click: bool,
     values: Values,
     holding: u32,
 }
@@ -367,6 +369,7 @@ impl Default for EditorState {
             gesture: false,
             last: Pos2::ZERO,
             last_press: None,
+            double_click: false,
             values: Values::default(),
             holding: 0,
         }
@@ -410,11 +413,66 @@ impl EnvelopeEditor {
         }
     }
 
+    fn id(&self, panel: &Panel) -> egui::Id {
+        panel
+            .ui
+            .scope_id()
+            .with(("envelope editor", self.names.delay))
+    }
+
+    fn update_state(&self, panel: &mut Panel, f: impl FnOnce(&mut EditorState)) {
+        let id = self.id(panel);
+        let mut state: EditorState = panel.ui.data(|data| data.get_temp(id)).unwrap_or_default();
+        f(&mut state);
+        panel.ui.data_mut(|data| data.insert_temp(id, state));
+    }
+
+    /// `magnifyZoom`: the magnifying glass dragged `delta_y` points down
+    /// zooms out, up zooms in.
+    pub fn magnify_zoom(&self, panel: &mut Panel, delta_y: f32) {
+        const SENSITIVITY: f32 = 0.02;
+        let amount = 2.0f32.powf(SENSITIVITY * delta_y);
+        self.update_state(panel, |state| {
+            state.window_time =
+                (state.window_time * amount).clamp(MIN_WINDOW_SIZE, MAX_WINDOW_SIZE);
+        });
+    }
+
+    /// `magnifyReset`: the window fits the release point, with a quarter
+    /// to spare. `bounds` is the editor's.
+    pub fn magnify_reset(&self, panel: &mut Panel, bounds: Rect) {
+        const RESET_BUFFER: f32 = 0.25;
+        let host_values = self.host_values(panel.host);
+        let names = self.names;
+        let (width, height) = (bounds.width as f32, bounds.height as f32);
+        self.update_state(panel, |state| {
+            let values = if state.mouse_down || state.holding > 0 {
+                state.values
+            } else {
+                host_values
+            };
+            let shape = Shape::new(&names, values, width, height, state.window_time);
+            state.window_time = ((1.0 + RESET_BUFFER) * shape.release_x * state.window_time
+                / width)
+                .clamp(MIN_WINDOW_SIZE, MAX_WINDOW_SIZE);
+        });
+    }
+
+    /// The current window, in seconds.
+    pub fn window_time(&self, panel: &Panel) -> f32 {
+        let id = self.id(panel);
+        panel
+            .ui
+            .data(|data| data.get_temp::<EditorState>(id))
+            .unwrap_or_default()
+            .window_time
+    }
+
     /// Handles the mouse over the editor at `bounds` and draws it.
     pub fn show(&self, panel: &mut Panel, bounds: Rect) {
         let host = panel.host;
         let names = self.names;
-        let id = panel.ui.scope_id().with(("envelope editor", names.delay));
+        let id = self.id(panel);
         let rect = panel.pixels.rect(bounds.into());
         let response = panel.ui.interact(rect, id, Sense::click_and_drag());
         let mut state: EditorState = panel.ui.data(|data| data.get_temp(id)).unwrap_or_default();
@@ -457,9 +515,7 @@ impl EnvelopeEditor {
             state.mouse_down = true;
             state.last = pos;
             state.last_press = Some((now, pos));
-            if double_click {
-                self.straighten_power(host, &mut state);
-            }
+            state.double_click = double_click;
         } else if down {
             if let Some(pos) = pointer {
                 if pos != state.last {
@@ -483,6 +539,12 @@ impl EnvelopeEditor {
                     host.end(target(&names));
                 }
             }
+            // mouseDoubleClick comes after the second click's mouseUp, so
+            // a drag on that press moves the power first.
+            if state.double_click {
+                state.double_click = false;
+                self.straighten_power(host, &mut state);
+            }
         }
         panel.ui.data_mut(|data| data.insert_temp(id, state));
 
@@ -491,7 +553,7 @@ impl EnvelopeEditor {
     }
 
     /// `mouseDoubleClick`: a power dot's power back to 0, as one gesture of
-    /// its own (no drag gesture is open on a second press).
+    /// its own, after any drag's gestures have ended.
     fn straighten_power(&self, host: &Host, state: &mut EditorState) {
         let names = self.names;
         let (name, value) = match state.hover {

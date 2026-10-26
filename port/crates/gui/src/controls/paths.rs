@@ -224,6 +224,394 @@ pub fn notch() -> &'static Path {
     })
 }
 
+/// `Paths::magnifyingGlass`.
+pub fn magnifying_glass() -> &'static Path {
+    static PATH: OnceLock<Path> = OnceLock::new();
+    PATH.get_or_init(|| {
+        const RADIUS: f32 = 0.22;
+        const WIDTH_RATIO: f32 = 0.3;
+        const GLASS_OFFSET: f32 = 0.2;
+        #[allow(clippy::approx_constant, clippy::excessive_precision)]
+        const SQRT_2: f32 = 1.414_213_562_37;
+        let mut path = Path::new();
+        pad(&mut path, 0.0, 1.0, 0.2);
+        let diameter = 2.0 * RADIUS;
+        path.add_pie_segment(
+            GLASS_OFFSET,
+            GLASS_OFFSET,
+            diameter,
+            diameter,
+            0.0,
+            2.0 * PI,
+            1.0 - WIDTH_RATIO,
+        );
+        let line_width = WIDTH_RATIO * RADIUS;
+        let line_start = GLASS_OFFSET + SQRT_2 * RADIUS + line_width / 2.0;
+        path.add_line_segment(
+            (line_start, line_start),
+            (1.0 - GLASS_OFFSET, 1.0 - GLASS_OFFSET),
+            line_width,
+        );
+        path
+    })
+}
+
+/// `Paths::loop`.
+pub fn loop_arrow() -> &'static Path {
+    static PATH: OnceLock<Path> = OnceLock::new();
+    PATH.get_or_init(|| {
+        let outline = outline(&[
+            (0.68, 0.3),
+            (0.85, 0.3),
+            (0.85, 0.7),
+            (0.15, 0.7),
+            (0.15, 0.3),
+            (0.61, 0.3),
+        ]);
+        let mut path = outline.stroked_with_arrowheads(
+            0.12,
+            JointStyle::Curved,
+            EndCapStyle::Rounded,
+            (0.0, 0.0),
+            (0.4, 0.26),
+        );
+        pad(&mut path, 0.0, 1.0, 0.2);
+        path
+    })
+}
+
+/// `Paths::bounce`: two arrows out from the middle.
+pub fn bounce() -> &'static Path {
+    static PATH: OnceLock<Path> = OnceLock::new();
+    PATH.get_or_init(|| {
+        let mut outline = outline(&[(0.5, 0.5), (0.0, 0.5)]);
+        outline.move_to(0.5, 0.5);
+        outline.line_to(1.0, 0.5);
+        let mut path = outline.stroked_with_arrowheads(
+            0.12,
+            JointStyle::Curved,
+            EndCapStyle::Butt,
+            (0.0, 0.0),
+            (0.4, 0.26),
+        );
+        pad(&mut path, 0.0, 1.0, 0.2);
+        path
+    })
+}
+
+/// `Paths::shuffle`.
+pub fn shuffle() -> &'static Path {
+    static PATH: OnceLock<Path> = OnceLock::new();
+    PATH.get_or_init(|| {
+        let over = outline(&[(0.1, 0.7), (0.25, 0.7), (0.55, 0.3), (0.95, 0.3)]);
+        let under_first = outline(&[(0.1, 0.3), (0.25, 0.3), (0.325, 0.4)]);
+        let under_second = outline(&[(0.475, 0.6), (0.55, 0.7), (0.95, 0.7)]);
+        let arrow = |outline: &Path| {
+            outline.stroked_with_arrowheads(
+                0.12,
+                JointStyle::Curved,
+                EndCapStyle::Butt,
+                (0.0, 0.0),
+                (0.35, 0.26),
+            )
+        };
+        let mut path = arrow(&over);
+        path.add_path(&under_first.stroked(0.12, JointStyle::Curved, EndCapStyle::Butt));
+        path.add_path(&arrow(&under_second));
+        pad(&mut path, 0.0, 1.0, 0.2);
+        path
+    })
+}
+
+/// `Paths::pencil`.
+pub fn pencil() -> &'static Path {
+    static PATH: OnceLock<Path> = OnceLock::new();
+    PATH.get_or_init(|| {
+        const DIMENSION: f32 = 0.14;
+        const ERASER_LENGTH: f32 = 0.6 * DIMENSION;
+        const SEPARATOR_WIDTH: f32 = 0.15 * DIMENSION;
+        const REMOVAL: f32 = ERASER_LENGTH + SEPARATOR_WIDTH;
+        const BORDER: f32 = 0.22;
+        let mut path = outline(&[
+            (BORDER, 1.0 - BORDER),
+            (BORDER + DIMENSION, 1.0 - BORDER),
+            (1.0 - BORDER - REMOVAL, BORDER + DIMENSION + REMOVAL),
+            (1.0 - BORDER - REMOVAL - DIMENSION, BORDER + REMOVAL),
+            (BORDER, 1.0 - BORDER - DIMENSION),
+        ]);
+        path.close();
+        path.move_to(1.0 - BORDER - DIMENSION, BORDER);
+        path.line_to(1.0 - BORDER, BORDER + DIMENSION);
+        path.line_to(
+            1.0 - BORDER - ERASER_LENGTH,
+            BORDER + DIMENSION + ERASER_LENGTH,
+        );
+        path.line_to(
+            1.0 - BORDER - ERASER_LENGTH - DIMENSION,
+            BORDER + ERASER_LENGTH,
+        );
+        path.close();
+        pad(&mut path, 0.0, 1.0, 0.2);
+        path
+    })
+}
+
+/// `Paths::halfSinCurve`. Upstream starts the curve at (`start_x`,
+/// `end_x`), which this keeps.
+pub fn half_sin_curve() -> &'static Path {
+    static PATH: OnceLock<Path> = OnceLock::new();
+    PATH.get_or_init(|| {
+        const BORDER: f32 = 0.15;
+        const LINE_WIDTH: f32 = 0.1;
+        const ENDPOINT_STROKE_WIDTH: f32 = 0.08;
+        const ENDPOINT_RADIUS: f32 = 0.09;
+        const NUM_CURVE_POINTS: usize = 16;
+        const BUMP_IN: f32 = ENDPOINT_RADIUS;
+        const ADJUST_X_IN: f32 = BUMP_IN + ENDPOINT_RADIUS / 2.0;
+        let start_x = BORDER + ADJUST_X_IN;
+        let start_y = 1.0 - BORDER - BUMP_IN;
+        let end_x = 1.0 - BORDER - ADJUST_X_IN;
+        let end_y = BORDER + BUMP_IN;
+        let mut curve = Path::new();
+        curve.move_to(start_x, end_x);
+        for i in 0..NUM_CURVE_POINTS {
+            let t = (1.0 + i as f32) / NUM_CURVE_POINTS as f32;
+            let x = t * end_x + (1.0 - t) * start_x;
+            let y_t = ((t - 0.5) * PI).sin() * 0.5 + 0.5;
+            let y = y_t * end_y + (1.0 - y_t) * start_y;
+            curve.line_to(x, y);
+        }
+        let mut path = curve.stroked(LINE_WIDTH, JointStyle::Curved, EndCapStyle::Butt);
+        let mut arc = Path::new();
+        arc.centred_arc(
+            end_x + BUMP_IN,
+            end_y,
+            ENDPOINT_RADIUS,
+            ENDPOINT_RADIUS,
+            0.0,
+            2.0 * PI,
+        );
+        arc.centred_arc(
+            start_x - BUMP_IN,
+            start_y,
+            ENDPOINT_RADIUS,
+            ENDPOINT_RADIUS,
+            0.0,
+            2.0 * PI,
+        );
+        path.add_path(&arc.stroked(ENDPOINT_STROKE_WIDTH, JointStyle::Curved, EndCapStyle::Butt));
+        pad(&mut path, 0.0, 1.0, 0.2);
+        path
+    })
+}
+
+/// `Paths::paintBrush`.
+pub fn paint_brush() -> &'static Path {
+    static PATH: OnceLock<Path> = OnceLock::new();
+    PATH.get_or_init(|| {
+        const WIDE: f32 = 0.3;
+        const HANDLE: f32 = 0.08;
+        const LENGTH: f32 = 0.6 * WIDE;
+        const SEPARATOR: f32 = 0.15 * WIDE;
+        const CONNECTION: f32 = LENGTH + SEPARATOR;
+        const HANDLE_DISTANCE: f32 = CONNECTION + WIDE * 0.8;
+        const BORDER: f32 = 0.15;
+        let mut path = outline(&[
+            (BORDER, 1.0 - BORDER),
+            (BORDER + HANDLE, 1.0 - BORDER),
+            (
+                1.0 - BORDER - HANDLE_DISTANCE,
+                BORDER + HANDLE + HANDLE_DISTANCE,
+            ),
+            (1.0 - BORDER - CONNECTION, BORDER + WIDE + CONNECTION),
+            (1.0 - BORDER - CONNECTION - WIDE, BORDER + CONNECTION),
+            (
+                1.0 - BORDER - HANDLE_DISTANCE - HANDLE,
+                BORDER + HANDLE_DISTANCE,
+            ),
+            (BORDER, 1.0 - BORDER - HANDLE),
+        ]);
+        path.close();
+        path.move_to(1.0 - BORDER - WIDE, BORDER);
+        path.line_to(1.0 - BORDER, BORDER + WIDE);
+        path.line_to(1.0 - BORDER - LENGTH, BORDER + WIDE + LENGTH);
+        path.line_to(1.0 - BORDER - LENGTH - WIDE, BORDER + LENGTH);
+        path.close();
+        pad(&mut path, 0.0, 1.0, 0.2);
+        path
+    })
+}
+
+/// A filter icon's shape with its zero-length pads (`addLineSegment` at
+/// each of `pads`, `thickness` thick).
+fn filter_icon(points: &[(f32, f32)], pads: &[(f32, f32)], thickness: f32) -> Path {
+    let mut path = create_filter_stroke(&outline(points), 0.1);
+    for &pad in pads {
+        path.add_line_segment(pad, pad, thickness);
+    }
+    path
+}
+
+/// The filter blend's icons (`FilterSection`'s `getLeftMorphPath` /
+/// `getRightMorphPath`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FilterIcon {
+    LowPass,
+    HighPass,
+    BandPass,
+    LeftArrow,
+    RightArrow,
+    Phaser1,
+    Phaser3,
+    Notch,
+    NarrowBand,
+    WideBand,
+}
+
+impl FilterIcon {
+    pub fn key(self) -> &'static str {
+        match self {
+            FilterIcon::LowPass => "filter low pass",
+            FilterIcon::HighPass => "filter high pass",
+            FilterIcon::BandPass => "filter band pass",
+            FilterIcon::LeftArrow => "filter left arrow",
+            FilterIcon::RightArrow => "filter right arrow",
+            FilterIcon::Phaser1 => "filter phaser 1",
+            FilterIcon::Phaser3 => "filter phaser 3",
+            FilterIcon::Notch => "filter notch",
+            FilterIcon::NarrowBand => "filter narrow band",
+            FilterIcon::WideBand => "filter wide band",
+        }
+    }
+
+    /// `Paths::lowPass` and the rest.
+    pub fn path(self) -> &'static Path {
+        static PATHS: OnceLock<Vec<Path>> = OnceLock::new();
+        let paths = PATHS.get_or_init(|| {
+            const MIDDLE: f32 = 3.0 / 5.0;
+            const BOTTOM: f32 = 4.0 / 5.0;
+            const TOP: f32 = 2.0 / 5.0;
+            const ARROW: f32 = 1.0 / 3.0;
+            let corner = [(1.0, 0.2)];
+            let phaser_pads = [(1.0, 0.15), (1.0, 0.85)];
+            let mut phaser3 = vec![(0.0, 0.5)];
+            let delta = 1.0 / (2.0 * 5.0 + 2.0);
+            let mut position = 0.0;
+            for _ in 0..5 {
+                position += delta;
+                phaser3.push((position, 3.0 / 4.0));
+                position += delta;
+                phaser3.push((position, 1.0 / 4.0));
+            }
+            position += delta;
+            phaser3.push((position, 3.0 / 4.0));
+            phaser3.push((1.0, 0.5));
+            let arrow = |tip: f32, back: f32| {
+                let mut outline = outline(&[(1.0, 0.5), (0.0, 0.5)]);
+                outline.move_to(tip, 0.5);
+                outline.line_to(back, 0.5 - ARROW);
+                outline.move_to(tip, 0.5);
+                outline.line_to(back, 0.5 + ARROW);
+                create_filter_stroke(&outline, 0.1)
+            };
+            vec![
+                low_pass().clone(),
+                high_pass().clone(),
+                filter_icon(
+                    &[
+                        (0.0, BOTTOM),
+                        (1.0 / 3.0, MIDDLE),
+                        (0.5, 0.25),
+                        (2.0 / 3.0, MIDDLE),
+                        (1.0, BOTTOM),
+                    ],
+                    &corner,
+                    0.2,
+                ),
+                arrow(0.0, ARROW),
+                arrow(1.0, 1.0 - ARROW),
+                filter_icon(
+                    &[
+                        (0.0, 0.5),
+                        (1.0 / 3.0, 3.0 / 4.0),
+                        (1.0 / 2.0, 1.0 / 4.0),
+                        (2.0 / 3.0, 3.0 / 4.0),
+                        (1.0, 0.5),
+                    ],
+                    &phaser_pads,
+                    0.1,
+                ),
+                filter_icon(&phaser3, &phaser_pads, 0.1),
+                notch().clone(),
+                filter_icon(
+                    &[
+                        (0.0, BOTTOM),
+                        (1.0 / 3.0, BOTTOM),
+                        (0.5, TOP),
+                        (2.0 / 3.0, BOTTOM),
+                        (1.0, BOTTOM),
+                    ],
+                    &corner,
+                    0.1,
+                ),
+                filter_icon(
+                    &[
+                        (0.0, BOTTOM),
+                        (1.0 / 3.0, TOP),
+                        (2.0 / 3.0, TOP),
+                        (1.0, BOTTOM),
+                    ],
+                    &corner,
+                    0.1,
+                ),
+            ]
+        });
+        &paths[self as usize]
+    }
+}
+
+/// The hand-built icons the Voice tab's buttons show.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Icon {
+    Keyboard,
+    Loop,
+    Bounce,
+    Shuffle,
+    Pencil,
+    PaintBrush,
+    HalfSinCurve,
+    MagnifyingGlass,
+}
+
+impl Icon {
+    /// The icon's cache key for `fill_path`.
+    pub fn key(self) -> &'static str {
+        match self {
+            Icon::Keyboard => "icon keyboard",
+            Icon::Loop => "icon loop",
+            Icon::Bounce => "icon bounce",
+            Icon::Shuffle => "icon shuffle",
+            Icon::Pencil => "icon pencil",
+            Icon::PaintBrush => "icon paint brush",
+            Icon::HalfSinCurve => "icon half sin curve",
+            Icon::MagnifyingGlass => "icon magnifying glass",
+        }
+    }
+
+    pub fn path(self) -> &'static Path {
+        match self {
+            Icon::Keyboard => keyboard(),
+            Icon::Loop => loop_arrow(),
+            Icon::Bounce => bounce(),
+            Icon::Shuffle => shuffle(),
+            Icon::Pencil => pencil(),
+            Icon::PaintBrush => paint_brush(),
+            Icon::HalfSinCurve => half_sin_curve(),
+            Icon::MagnifyingGlass => magnifying_glass(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

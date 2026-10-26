@@ -262,21 +262,27 @@ impl Path {
 
     /// `PathStrokeType(thickness, joints, ends).createStrokedPath`: the
     /// outline of a stroke `thickness` wide, as pieces that are each wound
-    /// the same way, so their non-zero fill is the stroke.
-    ///
-    /// # Panics
-    /// For the styles not ported yet, bevelled joints and square ends.
-    /// Mitred and curved joints, and butt and rounded ends, are.
+    /// the same way, so their non-zero fill is the stroke. Curved joints and
+    /// rounded ends are discs at the vertices, which with the segments make
+    /// exactly the round-joined, round-capped stroke.
     pub fn stroked(&self, thickness: f32, joints: JointStyle, ends: EndCapStyle) -> Path {
-        assert!(
-            joints != JointStyle::Beveled && ends != EndCapStyle::Square,
-            "PathStrokeType {joints:?} joints with {ends:?} ends are not ported yet"
-        );
-        let curved = joints == JointStyle::Curved;
-        let rounded = ends == EndCapStyle::Rounded;
+        self.stroked_with_arrowheads(thickness, joints, ends, (0.0, 0.0), (0.0, 0.0))
+    }
+
+    /// `PathStrokeType::createStrokeWithArrowheads`: each open subpath is
+    /// shortened by the arrowheads' lengths (`start` and `end`, each a
+    /// width and a length; a zero length has none and takes the end
+    /// style), stroked, and capped with a triangle as wide as the
+    /// arrowhead whose tip is the subpath's original end.
+    pub fn stroked_with_arrowheads(
+        &self,
+        thickness: f32,
+        joints: JointStyle,
+        ends: EndCapStyle,
+        start: (f32, f32),
+        end: (f32, f32),
+    ) -> Path {
         let half = thickness / 2.0;
-        // PathStrokeType's maxMiterExtensionSquared (9 × thickness²).
-        let max_miter_squared = 9.0 * thickness * thickness;
         let mut out = Path::new();
         for subpath in &self.subpaths {
             let mut points = subpath.points.clone();
@@ -287,51 +293,79 @@ impl Path {
             if points.len() < 2 {
                 continue;
             }
-            let count = points.len();
-            let segments = if subpath.closed { count } else { count - 1 };
-            let offset = |a: (f32, f32), b: (f32, f32)| {
-                let (dx, dy) = (b.0 - a.0, b.1 - a.1);
-                let length = (dx * dx + dy * dy).sqrt();
-                (-dy / length * half, dx / length * half)
-            };
-            for i in 0..segments {
-                let (a, b) = (points[i], points[(i + 1) % count]);
-                let (ox, oy) = offset(a, b);
-                out.add_polygon(&[
-                    (a.0 + ox, a.1 + oy),
-                    (b.0 + ox, b.1 + oy),
-                    (b.0 - ox, b.1 - oy),
-                    (a.0 - ox, a.1 - oy),
-                ]);
+            if subpath.closed {
+                out.stroke_points(&points, true, half, joints, None, None);
+                continue;
             }
-            if rounded && !subpath.closed {
-                // EndCapStyle::rounded: a half disc past each end, which
-                // under the non-zero fill is a whole disc at the end.
-                out.add_disc(points[0], half);
-                out.add_disc(points[count - 1], half);
+            let tips = (points[0], points[points.len() - 1]);
+            let points = shorten(&points, start.1, end.1);
+            if points.len() < 2 {
+                continue;
             }
-            let joints = if subpath.closed { count } else { count - 2 };
-            for j in 0..joints {
-                let index = if subpath.closed { j } else { j + 1 };
-                if curved {
-                    // JointStyle::curved: an arc round the outer side of
-                    // the turn, which with the segments' overlap is a disc
-                    // at the corner.
-                    out.add_disc(points[index], half);
-                    continue;
-                }
-                let previous = points[(index + count - 1) % count];
-                let corner = points[index];
-                let next = points[(index + 1) % count];
-                let (o1x, o1y) = offset(previous, corner);
-                let (o2x, o2y) = offset(corner, next);
-                // The outer side of the turn.
-                let cross = (corner.0 - previous.0) * (next.1 - corner.1)
-                    - (corner.1 - previous.1) * (next.0 - corner.0);
-                let sign = if cross > 0.0 { -1.0 } else { 1.0 };
-                let e1 = (corner.0 + sign * o1x, corner.1 + sign * o1y);
-                let e2 = (corner.0 + sign * o2x, corner.1 + sign * o2y);
-                let mut joint = vec![corner, e1];
+            let start_cap = (start.1 <= 0.0).then_some(ends);
+            let end_cap = (end.1 <= 0.0).then_some(ends);
+            out.stroke_points(&points, false, half, joints, start_cap, end_cap);
+            if start.1 > 0.0 {
+                out.add_arrowhead(points[1], points[0], tips.0, start.0);
+            }
+            if end.1 > 0.0 {
+                let n = points.len();
+                out.add_arrowhead(points[n - 2], points[n - 1], tips.1, end.0);
+            }
+        }
+        out
+    }
+
+    /// One subpath's stroke: a quad per segment, its joints, and its caps
+    /// (None where an arrowhead or a closed path has none).
+    fn stroke_points(
+        &mut self,
+        points: &[(f32, f32)],
+        closed: bool,
+        half: f32,
+        joints: JointStyle,
+        start_cap: Option<EndCapStyle>,
+        end_cap: Option<EndCapStyle>,
+    ) {
+        // PathStrokeType's maxMiterExtensionSquared (9 × thickness²).
+        let max_miter_squared = 9.0 * (2.0 * half) * (2.0 * half);
+        let count = points.len();
+        let segments = if closed { count } else { count - 1 };
+        let offset = |a: (f32, f32), b: (f32, f32)| {
+            let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+            let length = (dx * dx + dy * dy).sqrt();
+            (-dy / length * half, dx / length * half)
+        };
+        for i in 0..segments {
+            let (a, b) = (points[i], points[(i + 1) % count]);
+            let (ox, oy) = offset(a, b);
+            self.add_polygon(&[
+                (a.0 + ox, a.1 + oy),
+                (b.0 + ox, b.1 + oy),
+                (b.0 - ox, b.1 - oy),
+                (a.0 - ox, a.1 - oy),
+            ]);
+        }
+        let joint_count = if closed { count } else { count - 2 };
+        for j in 0..joint_count {
+            let index = if closed { j } else { j + 1 };
+            let previous = points[(index + count - 1) % count];
+            let corner = points[index];
+            let next = points[(index + 1) % count];
+            if joints == JointStyle::Curved {
+                self.add_disc(corner, half);
+                continue;
+            }
+            let (o1x, o1y) = offset(previous, corner);
+            let (o2x, o2y) = offset(corner, next);
+            // The outer side of the turn.
+            let cross = (corner.0 - previous.0) * (next.1 - corner.1)
+                - (corner.1 - previous.1) * (next.0 - corner.0);
+            let sign = if cross > 0.0 { -1.0 } else { 1.0 };
+            let e1 = (corner.0 + sign * o1x, corner.1 + sign * o1y);
+            let e2 = (corner.0 + sign * o2x, corner.1 + sign * o2y);
+            let mut joint = vec![corner, e1];
+            if joints == JointStyle::Mitered {
                 // Where the two outer edges meet, if close enough.
                 let d1 = (corner.0 - previous.0, corner.1 - previous.1);
                 let d2 = (next.0 - corner.0, next.1 - corner.1);
@@ -344,11 +378,42 @@ impl Path {
                         joint.push(miter);
                     }
                 }
-                joint.push(e2);
-                out.add_polygon(&joint);
+            }
+            joint.push(e2);
+            self.add_polygon(&joint);
+        }
+        let caps = [
+            (start_cap, points[0], points[1]),
+            (end_cap, points[count - 1], points[count - 2]),
+        ];
+        for (cap, at, inward) in caps {
+            match cap {
+                Some(EndCapStyle::Rounded) => self.add_disc(at, half),
+                Some(EndCapStyle::Square) => {
+                    let (ox, oy) = offset(inward, at);
+                    let (dx, dy) = (oy, -ox);
+                    self.add_polygon(&[
+                        (at.0 + ox, at.1 + oy),
+                        (at.0 + ox + dx, at.1 + oy + dy),
+                        (at.0 - ox + dx, at.1 - oy + dy),
+                        (at.0 - ox, at.1 - oy),
+                    ]);
+                }
+                Some(EndCapStyle::Butt) | None => {}
             }
         }
-        out
+    }
+
+    /// `PathStrokeHelpers::addArrowhead`: a triangle `width` wide across
+    /// the line from `from` to its shortened end `base`, tipped at `tip`.
+    fn add_arrowhead(&mut self, from: (f32, f32), base: (f32, f32), tip: (f32, f32), width: f32) {
+        let (dx, dy) = (base.0 - from.0, base.1 - from.1);
+        let length = (dx * dx + dy * dy).sqrt();
+        if length <= 0.0 {
+            return;
+        }
+        let (px, py) = (-dy / length * width / 2.0, dx / length * width / 2.0);
+        self.add_polygon(&[(base.0 + px, base.1 + py), tip, (base.0 - px, base.1 - py)]);
     }
 
     /// A disc of `radius` at `centre`, flattened like the arcs.
@@ -367,6 +432,14 @@ impl Path {
             })
             .collect();
         self.add_polygon(&points);
+    }
+
+    /// `Path::addCentredArc(cx, cy, rx, ry, 0, from, to, true)`: the arc as
+    /// a new subpath, angles clockwise from twelve o'clock.
+    #[allow(clippy::too_many_arguments)]
+    pub fn centred_arc(&mut self, cx: f32, cy: f32, rx: f32, ry: f32, from: f32, to: f32) {
+        self.move_to(cx + rx * from.sin(), cy - ry * from.cos());
+        self.add_centred_arc((cx, cy), (rx, ry), from, to);
     }
 
     /// A closed polygon, wound clockwise on screen whatever its order.
@@ -454,6 +527,30 @@ impl Path {
         }
         Ok(path)
     }
+}
+
+/// `PathStrokeHelpers::shortenSubPath`: `points` with `start` and `end`
+/// cut off along its length.
+fn shorten(points: &[(f32, f32)], start: f32, end: f32) -> Vec<(f32, f32)> {
+    let mut points = points.to_vec();
+    let cut = |points: &mut Vec<(f32, f32)>, mut amount: f32| {
+        while amount > 0.0 && points.len() >= 2 {
+            let (a, b) = (points[0], points[1]);
+            let length = ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt();
+            if length > amount {
+                let t = amount / length;
+                points[0] = (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
+                return;
+            }
+            amount -= length;
+            points.remove(0);
+        }
+    };
+    cut(&mut points, start);
+    points.reverse();
+    cut(&mut points, end);
+    points.reverse();
+    points
 }
 
 /// `PathStrokeType::JointStyle`.
@@ -663,49 +760,86 @@ mod tests {
         assert_eq!(stroke.bounds(), Some((0.0, -1.0, 11.0, 10.0)));
     }
 
-    #[test]
-    #[should_panic(expected = "not ported yet")]
-    fn unported_stroke_styles_refuse() {
+    fn line(to: (f32, f32)) -> Path {
         let mut line = Path::new();
         line.move_to(0.0, 0.0);
-        line.line_to(10.0, 0.0);
-        let _ = line.stroked(2.0, JointStyle::Beveled, EndCapStyle::Square);
+        line.line_to(to.0, to.1);
+        line
     }
 
-    /// Curved joints and rounded ends (`Paths::createFilterStroke`): the
-    /// stroke reaches half its thickness past each end and round the outer
-    /// side of each turn, never further.
+    fn close_to(actual: (f32, f32, f32, f32), expected: (f32, f32, f32, f32)) {
+        let pairs = [
+            (actual.0, expected.0),
+            (actual.1, expected.1),
+            (actual.2, expected.2),
+            (actual.3, expected.3),
+        ];
+        assert!(
+            pairs.iter().all(|(a, e)| (a - e).abs() < 1e-3),
+            "{actual:?} is not {expected:?}"
+        );
+    }
+
+    /// Rounded and square ends reach half the thickness past the line's
+    /// ends; butt ends stop at them.
     #[test]
-    fn curved_joints_and_rounded_ends_stay_within_half_the_thickness() {
-        let mut line = Path::new();
-        line.move_to(0.0, 0.0);
-        line.line_to(10.0, 0.0);
-        line.line_to(10.0, 10.0);
-        let stroke = line.stroked(2.0, JointStyle::Curved, EndCapStyle::Rounded);
-        let (l, t, r, b) = stroke.bounds().unwrap();
-        // Rounded ends reach 1 past (0, 0) and (10, 10).
-        assert!((l + 1.0).abs() < 1e-3 && (t + 1.0).abs() < 1e-3);
-        assert!((r - 11.0).abs() < 1e-3 && (b - 11.0).abs() < 1e-3);
-        // The curved corner stays within 1 of (10, 0), where a mitre would
-        // reach (11, -1), √2 away.
-        let farthest = stroke
-            .subpaths()
-            .iter()
-            .flat_map(|subpath| subpath.points.iter())
-            .map(|&(x, y)| ((x - 10.0).powi(2) + y.powi(2)).sqrt())
-            .filter(|&distance| distance < 2.0)
-            .fold(0.0f32, f32::max);
-        assert!(farthest <= 1.0 + 1e-3, "{farthest}");
-        // Every piece is wound the same way.
-        for subpath in stroke.subpaths() {
-            let points = &subpath.points;
-            let area: f32 = points
+    fn end_caps_extend_by_half_the_thickness() {
+        let line = line((10.0, 0.0));
+        let rounded = line.stroked(2.0, JointStyle::Curved, EndCapStyle::Rounded);
+        close_to(rounded.bounds().unwrap(), (-1.0, -1.0, 11.0, 1.0));
+        let square = line.stroked(2.0, JointStyle::Mitered, EndCapStyle::Square);
+        close_to(square.bounds().unwrap(), (-1.0, -1.0, 11.0, 1.0));
+        let butt = line.stroked(2.0, JointStyle::Mitered, EndCapStyle::Butt);
+        close_to(butt.bounds().unwrap(), (0.0, -1.0, 10.0, 1.0));
+    }
+
+    /// An end arrowhead 4 wide and 3 long: the stroke stops 3 short of the
+    /// end, where a triangle 4 wide points to the end.
+    #[test]
+    fn arrowheads_cap_the_shortened_end() {
+        let arrow = line((10.0, 0.0)).stroked_with_arrowheads(
+            1.0,
+            JointStyle::Curved,
+            EndCapStyle::Butt,
+            (0.0, 0.0),
+            (4.0, 3.0),
+        );
+        close_to(arrow.bounds().unwrap(), (0.0, -2.0, 10.0, 2.0));
+        // The triangle is the last piece: base at x 7, tip at the end.
+        let triangle = arrow.subpaths().last().unwrap();
+        assert!(triangle.points.contains(&(10.0, 0.0)));
+        assert!(triangle.points.iter().all(|p| p.0 >= 7.0 - 1e-4));
+    }
+
+    /// Curved joints round the outside of a turn; mitred ones square it.
+    #[test]
+    fn curved_joints_round_the_corner() {
+        let mut corner = Path::new();
+        corner.move_to(0.0, 0.0);
+        corner.line_to(10.0, 0.0);
+        corner.line_to(10.0, 10.0);
+        let curved = corner.stroked(2.0, JointStyle::Curved, EndCapStyle::Butt);
+        let mitred = corner.stroked(2.0, JointStyle::Mitered, EndCapStyle::Butt);
+        close_to(curved.bounds().unwrap(), (0.0, -1.0, 11.0, 10.0));
+        close_to(mitred.bounds().unwrap(), (0.0, -1.0, 11.0, 10.0));
+        // The corner's outer point (11, -1) is in the mitre only.
+        let reaches = |path: &Path| {
+            path.subpaths()
                 .iter()
-                .zip(points.iter().cycle().skip(1))
-                .map(|(a, b)| a.0 * b.1 - b.0 * a.1)
-                .sum();
-            assert!(area >= 0.0);
-        }
+                .flat_map(|s| s.points.iter())
+                .any(|p| (p.0 - 11.0).abs() < 1e-3 && (p.1 + 1.0).abs() < 1e-3)
+        };
+        assert!(reaches(&mitred));
+        assert!(!reaches(&curved));
+    }
+
+    /// A full centred arc is a circle starting at twelve o'clock.
+    #[test]
+    fn centred_arcs_start_at_twelve() {
+        let mut arc = Path::new();
+        arc.centred_arc(5.0, 5.0, 2.0, 2.0, 0.0, 2.0 * PI);
+        close_to(arc.bounds().unwrap(), (3.0, 3.0, 7.0, 7.0));
+        assert_eq!(arc.subpaths()[0].points[0], (5.0, 3.0));
     }
 
     /// JUCE's flattening goes on from a closed sub-path's start, so a line
@@ -745,5 +879,41 @@ mod tests {
         assert_eq!(shown.bounds(), Some((0.0, -1.0, 10.0, 1.0)));
         let hidden = Path::from_svg(&svg("0")).unwrap();
         assert_eq!(hidden.bounds(), Some((0.0, 0.0, 10.0, 0.0)));
+    }
+
+    /// Curved joints and rounded ends (`Paths::createFilterStroke`): the
+    /// stroke reaches half its thickness past each end and round the outer
+    /// side of each turn, never further.
+    #[test]
+    fn curved_joints_and_rounded_ends_stay_within_half_the_thickness() {
+        let mut line = Path::new();
+        line.move_to(0.0, 0.0);
+        line.line_to(10.0, 0.0);
+        line.line_to(10.0, 10.0);
+        let stroke = line.stroked(2.0, JointStyle::Curved, EndCapStyle::Rounded);
+        let (l, t, r, b) = stroke.bounds().unwrap();
+        // Rounded ends reach 1 past (0, 0) and (10, 10).
+        assert!((l + 1.0).abs() < 1e-3 && (t + 1.0).abs() < 1e-3);
+        assert!((r - 11.0).abs() < 1e-3 && (b - 11.0).abs() < 1e-3);
+        // The curved corner stays within 1 of (10, 0), where a mitre would
+        // reach (11, -1), √2 away.
+        let farthest = stroke
+            .subpaths()
+            .iter()
+            .flat_map(|subpath| subpath.points.iter())
+            .map(|&(x, y)| ((x - 10.0).powi(2) + y.powi(2)).sqrt())
+            .filter(|&distance| distance < 2.0)
+            .fold(0.0f32, f32::max);
+        assert!(farthest <= 1.0 + 1e-3, "{farthest}");
+        // Every piece is wound the same way.
+        for subpath in stroke.subpaths() {
+            let points = &subpath.points;
+            let area: f32 = points
+                .iter()
+                .zip(points.iter().cycle().skip(1))
+                .map(|(a, b)| a.0 * b.1 - b.0 * a.1)
+                .sum();
+            assert!(area >= 0.0);
+        }
     }
 }

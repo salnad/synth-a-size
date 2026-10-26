@@ -6,20 +6,20 @@
 //! (`vital/src/interface/editor_sections/random_section.cpp`).
 //!
 //! The viewer is drawn at rest (it animates only while its source is in
-//! use, with the animated views later). The sync selector comes with the
-//! shared `TempoSelector`; until then its slot is empty.
+//! use, with the animated views later). The sync selector is the shared
+//! `TempoSelector`.
 
-use super::lfo::Rate;
 use super::Panel;
 use crate::controls::button::SynthButton;
 use crate::controls::slider::{Slider, SliderStyle};
+use crate::controls::tempo::{self, TempoSelector};
 use crate::layout::Rect;
 use crate::paint::PixelPainter;
 use crate::primitives::{Quad, QuadKind};
 use crate::scope::Scope;
 use crate::section::{
-    draw_label, draw_tempo_divider, draw_text_component_background, keytrack_divider,
-    paint_widget_background, place_tempo_controls,
+    draw_label, draw_text_component_background, keytrack_divider, paint_widget_background,
+    place_tempo_controls,
 };
 use crate::skin::{ColorId, Section, ValueId};
 
@@ -152,7 +152,7 @@ impl RandomLayout {
 
 /// One random LFO's controls (`RandomSection`'s constructor).
 pub struct RandomSection {
-    names: Names,
+    sync: TempoSelector,
     frequency: Slider,
     tempo: Slider,
     keytrack_transpose: Slider,
@@ -171,7 +171,7 @@ impl RandomSection {
         const TRANSPOSE_MOUSE_SENSITIVITY: f32 = 0.2;
         let names = NAMES[index];
         RandomSection {
-            names,
+            sync: TempoSelector::new(names.sync),
             frequency: Slider::new(names.frequency, SliderStyle::Text),
             tempo: Slider::new(names.tempo, SliderStyle::Text).sensitivity(TEMPO_DRAG_SENSITIVITY),
             keytrack_transpose: Slider::new(names.keytrack_transpose, SliderStyle::Text)
@@ -198,7 +198,7 @@ impl RandomSection {
         );
         draw_text_component_background(pixels, scope, layout.style, true);
         draw_text_component_background(pixels, scope, frequency, true);
-        draw_tempo_divider(pixels, scope, layout.sync);
+        tempo::paint_divider(pixels, scope, layout.sync);
         draw_label(pixels, scope, "STYLE", layout.style, true);
         draw_label(pixels, scope, "FREQUENCY", frequency, true);
 
@@ -213,16 +213,18 @@ impl RandomSection {
 
     pub fn show(&self, panel: &mut Panel, layout: &RandomLayout) {
         let host = panel.host;
-        match Rate::from_sync(host.value(self.names.sync)) {
-            Rate::Free => panel.slider(&self.frequency, layout.rate),
-            Rate::Tempo => panel.slider(&self.tempo, layout.rate),
-            Rate::Keytrack => {
-                panel.slider(&self.keytrack_transpose, layout.keytrack_transpose);
-                panel.slider(&self.keytrack_tune, layout.keytrack_tune);
-                let colour = panel.scope.color(ColorId::LightenScreen);
-                panel.quad(Quad::new(QuadKind::Color, layout.divider.into(), colour));
-            }
+        let mode = self.sync.mode(host);
+        if mode.shows_free_slider() {
+            panel.slider(&self.frequency, layout.rate);
+        } else if mode.shows_tempo_slider() {
+            panel.slider(&self.tempo, layout.rate);
+        } else {
+            panel.slider(&self.keytrack_transpose, layout.keytrack_transpose);
+            panel.slider(&self.keytrack_tune, layout.keytrack_tune);
+            let colour = panel.scope.color(ColorId::LightenScreen);
+            panel.quad(Quad::new(QuadKind::Color, layout.divider.into(), colour));
         }
+        self.sync.show(panel, layout.sync);
         panel.slider(&self.style, layout.style);
         panel.button(&self.sync_type, layout.sync_type);
         panel.button(&self.stereo, layout.stereo);
