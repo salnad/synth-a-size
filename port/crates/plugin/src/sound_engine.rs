@@ -102,6 +102,10 @@ impl Engine for SoundEngineHost {
         Some(self.synth.audio_memory())
     }
 
+    fn equalizer_memory(&self) -> Option<Arc<AudioMemory>> {
+        Some(self.synth.equalizer_memory())
+    }
+
     fn publish_telemetry(&mut self, telemetry: &mut TelemetryWriter) {
         self.synth.write_telemetry(telemetry);
     }

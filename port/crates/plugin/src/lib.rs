@@ -143,7 +143,8 @@ impl<E: Engine> SynthPlugin<E> {
         let audio_memory = engine
             .audio_memory()
             .unwrap_or_else(|| Arc::new(AudioMemory::default()));
-        let (writer, telemetry) = Telemetry::new(audio_memory);
+        let equalizer_memory = engine.equalizer_memory().unwrap_or_default();
+        let (writer, telemetry) = Telemetry::with_equalizer_memory(audio_memory, equalizer_memory);
         let (keyboard, keyboard_consumer) = keyboard();
         let params = Arc::new(SynthParams::new(edits));
         SynthPlugin {

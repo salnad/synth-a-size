@@ -256,6 +256,12 @@ impl SoundEngine {
         with_voice_handler::<SynthVoiceHandler, _>(self.voice_handler(), |vh, _| f(vh))
     }
 
+    /// `getOversamplingAmount()`: the amount the `oversampling` control
+    /// asked for when last checked.
+    pub fn oversampling_amount(&self) -> i32 {
+        self.last_oversampling_amount
+    }
+
     /// `checkOversampling()`.
     pub fn check_oversampling(&mut self, this: &Processor) {
         let oversampling = self.oversampling.as_ref().expect("built").value() as i32;

@@ -176,6 +176,12 @@ pub struct TelemetrySnapshot {
     /// Bit `n` is set while note `n` is held, from the on-screen keyboard or
     /// the host (`sas_engine::keyboard`).
     held_notes: u128,
+    /// `SynthBase::getSampleRate()`: the engine's sample rate, before
+    /// oversampling.
+    pub sample_rate: i32,
+    /// `SoundEngine::getOversamplingAmount()`: the oversampling the
+    /// `oversampling` control asks for.
+    pub oversampling_amount: i32,
 }
 
 impl Default for TelemetrySnapshot {
@@ -186,6 +192,8 @@ impl Default for TelemetrySnapshot {
             totals: vec![ModulationTotal::default(); destination_names().len()].into_boxed_slice(),
             oscilloscope: vec![[0.0; 2]; OSCILLOSCOPE_SAMPLES].into_boxed_slice(),
             held_notes: 0,
+            sample_rate: 44100,
+            oversampling_amount: 1,
         }
     }
 }
@@ -300,11 +308,22 @@ impl Reader {
 pub struct Telemetry {
     reader: Arc<Mutex<Reader>>,
     audio_memory: Arc<AudioMemory>,
+    equalizer_memory: Arc<AudioMemory>,
 }
 
 impl Telemetry {
-    /// A writer and its reader, around the engine's audio memory.
+    /// A writer and its reader, around the engine's audio memory (with an
+    /// equalizer memory that stays silent).
     pub fn new(audio_memory: Arc<AudioMemory>) -> (TelemetryWriter, Telemetry) {
+        Telemetry::with_equalizer_memory(audio_memory, Arc::default())
+    }
+
+    /// A writer and its reader, around the engine's audio memory and its
+    /// equalizer's.
+    pub fn with_equalizer_memory(
+        audio_memory: Arc<AudioMemory>,
+        equalizer_memory: Arc<AudioMemory>,
+    ) -> (TelemetryWriter, Telemetry) {
         let shared = Arc::new(TripleBuffer {
             buffers: std::array::from_fn(|_| UnsafeCell::new(TelemetrySnapshot::default())),
             middle: AtomicU8::new(1),
@@ -320,6 +339,7 @@ impl Telemetry {
             Telemetry {
                 reader: Arc::new(Mutex::new(reader)),
                 audio_memory,
+                equalizer_memory,
             },
         )
     }
@@ -336,6 +356,12 @@ impl Telemetry {
     /// The spectrogram's audio memory.
     pub fn audio_memory(&self) -> &AudioMemory {
         &self.audio_memory
+    }
+
+    /// The equalizer's output memory (`SynthBase::getEqualizerMemory`), for
+    /// the EQ section's spectrogram.
+    pub fn equalizer_memory(&self) -> &AudioMemory {
+        &self.equalizer_memory
     }
 }
 

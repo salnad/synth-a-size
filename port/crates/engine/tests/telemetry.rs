@@ -183,3 +183,52 @@ fn the_oscilloscope_window_samples_the_output() {
         .any(|start| (0..written).all(|i| rendered[start + 2 * i] == window[i]));
     assert!(found, "the window is not the output at every other frame");
 }
+
+/// The equalizer's memory (`SynthBase::getEqualizerMemory`) reaches the
+/// editor: while the EQ is on, each block adds the samples it processed (at
+/// the oversampled rate, as upstream's memory holds them), holding a note's
+/// sound; with the EQ off it adds none. The snapshot carries the sample rate
+/// and oversampling the spectrogram scales by.
+#[test]
+fn the_equalizer_memory_follows_the_eq() {
+    sas_common::random::set_next_seed(2);
+    RandomValues::reset_process_state();
+    let mut synth = Synth::new();
+    synth.load_preset(&PresetState::new(&InitContent { sample_seed: 0 }));
+    synth.prepare(44100, 120.0);
+    synth.set_control("eq_on", 1.0);
+    let (mut writer, telemetry) =
+        Telemetry::with_equalizer_memory(synth.audio_memory(), synth.equalizer_memory());
+
+    let (mut left, mut right) = (vec![0.0f32; 64], vec![0.0f32; 64]);
+    let mut seconds = 0.0;
+    synth.render_block(
+        &mut left,
+        &mut right,
+        &[(0, [0x90, 57, 100])],
+        &mut seconds,
+        44100,
+    );
+    let before = telemetry.equalizer_memory().written();
+    render_blocks(&mut synth, 10, &mut seconds);
+    synth.write_telemetry(&mut writer);
+    let oversampling = telemetry.read(|snapshot| {
+        assert_eq!(snapshot.sample_rate, 44100);
+        snapshot.oversampling_amount
+    });
+    assert_eq!(oversampling, 2, "the init preset's oversampling");
+    let written = telemetry.equalizer_memory().written() - before;
+    assert_eq!(written, 10 * 64 * oversampling as usize);
+    let mut frames = vec![[0.0f32; 2]; 64];
+    telemetry.equalizer_memory().read_latest(&mut frames);
+    assert!(
+        frames.iter().any(|frame| frame[0] != 0.0),
+        "the note's sound"
+    );
+
+    synth.set_control("eq_on", 0.0);
+    render_blocks(&mut synth, 1, &mut seconds);
+    let held = telemetry.equalizer_memory().written();
+    render_blocks(&mut synth, 10, &mut seconds);
+    assert_eq!(telemetry.equalizer_memory().written(), held);
+}
