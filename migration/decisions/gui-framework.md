@@ -166,6 +166,19 @@ repeat the check in FL Studio where the note says so.
    - *REAPER:* settles it if both editors run there. The scroll distance
      comes from the operating system's events and each editor's handling of
      them (JUCE's `Viewport`, egui's smooth scrolling), not from the host.
+8. **The file dialog (G6c).** On the Advanced tab, choose TUNING >
+   "Load Tuning File..." and pick a `.scl` file (any Scala scale), then open
+   it again and cancel.
+   - The dialog should open as a sheet on the plugin's window, not the
+     host's main window, and the editor should keep drawing behind it (the
+     oscilloscope moves while a note plays).
+   - Choosing the file should change the tuning's name in the selector and
+     the pitch of held notes; cancelling should change nothing.
+   - Closing the plugin window while the dialog is open should neither
+     crash nor leave the sheet behind.
+   - *REAPER:* settles the sheet and drawing behaviour, which come from
+     AppKit and the plugin window rather than the host. FL Studio wraps
+     plugins in its own windows, so repeat the parenting check there.
 
 ## Vendored egui-baseview
 

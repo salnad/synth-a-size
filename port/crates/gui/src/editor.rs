@@ -88,6 +88,11 @@ impl NiceEguiApp for App {
         frame: &mut Frame,
     ) -> Result<(), nice_plug_egui::baseview::HandlerError> {
         egui_ctx.set_fonts(fonts::definitions());
+        // Open and save dialogs attach to this window.
+        crate::controls::file_dialog::set_parent(
+            &egui_ctx,
+            Some(frame.baseview_window().platform_handle()),
+        );
         // A drag cut short by the window closing must not leave the host
         // waiting for the end of its gesture. nice-plug-egui keeps this app
         // across windows without telling it one closed; the patched

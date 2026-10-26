@@ -138,6 +138,27 @@ pub fn save_midi_map_config(path: &Path, midi_learn_map: &MidiLearnMap) -> std::
     save_json_to_config(path, &data)
 }
 
+/// `LoadSave::displayHzFrequency()`: whether cutoff sliders show hertz
+/// (the config's `"hz_frequency"`, false when missing).
+pub fn display_hz_frequency(path: &Path) -> bool {
+    read_config(path)
+        .get("hz_frequency")
+        .ok()
+        .and_then(|value| value.to_bool().ok())
+        .unwrap_or(false)
+}
+
+/// `LoadSave::saveDisplayHzFrequency(hz_frequency)`: rewrites the config's
+/// `"hz_frequency"` key, keeping every other key.
+pub fn save_display_hz_frequency(path: &Path, hz_frequency: bool) -> std::io::Result<()> {
+    let mut data = read_config(path);
+    if !data.is_null() && !data.is_object() {
+        data = Value::Null;
+    }
+    data.set("hz_frequency", hz_frequency);
+    save_json_to_config(path, &data)
+}
+
 /// The MIDI map part of `loadConfig`: the map saved in the config file, empty
 /// if there is none.
 pub fn load_midi_map_config(path: &Path) -> MidiLearnMap {
@@ -243,5 +264,22 @@ mod tests {
             let text = path.to_string_lossy().to_lowercase();
             assert!(!text.contains("vital") && !text.contains("vial"), "{text}");
         }
+    }
+
+    /// The frequency display setting round-trips through the config file,
+    /// false when missing, and saving it keeps the MIDI map beside it.
+    #[test]
+    fn the_hz_frequency_setting_round_trips() {
+        let folder = std::env::temp_dir().join(format!("sas-hz-{}", std::process::id()));
+        let path = folder.join("test.config");
+        let _ = std::fs::remove_file(&path);
+        assert!(!display_hz_frequency(&path));
+        save_midi_map_config(&path, &map(&[(7, &["volume"])])).unwrap();
+        save_display_hz_frequency(&path, true).unwrap();
+        assert!(display_hz_frequency(&path));
+        assert_eq!(load_midi_map_config(&path).len(), 1);
+        save_display_hz_frequency(&path, false).unwrap();
+        assert!(!display_hz_frequency(&path));
+        let _ = std::fs::remove_dir_all(&folder);
     }
 }

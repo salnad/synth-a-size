@@ -71,6 +71,11 @@ impl MidiLearn {
         }
     }
 
+    /// The user config file, if there is one.
+    pub fn config_file(&self) -> Option<&std::path::Path> {
+        self.config_file.as_deref()
+    }
+
     /// The map as last published (initially the loaded one).
     pub fn map(&self) -> MidiLearnMap {
         lock(&self.map).clone()

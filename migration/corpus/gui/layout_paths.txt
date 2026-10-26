@@ -22,6 +22,18 @@ header_section/VOLUME
 header_section/view_spectrogram
 synthesis
 master_controls
+master_controls/VOICE
+master_controls/VOICE/mpe_enabled
+master_controls/VOICE/voice_priority
+master_controls/VOICE/voice_override
+master_controls/VOICE/tuning
+master_controls/VOICE/voice_tune
+master_controls/VOICE/voice_transpose
+master_controls/OVERSAMPLING
+master_controls/DISPLAY
+master_controls/DISPLAY/frequency_display
+master_controls/DISPLAY/skin
+master_controls/ANALYSIS
 MODULATION MATRIX
 effects
 modulation

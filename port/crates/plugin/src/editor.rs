@@ -2,6 +2,7 @@
 
 //! What the `sas-gui` editor reads from the plugin.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use nice_plug::context::gui::GuiContext;
@@ -29,6 +30,8 @@ pub struct PluginModel {
     /// document mirror is read only after it changes.
     preset_name: Mutex<(u64, String)>,
     chat: Option<Arc<PluginChat>>,
+    /// The frequency display setting, read from the config file once.
+    hz_frequency: AtomicBool,
 }
 
 impl PluginModel {
@@ -42,6 +45,9 @@ impl PluginModel {
         let edits = params.edit_handle();
         let revision = edits.revision();
         let name = edits.with_document(|document| document.state.info.preset_name.clone());
+        let hz_frequency = midi_learn
+            .config_file()
+            .is_some_and(crate::config::display_hz_frequency);
         PluginModel {
             params,
             keyboard,
@@ -49,11 +55,23 @@ impl PluginModel {
             midi_learn,
             preset_name: Mutex::new((revision, name)),
             chat,
+            hz_frequency: AtomicBool::new(hz_frequency),
         }
     }
 }
 
 impl EditorModel for PluginModel {
+    fn hz_frequency_display(&self) -> bool {
+        self.hz_frequency.load(Ordering::Relaxed)
+    }
+
+    fn set_hz_frequency_display(&self, hz_frequency: bool) {
+        self.hz_frequency.store(hz_frequency, Ordering::Relaxed);
+        if let Some(path) = self.midi_learn.config_file() {
+            let _ = crate::config::save_display_hz_frequency(path, hz_frequency);
+        }
+    }
+
     fn preset_name(&self) -> String {
         let edits = self.params.edit_handle();
         let revision = edits.revision();
