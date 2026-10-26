@@ -46,6 +46,9 @@ and GUI Builder's `FilterSection::fx()` from #125 in the filter's place.
 
 - A press held on the scroll bar's track beside the thumb keeps paging,
   after 0.4 s and then every 0.04 s (`ScrollBar::timerCallback`).
+- The scroll bar is on top of the column's right edge, as upstream adds it
+  after the viewport: the sections' interaction stops at its left edge, so
+  a press there reaches the bar even beside the filter's controls.
 - The FL Studio checklist's item 6 adds the compressor and EQ drags, and a
   wheel and trackpad speed check with a REAPER note.
 

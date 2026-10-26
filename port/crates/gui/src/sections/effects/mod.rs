@@ -686,7 +686,15 @@ impl EffectsTab {
                 .id_salt("effect sections")
                 .max_rect(ui.max_rect()),
         );
-        child.set_clip_rect(clip);
+        // The scroll bar is on top of the column's right edge (it's added
+        // after the viewport upstream), so the sections stop short of it.
+        let sections = Rect::new(
+            fx.viewport.x,
+            fx.viewport.y,
+            fx.scroll_bar.x - fx.viewport.x,
+            fx.viewport.height,
+        );
+        child.set_clip_rect(pixels.rect(sections.into()));
         let scroll = self.scroll.round() as i32;
         for effect in Effect::ALL {
             let index = effect as usize;
@@ -696,83 +704,34 @@ impl EffectsTab {
             let bounds = bounds.translated(0, -scroll);
             let scope = top.within(effect.skin());
             match effect {
-                Effect::Chorus => self.chorus.show(
-                    &mut child,
-                    host,
-                    &pixels,
-                    &scope,
-                    overlay,
-                    bounds,
-                    fx.viewport,
-                ),
-                Effect::Compressor => self.compressor.show(
-                    &mut child,
-                    host,
-                    &pixels,
-                    &scope,
-                    overlay,
-                    bounds,
-                    fx.viewport,
-                ),
-                Effect::Delay => self.delay.show(
-                    &mut child,
-                    host,
-                    &pixels,
-                    &scope,
-                    overlay,
-                    bounds,
-                    fx.viewport,
-                ),
-                Effect::Distortion => self.distortion.show(
-                    &mut child,
-                    host,
-                    &pixels,
-                    &scope,
-                    overlay,
-                    bounds,
-                    fx.viewport,
-                ),
-                Effect::Eq => self.equalizer.show(
-                    &mut child,
-                    host,
-                    &pixels,
-                    &scope,
-                    overlay,
-                    bounds,
-                    fx.viewport,
-                ),
-                Effect::Flanger => self.flanger.show(
-                    &mut child,
-                    host,
-                    &pixels,
-                    &scope,
-                    overlay,
-                    bounds,
-                    fx.viewport,
-                ),
-                Effect::Phaser => self.phaser.show(
-                    &mut child,
-                    host,
-                    &pixels,
-                    &scope,
-                    overlay,
-                    bounds,
-                    fx.viewport,
-                ),
-                Effect::Reverb => self.reverb.show(
-                    &mut child,
-                    host,
-                    &pixels,
-                    &scope,
-                    overlay,
-                    bounds,
-                    fx.viewport,
-                ),
+                Effect::Chorus => self
+                    .chorus
+                    .show(&mut child, host, &pixels, &scope, overlay, bounds, sections),
+                Effect::Compressor => self
+                    .compressor
+                    .show(&mut child, host, &pixels, &scope, overlay, bounds, sections),
+                Effect::Delay => self
+                    .delay
+                    .show(&mut child, host, &pixels, &scope, overlay, bounds, sections),
+                Effect::Distortion => self
+                    .distortion
+                    .show(&mut child, host, &pixels, &scope, overlay, bounds, sections),
+                Effect::Eq => self
+                    .equalizer
+                    .show(&mut child, host, &pixels, &scope, overlay, bounds, sections),
+                Effect::Flanger => self
+                    .flanger
+                    .show(&mut child, host, &pixels, &scope, overlay, bounds, sections),
+                Effect::Phaser => self
+                    .phaser
+                    .show(&mut child, host, &pixels, &scope, overlay, bounds, sections),
+                Effect::Reverb => self
+                    .reverb
+                    .show(&mut child, host, &pixels, &scope, overlay, bounds, sections),
                 Effect::FilterFx => {
                     let layout = self.filter.layout(&scope, bounds);
                     self.filter.paint_background(&pixels, &scope, &layout);
-                    let mut panel =
-                        Panel::new(&mut child, host, &pixels, scope, overlay, fx.viewport);
+                    let mut panel = Panel::new(&mut child, host, &pixels, scope, overlay, sections);
                     // Its power button comes with it (`setActivator`).
                     self.filter.show(&mut panel, &layout);
                     panel.finish();
@@ -780,7 +739,7 @@ impl EffectsTab {
                 }
             }
             // SynthSection::setActivator: the power button tops the heading.
-            let mut panel = Panel::new(&mut child, host, &pixels, scope, overlay, fx.viewport);
+            let mut panel = Panel::new(&mut child, host, &pixels, scope, overlay, sections);
             panel.button(
                 &self.power_buttons[index],
                 section::power_button_bounds(&scope, bounds),

@@ -215,7 +215,6 @@ mod effects {
                     _ => return None,
                 }
             }
-            _ => return None,
         })
     }
 }
