@@ -372,6 +372,48 @@ pub fn phaser(u: &FilterResponseUniforms, x: f32) -> f32 {
     get_y_for_response(response)
 }
 
+/// `kEqFilterResponseVertexShader`'s uniforms: each of the EQ's three
+/// filters (low, band, high) as a `vec3` lane.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct EqResponseUniforms {
+    pub midi_cutoff: [f32; 3],
+    pub resonance: [f32; 3],
+    pub low_amount: [f32; 3],
+    pub band_amount: [f32; 3],
+    pub high_amount: [f32; 3],
+}
+
+/// `kEqFilterResponseVertexShader` at `x`: the three filters' combined
+/// response in dB. The shader's own constants (notes 8 to 136, a dB range
+/// of -1 to 1) make `getYForResponse` return the dB unscaled.
+pub fn eq(u: &EqResponseUniforms, x: f32) -> f32 {
+    const EQ_MAX_MIDI_NOTE: f32 = 136.0;
+    const EQ_MIN_DB: f32 = -1.0;
+    const EQ_MAX_DB: f32 = 1.0;
+    let cutoff_ratio = |midi_cutoff: f32| {
+        let percent = 0.5 * (x + 1.0);
+        let midi_note = MIN_MIDI_NOTE + percent * (EQ_MAX_MIDI_NOTE - MIN_MIDI_NOTE);
+        2.0f32.powf(((midi_note - midi_cutoff) / 12.0).min(8.0))
+    };
+    let stage = |i: usize| {
+        let g = cutoff_ratio(u.midi_cutoff[i]);
+        let g_sqr = Complex(g * g, 0.0);
+        let denominator = g_sqr + Complex(0.0, g * u.resonance[i]) + Complex(-1.0, 0.0);
+        let numerator = scale(-u.low_amount[i], ONE)
+            + scale(u.band_amount[i], Complex(0.0, g))
+            + scale(u.high_amount[i], g_sqr);
+        (numerator, denominator)
+    };
+    let (numerator0, denominator0) = stage(0);
+    let (numerator1, denominator1) = stage(1);
+    let (numerator2, denominator2) = stage(2);
+    let numerator = complex_multiply(numerator0, complex_multiply(numerator1, numerator2));
+    let denominator = complex_multiply(denominator0, complex_multiply(denominator1, denominator2));
+    let response = complex_divide(numerator, denominator);
+    let db = magnitude_to_db(length(response));
+    2.0 * (db - EQ_MIN_DB) / (EQ_MAX_DB - EQ_MIN_DB) - 1.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -575,5 +617,27 @@ mod tests {
         assert!(positive_flange(&u, x_at(48.0), 0.0) < -1.0);
         // The negative flange reads the cutoff an octave up (+12).
         assert!(negative_flange(&u, x_at(72.0), 0.0) < -1.0);
+    }
+
+    /// Three flat stages (all pass: low 1, band 0, high 1 with no
+    /// resonance term gives (g² − 1) / (g² − 1)) are 0 dB; one band stage
+    /// at its cutoff with band amount 2 and resonance 1 is 2i / i = 2,
+    /// +6.02 dB, as the shader's dB comes out unscaled.
+    #[test]
+    fn eq_stages_multiply_in_db() {
+        let flat = EqResponseUniforms {
+            midi_cutoff: [40.0, 60.0, 80.0],
+            resonance: [0.0; 3],
+            low_amount: [1.0; 3],
+            band_amount: [0.0; 3],
+            high_amount: [1.0; 3],
+        };
+        close(eq(&flat, 0.3), 0.0);
+        let mut boosted = flat;
+        boosted.resonance[1] = 1.0;
+        boosted.band_amount[1] = 2.0;
+        // midi 60 at x: 8 + (x + 1) / 2 * 128 = 60.
+        let x = 2.0 * (60.0 - MIN_MIDI_NOTE) / (136.0 - MIN_MIDI_NOTE) - 1.0;
+        close(eq(&boosted, x), 20.0 * 2.0f32.log10());
     }
 }

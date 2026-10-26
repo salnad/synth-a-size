@@ -16,7 +16,9 @@ use nice_plug::context::PluginApi;
 use nice_plug::prelude::{FloatParam, FloatRange, Param, ParamPtr, PluginState};
 use sas_gui::layout::{FullLayout, Rect};
 use sas_gui::scope::Scope;
+use sas_gui::sections::effects::compressor::CompressorLayout;
 use sas_gui::sections::effects::delay::DelayLayout;
+use sas_gui::sections::effects::equalizer::EqualizerLayout;
 use sas_gui::sections::effects::order::OrderLayout;
 use sas_gui::sections::effects::{
     self, decode_order, encode_order, move_effect, Effect, EffectsLayout, ORDER_CONTROL,
@@ -25,31 +27,22 @@ use sas_gui::skin::Skin;
 use sas_gui::{EditorModel, Host, HostParam, Interface, OpenGestures, Tab};
 use sas_preset::registry::registry;
 
-/// Every control, linear over its registry range.
+/// Every registry control, linear over its range.
 struct Synth {
     params: BTreeMap<&'static str, FloatParam>,
 }
 
 impl Synth {
     fn new() -> Arc<Synth> {
-        let names: Vec<&'static str> = Effect::ALL
+        let params = registry()
+            .parameters()
             .iter()
-            .map(|effect| effect.enable_control())
-            .chain([
-                ORDER_CONTROL,
-                "delay_filter_cutoff",
-                "delay_filter_spread",
-                "delay_style",
-            ])
-            .collect();
-        let params = names
-            .into_iter()
-            .map(|name| {
-                let info = registry().get(name).unwrap();
+            .map(|info| {
                 let range = FloatRange::Linear {
                     min: info.min,
                     max: info.max,
                 };
+                let name: &'static str = info.name.as_str();
                 (name, FloatParam::new(name, info.default_value, range))
             })
             .collect();
@@ -406,4 +399,124 @@ fn scrolling_stays_within_the_column() {
     let mut harness = few.harness();
     harness.step();
     assert_eq!(few.interface.borrow().effects_scroll(), 0.0);
+}
+
+/// The gestures logged for `name`: how many begins and ends.
+fn gesture_count(log: &[String], name: &str) -> (usize, usize) {
+    let count = |what: &str| {
+        log.iter()
+            .filter(|line| **line == format!("{what} {name}"))
+            .count()
+    };
+    (count("begin"), count("end"))
+}
+
+/// Dragging the compressor's low upper threshold down moves only it (and
+/// its lower threshold, if pushed), each in one gesture.
+#[test]
+fn a_compressor_threshold_drag_is_one_gesture_for_what_it_moves() {
+    let fixture = Fixture::new(Apply::NextFrame, &[Effect::Compressor]);
+    let mut harness = fixture.harness();
+    let (fx, top) = fixture.effects_layout();
+    let bounds = fx.effects[Effect::Compressor as usize].unwrap();
+    let editor = CompressorLayout::new(&top.within(Effect::Compressor.skin()), bounds).editor;
+    let threshold = fixture.synth.value("compressor_low_upper_threshold");
+    // The low band's middle, at its upper threshold handle (getYForDb, kept
+    // a grab radius inside the top).
+    let x = editor.x as f32 + 0.05 * editor.width as f32 + 0.4 / 3.0 * editor.width as f32;
+    let t = (threshold - -80.0) / 80.0;
+    let y_for_db = editor.height as f32 * (1.0 - (2.0 * t - 1.0)) * 0.5;
+    let y = editor.y as f32 + y_for_db.max(8.0 * top.size_ratio());
+    let from = Pos2::new(x, y);
+    drag(&mut harness, from, from + egui::vec2(0.0, 20.0), 8);
+    assert!(fixture.synth.value("compressor_low_upper_threshold") < threshold);
+    let log = fixture.take_log();
+    assert_eq!(
+        gesture_count(&log, "compressor_low_upper_threshold"),
+        (1, 1),
+        "{log:?}"
+    );
+    for untouched in [
+        "compressor_band_upper_threshold",
+        "compressor_low_upper_ratio",
+    ] {
+        assert_eq!(gesture_count(&log, untouched), (0, 0), "{log:?}");
+    }
+}
+
+/// Dragging the EQ's middle handle moves its cutoff across and its gain up
+/// and down, each in one gesture.
+#[test]
+fn an_eq_handle_drag_is_one_gesture_per_control() {
+    let fixture = Fixture::new(Apply::NextFrame, &[Effect::Eq]);
+    let mut harness = fixture.harness();
+    let (fx, top) = fixture.effects_layout();
+    let bounds = fx.effects[Effect::Eq as usize].unwrap();
+    let response = EqualizerLayout::new(&top.within(Effect::Eq.skin()), bounds).response;
+    let cutoff_info = registry().get("eq_band_cutoff").unwrap();
+    let gain_info = registry().get("eq_low_gain").unwrap();
+    let buffer = (gain_info.max - gain_info.min) * 0.2;
+    let (min_db, max_db) = (gain_info.min - buffer, gain_info.max + buffer);
+    let cutoff = fixture.synth.value("eq_band_cutoff");
+    let gain = fixture.synth.value("eq_band_gain");
+    let from = Pos2::new(
+        response.x as f32
+            + response.width as f32 * (cutoff - cutoff_info.min)
+                / (cutoff_info.max - cutoff_info.min),
+        response.y as f32 + response.height as f32 * (max_db - gain) / (max_db - min_db),
+    );
+    drag(&mut harness, from, from + egui::vec2(15.0, -10.0), 8);
+    assert!(fixture.synth.value("eq_band_cutoff") > cutoff);
+    assert!(fixture.synth.value("eq_band_gain") > gain);
+    let log = fixture.take_log();
+    for name in ["eq_band_cutoff", "eq_band_gain"] {
+        assert_eq!(gesture_count(&log, name), (1, 1), "{name}: {log:?}");
+    }
+    assert_eq!(gesture_count(&log, "eq_low_cutoff"), (0, 0), "{log:?}");
+}
+
+/// The EQ's mode buttons toggle their mode in one gesture.
+#[test]
+fn an_eq_mode_button_toggles_in_one_gesture() {
+    let fixture = Fixture::new(Apply::NextFrame, &[Effect::Eq]);
+    let mut harness = fixture.harness();
+    let (fx, top) = fixture.effects_layout();
+    let bounds = fx.effects[Effect::Eq as usize].unwrap();
+    let button = EqualizerLayout::new(&top.within(Effect::Eq.skin()), bounds).band_mode;
+    press(&mut harness, centre(button));
+    release(&mut harness, centre(button));
+    assert_eq!(fixture.synth.value("eq_band_mode"), 1.0);
+    assert_eq!(
+        fixture.take_log(),
+        ["begin eq_band_mode", "set eq_band_mode", "end eq_band_mode"]
+    );
+}
+
+/// A press on the scroll bar's track beside the thumb pages towards it,
+/// within the column; held, it keeps paging (after 0.4 s, then every
+/// 0.04 s) but never past the end. The column is under two pages tall here,
+/// so one page reaches its end.
+#[test]
+fn track_presses_page_within_the_column() {
+    let fixture = Fixture::new(Apply::NextFrame, &Effect::ALL);
+    let mut harness = fixture.harness();
+    let (fx, _) = fixture.effects_layout();
+    let max_scroll = (fx.container.height - fx.viewport.height) as f32;
+    let page = fx.viewport.height as f32;
+    let x = fx.scroll_bar.x as f32 + 1.0;
+    let below_thumb = Pos2::new(x, (fx.scroll_bar.y + fx.scroll_bar.height) as f32 - 2.0);
+    let above_thumb = Pos2::new(x, fx.scroll_bar.y as f32 + 2.0);
+    press(&mut harness, below_thumb);
+    release(&mut harness, below_thumb);
+    assert_eq!(
+        fixture.interface.borrow().effects_scroll(),
+        page.min(max_scroll)
+    );
+    press(&mut harness, above_thumb);
+    release(&mut harness, above_thumb);
+    assert_eq!(fixture.interface.borrow().effects_scroll(), 0.0);
+    press(&mut harness, below_thumb);
+    harness.run_steps(60);
+    release(&mut harness, below_thumb);
+    assert_eq!(fixture.interface.borrow().effects_scroll(), max_scroll);
 }

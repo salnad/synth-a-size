@@ -8,7 +8,7 @@
 use std::f32::consts::PI;
 use std::sync::OnceLock;
 
-use super::path::Path;
+use super::path::{EndCapStyle, JointStyle, Path};
 
 /// Pads an icon to the square from `from` to `to`, as upstream's icon paths
 /// do with zero-length line segments.
@@ -157,6 +157,69 @@ pub fn keyboard_bordered() -> &'static Path {
     PATH.get_or_init(|| {
         let mut path = keyboard().clone();
         pad(&mut path, 0.0, 1.0, 0.01);
+        path
+    })
+}
+
+/// `Paths::createFilterStroke`: `outline` stroked `line_thickness` wide
+/// with curved joints and rounded ends.
+fn create_filter_stroke(outline: &Path, line_thickness: f32) -> Path {
+    outline.stroked(line_thickness, JointStyle::Curved, EndCapStyle::Rounded)
+}
+
+/// An open outline through `points`.
+fn outline(points: &[(f32, f32)]) -> Path {
+    let mut path = Path::new();
+    path.move_to(points[0].0, points[0].1);
+    for &(x, y) in &points[1..] {
+        path.line_to(x, y);
+    }
+    path
+}
+
+/// `Paths::lowPass()` (its default line thickness, 0.1).
+pub fn low_pass() -> &'static Path {
+    static PATH: OnceLock<Path> = OnceLock::new();
+    PATH.get_or_init(|| {
+        let mut path = create_filter_stroke(
+            &outline(&[(1.0, 0.8), (0.7, 0.3), (0.5, 0.5), (0.0, 0.5)]),
+            0.1,
+        );
+        path.add_line_segment((1.0, 0.2), (1.0, 0.2), 0.2);
+        path
+    })
+}
+
+/// `Paths::highPass`.
+pub fn high_pass() -> &'static Path {
+    static PATH: OnceLock<Path> = OnceLock::new();
+    PATH.get_or_init(|| {
+        let mut path = create_filter_stroke(
+            &outline(&[(0.0, 0.8), (0.3, 0.3), (0.5, 0.5), (1.0, 0.5)]),
+            0.1,
+        );
+        path.add_line_segment((1.0, 0.2), (1.0, 0.2), 0.2);
+        path
+    })
+}
+
+/// `Paths::notch`.
+pub fn notch() -> &'static Path {
+    static PATH: OnceLock<Path> = OnceLock::new();
+    PATH.get_or_init(|| {
+        const TOP: f32 = 2.0 / 5.0;
+        const BOTTOM: f32 = 4.0 / 5.0;
+        let mut path = create_filter_stroke(
+            &outline(&[
+                (0.0, TOP),
+                (1.0 / 3.0, TOP),
+                (1.0 / 2.0, BOTTOM),
+                (2.0 / 3.0, TOP),
+                (1.0, TOP),
+            ]),
+            0.1,
+        );
+        path.add_line_segment((1.0, 0.2), (1.0, 0.2), 0.1);
         path
     })
 }

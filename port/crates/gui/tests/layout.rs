@@ -28,11 +28,14 @@ mod effects {
     use sas_gui::layout::{FullLayout, Rect};
     use sas_gui::scope::Scope;
     use sas_gui::sections::effects::chorus::ChorusLayout;
+    use sas_gui::sections::effects::compressor::CompressorLayout;
     use sas_gui::sections::effects::delay::{DelayLayout, STYLE_MONO};
     use sas_gui::sections::effects::distortion::DistortionLayout;
+    use sas_gui::sections::effects::equalizer::EqualizerLayout;
     use sas_gui::sections::effects::flanger::FlangerLayout;
     use sas_gui::sections::effects::order::OrderLayout;
     use sas_gui::sections::effects::phaser::PhaserLayout;
+    use sas_gui::sections::effects::reverb::ReverbLayout;
     use sas_gui::sections::effects::{self, Effect, EffectsLayout, NUM_EFFECTS};
     use sas_gui::skin::Skin;
 
@@ -71,6 +74,71 @@ mod effects {
         }
         let scope = in_effect(effect);
         Some(match effect {
+            Effect::FilterFx => {
+                let f = sas_gui::sections::filter::FilterSection::fx().layout(&scope, bounds);
+                match control {
+                    "filter_fx_on" => sas_gui::section::power_button_bounds(&scope, bounds),
+                    "filter_fx_cutoff" => f.cutoff,
+                    "filter_fx_resonance" => f.resonance,
+                    "filter_fx_blend" => f.blend,
+                    "filter_fx_drive" => f.drive,
+                    "filter_fx_mix" => f.mix,
+                    "filter_fx_keytrack" => f.keytrack,
+                    "label1" => f.drive_label,
+                    "label2" => f.keytrack_label,
+                    "preset_selector" => f.preset_selector.bounds,
+                    "preset_selector/Text" => f.preset_selector.text,
+                    "preset_selector/Prev" => f.preset_selector.previous,
+                    "preset_selector/Next" => f.preset_selector.next,
+                    _ => return None,
+                }
+            }
+            Effect::Eq => {
+                let l = EqualizerLayout::new(&scope, bounds);
+                match control {
+                    "eq_on" => l.on,
+                    "eq_low_mode" => l.low_mode,
+                    "eq_band_mode" => l.band_mode,
+                    "eq_high_mode" => l.high_mode,
+                    "eq_low_cutoff" | "eq_band_cutoff" | "eq_high_cutoff" => l.cutoff,
+                    "eq_low_resonance" | "eq_band_resonance" | "eq_high_resonance" => l.resonance,
+                    "eq_low_gain" | "eq_band_gain" | "eq_high_gain" => l.gain,
+                    "selected_band" => l.selected_band,
+                    _ => return None,
+                }
+            }
+            Effect::Reverb => {
+                let l = ReverbLayout::new(&scope, bounds);
+                match control {
+                    "reverb_on" => l.on,
+                    "selected_band" => l.selected_band,
+                    "reverb_pre_low_cutoff" => l.low_pre_cutoff,
+                    "reverb_pre_high_cutoff" => l.high_pre_cutoff,
+                    "reverb_low_shelf_cutoff" | "reverb_high_shelf_cutoff" => l.cutoff,
+                    "reverb_low_shelf_gain" | "reverb_high_shelf_gain" => l.gain,
+                    "reverb_chorus_amount" => l.chorus_amount,
+                    "reverb_chorus_frequency" => l.chorus_frequency,
+                    "reverb_delay" => l.delay,
+                    "reverb_size" => l.size,
+                    "reverb_dry_wet" => l.dry_wet,
+                    "reverb_decay_time" => l.decay_time,
+                    _ => return None,
+                }
+            }
+            Effect::Compressor => {
+                let l = CompressorLayout::new(&scope, bounds);
+                match control {
+                    "compressor_on" => l.on,
+                    "compressor_enabled_bands" => l.enabled_bands,
+                    "compressor_mix" => l.mix,
+                    "compressor_attack" => l.attack,
+                    "compressor_release" => l.release,
+                    "compressor_low_gain" => l.low_gain,
+                    "compressor_band_gain" => l.band_gain,
+                    "compressor_high_gain" => l.high_gain,
+                    _ => return None,
+                }
+            }
             Effect::Chorus => {
                 let l = ChorusLayout::new(&scope, bounds);
                 match control {
