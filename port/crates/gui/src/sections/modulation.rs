@@ -288,7 +288,16 @@ impl ModulationInterface {
         let mut clicked = [None; 3];
         for (kind, ((selector, shown), bounds)) in selectors.iter().zip(all_bounds).enumerate() {
             let id = ui.scope_id().with(("modulation tabs", kind));
-            let input = selector.interact(ui, pixels, &mut overlay.modulation, id, bounds, *shown);
+            let margin = top.widget_margin() as i32;
+            let input = selector.interact(
+                ui,
+                pixels,
+                &mut overlay.modulation,
+                id,
+                bounds,
+                *shown,
+                margin,
+            );
             if kind < 3 {
                 clicked[kind] = input.clicked;
             }

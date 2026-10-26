@@ -29,12 +29,18 @@
 //! [`ModulationManager::finish_frame`] connects what the drag is over and
 //! draws the overlay.
 
-use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use egui::{Id, PointerButton, Pos2, Sense, Ui};
 use sas_preset::constants::MAX_MODULATION_CONNECTIONS;
 use sas_preset::{GuiConnection, SlotValues};
 
+use crate::colour::Colour;
+use crate::controls::modulation_button::{
+    menu_source_display_name, modulation_amount_bounds, modulation_area_bounds,
+};
+use crate::controls::slider::{Placement, Slider, SliderStyle};
 use crate::host::Host;
 use crate::interface::Route;
 use crate::layout::Rect;
@@ -103,6 +109,77 @@ pub fn disconnect_choice(host: &Host, source: &str, id: i32) {
     }
 }
 
+/// `ModulationAmountKnob::MenuId`.
+const MENU_REMOVE: i32 = 0xff;
+const MENU_TOGGLE_BYPASS: i32 = 0x100;
+const MENU_TOGGLE_BIPOLAR: i32 = 0x101;
+const MENU_TOGGLE_STEREO: i32 = 0x102;
+
+/// Slot `slot`'s control `suffix` (`modulation_{slot + 1}_{suffix}`).
+pub fn slot_control(slot: usize, suffix: &str) -> &'static str {
+    Host::info(&format!("modulation_{}_{suffix}", slot + 1))
+        .name
+        .as_str()
+}
+
+/// `ModulationAmountKnob::mouseDown`'s menu for slot `slot`: remove it,
+/// toggle its bypass, polarity and stereo, and enter a value
+/// (`manual_entry` is the slider menu's id for that).
+pub fn amount_knob_menu(host: &Host, slot: usize, manual_entry: i32) -> Vec<MenuItem> {
+    let on = |suffix: &str| host.value(slot_control(slot, suffix)) != 0.0;
+    vec![
+        MenuItem::new(MENU_REMOVE, "Remove"),
+        MenuItem::new(
+            MENU_TOGGLE_BYPASS,
+            if on("bypass") { "Unbypass" } else { "Bypass" },
+        ),
+        MenuItem::new(
+            MENU_TOGGLE_BIPOLAR,
+            if on("bipolar") {
+                "Make Unipolar"
+            } else {
+                "Make Bipolar"
+            },
+        ),
+        MenuItem::new(
+            MENU_TOGGLE_STEREO,
+            if on("stereo") {
+                "Make Mono"
+            } else {
+                "Make Stereo"
+            },
+        ),
+        MenuItem::divider(),
+        MenuItem::new(manual_entry, "Enter Value"),
+    ]
+}
+
+/// `ModulationAmountKnob::handleModulationMenuCallback` for the choice
+/// `id` on slot `slot`. Removing disconnects it (no host write, as
+/// upstream's). The toggles set the slot's host parameter in one gesture
+/// (D18; upstream sets the synth's value only). False for an id it
+/// doesn't handle.
+pub fn amount_knob_choice(host: &Host, slot: usize, id: i32) -> bool {
+    let toggle = |suffix: &str| {
+        let name = slot_control(slot, suffix);
+        let on = host.value(name) != 0.0;
+        host.set_once(name, if on { 0.0 } else { 1.0 });
+    };
+    match id {
+        MENU_REMOVE => {
+            let model = host.model();
+            if let Some(route) = model.modulations().iter().find(|route| route.slot == slot) {
+                model.disconnect_modulation(&route.source, &route.destination);
+            }
+        }
+        MENU_TOGGLE_BYPASS => toggle("bypass"),
+        MENU_TOGGLE_BIPOLAR => toggle("bipolar"),
+        MENU_TOGGLE_STEREO => toggle("stereo"),
+        _ => return false,
+    }
+    true
+}
+
 /// How a destination lights up while a source is dragged
 /// (`ModulationDestination`).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -126,6 +203,11 @@ pub struct Destination {
     /// The area it shows in (its section, or the scrolled effects column).
     pub clip: Rect,
     pub shape: DestinationShape,
+    /// The side its selected source's amount knob goes
+    /// (`getModulationPlacement`).
+    pub placement: Placement,
+    /// Its `kRotaryArc` colour, which its amount knobs take.
+    pub arc: Colour,
 }
 
 /// The host parameter values a connection made during a drag takes when the
@@ -256,6 +338,36 @@ pub struct SourceInput {
     pub menu: Option<Pos2>,
 }
 
+/// A source button drawn this frame, with its amount knobs' area.
+#[derive(Clone, Copy, Debug)]
+struct SourceButton {
+    name: &'static str,
+    area: Rect,
+}
+
+/// Which of a slot's amount knobs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum KnobKind {
+    /// In its source button (`modulation_amount_sliders_`).
+    Source,
+    /// Beside its destination while its source is selected
+    /// (`selected_modulation_sliders_`).
+    Selected,
+    /// Beside its destination after the pointer went over that control
+    /// (`modulation_hover_sliders_`).
+    Hover,
+}
+
+/// A modulation's amount knob to show this frame (`ModulationAmountKnob`).
+#[derive(Clone, Debug)]
+pub struct AmountKnob {
+    pub kind: KnobKind,
+    pub route: Route,
+    /// The knob: a slider on the slot's `modulation_N_amount`.
+    pub slider: Slider,
+    pub bounds: Rect,
+}
+
 /// The modulation sources' editor state (`ModulationManager`).
 #[derive(Debug, Default)]
 pub struct ModulationManager {
@@ -273,6 +385,16 @@ pub struct ModulationManager {
     pending: PendingConnection,
     /// The synth state's generation as of this frame.
     generation: u64,
+    /// The source buttons drawn this frame.
+    sources: Vec<SourceButton>,
+    /// Each destination's `kRotaryArc` colour, as last drawn
+    /// (`slider_model_lookup_`'s sliders keep theirs while hidden).
+    arcs: HashMap<&'static str, Colour>,
+    /// The destination whose other modulations show beside it
+    /// (`makeModulationsVisible` from `hoverStarted`).
+    hovered: Option<&'static str>,
+    /// The amount knobs shown last frame.
+    knobs: Vec<AmountKnob>,
 }
 
 impl ModulationManager {
@@ -299,6 +421,7 @@ impl ModulationManager {
         }
         self.routes = Some(routes);
         self.destinations.clear();
+        self.sources.clear();
         self.current_bounds = None;
     }
 
@@ -335,6 +458,7 @@ impl ModulationManager {
 
     /// A modulatable control drawn at `bounds` within `clip`.
     pub fn register_destination(&mut self, destination: Destination) {
+        self.arcs.insert(destination.name, destination.arc);
         self.destinations.push(destination);
     }
 
@@ -347,10 +471,15 @@ impl ModulationManager {
         id: Id,
         name: &'static str,
         bounds: Rect,
+        widget_margin: i32,
     ) -> SourceInput {
         if self.current == Some(name) {
             self.current_bounds = Some(bounds);
         }
+        self.sources.push(SourceButton {
+            name,
+            area: modulation_area_bounds(bounds, widget_margin),
+        });
         let response = ui.interact(pixels.rect(bounds.into()), id, Sense::click_and_drag());
         let mut state: ButtonState = ui.data(|data| data.get_temp(id)).unwrap_or_default();
         let (primary_down, secondary_pressed, pointer, any_modifier) = ui.input(|input| {
@@ -370,8 +499,11 @@ impl ModulationManager {
         }
         if !state.down && primary_down && response.is_pointer_button_down_on() {
             state.down = true;
+            // modulationSelected: the source's knobs replace any shown on
+            // hover.
             self.current = Some(name);
             self.current_bounds = Some(bounds);
+            self.hovered = None;
         }
         if state.down && primary_down {
             if let Some(pointer) = pointer.map(to_pixels) {
@@ -442,7 +574,7 @@ impl ModulationManager {
                 self.drag = Some(drag);
             }
         }
-        self.paint(host, pixels, top);
+        self.paint(pixels, top);
     }
 
     /// `modulationDragged`: leaves a destination the pointer moved off,
@@ -493,10 +625,9 @@ impl ModulationManager {
         }
     }
 
-    /// The selected source's outline (`drawCurrentModulator`), the lit
-    /// destinations (`drawModulationDestinations`) and the dragged source's
-    /// ring (`drawDraggingModulation`).
-    fn paint(&mut self, host: &Host, pixels: &PixelPainter, top: &Scope) {
+    /// The selected source's outline (`drawCurrentModulator`) and the lit
+    /// destinations (`drawModulationDestinations`).
+    fn paint(&mut self, pixels: &PixelPainter, top: &Scope) {
         let scope = top.within(DRAG_DROP_SKIN);
         let control = scope.color(ColorId::ModulationMeterControl);
         let full = RectF::from(pixels_bounds(pixels));
@@ -527,7 +658,14 @@ impl ModulationManager {
                 batch.paint(pixels, RectF::from(*clip));
             }
         }
+    }
 
+    /// The dragged source's ring at the pointer, until it is over a
+    /// destination (`drawDraggingModulation`), over the amount knobs.
+    pub fn paint_drag(&self, host: &Host, pixels: &PixelPainter, top: &Scope) {
+        let scope = top.within(DRAG_DROP_SKIN);
+        let control = scope.color(ColorId::ModulationMeterControl);
+        let full = RectF::from(pixels_bounds(pixels));
         let Some(drag) = &self.drag else {
             return;
         };
@@ -590,6 +728,324 @@ impl ModulationManager {
             })
             .collect()
     }
+}
+
+impl ModulationManager {
+    /// The amount knobs to show this frame: in each source button drawn
+    /// (`positionModulationAmountSlidersInside`), beside the selected
+    /// source's destinations (`makeCurrentModulatorAmountsVisible`), and
+    /// beside the control the pointer last went over for its other sources
+    /// (`makeModulationsVisible`). `pointer` is in pixels.
+    pub fn amount_knobs(
+        &mut self,
+        host: &Host,
+        top: &Scope,
+        pointer: Option<Pos2>,
+        editor_width: i32,
+    ) -> Vec<AmountKnob> {
+        if self.drag.is_none() {
+            if let Some(name) = pointer.and_then(|pointer| self.control_at(pointer)) {
+                self.hovered = Some(name);
+            }
+        }
+        let scope = top.within(DRAG_DROP_SKIN);
+        let mut knobs = Vec::new();
+        self.source_knobs(host, top, editor_width, &mut knobs);
+        self.selected_knobs(host, &scope, top.size_ratio(), &mut knobs);
+        self.hover_knobs(host, &scope, top.size_ratio(), &mut knobs);
+        self.knobs = knobs.clone();
+        knobs
+    }
+
+    /// The amount knobs shown last frame.
+    pub fn shown_knobs(&self) -> &[AmountKnob] {
+        &self.knobs
+    }
+
+    /// The control under `pointer` (any modulatable one drawn).
+    fn control_at(&self, pointer: Pos2) -> Option<&'static str> {
+        self.destinations
+            .iter()
+            .rev()
+            .find(|destination| {
+                RectF::from(destination.bounds).contains(pointer.x, pointer.y)
+                    && RectF::from(destination.clip).contains(pointer.x, pointer.y)
+            })
+            .map(|destination| destination.name)
+    }
+
+    /// `positionModulationAmountSliders` for each source button drawn: its
+    /// connections' knobs in rows of three when they fit
+    /// (`kMaxModulationsAcross`). Those that don't go in its callout.
+    fn source_knobs(
+        &self,
+        host: &Host,
+        top: &Scope,
+        editor_width: i32,
+        knobs: &mut Vec<AmountKnob>,
+    ) {
+        const MAX_MODULATIONS_ACROSS: i32 = 3;
+        const RIGHT_POPUP_POSITION_X: i32 = 150;
+        for source in &self.sources {
+            let connections: Vec<&Route> = self
+                .routes()
+                .iter()
+                .filter(|route| route.source == source.name)
+                .collect();
+            let area = source.area;
+            let max_height = (MAX_MODULATIONS_ACROSS * area.height) / area.width.max(1);
+            if connections.is_empty()
+                || connections.len() as i32 > MAX_MODULATIONS_ACROSS * max_height
+            {
+                continue;
+            }
+            for (i, route) in connections.into_iter().enumerate() {
+                let bounds = modulation_amount_bounds(area, i);
+                let placement = if editor_width - bounds.right() < RIGHT_POPUP_POSITION_X {
+                    Placement::Left
+                } else if bounds.x < RIGHT_POPUP_POSITION_X {
+                    Placement::Right
+                } else {
+                    Placement::Below
+                };
+                let arc = self.destination_arc(top, &route.destination);
+                let prefix = intern(format!("{}: ", Host::info(&route.destination).display_name));
+                knobs.push(AmountKnob {
+                    kind: KnobKind::Source,
+                    route: route.clone(),
+                    slider: knob_slider(host, KnobKind::Source, route, arc, prefix, placement),
+                    bounds,
+                });
+            }
+        }
+    }
+
+    /// `makeCurrentModulatorAmountsVisible`: the selected source's knobs,
+    /// each beside its destination on the side it asks for, in the
+    /// modulation meter control colour (`setCurrentModulator`).
+    fn selected_knobs(
+        &self,
+        host: &Host,
+        scope: &Scope,
+        size_ratio: f32,
+        knobs: &mut Vec<AmountKnob>,
+    ) {
+        let Some(source) = self.current else {
+            return;
+        };
+        let width = (size_ratio * 24.0) as i32;
+        let arc = scope.color(ColorId::ModulationMeterControl);
+        let prefix = intern(format!("{}: ", menu_source_display_name(source)));
+        for route in self.routes().iter().filter(|route| route.source == source) {
+            let Some(destination) = self.drawn(&route.destination) else {
+                continue;
+            };
+            let bounds = destination.bounds;
+            let (center_x, center_y) = (bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+            let knob = match destination.placement {
+                Placement::Below => Rect::new(center_x - width / 2, bounds.bottom(), width, width),
+                Placement::Above => Rect::new(center_x - width / 2, bounds.y - width, width, width),
+                Placement::Left => Rect::new(bounds.x - width, center_y - width / 2, width, width),
+                Placement::Right => Rect::new(bounds.right(), center_y - width / 2, width, width),
+            };
+            knobs.push(AmountKnob {
+                kind: KnobKind::Selected,
+                route: route.clone(),
+                slider: knob_slider(
+                    host,
+                    KnobKind::Selected,
+                    route,
+                    arc,
+                    prefix,
+                    destination.placement,
+                ),
+                bounds: knob,
+            });
+        }
+    }
+
+    /// `makeModulationsVisible`: the other sources' knobs beside the
+    /// hovered control, centred on it in a row (above or below) or column
+    /// (left or right), leaving a gap where the selected source's knob is.
+    fn hover_knobs(
+        &self,
+        host: &Host,
+        scope: &Scope,
+        size_ratio: f32,
+        knobs: &mut Vec<AmountKnob>,
+    ) {
+        let Some(name) = self.hovered else {
+            return;
+        };
+        let Some(destination) = self.drawn(name) else {
+            return;
+        };
+        let mut current_showing = false;
+        let mut row: Vec<Option<&Route>> = Vec::new();
+        for route in self
+            .routes()
+            .iter()
+            .filter(|route| route.destination == name)
+        {
+            if self.current.is_some_and(|current| current == route.source) {
+                current_showing = true;
+            } else {
+                row.push(Some(route));
+            }
+        }
+        if current_showing {
+            row.insert(row.len().div_ceil(2), None);
+            if row.len().is_multiple_of(2) {
+                row.push(None);
+            }
+        }
+        let width = (size_ratio * 24.0) as i32;
+        let bounds = destination.bounds;
+        let offset = width * row.len() as i32 / 2;
+        let (mut x, mut y, delta_x, delta_y) = match destination.placement {
+            Placement::Below => (
+                bounds.x + bounds.width / 2 - offset,
+                bounds.bottom(),
+                width,
+                0,
+            ),
+            Placement::Above => (
+                bounds.x + bounds.width / 2 - offset,
+                bounds.y - width,
+                width,
+                0,
+            ),
+            Placement::Left => (
+                bounds.x - width,
+                bounds.y + bounds.height / 2 - offset,
+                0,
+                width,
+            ),
+            Placement::Right => (
+                bounds.right(),
+                bounds.y + bounds.height / 2 - offset,
+                0,
+                width,
+            ),
+        };
+        let arc = scope.color(ColorId::RotaryArc);
+        for route in row {
+            if let Some(route) = route {
+                let prefix = intern(format!("{}: ", menu_source_display_name(&route.source)));
+                knobs.push(AmountKnob {
+                    kind: KnobKind::Hover,
+                    route: route.clone(),
+                    slider: knob_slider(
+                        host,
+                        KnobKind::Hover,
+                        route,
+                        arc,
+                        prefix,
+                        destination.placement,
+                    ),
+                    bounds: Rect::new(x, y, width, width),
+                });
+            }
+            x += delta_x;
+            y += delta_y;
+        }
+    }
+
+    /// The destination drawn this frame named `name`.
+    fn drawn(&self, name: &str) -> Option<&Destination> {
+        self.destinations
+            .iter()
+            .find(|destination| destination.name == name)
+    }
+
+    /// Destination `name`'s `kRotaryArc` colour: as last drawn, or from its
+    /// section's skin.
+    fn destination_arc(&self, top: &Scope, name: &str) -> Colour {
+        if let Some(&arc) = self.arcs.get(name) {
+            return arc;
+        }
+        top.within(destination_skin(name)).color(ColorId::RotaryArc)
+    }
+}
+
+/// The skin sections a destination's control is drawn in.
+fn destination_skin(name: &str) -> &'static [Section] {
+    use crate::sections::{effects, envelope, extra_mod, filter, lfo, oscillator, random, sample};
+    if let Some(effect) = effects::Effect::ALL
+        .into_iter()
+        .find(|effect| name.starts_with(&format!("{}_", effect.name())))
+    {
+        return effect.skin();
+    }
+    let prefixed = |prefix: &str| name.starts_with(prefix);
+    if prefixed("filter_") {
+        filter::SKIN
+    } else if prefixed("osc_") {
+        oscillator::SKIN
+    } else if prefixed("sample_") {
+        sample::SKIN
+    } else if prefixed("env_") {
+        envelope::SKIN
+    } else if prefixed("lfo_") {
+        lfo::SKIN
+    } else if prefixed("random_") {
+        random::SKIN
+    } else if prefixed("macro_control_") {
+        extra_mod::MACRO_SKIN
+    } else {
+        &[]
+    }
+}
+
+/// A `'static` copy of `text`, kept once per distinct text (the popup
+/// prefixes, a few dozen at most).
+fn intern(text: String) -> &'static str {
+    static TEXTS: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::new();
+    let mut texts = TEXTS
+        .get_or_init(Mutex::default)
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(&interned) = texts.get(&text) {
+        return interned;
+    }
+    let interned: &'static str = Box::leak(text.clone().into_boxed_str());
+    texts.insert(text, interned);
+    interned
+}
+
+/// `ModulationAmountKnob` for `route`'s slot: shows its popup on hover, a
+/// double click does nothing, and its text entry is twice as wide
+/// (`setTextEntrySizePercent(2.0f, 1.0f)`). A linear or indexed
+/// destination's amount reads in its own units (`setModulationSliderScale`).
+fn knob_slider(
+    host: &Host,
+    kind: KnobKind,
+    route: &Route,
+    arc: Colour,
+    prefix: &'static str,
+    placement: Placement,
+) -> Slider {
+    use sas_preset::registry::ValueScale;
+    let number = route.slot + 1;
+    let name = Host::info(&format!("modulation_{number}_amount"))
+        .name
+        .as_str();
+    let bypass = host.value(&format!("modulation_{number}_bypass")) != 0.0;
+    let mut slider = Slider::new(name, SliderStyle::ModulationKnob { arc, bypass });
+    slider.instance = 1 + kind as u8;
+    slider.show_popup_on_hover = true;
+    slider.double_click_returns = false;
+    slider.text_entry_width_percent = 2.0;
+    slider.popup_prefix = Some(prefix);
+    slider.popup_placement = placement;
+    let destination = Host::info(&route.destination);
+    if matches!(
+        destination.value_scale,
+        ValueScale::Linear | ValueScale::Indexed
+    ) {
+        slider.format.display_multiply = Some(destination.max - destination.min);
+    }
+    slider
 }
 
 /// The editor's area in pixels.

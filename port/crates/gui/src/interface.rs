@@ -448,6 +448,9 @@ impl Interface {
         self.show_sections(ui, host, &pixels, &layout);
         let top = Scope::top(&self.skin, layout.size_ratio);
         self.overlay.modulation.finish_frame(host, &pixels, &top);
+        self.show_amount_knobs(ui, host, &pixels, &layout, width, height);
+        let top = Scope::top(&self.skin, layout.size_ratio);
+        self.overlay.modulation.paint_drag(host, &pixels, &top);
         self.show_overlay(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
     }
 
@@ -570,6 +573,40 @@ impl Interface {
             layout.portamento,
         );
         self.portamento.show(&mut panel, &portamento_layout);
+        panel.finish();
+    }
+
+    /// The modulations' amount knobs (`ModulationManager`'s children), over
+    /// the sections.
+    fn show_amount_knobs(
+        &mut self,
+        ui: &mut Ui,
+        host: &Host,
+        pixels: &PixelPainter,
+        layout: &FullLayout,
+        width: i32,
+        height: i32,
+    ) {
+        let top = &Scope::top(&self.skin, layout.size_ratio);
+        let pointer = ui
+            .input(|input| input.pointer.hover_pos())
+            .map(|pos| ((pos - pixels.area().min) * pixels.pixels_per_point()).to_pos2());
+        let knobs = self
+            .overlay
+            .modulation
+            .amount_knobs(host, top, pointer, width);
+        let scope = top.within(&[Section::ModulationDragDrop]);
+        let mut panel = Panel::new(
+            ui,
+            host,
+            pixels,
+            scope,
+            &mut self.overlay,
+            Rect::new(0, 0, width, height),
+        );
+        for knob in &knobs {
+            panel.amount_knob(knob);
+        }
         panel.finish();
     }
 

@@ -40,12 +40,75 @@ pub fn source_display_name(name: &str) -> String {
         .join(" ")
 }
 
+/// `ModulationMatrix::getMenuSourceDisplayName`: `env_1` is "Env 1",
+/// `macro_control_2` "Macro 2", `aftertouch` "After Touch".
+pub fn menu_source_display_name(name: &str) -> String {
+    if name == "aftertouch" {
+        return "After Touch".to_string();
+    }
+    let name = name.replacen("control_", "", 1);
+    name.split('_')
+        .filter(|token| !token.is_empty())
+        .map(|token| {
+            let mut chars = token.chars();
+            chars
+                .next()
+                .map(|first| first.to_uppercase().chain(chars).collect())
+                .unwrap_or_default()
+        })
+        .collect::<Vec<String>>()
+        .join(" ")
+}
+
 /// `ModulationButton::getMeterBounds`, in the button's coordinates.
 fn meter_bounds(width: i32, height: i32) -> Rect {
     const MIN_METER_WIDTH: i32 = 4;
     let meter_width =
         MIN_METER_WIDTH.max(((width as f32 * METER_AREA_RATIO / 2.0).round() * 2.0) as i32);
     Rect::new(1, 1, meter_width, height - 2)
+}
+
+/// `ModulationButton::kModulationKnobColumns`.
+pub const MODULATION_KNOB_COLUMNS: i32 = 3;
+
+/// `ModulationButton::getModulationAreaBounds` for a button at `bounds`
+/// (pixels): where its amount knobs go, below its name. `widget_margin` is
+/// its section's `kWidgetMargin`.
+pub fn modulation_area_bounds(bounds: Rect, widget_margin: i32) -> Rect {
+    const MAX_WIDTH_HEIGHT_RATIO: i32 = 3;
+    let meter_right = meter_bounds(bounds.width, bounds.height).right();
+    let width = bounds.width - meter_right;
+    let height = bounds.height;
+    let knob_width = (width - 2 * widget_margin) / MODULATION_KNOB_COLUMNS;
+    let widget_width = knob_width * MODULATION_KNOB_COLUMNS;
+    let widget_x = meter_right + (width - widget_width) / 2;
+    let min_y = (FONT_AREA_HEIGHT_RATIO * width as f32) as i32;
+    let max_widget_height = (widget_width as f32 * 2.0 / 3.0).ceil() as i32;
+    let widget_y = min_y.max(height - widget_margin - max_widget_height);
+    let widget_height = height - widget_y - widget_margin;
+    let center_y = widget_y + widget_height / 2;
+    let widget_height =
+        widget_height.max((widget_width + MAX_WIDTH_HEIGHT_RATIO - 1) / MAX_WIDTH_HEIGHT_RATIO);
+    let widget_y = center_y - widget_height / 2;
+    Rect::new(
+        bounds.x + widget_x,
+        bounds.y + widget_y,
+        widget_width,
+        widget_height,
+    )
+}
+
+/// `ModulationButton::getModulationAmountBounds`: knob `index` of `total`
+/// in the modulation `area`, in rows of three from the bottom.
+pub fn modulation_amount_bounds(area: Rect, index: usize) -> Rect {
+    let columns = MODULATION_KNOB_COLUMNS;
+    let row = index as i32 / columns;
+    let column = index as i32 % columns;
+    let x = area.x + (area.width * column) / columns;
+    let right = area.x + (area.width * (column + 1)) / columns;
+    let width = right - x;
+    let y = area.y + area.height - width * (row + 1);
+    Rect::new(x, y, width, width)
 }
 
 /// One source's button.
@@ -300,6 +363,7 @@ impl ModulationTabSelector {
     /// `mouseDrag` / `mouseUp`), through `modulation`: a press selects the
     /// source, a drag out of the button maps it onto a control, and a press
     /// and release on a button clicks it (`modulationClicked`).
+    #[allow(clippy::too_many_arguments)]
     pub fn interact(
         &self,
         ui: &mut Ui,
@@ -308,6 +372,7 @@ impl ModulationTabSelector {
         id: Id,
         bounds: Rect,
         num_shown: usize,
+        widget_margin: i32,
     ) -> TabInput {
         let mut input = TabInput::default();
         for (i, rect) in self
@@ -316,7 +381,8 @@ impl ModulationTabSelector {
             .enumerate()
         {
             let name = self.buttons[i].name;
-            let button = modulation.source_button(ui, pixels, id.with(i), name, rect);
+            let button =
+                modulation.source_button(ui, pixels, id.with(i), name, rect, widget_margin);
             if button.clicked {
                 input.clicked = Some(i);
             }

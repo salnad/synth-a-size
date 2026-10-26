@@ -463,8 +463,11 @@ impl FilterSection {
             kind,
             names,
             on: SynthButton::power(names.on),
-            cutoff: linear(names.cutoff, "Cutoff: ").hz_alternate(),
-            formant_x: linear(names.formant_x, "Formant X: "),
+            cutoff: linear(names.cutoff, "Cutoff: ")
+                .hz_alternate()
+                .modulation_placement(Placement::Above),
+            formant_x: linear(names.formant_x, "Formant X: ")
+                .modulation_placement(Placement::Above),
             mix: Slider::new(names.mix, SliderStyle::Rotary),
             blend: linear(names.blend, "Blend: ")
                 .bipolar()
@@ -474,8 +477,10 @@ impl FilterSection {
                 .bipolar()
                 .popup_placement(Placement::Above)
                 .snap_to_value(0.0),
-            resonance: vertical(names.resonance, "Resonance: "),
-            formant_y: vertical(names.formant_y, "Formant Y: "),
+            resonance: vertical(names.resonance, "Resonance: ")
+                .modulation_placement(Placement::Left),
+            formant_y: vertical(names.formant_y, "Formant Y: ")
+                .modulation_placement(Placement::Left),
             drive: Slider::new(names.drive, SliderStyle::Rotary),
             formant_resonance: Slider::new(names.formant_resonance, SliderStyle::Rotary),
             formant_spread: Slider::new(names.formant_spread, SliderStyle::Rotary)

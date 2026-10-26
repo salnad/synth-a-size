@@ -15,7 +15,7 @@ use egui_kittest::Harness;
 use nice_plug::prelude::{FloatParam, FloatRange, IntParam, IntRange, Param};
 use sas_engine::edit_bus::PreparedWavetable;
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
-use sas_gui::{EditorModel, Host, HostParam, Interface, Tab};
+use sas_gui::{EditorModel, Host, HostParam, Interface, Route, Tab};
 use sas_preset::registry::{registry, ValueScale};
 use sas_preset::{InitContent, PresetState, SampleState};
 
@@ -102,6 +102,21 @@ impl ViewPreset {
 impl EditorModel for ViewPreset {
     fn preset_name(&self) -> String {
         self.name.clone()
+    }
+
+    fn modulations(&self) -> Arc<[Route]> {
+        self.state
+            .connection_order()
+            .iter()
+            .map(|&slot| {
+                let connection = &self.state.modulations()[slot];
+                Route {
+                    slot,
+                    source: connection.source.clone(),
+                    destination: connection.destination.clone(),
+                }
+            })
+            .collect()
     }
 
     fn param(&self, name: &str) -> Option<HostParam> {

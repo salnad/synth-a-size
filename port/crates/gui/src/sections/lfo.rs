@@ -19,7 +19,7 @@ use crate::controls::line_editor::{
 };
 use crate::controls::path::{Path, Transform};
 use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
-use crate::controls::slider::{Slider, SliderStyle};
+use crate::controls::slider::{Placement, Slider, SliderStyle};
 use crate::fonts::Face;
 use crate::layout::{PresetSelectorLayout, Rect};
 use crate::local;
@@ -318,7 +318,8 @@ impl LfoSection {
                 .bipolar()
                 .display(3, 0),
             sync_type: Slider::selector(names.sync_type, Some(&SYNC_NAMES)),
-            phase: Slider::new(names.phase, SliderStyle::Horizontal),
+            phase: Slider::new(names.phase, SliderStyle::Horizontal)
+                .modulation_placement(Placement::Above),
             fade: Slider::new(names.fade_time, SliderStyle::Rotary),
             smooth: Slider::new(names.smooth_time, SliderStyle::Rotary),
             delay: Slider::new(names.delay_time, SliderStyle::Rotary),

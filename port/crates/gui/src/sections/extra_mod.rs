@@ -200,6 +200,7 @@ impl ExtraModSection {
                 id,
                 name,
                 single.source,
+                panel.scope.widget_margin() as i32,
             );
             if let Some(position) = input.menu {
                 menu = Some((name, position));
@@ -213,6 +214,7 @@ impl ExtraModSection {
             id,
             layout.other,
             self.other.buttons.len(),
+            panel.scope.widget_margin() as i32,
         );
         menu = input.menu.or(menu);
         if let Some((source, position)) = menu {

@@ -70,13 +70,20 @@ pub enum SliderStyle {
     /// `LinearBarVertical` painted as a wheel (`ControlWheel`); the pitch
     /// wheel springs back to 0 on release (`PitchWheel::mouseUp`).
     Wheel { spring_back: bool },
+    /// A modulation's amount knob (`ModulationAmountKnob`, an `OpenGlSlider`
+    /// with `setModulationKnob`): `arc` is its rotary arc colour, and a
+    /// bypassed modulation draws in grey.
+    ModulationKnob { arc: Colour, bypass: bool },
 }
 
 impl SliderStyle {
     fn is_rotary(self) -> bool {
         matches!(
             self,
-            SliderStyle::Rotary | SliderStyle::Text | SliderStyle::Curve
+            SliderStyle::Rotary
+                | SliderStyle::Text
+                | SliderStyle::Curve
+                | SliderStyle::ModulationKnob { .. }
         )
     }
 }
@@ -105,6 +112,9 @@ pub struct Slider {
     /// `text_height_percentage_`; 0 uses the skin's text component font size.
     pub text_height_percentage: f32,
     pub popup_placement: Placement,
+    /// `setModulationPlacement`: which side the selected source's amount
+    /// knob goes for this control.
+    pub modulation_placement: Placement,
     pub show_popup_on_hover: bool,
     /// `OpenGlSlider::active_`: drawn in the disabled colours when false.
     pub active: bool,
@@ -121,6 +131,12 @@ pub struct Slider {
     /// `setDoubleClickReturnValue`: the value a double click sets, when it
     /// isn't the parameter's default.
     pub double_click_value: Option<f32>,
+    /// `setDoubleClickReturnValue(false, ...)` makes this false: a double
+    /// click changes nothing.
+    pub double_click_returns: bool,
+    /// Tells apart sliders on the same control shown at once (a
+    /// modulation's amount knobs).
+    pub instance: u8,
     /// `setPopupPrefix`.
     pub popup_prefix: Option<&'static str>,
     /// `snapToValue`: a drag within 5% of the range of this value lands on
@@ -143,6 +159,7 @@ impl Slider {
             knob_size_scale: 1.0,
             text_height_percentage: 0.0,
             popup_placement: Placement::Below,
+            modulation_placement: Placement::Below,
             show_popup_on_hover: false,
             active: true,
             text_selector: false,
@@ -150,6 +167,8 @@ impl Slider {
             text_entry_width_percent: TEXT_ENTRY_WIDTH_PERCENT,
             text_component_offset: None,
             double_click_value: None,
+            double_click_returns: true,
+            instance: 0,
             popup_prefix: None,
             hz_alternate: false,
             snap_to: None,
@@ -227,6 +246,12 @@ impl Slider {
 
     pub fn popup_placement(mut self, placement: Placement) -> Slider {
         self.popup_placement = placement;
+        self
+    }
+
+    /// `setModulationPlacement`.
+    pub fn modulation_placement(mut self, placement: Placement) -> Slider {
+        self.modulation_placement = placement;
         self
     }
 
@@ -510,6 +535,33 @@ impl Slider {
                 layer.custom(move |pixels| wheel::paint(pixels, bounds, t, colours));
             }
             SliderStyle::Text => self.paint_text(layer, scope, bounds, value),
+            SliderStyle::ModulationKnob { arc, bypass } => {
+                // OpenGlSlider::redoImage with modulation_knob_, and
+                // ModulationAmountKnob's bypass desaturation.
+                let saturation = |colour: Colour| {
+                    if bypass {
+                        colour.desaturated()
+                    } else {
+                        colour
+                    }
+                };
+                let background = scope.color(ColorId::WidgetBackground);
+                let selected = saturation(arc.interpolated_with(background, 0.5));
+                let unselected = saturation(background);
+                let rect = RectF::from(bounds).reduced(0.5);
+                let mut quad = Quad::new(QuadKind::ModulationKnob, rect, unselected);
+                quad.alt_color = selected;
+                if value > 0.0 {
+                    quad.shader_values[0] = PI + (-PI - PI) * value;
+                } else {
+                    quad.shader_values[0] = -PI + (PI + PI) * -value;
+                    quad.color = selected;
+                    quad.alt_color = unselected;
+                }
+                quad.thumb_color = saturation(arc);
+                quad.thickness = if hover { 1.8 } else { 1.0 };
+                layer.quad(quad);
+            }
             SliderStyle::Curve => self.paint_curve(pixels, scope, bounds, value),
         }
     }
@@ -628,7 +680,9 @@ impl Slider {
         pixels: &PixelPainter,
         bounds: Rect,
     ) -> SliderEvent {
-        let id = ui.scope_id().with(("synth slider", self.name));
+        let id = ui
+            .scope_id()
+            .with(("synth slider", self.name, self.instance));
         let rect = pixels.rect(bounds.into());
         let response = ui.interact(rect, id, Sense::click_and_drag());
         let mut state: DragState = ui.data(|data| data.get_temp(id)).unwrap_or_default();
@@ -717,7 +771,7 @@ impl Slider {
             let long_press = state
                 .last_press
                 .is_some_and(|(time, _)| now - time > LONG_PRESS);
-            if state.second_click && !state.moved && !long_press {
+            if self.double_click_returns && state.second_click && !state.moved && !long_press {
                 // Slider::mouseDoubleClick: back to the default value.
                 let value = self.double_click_value.unwrap_or(self.info.default_value);
                 host.set_once(self.name, value);

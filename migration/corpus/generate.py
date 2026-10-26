@@ -1345,6 +1345,20 @@ GUI_PRESETS = {
         "Oscillator 3 on with the Sync wave morph, so its section shows the distortion phase slider.",
         {"osc_3_on": 1.0, "osc_3_distortion_type": 1.0},
     ),
+    "modulations": preset(
+        "modulations",
+        "Sources connected to oscillator 1, one bypassed, so the source buttons show their amount knobs.",
+        {"modulation_6_bypass": 1.0},
+        modulations=(
+            ("lfo_1", "osc_1_level", 0.5),
+            ("lfo_1", "osc_1_pan", -0.4, {"bipolar": 1.0}),
+            ("lfo_1", "osc_1_wave_frame", 0.3),
+            ("env_2", "osc_1_level", 0.7),
+            ("velocity", "osc_1_level", 0.25),
+            ("macro_control_1", "osc_1_unison_detune", 0.6),
+            ("random_1", "osc_1_spectral_morph_amount", -0.5),
+        ),
+    ),
 }
 
 
