@@ -15,6 +15,7 @@ use std::cell::RefCell;
 use super::{MenuOwner, Panel};
 use crate::colour::Colour;
 use crate::controls::button::SynthButton;
+use crate::controls::paths::Icon;
 use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
 use crate::controls::slider::{Placement, Slider, SliderStyle};
 use crate::controls::transpose_quantize;
@@ -1053,6 +1054,13 @@ impl OscillatorSection {
             },
             preset.previous,
         );
+        // The edit button opens the wavetable editor (with the wavetable
+        // view, G5).
+        let pencil = ShapeButton {
+            shape: Shape::from(Icon::Pencil),
+            colours: ShapeColours::icon(&panel.scope),
+        };
+        panel.shape_button(("wavetable edit", index), pencil, layout.edit);
         panel.shape_button(
             ("wavetable next", index),
             ShapeButton {

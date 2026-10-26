@@ -5,6 +5,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use egui::{Event, Key, Modifiers, PointerButton, Pos2};
@@ -36,6 +37,7 @@ use sas_gui::sections::voice::{self, VoiceLayout};
 use sas_gui::sections::{MenuOwner, Overlay, Panel};
 use sas_gui::{EditorModel, Host, HostParam, Interface, OpenGestures};
 use sas_preset::registry::{registry, ValueScale};
+use sas_preset::SampleState;
 
 const CONTROLS: &[&str] = &[
     "polyphony",
@@ -116,6 +118,12 @@ struct Synth {
     midi_forwarded: Mutex<Vec<(String, f32)>>,
     /// The LFO shapes the editor set.
     lfos: Mutex<HashMap<usize, LineGenerator>>,
+    /// The "hz_frequency" setting.
+    hz: AtomicBool,
+    /// The sample, its content revision, and how often the editor read it.
+    sample: Mutex<Option<SampleState>>,
+    revision: AtomicU64,
+    sample_reads: AtomicUsize,
 }
 
 impl Synth {
@@ -152,6 +160,10 @@ impl Synth {
             midi_moved: Mutex::new(Vec::new()),
             midi_forwarded: Mutex::new(Vec::new()),
             lfos: Mutex::default(),
+            hz: AtomicBool::new(false),
+            sample: Mutex::default(),
+            revision: AtomicU64::new(0),
+            sample_reads: AtomicUsize::new(0),
         })
     }
 
@@ -188,6 +200,21 @@ impl EditorModel for Synth {
     fn set_lfo_shape(&self, index: usize, line: LineGenerator) -> bool {
         self.lfos.lock().unwrap().insert(index, line);
         true
+    }
+
+    fn hz_frequency_display(&self) -> bool {
+        self.hz.load(Ordering::Relaxed)
+    }
+
+    fn with_sample(&self, f: &mut dyn FnMut(&SampleState)) {
+        self.sample_reads.fetch_add(1, Ordering::Relaxed);
+        if let Some(sample) = self.sample.lock().unwrap().as_ref() {
+            f(sample);
+        }
+    }
+
+    fn content_revision(&self) -> u64 {
+        self.revision.load(Ordering::Relaxed)
     }
 
     fn param(&self, name: &str) -> Option<HostParam> {
@@ -2437,4 +2464,145 @@ fn a_macro_knob_drags_its_control() {
         Some("begin macro_control_1")
     );
     assert_eq!(log.last().map(String::as_str), Some("end macro_control_1"));
+}
+
+/// A double click whose second press drags: the drag bends the power in
+/// its gesture, and the straightening follows at the release, in its own
+/// (`mouseDoubleClick` after `mouseUp`).
+#[test]
+fn a_double_click_straightens_after_the_second_presss_drag() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    fixture.synth.set("env_1_attack", 1.0);
+    fixture.synth.set("env_1_attack_power", 3.0);
+    harness.step();
+    let (editor, shape) = envelope_shape(&fixture);
+    let dot = editor_point(
+        editor,
+        &shape,
+        (shape.delay_x + shape.attack_x) / 2.0,
+        shape.attack_value(0.5),
+    );
+    harness.event(Event::PointerMoved(dot));
+    harness.step();
+    click(&mut harness, dot);
+    fixture.take_log();
+    drag(
+        &mut harness,
+        dot,
+        dot + egui::vec2(0.0, -10.0),
+        Modifiers::NONE,
+    );
+    assert_eq!(fixture.synth.value("env_1_attack_power"), 0.0);
+    let log = fixture.take_log();
+    let ends: Vec<usize> = log
+        .iter()
+        .enumerate()
+        .filter(|(_, entry)| *entry == "end env_1_attack_power")
+        .map(|(i, _)| i)
+        .collect();
+    assert_eq!(ends.len(), 2, "{log:?}");
+    assert_eq!(log[ends[0] + 1], "begin env_1_attack_power", "{log:?}");
+}
+
+/// Dragging the magnifying glass up zooms in: the same drag of the attack
+/// point then sets a shorter attack.
+#[test]
+fn the_magnifying_glass_zooms_the_envelope() {
+    let attack_after = |zoom: bool| {
+        let fixture = Fixture::new();
+        let mut harness = fixture.harness();
+        if zoom {
+            let glass = {
+                let m = modulation_layout(&fixture);
+                let interface = fixture.interface.borrow();
+                EnvelopeLayout::new(&section_scope(interface.skin(), envelope::SKIN), m.envelope)
+                    .magnifying_glass
+            };
+            let at = centre(glass);
+            drag(
+                &mut harness,
+                at,
+                at + egui::vec2(0.0, -60.0),
+                Modifiers::NONE,
+            );
+        }
+        let (editor, shape) = envelope_shape(&fixture);
+        let start = editor_point(editor, &shape, shape.attack_x, 0.0);
+        harness.event(Event::PointerMoved(start));
+        harness.step();
+        drag(
+            &mut harness,
+            start,
+            start + egui::vec2(20.0, 0.0),
+            Modifiers::NONE,
+        );
+        fixture.synth.value("env_1_attack")
+    };
+    let start = registry().get("env_1_attack").unwrap().default_value;
+    let plain = attack_after(false);
+    let zoomed = attack_after(true);
+    assert!(zoomed > start, "the zoomed drag didn't move the attack");
+    assert!(zoomed < plain, "{zoomed} >= {plain}");
+}
+
+/// With the hertz setting on, a filter cutoff's popup reads in hertz
+/// through the editor (`Panel::slider`'s displayed slider).
+#[test]
+fn a_cutoff_popup_reads_in_hertz_with_the_setting_on() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    fixture.synth.hz.store(true, Ordering::Relaxed);
+    harness.step();
+    let cutoff = filter_layout(&fixture, 1).cutoff;
+    press(
+        &mut harness,
+        centre(cutoff),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    {
+        let interface = fixture.interface.borrow();
+        let (name, popup) = interface.overlay().value_popup.as_ref().unwrap();
+        assert_eq!(*name, "filter_1_cutoff");
+        assert!(popup.text.starts_with("Cutoff: "), "{}", popup.text);
+        assert!(popup.text.ends_with(" Hz"), "{}", popup.text);
+    }
+    release(
+        &mut harness,
+        centre(cutoff),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+}
+
+/// The sample viewer reads the sample once per content revision.
+#[test]
+fn the_sample_peaks_refresh_on_a_new_content_revision() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let sample = |level: f32| SampleState {
+        name: "test".into(),
+        sample_rate: 44100,
+        left: vec![level; 512],
+        right: None,
+    };
+    *fixture.synth.sample.lock().unwrap() = Some(sample(0.5));
+    fixture.synth.revision.store(1, Ordering::Relaxed);
+    for _ in 0..3 {
+        harness.step();
+    }
+    let reads = fixture.synth.sample_reads.load(Ordering::Relaxed);
+    assert!(reads >= 1);
+    for _ in 0..3 {
+        harness.step();
+    }
+    assert_eq!(fixture.synth.sample_reads.load(Ordering::Relaxed), reads);
+    *fixture.synth.sample.lock().unwrap() = Some(sample(0.25));
+    fixture.synth.revision.store(2, Ordering::Relaxed);
+    harness.step();
+    assert_eq!(
+        fixture.synth.sample_reads.load(Ordering::Relaxed),
+        reads + 1
+    );
 }

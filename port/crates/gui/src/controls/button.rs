@@ -10,6 +10,10 @@
 //! and power button styles (`setColors`, `renderTextButton`,
 //! `renderPowerButton`, `incrementHover`).
 
+use super::icon::fill_path_to_fit;
+use super::paths::Icon;
+use super::shape_button::ShapeColours;
+use crate::colour::Colour;
 use egui::{PointerButton, Sense, Ui};
 
 use crate::fonts::Face;
@@ -32,6 +36,9 @@ pub enum ButtonStyle {
     /// `kPowerButton`: a dot, with a halo while hovered or pressed
     /// (`SynthSection::setActivator`).
     Power,
+    /// An `OpenGlShapeButton` with `useOnColors` bound to the control: an
+    /// icon in the icon colours, the on colours while on.
+    Icon(Icon),
 }
 
 /// A toggle bound to an on/off synth control.
@@ -53,6 +60,14 @@ impl SynthButton {
         SynthButton {
             name,
             style: ButtonStyle::Text(text),
+        }
+    }
+
+    /// A toggled icon (`OpenGlShapeButton` with `useOnColors(true)`).
+    pub fn icon(name: &'static str, icon: Icon) -> SynthButton {
+        SynthButton {
+            name,
+            style: ButtonStyle::Icon(icon),
         }
     }
 
@@ -129,6 +144,14 @@ impl SynthButton {
             ),
             ButtonStyle::Power => {
                 paint_power_button(layer, scope, bounds, toggled, down, state.hover_amount)
+            }
+            ButtonStyle::Icon(icon) => {
+                let colours = if toggled {
+                    ShapeColours::icon_on(scope)
+                } else {
+                    ShapeColours::icon(scope)
+                };
+                paint_icon(layer, bounds, icon, colours.at(down, state.hover_amount));
             }
         }
         clicked
@@ -257,4 +280,11 @@ fn paint_power_button(
             .with_multiplied_alpha(hover_amount);
         layer.quad(circle(POWER_HOVER_RADIUS, hover));
     }
+}
+
+/// An icon filled to fit `bounds` (`OpenGlShapeButtonComponent`'s shape).
+pub fn paint_icon(layer: &mut Layer, bounds: Rect, icon: Icon, colour: Colour) {
+    layer.custom(move |pixels| {
+        fill_path_to_fit(pixels, icon.key(), icon.path(), RectF::from(bounds), colour)
+    });
 }

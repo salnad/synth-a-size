@@ -8,8 +8,6 @@
 //! (`vital/src/interface/editor_sections/filter_section.cpp`) for the Voice
 //! tab's FILTER 1 and 2 (`positionTopBottom`) and the Effects tab's filter
 //! (`positionLeftRight`, [`FilterSection::fx`]).
-//!
-//! The blend arrows' icons come with `controls::icon`.
 
 use std::cell::RefCell;
 
@@ -19,6 +17,8 @@ use super::oscillator::{NAMES as OSCILLATOR_NAMES, NUM_OSCILLATORS};
 use super::{MenuOwner, Panel, FILTER_STYLE_IDS};
 use crate::controls::button::SynthButton;
 use crate::controls::filter_view::{self, model, FilterInputs, Response};
+use crate::controls::icon::fill_path_to_fit;
+use crate::controls::paths::FilterIcon;
 use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
 use crate::controls::slider::{Placement, Slider, SliderStyle};
 use crate::fonts::Face;
@@ -510,7 +510,13 @@ impl FilterSection {
     }
 
     /// `SynthSection::paintBackground` with `FilterSection`'s labels.
-    pub fn paint_background(&self, pixels: &PixelPainter, scope: &Scope, layout: &FilterLayout) {
+    pub fn paint_background(
+        &self,
+        pixels: &PixelPainter,
+        scope: &Scope,
+        layout: &FilterLayout,
+        host: &Host,
+    ) {
         let heading = match self.kind {
             Kind::Voice(_) => Heading::Horizontal,
             Kind::Fx => Heading::Sideways,
@@ -550,6 +556,64 @@ impl FilterSection {
         draw_label(pixels, scope, "MIX", layout.mix, false);
         draw_label_background(pixels, scope, layout.drive, false);
         draw_label_background(pixels, scope, layout.keytrack, false);
+        self.paint_morph_icons(pixels, scope, layout, host);
+    }
+
+    /// The blend's two icons (`getLeftMorphPath` / `getRightMorphPath`)
+    /// either side of the blend slider, in the body text colour.
+    fn paint_morph_icons(
+        &self,
+        pixels: &PixelPainter,
+        scope: &Scope,
+        layout: &FilterLayout,
+        host: &Host,
+    ) {
+        const BLEND_LABEL_PADDING_Y: f32 = 4.0;
+        let model = self.model(host);
+        let style = self.style(host);
+        let size_ratio = scope.size_ratio();
+        let title_width = title_width(scope) as i32;
+        let padding = (size_ratio * BLEND_LABEL_PADDING_Y) as i32;
+        let widget_margin = scope.widget_margin() as i32;
+        let bounds = layout.bounds;
+        let response_y = layout.response.y - bounds.y;
+        let (morph_y, blend_height) = match self.kind {
+            Kind::Voice(_) => (
+                title_width - widget_margin + padding,
+                response_y - title_width + widget_margin,
+            ),
+            Kind::Fx => (padding, response_y),
+        };
+        let morph_width = (size_ratio * BLEND_LABEL_WIDTH) as i32;
+        let morph_height = blend_height - 2 * padding;
+        let left_x = layout.blend.x - bounds.x - morph_width + widget_margin;
+        let right_x = bounds.width - morph_width;
+        let banded = style == 3 || style == 4;
+        let left = match model {
+            model::PHASE => FilterIcon::Phaser1,
+            model::FORMANT => FilterIcon::LeftArrow,
+            _ if banded => FilterIcon::BandPass,
+            model::COMB if style != 0 => FilterIcon::NarrowBand,
+            _ => FilterIcon::LowPass,
+        };
+        let right = match model {
+            model::PHASE => FilterIcon::Phaser3,
+            model::FORMANT => FilterIcon::RightArrow,
+            _ if banded => FilterIcon::Notch,
+            model::COMB if style != 0 => FilterIcon::WideBand,
+            model::DIODE => FilterIcon::BandPass,
+            _ => FilterIcon::HighPass,
+        };
+        let colour = scope.color(ColorId::BodyText);
+        for (icon, x) in [(left, left_x), (right, right_x)] {
+            let area = RectF::new(
+                (bounds.x + x) as f32,
+                (bounds.y + morph_y) as f32,
+                morph_width as f32,
+                morph_height as f32,
+            );
+            fill_path_to_fit(pixels, icon.key(), icon.path(), area, colour);
+        }
     }
 
     /// The controls `showModelKnobs` leaves visible, the labels, the

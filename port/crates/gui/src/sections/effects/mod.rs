@@ -730,7 +730,7 @@ impl EffectsTab {
                     .show(&mut child, host, &pixels, &scope, overlay, bounds, sections),
                 Effect::FilterFx => {
                     let layout = self.filter.layout(&scope, bounds);
-                    self.filter.paint_background(&pixels, &scope, &layout);
+                    self.filter.paint_background(&pixels, &scope, &layout, host);
                     let mut panel = Panel::new(&mut child, host, &pixels, scope, overlay, sections);
                     // Its power button comes with it (`setActivator`).
                     self.filter.show(&mut panel, &layout);

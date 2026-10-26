@@ -136,7 +136,7 @@ impl SynthesisInterface {
         {
             let scope = top.within(filter.skin());
             let filter_layout = filter.layout(&scope, bounds);
-            filter.paint_background(pixels, &scope, &filter_layout);
+            filter.paint_background(pixels, &scope, &filter_layout, host);
             let mut panel = Panel::new(ui, host, pixels, scope, overlay, bounds);
             filter.show(&mut panel, &filter_layout);
             panel.finish();

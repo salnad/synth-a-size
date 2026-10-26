@@ -566,18 +566,6 @@ pub fn off_overlay(scope: &Scope, bounds: Rect) -> Quad {
     )
 }
 
-/// `SynthSection::drawTempoDivider`: a 1-pixel line, half the sync
-/// selector's height, at its left edge.
-pub fn draw_tempo_divider(pixels: &PixelPainter, scope: &Scope, sync: Rect) {
-    const LINE_RATIO: f32 = 0.5;
-    let line_height = (sync.height as f32 * LINE_RATIO) as i32;
-    let y = sync.y + (sync.height - line_height) / 2;
-    pixels.fill_rect(
-        Rect::new(sync.x, y, 1, line_height),
-        scope.color(ColorId::LightenScreen),
-    );
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

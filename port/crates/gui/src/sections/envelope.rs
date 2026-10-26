@@ -4,11 +4,11 @@
 //! An envelope section: delay, attack, hold, decay, sustain and release
 //! under the envelope editor. Ports `EnvelopeSection`
 //! (`vital/src/interface/editor_sections/envelope_section.cpp`).
-//!
-//! The magnifying glass comes later.
 
 use super::Panel;
 use crate::controls::envelope_editor::{EnvelopeEditor, EnvelopeNames};
+use crate::controls::paths::Icon;
+use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
 use crate::controls::slider::{Slider, SliderStyle};
 use crate::layout::Rect;
 use crate::paint::PixelPainter;
@@ -137,6 +137,23 @@ impl EnvelopeSection {
 
     pub fn show(&self, panel: &mut Panel, layout: &EnvelopeLayout) {
         self.editor.show(panel, layout.editor);
+        // DragMagnifyingGlass: a drag zooms, a double click fits the
+        // release.
+        let glass = ShapeButton {
+            shape: Shape::from(Icon::MagnifyingGlass),
+            colours: ShapeColours::icon(&panel.scope),
+        };
+        let event = panel.shape_button(
+            ("magnifying glass", self.editor.names.delay),
+            glass,
+            layout.magnifying_glass,
+        );
+        if event.drag.y != 0.0 {
+            self.editor.magnify_zoom(panel, event.drag.y);
+        }
+        if event.double_clicked {
+            self.editor.magnify_reset(panel, layout.editor);
+        }
         for (knob, bounds) in self.knobs.iter().zip(layout.knobs) {
             panel.slider(knob, bounds);
         }

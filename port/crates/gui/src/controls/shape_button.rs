@@ -9,6 +9,8 @@
 //! upstream's `Paths::prev` / `Paths::next` chevrons; icon paths come with
 //! `controls::icon`.
 
+use super::paths::Icon;
+use super::slider::{DOUBLE_CLICK_TIMEOUT, MULTIPLE_CLICK_DISTANCE};
 use egui::{Id, PointerButton, Sense, Ui};
 
 use crate::colour::Colour;
@@ -68,6 +70,15 @@ impl ShapeColours {
         }
     }
 
+    /// The colour while pressed, or hovered by `hover_amount`.
+    pub fn at(&self, down: bool, hover_amount: f32) -> Colour {
+        if down {
+            self.down
+        } else {
+            self.normal.interpolated_with(self.hover, hover_amount)
+        }
+    }
+
     /// The UI button colours, which a section's preset selector arrows take
     /// (`preset_selector_->setColour(Skin::kIconButtonOff, kUiButton)`, ...).
     pub fn ui(scope: &Scope) -> ShapeColours {
@@ -83,16 +94,26 @@ impl ShapeColours {
 struct ShapeState {
     down: bool,
     hover_amount: f32,
+    /// The last press's time and place, and whether this press followed
+    /// it closely enough to make a double click (JUCE's rules).
+    last_press: Option<(f64, egui::Pos2)>,
+    second_press: bool,
 }
 
 /// What a shape button did this frame.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ShapeEvent {
     /// The primary button went down on it (`setTriggeredOnMouseDown`).
     pub pressed: bool,
     /// It was released over the button after a press on it (JUCE's
     /// `Button::clicked`).
     pub clicked: bool,
+    /// The pointer's move this frame while pressed, in points (JUCE's
+    /// logical pixels), for `mouseDrag`.
+    pub drag: egui::Vec2,
+    /// The release of a double click's second press (`mouseDoubleClick`,
+    /// which JUCE sends after `mouseUp`).
+    pub double_clicked: bool,
 }
 
 /// A shape button's look and what it draws.
@@ -114,17 +135,29 @@ pub fn show(
     bounds: Rect,
 ) -> ShapeEvent {
     let ShapeButton { shape, colours } = button;
-    let response = ui.interact(pixels.rect(bounds.into()), id, Sense::click());
+    let response = ui.interact(pixels.rect(bounds.into()), id, Sense::click_and_drag());
     let mut state: ShapeState = ui.data(|data| data.get_temp(id)).unwrap_or_default();
     let primary_down = ui.input(|input| input.pointer.button_down(PointerButton::Primary));
     let down = (state.down || response.is_pointer_button_down_on()) && primary_down;
     let mut event = ShapeEvent::default();
+    let pointer = ui.input(|input| input.pointer.interact_pos());
     if down && !state.down {
         event.pressed = true;
+        let now = ui.input(|input| input.time);
+        let pos = pointer.unwrap_or_default();
+        state.second_press = state.last_press.is_some_and(|(time, at)| {
+            now - time < DOUBLE_CLICK_TIMEOUT
+                && (pos.x - at.x).abs() < MULTIPLE_CLICK_DISTANCE
+                && (pos.y - at.y).abs() < MULTIPLE_CLICK_DISTANCE
+        });
+        state.last_press = Some((now, pos));
+    } else if down {
+        event.drag = ui.input(|input| input.pointer.delta());
     }
     if state.down && !down {
-        let pointer = ui.input(|input| input.pointer.interact_pos());
         event.clicked = pointer.is_some_and(|pos| response.rect.contains(pos));
+        event.double_clicked = state.second_press;
+        state.second_press = false;
     }
     state.down = down;
 
@@ -140,13 +173,7 @@ pub fn show(
     }
     ui.data_mut(|data| data.insert_temp(id, state));
 
-    let colour = if down {
-        colours.down
-    } else {
-        colours
-            .normal
-            .interpolated_with(colours.hover, state.hover_amount)
-    };
+    let colour = colours.at(down, state.hover_amount);
     match shape {
         Shape::Prev => layer.custom(move |pixels| paint_chevron(pixels, bounds, &PREV, colour)),
         Shape::Next => layer.custom(move |pixels| paint_chevron(pixels, bounds, &NEXT, colour)),
@@ -180,3 +207,12 @@ pub fn paint_chevron(pixels: &PixelPainter, bounds: Rect, path: &[(f32, f32)], c
 pub const PREV: [(f32, f32); 3] = [(0.65, 0.3), (0.35, 0.5), (0.65, 0.7)];
 /// `Paths::next`'s chevron.
 pub const NEXT: [(f32, f32); 3] = [(0.35, 0.3), (0.65, 0.5), (0.35, 0.7)];
+
+impl From<Icon> for Shape {
+    fn from(icon: Icon) -> Shape {
+        Shape::Icon {
+            key: icon.key(),
+            path: icon.path(),
+        }
+    }
+}
