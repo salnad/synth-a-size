@@ -58,7 +58,8 @@ line:
     (`MPEZoneLayout`), `dsp-core/src/denormals.rs` (`ScopedNoDenormals`),
     `plugin/src/processor.rs` (`MidiBuffer::addEvent` ordering).
 
-The seven files with GPL-3.0-only portions say
+The seven files with GPL-3.0-only portions (ten with `path.rs` and the two
+editors) say
 `SPDX-License-Identifier: GPL-3.0-or-later AND GPL-3.0-only`. Their crates
 (`sas-gui`, `sas-plugin`, `sas-preset`, `sas-wavetable`) set
 `license = "GPL-3.0-or-later AND GPL-3.0-only"` in `Cargo.toml` instead of
@@ -78,7 +79,11 @@ the JUCE line. It gets the same `Portions` line, `juce_graphics,
 GPL-3.0-only`, and the compound SPDX line, identical to Tabs Builder's G6a
 branch, so the two merge cleanly. `controls/icon.rs` (its own rasteriser)
 and `controls/shape_button.rs` (upstream's button, with JUCE's behaviour
-only) aren't JUCE translations.
+only) aren't JUCE translations. Two editors merged with #126 and #128,
+`controls/envelope_editor.rs` and `controls/line_editor.rs`, repeat the
+slider's JUCE multiple-click rules (`MouseInputSource`, `mouseDoubleClick`),
+so they get the `juce_gui_basics, GPL-3.0-only` line and the compound SPDX
+line.
 
 **The plugin as a whole is GPLv3 only.** With GPL-3.0-only portions, the
 combined plugin can be distributed under GPL version 3 only. Statements
