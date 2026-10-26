@@ -976,13 +976,21 @@ impl OscillatorSection {
     }
 
     /// The wavetable's name strip and arrows, and the dimension button.
-    /// Browsing wavetables, their names and the edit button come with the
-    /// wavetable view.
+    /// The wavetable's name with its arrows; browsing wavetables and the
+    /// edit button come with the wavetable view.
     fn show_wavetable_buttons(&self, panel: &mut Panel, layout: &OscillatorLayout) {
         let host = panel.host;
         let index = self.index;
         let ui_colours = ShapeColours::ui(&panel.scope);
         let preset = layout.preset_selector;
+        let name = host.model().wavetable_name(index);
+        panel.text_centred(
+            &name,
+            preset.text,
+            Face::Title,
+            preset.text_size,
+            panel.scope.color(ColorId::PresetText),
+        );
         panel.shape_button(
             ("wavetable prev", index),
             ShapeButton {
