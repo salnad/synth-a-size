@@ -34,6 +34,7 @@ use crate::layout::{FullLayout, Rect};
 use crate::local::LocalValues;
 use crate::paint::{PixelPainter, RectF};
 use crate::scope::Scope;
+use crate::sections::advanced::{self, AdvancedLayout, AdvancedTab};
 use crate::sections::bend::{self, BendLayout, BendSection};
 use crate::sections::effects::EffectsTab;
 use crate::sections::extra_mod::{self, ExtraModLayout, ExtraModSection};
@@ -106,6 +107,12 @@ pub trait EditorModel: Send + Sync + 'static {
     /// than their note value (the "hz_frequency" setting, off by default).
     fn hz_frequency_display(&self) -> bool {
         false
+    }
+
+    /// `LoadSave::saveDisplayHzFrequency`: the Advanced tab's frequency
+    /// units changed; keep it for every editor from now on.
+    fn set_hz_frequency_display(&self, hz_frequency: bool) {
+        let _ = hz_frequency;
     }
 
     /// `SynthBase::getTuningName`: the name of the tuning the synth plays.
@@ -289,6 +296,7 @@ pub struct Interface {
     overlay: Overlay,
     locals: Arc<LocalValues>,
     effects: EffectsTab,
+    advanced: AdvancedTab,
 }
 
 impl Default for Interface {
@@ -313,6 +321,7 @@ impl Interface {
             overlay: Overlay::default(),
             locals: Arc::default(),
             effects: EffectsTab::default(),
+            advanced: AdvancedTab::default(),
         }
     }
 
@@ -375,7 +384,7 @@ impl Interface {
             ui.ctx().request_repaint();
         }
         self.show_header(ui, host, &pixels, &layout, live.as_ref());
-        self.show_tab(ui, host, &pixels, &layout);
+        self.show_tab(ui, host, &pixels, &layout, live.as_ref());
         self.show_sections(ui, host, &pixels, &layout);
         self.show_overlay(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
     }
@@ -420,7 +429,14 @@ impl Interface {
     /// The selected tab's contents (`FullInterface::tabSelected` shows one
     /// of the synthesis, effects, matrix and master controls interfaces).
     /// The sections below them show on every tab.
-    fn show_tab(&mut self, ui: &mut Ui, host: &Host, pixels: &PixelPainter, layout: &FullLayout) {
+    fn show_tab(
+        &mut self,
+        ui: &mut Ui,
+        host: &Host,
+        pixels: &PixelPainter,
+        layout: &FullLayout,
+        live: Option<&Live>,
+    ) {
         let top = Scope::top(&self.skin, layout.size_ratio);
         match self.tab {
             Tab::Voice => {
@@ -432,8 +448,17 @@ impl Interface {
                 .show(ui, host, pixels, layout, &top, &mut self.overlay),
             // G4: the modulation matrix.
             Tab::Matrix => {}
-            // G6: the master controls interface, in `layout.main`.
-            Tab::Advanced => {}
+            Tab::Advanced => {
+                let advanced_layout = AdvancedLayout::new(&top, layout.main);
+                let scope = top.within(advanced::SKIN);
+                let mut panel = Panel::new(ui, host, pixels, scope, &mut self.overlay, layout.main);
+                self.advanced.show(
+                    &mut panel,
+                    &advanced_layout,
+                    live.map(|live| live.oscilloscope.as_slice()),
+                );
+                panel.finish();
+            }
         }
     }
 

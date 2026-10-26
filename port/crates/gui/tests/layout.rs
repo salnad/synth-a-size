@@ -301,6 +301,7 @@ fn port_rect(skin: &Skin, layout: &FullLayout, path: &str, preset: Option<&str>)
         "BEND/mod_wheel" => bend.mod_wheel,
         _ if path.starts_with("modulation/") => return modulation_rect(skin, layout, path),
         _ if path.starts_with("extra_mod_section/") => return extra_mod_rect(skin, layout, path),
+        _ if path.starts_with("master_controls/") => return advanced_rect(skin, layout, path),
         _ => return synthesis_rect(skin, layout, path, phase_visible(preset)),
     })
 }
@@ -330,6 +331,33 @@ fn extra_mod_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> 
                 _ => return None,
             }
         }
+    })
+}
+
+/// G6c: the Advanced tab's settings panels.
+fn advanced_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> {
+    use sas_gui::sections::advanced::{
+        self, AdvancedLayout, DisplaySettingsLayout, VoiceSettingsLayout,
+    };
+    let top = Scope::top(skin, layout.size_ratio);
+    let tab = AdvancedLayout::new(&top, layout.main);
+    let scope = top.within(advanced::SKIN);
+    let voice = VoiceSettingsLayout::new(&scope, tab.voice);
+    let display = DisplaySettingsLayout::new(&scope, tab.display);
+    Some(match path.strip_prefix("master_controls/")? {
+        "VOICE" => tab.voice,
+        "VOICE/mpe_enabled" => voice.mpe_enabled,
+        "VOICE/voice_priority" => voice.voice_priority,
+        "VOICE/voice_override" => voice.voice_override,
+        "VOICE/tuning" => voice.tuning,
+        "VOICE/voice_tune" => voice.voice_tune,
+        "VOICE/voice_transpose" => voice.voice_transpose,
+        "OVERSAMPLING" => tab.oversample,
+        "DISPLAY" => tab.display,
+        "DISPLAY/frequency_display" => display.frequency_display,
+        "DISPLAY/skin" => display.skin,
+        "ANALYSIS" => tab.output,
+        _ => return None,
     })
 }
 

@@ -10,6 +10,7 @@
 //! `SynthSection` does for every control: drawing it, routing its popups to
 //! the interface and its changes to the host.
 
+pub mod advanced;
 pub mod bend;
 pub mod effects;
 pub mod envelope;
@@ -70,6 +71,10 @@ pub enum MenuOwner {
     /// An LFO editor's menu; the editor carries out the choice
     /// (`Overlay::line_action`).
     Line(LineAction),
+    /// An editor setting's list (the Advanced tab's tuning, frequency units
+    /// and skin): the choice's id goes to the function, with the egui
+    /// context for any dialog it opens.
+    Setting(fn(&Host, &egui::Context, i32)),
 }
 
 /// Room for each filter model's styles in a [`MenuOwner::FilterType`] id.
@@ -146,6 +151,7 @@ impl Overlay {
                             }
                         }
                         MenuOwner::FilterType { .. } => apply_choice(host, menu.owner, id),
+                        MenuOwner::Setting(then) => then(host, ui.ctx(), id),
                         MenuOwner::Line(action) => {
                             self.line_action = Some(LineAction {
                                 choice: id,
