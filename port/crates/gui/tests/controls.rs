@@ -1953,3 +1953,22 @@ fn dragging_the_response_moves_cutoff_and_resonance() {
         Some("end filter_1_resonance")
     );
 }
+
+/// A release over FIL2 after a press elsewhere isn't a click
+/// (`buttonClicked` needs both on the button).
+#[test]
+fn a_release_over_the_filter_input_after_a_press_elsewhere_changes_nothing() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    fixture.synth.set("filter_2_filter_input", 1.0);
+    harness.step();
+    let f = filter_layout(&fixture, 1);
+    drag(
+        &mut harness,
+        centre(f.title),
+        centre(f.inputs.unwrap()[4]),
+        Modifiers::NONE,
+    );
+    assert_eq!(fixture.synth.value("filter_1_filter_input"), 0.0);
+    assert_eq!(fixture.synth.value("filter_2_filter_input"), 1.0);
+}

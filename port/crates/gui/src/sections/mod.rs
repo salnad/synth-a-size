@@ -324,7 +324,9 @@ impl<'a, 'b> Panel<'a, 'b> {
         self.overlay.text_entry = Some(entry);
     }
 
-    pub fn button(&mut self, button: &SynthButton, bounds: Rect) {
+    /// Returns true when the button was clicked (pressed and released on
+    /// it).
+    pub fn button(&mut self, button: &SynthButton, bounds: Rect) -> bool {
         button.show(
             self.ui,
             self.host,
@@ -332,7 +334,7 @@ impl<'a, 'b> Panel<'a, 'b> {
             &mut self.layer,
             &self.scope,
             bounds,
-        );
+        )
     }
 
     /// A quad drawn with the section's controls.

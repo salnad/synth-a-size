@@ -71,6 +71,8 @@ impl SynthButton {
 
     /// Handles the mouse and draws the button: a press begins the host
     /// gesture, a release over the button toggles the value and ends it.
+    /// Returns true on that toggle (`buttonClicked`): a press and release
+    /// both on the button.
     pub fn show(
         &self,
         ui: &mut Ui,
@@ -79,7 +81,7 @@ impl SynthButton {
         layer: &mut Layer,
         scope: &Scope,
         bounds: Rect,
-    ) {
+    ) -> bool {
         let id = ui.scope_id().with(("synth button", self.name));
         let response = ui.interact(pixels.rect(bounds.into()), id, Sense::click());
         let mut state: ButtonState = ui.data(|data| data.get_temp(id)).unwrap_or_default();
@@ -88,6 +90,7 @@ impl SynthButton {
         if down && !state.down {
             host.begin(self.name);
         }
+        let mut clicked = false;
         if state.down && !down {
             // Button::mouseUp: a release over the button toggles it, however
             // far the pointer moved while it was down.
@@ -95,6 +98,7 @@ impl SynthButton {
             if pointer.is_some_and(|pos| response.rect.contains(pos)) {
                 let toggled = host.value(self.name) != 0.0;
                 host.set(self.name, if toggled { 0.0 } else { 1.0 });
+                clicked = true;
             }
             host.end(self.name);
         }
@@ -127,6 +131,7 @@ impl SynthButton {
                 paint_power_button(layer, scope, bounds, toggled, down, state.hover_amount)
             }
         }
+        clicked
     }
 }
 

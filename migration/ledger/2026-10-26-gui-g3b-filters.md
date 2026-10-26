@@ -13,7 +13,8 @@ which Tabs Builder places (`sections/filter.rs`, `FilterSection::voice` /
   wrap through every model's styles), and the sources it filters: OSC1–3
   and SMP toggle that source's destination (`toggleFilter1/2`), and
   turning on FIL1/FIL2 turns the other filter's input off
-  (`filterSerialSelected`).
+  (`filterSerialSelected`), only on a click (`buttonClicked`: pressed and
+  released on the button; `SynthButton::show` now reports it).
 - The model list is upstream's two-column `DualPopupSelector`
   (`popup::DualMenu`, `Overlay::dual_menu`): models on the left, the
   chosen model's styles on the right, keeping the style when its name
@@ -53,7 +54,8 @@ which Tabs Builder places (`sections/filter.rs`, `FilterSection::voice` /
   (`media/gui/g3b-filter-responses-side-by-side.png`): the curves and the
   sections match apart from the blend icons.
 - Interaction tests: a source input reroutes its oscillator, one filter
-  feeds the other at a time, the arrows wrap through models, the model
+  feeds the other at a time (and a press elsewhere released over FIL2
+  changes nothing, which fails without the fix), the arrows wrap through models, the model
   list picks a model then a style and stays open, and a drag on the
   response moves cutoff and resonance in their gestures.
 - `cargo clippy --workspace --all-targets -D warnings`, `cargo fmt` and the

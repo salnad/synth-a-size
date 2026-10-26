@@ -13,7 +13,7 @@
 
 use std::cell::RefCell;
 
-use egui::{PointerButton, Sense};
+use egui::Sense;
 
 use super::oscillator::{NAMES as OSCILLATOR_NAMES, NUM_OSCILLATORS};
 use super::{MenuOwner, Panel, FILTER_STYLE_IDS};
@@ -732,26 +732,14 @@ impl FilterSection {
         }
         // FilterSection::buttonClicked: turning this filter's input on
         // turns the other's off.
+        // Read before the click: the host may apply its set a frame later.
         let was_on = self.filter_input.is_on(host);
-        panel.button(&self.filter_input, inputs[4]);
-        if !was_on && self.filter_input_clicked(panel, inputs[4]) {
+        if panel.button(&self.filter_input, inputs[4]) && !was_on {
             let other = VOICE_NAMES[2 - index].filter_input;
             if host.value(other) != 0.0 {
                 host.set_once(other, 0.0);
             }
         }
-    }
-
-    /// Whether the filter input button was just released over itself.
-    fn filter_input_clicked(&self, panel: &mut Panel, bounds: Rect) -> bool {
-        let rect = panel.pixels.rect(bounds.into());
-        panel.ui.input(|input| {
-            input.pointer.button_released(PointerButton::Primary)
-                && input
-                    .pointer
-                    .interact_pos()
-                    .is_some_and(|pos| rect.contains(pos))
-        })
     }
 
     /// `FilterResponse`: the curve for both channels (the right one only
