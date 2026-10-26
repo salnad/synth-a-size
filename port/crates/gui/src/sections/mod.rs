@@ -20,6 +20,7 @@ pub mod keyboard;
 pub mod lfo;
 pub mod modulation;
 pub mod oscillator;
+pub mod oscillator_advanced;
 pub mod portamento;
 pub mod random;
 pub mod sample;
@@ -385,12 +386,18 @@ impl<'a, 'b> Panel<'a, 'b> {
         &mut self.layer
     }
 
+    /// `SynthSection::OffOverlay` over `section`, on top of its controls,
+    /// for an inactive section.
+    pub fn off_overlay(&mut self, section: Rect) {
+        self.on_top
+            .quad(crate::section::off_overlay(&self.scope, section));
+    }
+
     /// `SynthSection::setActivator`: the power button and, while it is off,
     /// the overlay over the section (both always on top).
     pub fn activator(&mut self, button: &SynthButton, section: Rect) {
         if !button.is_on(self.host) {
-            self.on_top
-                .quad(crate::section::off_overlay(&self.scope, section));
+            self.off_overlay(section);
         }
         let bounds = crate::section::power_button_bounds(&self.scope, section);
         button.show(

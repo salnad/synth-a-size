@@ -22,6 +22,42 @@ header_section/VOLUME
 header_section/view_spectrogram
 synthesis
 master_controls
+master_controls/OSC 1
+master_controls/OSC 1/OSC 1 OPTIONS
+master_controls/OSC 1/OSC 1 OPTIONS/osc_1_midi_track
+master_controls/OSC 1/OSC 1 OPTIONS/osc_1_smooth_interpolation
+master_controls/OSC 1/OSC 1 UNISON
+master_controls/OSC 1/OSC 1 UNISON/osc_1_stack_style
+master_controls/OSC 1/OSC 1 UNISON/osc_1_unison_blend
+master_controls/OSC 1/OSC 1 UNISON/osc_1_detune_range
+master_controls/OSC 1/OSC 1 UNISON/osc_1_frame_spread
+master_controls/OSC 1/OSC 1 UNISON/osc_1_distortion_spread
+master_controls/OSC 1/OSC 1 UNISON/osc_1_spectral_morph_spread
+master_controls/OSC 1/OSC 1 UNISON/osc_1_stereo_spread
+master_controls/OSC 2
+master_controls/OSC 2/OSC 2 OPTIONS
+master_controls/OSC 2/OSC 2 OPTIONS/osc_2_midi_track
+master_controls/OSC 2/OSC 2 OPTIONS/osc_2_smooth_interpolation
+master_controls/OSC 2/OSC 2 UNISON
+master_controls/OSC 2/OSC 2 UNISON/osc_2_stack_style
+master_controls/OSC 2/OSC 2 UNISON/osc_2_unison_blend
+master_controls/OSC 2/OSC 2 UNISON/osc_2_detune_range
+master_controls/OSC 2/OSC 2 UNISON/osc_2_frame_spread
+master_controls/OSC 2/OSC 2 UNISON/osc_2_distortion_spread
+master_controls/OSC 2/OSC 2 UNISON/osc_2_spectral_morph_spread
+master_controls/OSC 2/OSC 2 UNISON/osc_2_stereo_spread
+master_controls/OSC 3
+master_controls/OSC 3/OSC 3 OPTIONS
+master_controls/OSC 3/OSC 3 OPTIONS/osc_3_midi_track
+master_controls/OSC 3/OSC 3 OPTIONS/osc_3_smooth_interpolation
+master_controls/OSC 3/OSC 3 UNISON
+master_controls/OSC 3/OSC 3 UNISON/osc_3_stack_style
+master_controls/OSC 3/OSC 3 UNISON/osc_3_unison_blend
+master_controls/OSC 3/OSC 3 UNISON/osc_3_detune_range
+master_controls/OSC 3/OSC 3 UNISON/osc_3_frame_spread
+master_controls/OSC 3/OSC 3 UNISON/osc_3_distortion_spread
+master_controls/OSC 3/OSC 3 UNISON/osc_3_spectral_morph_spread
+master_controls/OSC 3/OSC 3 UNISON/osc_3_stereo_spread
 master_controls/VOICE
 master_controls/VOICE/mpe_enabled
 master_controls/VOICE/voice_priority

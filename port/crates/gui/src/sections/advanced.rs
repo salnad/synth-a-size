@@ -28,6 +28,7 @@ use crate::section::{
     draw_label, draw_text_component_background, paint_border, paint_container, paint_heading_text,
     paint_tab_shadow, title_width, Heading,
 };
+use crate::sections::oscillator_advanced::{OscillatorAdvancedLayout, OscillatorAdvancedSection};
 use crate::sections::synthesis::SynthesisLayout;
 use crate::skin::{ColorId, Section, ValueId};
 
@@ -349,6 +350,7 @@ pub struct AdvancedTab {
     mpe_enabled: SynthButton,
     /// The output spectrogram's running amplitudes.
     spectrogram: RefCell<SpectrogramAnalysis>,
+    oscillators: [OscillatorAdvancedSection; 3],
 }
 
 impl Default for AdvancedTab {
@@ -363,15 +365,15 @@ impl Default for AdvancedTab {
                 .sensitivity(TRANSPOSE_MOUSE_SENSITIVITY),
             mpe_enabled: SynthButton::text("mpe_enabled", "MPE ENABLED"),
             spectrogram: RefCell::default(),
+            oscillators: std::array::from_fn(OscillatorAdvancedSection::new),
         }
     }
 }
 
 impl AdvancedTab {
-    /// `MasterControlsInterface`: each panel's background, then its
-    /// controls. `oscilloscope` is the telemetry's oscilloscope memory (none
-    /// without an engine). The oscillators' advanced sections come with
-    /// G6c's second part.
+    /// `MasterControlsInterface`: the oscillators' advanced sections, then
+    /// each settings panel's background and controls. `oscilloscope` is the
+    /// telemetry's oscilloscope memory (none without an engine).
     pub fn show(
         &self,
         panel: &mut Panel,
@@ -380,6 +382,9 @@ impl AdvancedTab {
     ) {
         let pixels = panel.pixels;
         let scope = panel.scope;
+        for (section, bounds) in self.oscillators.iter().zip(layout.oscillators) {
+            section.show(panel, &OscillatorAdvancedLayout::new(&scope, bounds));
+        }
         for bounds in [
             layout.voice,
             layout.oversample,

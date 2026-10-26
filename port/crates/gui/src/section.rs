@@ -87,12 +87,27 @@ pub fn draw_label(
     bounds: Rect,
     text_component: bool,
 ) {
+    let (_, size, _) = label_font(scope);
+    draw_label_with_size(pixels, scope, text, bounds, text_component, size);
+}
+
+/// `SynthSection::drawLabel` in the label face and colour at point height
+/// `size`, for sections that set their own font before drawing labels (the
+/// reverb's `size_ratio * 10`).
+pub fn draw_label_with_size(
+    pixels: &PixelPainter,
+    scope: &Scope,
+    text: &str,
+    bounds: Rect,
+    text_component: bool,
+    size: f32,
+) {
     if bounds.width <= 0 || bounds.height <= 0 {
         return;
     }
     draw_label_background(pixels, scope, bounds, text_component);
     let background = label_background_bounds(scope, bounds, text_component);
-    let (face, size, colour) = label_font(scope);
+    let (face, _, colour) = label_font(scope);
     let text_bounds = Rect::new(bounds.x, background.y, bounds.width, background.height);
     pixels.text_centred(text, text_bounds, face, size, colour);
 }
