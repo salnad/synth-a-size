@@ -6,9 +6,11 @@ use std::sync::{Arc, Mutex};
 
 use nice_plug::context::gui::GuiContext;
 use sas_engine::keyboard::KeyboardHandle;
+use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::telemetry::Telemetry;
 use sas_engine::Tuning;
 use sas_gui::{ChatHost, EditorModel, HostParam};
+use sas_preset::SampleState;
 
 use crate::chat::PluginChat;
 use crate::midi_learn::MidiLearn;
@@ -97,6 +99,37 @@ impl EditorModel for PluginModel {
         self.params
             .edit_handle()
             .with_document(|document| document.tuning.clone())
+    }
+
+    fn wavetable(&self, oscillator: usize) -> Option<Arc<Wavetable>> {
+        self.params.edit_handle().wavetable(oscillator)
+    }
+
+    fn wavetable_name(&self, oscillator: usize) -> String {
+        self.params.edit_handle().with_document(|document| {
+            document
+                .state
+                .wavetables
+                .get(oscillator)
+                .map(|creator| creator.name.clone())
+                .unwrap_or_default()
+        })
+    }
+
+    fn with_sample(&self, f: &mut dyn FnMut(&SampleState)) {
+        self.params
+            .edit_handle()
+            .with_document(|document| f(&document.state.sample));
+    }
+
+    fn sample_name(&self) -> String {
+        self.params
+            .edit_handle()
+            .with_document(|document| document.state.sample.name.clone())
+    }
+
+    fn content_revision(&self) -> u64 {
+        self.params.edit_handle().revision()
     }
 
     fn load_tuning(&self, tuning: Tuning) {
@@ -261,5 +294,49 @@ mod tests {
             consumer.pop().map(|(_, message)| message),
             Some([0x80, 60, 0])
         );
+    }
+
+    #[test]
+    fn wavetables_and_the_sample_follow_edits() {
+        let (edits, _consumer) =
+            EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+        let params = Arc::new(SynthParams::new(edits));
+        let (_writer, telemetry) = Telemetry::new(Arc::default());
+        let model = PluginModel::new(
+            params.clone(),
+            telemetry,
+            keyboard().0,
+            Arc::new(MidiLearn::in_memory()),
+            None,
+        );
+        assert_eq!(model.wavetable_name(0), "Init");
+        let init = model.wavetable(0).unwrap();
+        assert!(model.wavetable(3).is_none());
+        assert_eq!(model.wavetable_name(3), "");
+        // Shared, not rendered again, until it changes.
+        assert!(Arc::ptr_eq(&init, &model.wavetable(0).unwrap()));
+
+        let revision = model.content_revision();
+        let edits = params.edit_handle();
+        let mut creator = edits.with_document(|document| document.state.wavetables[1].clone());
+        creator.name = "Saw Stack".to_string();
+        edits.set_wavetable(1, creator).unwrap();
+        assert_eq!(model.wavetable_name(1), "Saw Stack");
+        assert_eq!(model.wavetable_name(0), "Init");
+        assert!(model.content_revision() > revision);
+
+        let revision = model.content_revision();
+        let sample = SampleState {
+            name: "Breath".to_string(),
+            sample_rate: 44100,
+            left: vec![0.0, 0.5, -0.25, 1.0],
+            right: None,
+        };
+        edits.set_sample(sample).unwrap();
+        assert_eq!(model.sample_name(), "Breath");
+        let mut left = Vec::new();
+        model.with_sample(&mut |sample| left.extend_from_slice(&sample.left));
+        assert_eq!(left, [0.0, 0.5, -0.25, 1.0]);
+        assert!(model.content_revision() > revision);
     }
 }

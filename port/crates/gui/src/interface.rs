@@ -15,8 +15,12 @@
 //! rule 2).
 
 use egui::{Ui, UiBuilder};
+use std::sync::Arc;
+
+use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::telemetry::Telemetry;
 use sas_engine::Tuning;
+use sas_preset::SampleState;
 
 use crate::chat::{ChatPlacement, ChatStyle};
 use crate::colour::Colour;
@@ -141,6 +145,38 @@ pub trait EditorModel: Send + Sync + 'static {
     /// The LLM chat, if the plugin has one.
     fn chat(&self) -> Option<&dyn crate::chat::ChatHost> {
         None
+    }
+
+    /// Oscillator `oscillator`'s rendered wavetable, for drawing
+    /// (`SynthBase::getWavetable`), shared rather than copied. None for an
+    /// index past the oscillators, or without an engine.
+    fn wavetable(&self, _oscillator: usize) -> Option<Arc<Wavetable>> {
+        None
+    }
+
+    /// The name oscillator `oscillator`'s wavetable shows
+    /// (`FullInterface::getWavetableName`: its creator's name).
+    fn wavetable_name(&self, _oscillator: usize) -> String {
+        String::new()
+    }
+
+    /// Calls `f` with the sample oscillator's audio, read in place: nothing
+    /// is copied. `left` is the mono or left channel `SampleViewer` draws
+    /// (`Sample::buffer`, `originalLength`). Keep `f` short; the plugin may
+    /// hold a lock while it runs.
+    fn with_sample(&self, _f: &mut dyn FnMut(&SampleState)) {}
+
+    /// `Sample::getName`.
+    fn sample_name(&self) -> String {
+        String::new()
+    }
+
+    /// Moves on whenever the wavetables, the sample or anything else the
+    /// plugin keeps besides its host parameters may have changed (each
+    /// edit, preset load and state restore), so drawings of them can be
+    /// cached against it.
+    fn content_revision(&self) -> u64 {
+        0
     }
 }
 
