@@ -50,8 +50,9 @@
     a host that applies sets a frame late can't skew them (#118).
 - `controls::bars::BarRenderer` (`BarRenderer`), drawn with #108's
   `QuadKind::Bar`; bars at non-finite positions are skipped.
-- `Colour::float_alpha`, `Colour::with_alpha` and `Colour::overlaid_with`
-  (JUCE's `getFloatAlpha`, `withAlpha(float)` and `overlaidWith`).
+- `Colour::float_alpha`, `Colour::with_float_alpha` and
+  `Colour::overlaid_with` (JUCE's `getFloatAlpha`, `withAlpha(float)` and
+  `overlaidWith`; #125 has the byte `withAlpha` as `with_alpha`).
   `colour.rs` gets rule 1's JUCE line (`juce_graphics`, GPL-3.0-only),
   as #120 gives it.
 - Side-by-side views: the gallery loads a view's preset, and a view can
