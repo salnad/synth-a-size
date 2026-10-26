@@ -88,10 +88,14 @@ repeat the check in FL Studio where the note says so.
    takes). If upstream reaches 100%, its 200 is in physical pixels on
    Retina and the port should halve its drag length at display scale 2.
    Record the answer next to D15 in `DIVERGENCES.md`.
-   - *REAPER:* settles it. The question is how upstream measures drags
-     against macOS's display scale, not anything the host does, so a
+   - *REAPER:* settles it, if both editors run at display scale 2. The
+     question is how upstream measures drags against the window's backing
+     scale (`getDisplayScale()`), not anything the host does, so a
      side-by-side in REAPER answers D15 (upstream's VST3 is needed there
-     too).
+     too). Precondition: REAPER is not set to "Open in Low Resolution"
+     (Finder, Get Info), and both editors' text is crisp, not blurred. In
+     low resolution the backing scale is 1, both sides measure in points,
+     and the check doesn't settle D15.
 3. **A learned knob with the editor open (D16).** MIDI-learn a knob
    (right-click a control, learn, turn a hardware knob), keep the editor
    open, start playback and turn the hardware knob steadily for a few

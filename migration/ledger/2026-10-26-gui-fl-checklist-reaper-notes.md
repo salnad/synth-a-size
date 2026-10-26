@@ -11,7 +11,11 @@ there and what a REAPER answer settles:
 - Keyboard focus (G1) runs in REAPER, with its "Send all keyboard input to
   plug-in" option off and on, but only answers for REAPER.
 - Knob drag speed (G2, D15) is about upstream and display scale, not the
-  host, so a REAPER side-by-side settles it.
+  host, so a REAPER side-by-side settles it, but only at display scale 2:
+  REAPER must not be set to "Open in Low Resolution", and both editors'
+  text must be crisp. Otherwise upstream's `getDisplayScale()` reads the
+  window's backing scale as 1, both sides measure in points, and the check
+  settles nothing.
 - A learned knob with the editor open (D16) gives an interim answer. The
   echo, the automation curve and undo steps are the host's, so all three
   are repeated in FL Studio.
