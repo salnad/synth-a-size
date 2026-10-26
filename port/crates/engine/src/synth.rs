@@ -14,14 +14,17 @@
 //! [`ModulationChange`]s and queued, and the queue is applied before the
 //! next audio (`processModulationChanges`).
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use sas_common::LineGenerator;
 use sas_dsp_core::constants::MAX_MODULATION_CONNECTIONS;
+use sas_dsp_core::memory::StereoMemory;
 use sas_dsp_core::sas_simd::{utils, PolyFloat};
 use sas_dsp_core::{Output, ProcessorRef, StatusOutput};
+use sas_effects::reorderable_effect_chain::ReorderableEffectChain;
 use sas_modulation::ModulationConnectionProcessor;
 use sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_oscillators::sas_wavetable::Wavetable;
@@ -104,6 +107,12 @@ pub struct Synth {
     oscilloscope: OscilloscopeMemory,
     /// `audio_memory_`.
     audio_memory: Arc<AudioMemory>,
+    /// `getEqualizerMemory()`: the equalizer module's output memory, which
+    /// the audio thread copies into `equalizer_memory` after each block.
+    equalizer_source: Option<Rc<RefCell<StereoMemory>>>,
+    /// The source's write offset at the last copy.
+    equalizer_offset: u32,
+    equalizer_memory: Arc<AudioMemory>,
     /// Controls a learned MIDI controller set, in order, for the host
     /// (`SynthBase::valueChangedThroughMidi`'s `setValueNotifyHost`). Callers
     /// drain it after every message, and one message sets each parameter at
@@ -142,6 +151,9 @@ impl Synth {
             modulation_totals: Vec::new(),
             oscilloscope: OscilloscopeMemory::default(),
             audio_memory: Arc::new(AudioMemory::default()),
+            equalizer_source: None,
+            equalizer_offset: 0,
+            equalizer_memory: Arc::new(AudioMemory::default()),
             midi_value_changes: Vec::with_capacity(registry().parameters().len()),
         };
         synth.status_outputs = status_names()
@@ -690,6 +702,7 @@ impl Synth {
             let frame = output.at(i);
             self.audio_memory.push(frame.get(0), frame.get(1));
         }
+        self.copy_equalizer_memory();
 
         let (last_played, num_pressed) = self
             .with_engine(|engine| (engine.last_active_note(), engine.num_pressed_notes() as i32));
@@ -734,6 +747,42 @@ impl Synth {
         memory.input_offset -= samples as i32;
     }
 
+    /// Copies what the equalizer wrote this block into the editor's copy of
+    /// its memory. A bypassed equalizer writes nothing, so its memory holds
+    /// its last output, as upstream's does.
+    fn copy_equalizer_memory(&mut self) {
+        if self.equalizer_source.is_none() {
+            self.equalizer_source = self.with_engine(|engine| {
+                engine
+                    .effect_chain()
+                    .with::<ReorderableEffectChain, _>(|chain, _| chain.get_equalizer_memory())
+            });
+            let Some(source) = &self.equalizer_source else {
+                return;
+            };
+            self.equalizer_offset = source.borrow().offset();
+        }
+        let Some(source) = &self.equalizer_source else {
+            return;
+        };
+        let memory = source.borrow();
+        let mask = memory.size() as u32 - 1;
+        let offset = memory.offset();
+        let fresh = offset.wrapping_sub(self.equalizer_offset) & mask;
+        let (left, right) = (memory.buffer(0), memory.buffer(1));
+        for k in 1..=fresh {
+            let index = (self.equalizer_offset.wrapping_add(k) & mask) as usize;
+            self.equalizer_memory.push(left[index], right[index]);
+        }
+        self.equalizer_offset = offset;
+    }
+
+    /// The equalizer's output memory (`SynthBase::getEqualizerMemory`),
+    /// shared with the editor.
+    pub fn equalizer_memory(&self) -> Arc<AudioMemory> {
+        self.equalizer_memory.clone()
+    }
+
     /// The spectrogram's audio memory (`SynthBase::audio_memory_`), shared
     /// with the editor.
     pub fn audio_memory(&self) -> Arc<AudioMemory> {
@@ -756,6 +805,9 @@ impl Synth {
         for (frame, value) in oscilloscope.iter_mut().zip(self.oscilloscope.memory.iter()) {
             *frame = [value.get(0), value.get(1)];
         }
+        let snapshot = writer.snapshot_mut();
+        snapshot.sample_rate = self.engine.sample_rate();
+        snapshot.oversampling_amount = self.with_engine(|engine| engine.oversampling_amount());
         writer.publish();
     }
 

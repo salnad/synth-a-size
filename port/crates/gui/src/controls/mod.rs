@@ -17,6 +17,7 @@ pub mod path;
 pub mod paths;
 pub mod shape_button;
 pub mod slider;
+pub mod spectrogram;
 pub mod tab_selector;
 pub mod tempo;
 pub mod transpose_quantize;

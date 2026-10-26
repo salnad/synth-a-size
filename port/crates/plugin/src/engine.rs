@@ -81,6 +81,12 @@ pub trait Engine: Send + 'static {
         None
     }
 
+    /// The equalizer's output memory, for the EQ section's spectrogram
+    /// (`SynthBase::getEqualizerMemory`), if the engine has one.
+    fn equalizer_memory(&self) -> Option<Arc<AudioMemory>> {
+        None
+    }
+
     /// Fills and publishes the editor's telemetry snapshot at the end of a
     /// block. An engine without telemetry publishes nothing.
     fn publish_telemetry(&mut self, _telemetry: &mut TelemetryWriter) {}
