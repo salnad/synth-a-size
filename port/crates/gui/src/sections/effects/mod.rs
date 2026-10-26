@@ -6,11 +6,15 @@
 //! (`vital/src/interface/editor_sections/effects_interface.cpp`).
 
 pub mod chorus;
+pub mod compressor;
 pub mod delay;
 pub mod distortion;
+pub mod equalizer;
+pub mod equalizer_response;
 pub mod flanger;
 pub mod order;
 pub mod phaser;
+pub mod reverb;
 pub mod viewers;
 
 use crate::layout::Rect;
@@ -262,11 +266,15 @@ use egui::{Sense, Ui, UiBuilder};
 use sas_preset::upgrade::{decode_float_to_order, encode_order_to_float};
 
 use self::chorus::ChorusSection;
+use self::compressor::CompressorSection;
 use self::delay::DelaySection;
 use self::distortion::DistortionSection;
+use self::equalizer::EqualizerSection;
 use self::flanger::FlangerSection;
 use self::order::{effect_index_from_y, effect_y, OrderLayout};
 use self::phaser::PhaserSection;
+use self::reverb::ReverbSection;
+use super::filter::FilterSection;
 use super::{Overlay, Panel};
 use crate::colour::Colour;
 use crate::controls::button::SynthButton;
@@ -328,15 +336,22 @@ pub struct EffectsTab {
     /// Whether that press began on the thumb, so a drag moves it
     /// (`ScrollBar::isDraggingThumb`).
     scroll_thumb_drag: bool,
+    /// When a press held beside the thumb pages again
+    /// (`ScrollBar::timerCallback`), in egui's time.
+    scroll_page_at: Option<f64>,
     drag: Option<Drag>,
     /// `currently_hovered_`: the tile under the pointer.
     hovered: Option<usize>,
     power_buttons: [SynthButton; NUM_EFFECTS],
     chorus: ChorusSection,
+    compressor: CompressorSection,
     delay: DelaySection,
     distortion: DistortionSection,
+    equalizer: EqualizerSection,
     flanger: FlangerSection,
     phaser: PhaserSection,
+    reverb: ReverbSection,
+    filter: FilterSection,
 }
 
 impl Default for EffectsTab {
@@ -346,14 +361,19 @@ impl Default for EffectsTab {
             scroll_hover: -1.0,
             scroll_pressed: false,
             scroll_thumb_drag: false,
+            scroll_page_at: None,
             drag: None,
             hovered: None,
             power_buttons: Effect::ALL.map(|effect| SynthButton::power(effect.enable_control())),
             chorus: ChorusSection::default(),
+            compressor: CompressorSection::default(),
             delay: DelaySection::default(),
             distortion: DistortionSection::default(),
+            equalizer: EqualizerSection::default(),
             flanger: FlangerSection::default(),
             phaser: PhaserSection::default(),
+            reverb: ReverbSection::default(),
+            filter: FilterSection::fx(),
         }
     }
 }
@@ -586,20 +606,46 @@ impl EffectsTab {
             let ppp = pixels.pixels_per_point();
             let total = fx.container.height as f32;
             let scale = total / fx.scroll_bar.height as f32;
-            let pressed = ui.input(|input| input.pointer.primary_pressed());
+            /// `ScrollBar::mouseDown`'s first timer, then `timerCallback`'s.
+            const FIRST_REPEAT: f64 = 0.4;
+            const REPEAT: f64 = 0.04;
+            let (pressed, now) = ui.input(|input| (input.pointer.primary_pressed(), input.time));
+            let page_towards = |scroll: &mut f32, pos: egui::Pos2| -> bool {
+                let y = (pos.y - bar.min.y) * ppp * scale;
+                let page = fx.viewport.height as f32;
+                if y < *scroll {
+                    *scroll -= page;
+                } else if y > *scroll + page {
+                    *scroll += page;
+                } else {
+                    return false;
+                }
+                true
+            };
             if pressed && response.is_pointer_button_down_on() {
                 self.scroll_thumb_drag = false;
+                self.scroll_page_at = None;
                 if let Some(pos) = response.interact_pointer_pos() {
-                    let y = (pos.y - bar.min.y) * ppp * scale;
-                    let page = fx.viewport.height as f32;
-                    if y < self.scroll {
-                        self.scroll -= page;
-                    } else if y > self.scroll + page {
-                        self.scroll += page;
+                    if page_towards(&mut self.scroll, pos) {
+                        self.scroll_page_at = Some(now + FIRST_REPEAT);
                     } else {
                         self.scroll_thumb_drag = true;
                     }
                 }
+            } else if response.is_pointer_button_down_on() {
+                // A press held beside the thumb keeps paging towards the
+                // pointer while it stays beside it.
+                if let (Some(at), Some(pos)) =
+                    (self.scroll_page_at, response.interact_pointer_pos())
+                {
+                    if now >= at {
+                        page_towards(&mut self.scroll, pos);
+                        self.scroll_page_at = Some(now + REPEAT);
+                    }
+                    ui.ctx().request_repaint();
+                }
+            } else {
+                self.scroll_page_at = None;
             }
             if response.dragged() && self.scroll_thumb_drag {
                 self.scroll += response.drag_delta().y * ppp * scale;
@@ -640,7 +686,15 @@ impl EffectsTab {
                 .id_salt("effect sections")
                 .max_rect(ui.max_rect()),
         );
-        child.set_clip_rect(clip);
+        // The scroll bar is on top of the column's right edge (it's added
+        // after the viewport upstream), so the sections stop short of it.
+        let sections = Rect::new(
+            fx.viewport.x,
+            fx.viewport.y,
+            fx.scroll_bar.x - fx.viewport.x,
+            fx.viewport.height,
+        );
+        child.set_clip_rect(pixels.rect(sections.into()));
         let scroll = self.scroll.round() as i32;
         for effect in Effect::ALL {
             let index = effect as usize;
@@ -650,57 +704,42 @@ impl EffectsTab {
             let bounds = bounds.translated(0, -scroll);
             let scope = top.within(effect.skin());
             match effect {
-                Effect::Chorus => self.chorus.show(
-                    &mut child,
-                    host,
-                    &pixels,
-                    &scope,
-                    overlay,
-                    bounds,
-                    fx.viewport,
-                ),
-                Effect::Delay => self.delay.show(
-                    &mut child,
-                    host,
-                    &pixels,
-                    &scope,
-                    overlay,
-                    bounds,
-                    fx.viewport,
-                ),
-                Effect::Distortion => self.distortion.show(
-                    &mut child,
-                    host,
-                    &pixels,
-                    &scope,
-                    overlay,
-                    bounds,
-                    fx.viewport,
-                ),
-                Effect::Flanger => self.flanger.show(
-                    &mut child,
-                    host,
-                    &pixels,
-                    &scope,
-                    overlay,
-                    bounds,
-                    fx.viewport,
-                ),
-                Effect::Phaser => self.phaser.show(
-                    &mut child,
-                    host,
-                    &pixels,
-                    &scope,
-                    overlay,
-                    bounds,
-                    fx.viewport,
-                ),
-                // G6b (compressor, EQ, reverb) and G3b's filter: the section
-                // body until then.
-                _ => paint_section_background(&pixels, &scope, effect, bounds, &[], &[]),
+                Effect::Chorus => self
+                    .chorus
+                    .show(&mut child, host, &pixels, &scope, overlay, bounds, sections),
+                Effect::Compressor => self
+                    .compressor
+                    .show(&mut child, host, &pixels, &scope, overlay, bounds, sections),
+                Effect::Delay => self
+                    .delay
+                    .show(&mut child, host, &pixels, &scope, overlay, bounds, sections),
+                Effect::Distortion => self
+                    .distortion
+                    .show(&mut child, host, &pixels, &scope, overlay, bounds, sections),
+                Effect::Eq => self
+                    .equalizer
+                    .show(&mut child, host, &pixels, &scope, overlay, bounds, sections),
+                Effect::Flanger => self
+                    .flanger
+                    .show(&mut child, host, &pixels, &scope, overlay, bounds, sections),
+                Effect::Phaser => self
+                    .phaser
+                    .show(&mut child, host, &pixels, &scope, overlay, bounds, sections),
+                Effect::Reverb => self
+                    .reverb
+                    .show(&mut child, host, &pixels, &scope, overlay, bounds, sections),
+                Effect::FilterFx => {
+                    let layout = self.filter.layout(&scope, bounds);
+                    self.filter.paint_background(&pixels, &scope, &layout);
+                    let mut panel = Panel::new(&mut child, host, &pixels, scope, overlay, sections);
+                    // Its power button comes with it (`setActivator`).
+                    self.filter.show(&mut panel, &layout);
+                    panel.finish();
+                    continue;
+                }
             }
             // SynthSection::setActivator: the power button tops the heading.
-            let mut panel = Panel::new(&mut child, host, &pixels, scope, overlay, fx.viewport);
+            let mut panel = Panel::new(&mut child, host, &pixels, scope, overlay, sections);
             panel.button(
                 &self.power_buttons[index],
                 section::power_button_bounds(&scope, bounds),

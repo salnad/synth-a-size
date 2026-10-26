@@ -265,13 +265,15 @@ impl Path {
     /// the same way, so their non-zero fill is the stroke.
     ///
     /// # Panics
-    /// For the styles not ported yet: only mitred joints with butt ends
-    /// are (`PathStrokeType(thickness)`'s defaults, and the SVG parser's).
+    /// For the styles not ported yet, bevelled joints and square ends.
+    /// Mitred and curved joints, and butt and rounded ends, are.
     pub fn stroked(&self, thickness: f32, joints: JointStyle, ends: EndCapStyle) -> Path {
         assert!(
-            joints == JointStyle::Mitered && ends == EndCapStyle::Butt,
+            joints != JointStyle::Beveled && ends != EndCapStyle::Square,
             "PathStrokeType {joints:?} joints with {ends:?} ends are not ported yet"
         );
+        let curved = joints == JointStyle::Curved;
+        let rounded = ends == EndCapStyle::Rounded;
         let half = thickness / 2.0;
         // PathStrokeType's maxMiterExtensionSquared (9 × thickness²).
         let max_miter_squared = 9.0 * thickness * thickness;
@@ -302,9 +304,22 @@ impl Path {
                     (a.0 - ox, a.1 - oy),
                 ]);
             }
+            if rounded && !subpath.closed {
+                // EndCapStyle::rounded: a half disc past each end, which
+                // under the non-zero fill is a whole disc at the end.
+                out.add_disc(points[0], half);
+                out.add_disc(points[count - 1], half);
+            }
             let joints = if subpath.closed { count } else { count - 2 };
             for j in 0..joints {
                 let index = if subpath.closed { j } else { j + 1 };
+                if curved {
+                    // JointStyle::curved: an arc round the outer side of
+                    // the turn, which with the segments' overlap is a disc
+                    // at the corner.
+                    out.add_disc(points[index], half);
+                    continue;
+                }
                 let previous = points[(index + count - 1) % count];
                 let corner = points[index];
                 let next = points[(index + 1) % count];
@@ -334,6 +349,24 @@ impl Path {
             }
         }
         out
+    }
+
+    /// A disc of `radius` at `centre`, flattened like the arcs.
+    fn add_disc(&mut self, centre: (f32, f32), radius: f32) {
+        if radius <= 0.0 {
+            return;
+        }
+        let steps = ((2.0 * PI / ARC_ANGLE_INCREMENT) as usize).max(8);
+        let points: Vec<(f32, f32)> = (0..steps)
+            .map(|i| {
+                let angle = 2.0 * PI * i as f32 / steps as f32;
+                (
+                    centre.0 + radius * angle.sin(),
+                    centre.1 - radius * angle.cos(),
+                )
+            })
+            .collect();
+        self.add_polygon(&points);
     }
 
     /// A closed polygon, wound clockwise on screen whatever its order.
@@ -636,7 +669,43 @@ mod tests {
         let mut line = Path::new();
         line.move_to(0.0, 0.0);
         line.line_to(10.0, 0.0);
-        let _ = line.stroked(2.0, JointStyle::Curved, EndCapStyle::Rounded);
+        let _ = line.stroked(2.0, JointStyle::Beveled, EndCapStyle::Square);
+    }
+
+    /// Curved joints and rounded ends (`Paths::createFilterStroke`): the
+    /// stroke reaches half its thickness past each end and round the outer
+    /// side of each turn, never further.
+    #[test]
+    fn curved_joints_and_rounded_ends_stay_within_half_the_thickness() {
+        let mut line = Path::new();
+        line.move_to(0.0, 0.0);
+        line.line_to(10.0, 0.0);
+        line.line_to(10.0, 10.0);
+        let stroke = line.stroked(2.0, JointStyle::Curved, EndCapStyle::Rounded);
+        let (l, t, r, b) = stroke.bounds().unwrap();
+        // Rounded ends reach 1 past (0, 0) and (10, 10).
+        assert!((l + 1.0).abs() < 1e-3 && (t + 1.0).abs() < 1e-3);
+        assert!((r - 11.0).abs() < 1e-3 && (b - 11.0).abs() < 1e-3);
+        // The curved corner stays within 1 of (10, 0), where a mitre would
+        // reach (11, -1), √2 away.
+        let farthest = stroke
+            .subpaths()
+            .iter()
+            .flat_map(|subpath| subpath.points.iter())
+            .map(|&(x, y)| ((x - 10.0).powi(2) + y.powi(2)).sqrt())
+            .filter(|&distance| distance < 2.0)
+            .fold(0.0f32, f32::max);
+        assert!(farthest <= 1.0 + 1e-3, "{farthest}");
+        // Every piece is wound the same way.
+        for subpath in stroke.subpaths() {
+            let points = &subpath.points;
+            let area: f32 = points
+                .iter()
+                .zip(points.iter().cycle().skip(1))
+                .map(|(a, b)| a.0 * b.1 - b.0 * a.1)
+                .sum();
+            assert!(area >= 0.0);
+        }
     }
 
     /// JUCE's flattening goes on from a closed sub-path's start, so a line

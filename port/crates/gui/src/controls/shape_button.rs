@@ -22,7 +22,7 @@ use crate::skin::ColorId;
 const HOVER_INC: f32 = 0.2;
 
 /// What a shape button draws.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Shape {
     /// `Paths::prev`.
     Prev,
@@ -33,6 +33,12 @@ pub enum Shape {
     /// A `SynthButton` with `setNoBackground` (`kJustText`) that isn't a
     /// parameter: its text in the button font.
     Text(&'static str),
+    /// `setShape(path)`: a path filled to fit the button
+    /// (`getTransformToScaleToFit`), cached under `key`.
+    Icon {
+        key: &'static str,
+        path: &'static super::path::Path,
+    },
 }
 
 /// `OpenGlShapeButtonComponent::setColors`: off, hover and pressed.
@@ -50,6 +56,15 @@ impl ShapeColours {
             normal: scope.color(ColorId::IconButtonOff),
             hover: scope.color(ColorId::IconButtonOffHover),
             down: scope.color(ColorId::IconButtonOffPressed),
+        }
+    }
+
+    /// The icon button's on colours (`useOnColors`), for a toggled button.
+    pub fn icon_on(scope: &Scope) -> ShapeColours {
+        ShapeColours {
+            normal: scope.color(ColorId::IconButtonOn),
+            hover: scope.color(ColorId::IconButtonOnHover),
+            down: scope.color(ColorId::IconButtonOnPressed),
         }
     }
 
@@ -136,6 +151,9 @@ pub fn show(
         Shape::Prev => layer.custom(move |pixels| paint_chevron(pixels, bounds, &PREV, colour)),
         Shape::Next => layer.custom(move |pixels| paint_chevron(pixels, bounds, &NEXT, colour)),
         Shape::None => {}
+        Shape::Icon { key, path } => layer.custom(move |pixels| {
+            super::icon::fill_path_to_fit(pixels, key, path, bounds.into(), colour)
+        }),
         Shape::Text(text) => {
             let size = scope.value(crate::skin::ValueId::ButtonFontSize);
             layer.text_centred(text, bounds, crate::fonts::Face::Mono, size, colour);
