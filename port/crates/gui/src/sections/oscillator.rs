@@ -11,6 +11,7 @@
 //! the text-to-wavetable field and the edit button's action come later.
 
 use super::{MenuOwner, Panel};
+use crate::colour::Colour;
 use crate::controls::button::SynthButton;
 use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
 use crate::controls::slider::{Placement, Slider, SliderStyle};
@@ -762,51 +763,19 @@ impl OscillatorSection {
     /// modulation): one bar per unison voice, spread by the detune and its
     /// power.
     fn unison_quads(&self, panel: &Panel, bounds: Rect) -> Vec<Quad> {
-        const HEIGHT_RATIO: f32 = 0.7;
         let host = panel.host;
         let voices = (host.value(self.names.unison_voices) as i32).clamp(1, MAX_UNISON as i32);
-        let detune = 0.1 * host.value(self.names.unison_detune);
-        let detune_power = host.value(self.names.detune_power);
         let colour = panel
             .scope
             .color(ColorId::WidgetPrimary1)
             .with_multiplied_alpha(0.5);
-        let width = bounds.width as f32;
-        let height = bounds.height as f32;
-        // BarRenderer::drawBars' width_percent: setBarWidth(1 / width) over
-        // kMaxUnison bars, at least 4 / width.
-        let bar_width = 1.0 / width;
-        let width_percent = (4.0 / width).max(bar_width * 2.0 / MAX_UNISON as f32);
-        let display_scale = panel.pixels.pixels_per_point();
-        let percent_active = 1.0 - height / (2.0 * width);
-        let offset = -1.0 / width;
-        let xs: Vec<f32> = if voices == 1 {
-            vec![offset]
-        } else {
-            (0..voices)
-                .map(|i| {
-                    let t = 2.0 * i as f32 / (voices as f32 - 1.0) - 1.0;
-                    let mut scale = crate::controls::slider::power_scale(t.abs(), detune_power);
-                    if t < 0.0 {
-                        scale = -scale;
-                    }
-                    scale * percent_active * detune + offset
-                })
-                .collect()
-        };
-        xs.into_iter()
-            .map(|x| {
-                Quad::vertical_bar(
-                    bounds.into(),
-                    x,
-                    -HEIGHT_RATIO,
-                    HEIGHT_RATIO,
-                    width_percent,
-                    colour,
-                    display_scale,
-                )
-            })
-            .collect()
+        unison_bars(
+            bounds,
+            voices,
+            0.1 * host.value(self.names.unison_detune),
+            host.value(self.names.detune_power),
+            colour,
+        )
     }
 
     /// The spectral morph, wave morph and destination texts with their
@@ -1060,6 +1029,52 @@ fn open_menu(
     ));
 }
 
+/// `UnisonViewer::render`'s bars for `voices` voices spread by `detune`
+/// (0.1 × the slider) and `detune_power`, in `bounds` (interface pixels).
+pub fn unison_bars(
+    bounds: Rect,
+    voices: i32,
+    detune: f32,
+    detune_power: f32,
+    colour: Colour,
+) -> Vec<Quad> {
+    const HEIGHT_RATIO: f32 = 0.7;
+    let width = bounds.width as f32;
+    let height = bounds.height as f32;
+    // BarRenderer::drawBars' width_percent: setBarWidth(1 / width) over
+    // kMaxUnison bars, at least 4 / width.
+    let bar_width = 1.0 / width;
+    let width_percent = (4.0 / width).max(bar_width * 2.0 / MAX_UNISON as f32);
+    let percent_active = 1.0 - height / (2.0 * width);
+    let offset = -1.0 / width;
+    let xs: Vec<f32> = if voices == 1 {
+        vec![offset]
+    } else {
+        (0..voices)
+            .map(|i| {
+                let t = 2.0 * i as f32 / (voices as f32 - 1.0) - 1.0;
+                let mut scale = crate::controls::slider::power_scale(t.abs(), detune_power);
+                if t < 0.0 {
+                    scale = -scale;
+                }
+                scale * percent_active * detune + offset
+            })
+            .collect()
+    };
+    xs.into_iter()
+        .map(|x| {
+            Quad::vertical_bar(
+                bounds.into(),
+                x,
+                -HEIGHT_RATIO,
+                HEIGHT_RATIO,
+                width_percent,
+                colour,
+            )
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1081,5 +1096,26 @@ mod tests {
             "RM <- OSC 2"
         );
         assert_eq!(distortion_text(distortion::SYNC, 1), "SYNC");
+    }
+}
+
+#[cfg(test)]
+mod unison_tests {
+    use super::*;
+
+    /// Upstream sizes the bars in interface pixels (`BarRenderer`'s
+    /// `display_scale_` is 1): at 2x, where the viewer is twice as many
+    /// pixels, a bar's half length doubles with the height and the
+    /// minimum width stays 4 / width.
+    #[test]
+    fn unison_bars_size_in_interface_pixels_at_2x() {
+        let colour = Colour(0xffff_ffff);
+        let one = unison_bars(Rect::new(0, 0, 100, 40), 1, 0.0, 0.0, colour);
+        let two = unison_bars(Rect::new(0, 0, 200, 80), 1, 0.0, 0.0, colour);
+        // size.x = (4 / w) · w / 2; size.y = 0.7 · h / 2.
+        assert_eq!(one[0].shader_values[..2], [2.0, 14.0]);
+        assert_eq!(two[0].shader_values[..2], [2.0, 28.0]);
+        assert_eq!(two[0].rect.height, 2.0 * one[0].rect.height);
+        assert_eq!(two[0].rect.width, one[0].rect.width);
     }
 }
