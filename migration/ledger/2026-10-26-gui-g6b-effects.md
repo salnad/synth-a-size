@@ -10,15 +10,19 @@ and GUI Builder's `FilterSection::fx()` from #125 in the filter's place.
   sets which bands draw. The editor draws each band's input level
   (`kGainMeter` quads) between its upper and lower thresholds, with ratio
   lines and handles. Dragging a threshold or a ratio moves it as upstream's
-  `mouseDrag` does; a shift drag moves every threshold, unclamped, and a
-  double click resets a ratio. The value popup shows below the editor.
+  `mouseDrag` does; a shift drag from one moves every threshold, unclamped
+  (from empty space it moves nothing, as `mouseDrag` returns first while
+  nothing is hovered), and a double click resets a ratio. The value popup shows below the editor.
 - `equalizer_response`: `EqualizerResponse`, shared by the EQ and the
   reverb. It sets up three of the engine's own `DigitalSvf` models at
   100 kHz, as upstream does (`computeFilterCoefficients`), and draws their
   combined response through the new EQ evaluator, with the frequency lines,
   a filled handle for the selected band and rings for the others. A press
-  on a handle selects its band; the drag moves its cutoff across and its
-  gain up and down. The cutoff's value popup shows while dragging.
+  selects the band under it, or none away from the handles (`mouseDown`);
+  only a drag moves the band's cutoff across and its gain up and down
+  (`mouseDrag`), with its gestures opening at the first move. With no band
+  selected the handles stay where they were last drawn, as upstream's
+  control points do. The cutoff's value popup shows while dragging.
 - `equalizer`: `EqualizerSection`. Mode buttons with upstream's high pass,
   notch and low pass icons toggle each band's mode and select it; a band in
   a pass or notch mode greys its gain. The LOW / BAND / HIGH tabs pick the
@@ -72,6 +76,10 @@ and GUI Builder's `FilterSection::fx()` from #125 in the filter's place.
     the controls a drag changes get a gesture, one each.
   - `an_eq_handle_drag_is_one_gesture_per_control`.
   - `an_eq_mode_button_toggles_in_one_gesture`.
+  - `a_click_beside_an_eq_handle_selects_without_moving_it` (review, UI:
+    the press moved the band) and `a_drag_away_from_the_eq_handles_moves_nothing`.
+  - `a_shift_drag_needs_a_grabbed_compressor_point` (review, UI: a shift
+    drag on empty space moved every threshold).
   - `track_presses_page_within_the_column`.
 - Unit tests: `eq_stages_multiply_in_db`,
   `curved_joints_and_rounded_ends_stay_within_half_the_thickness`, and the

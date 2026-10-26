@@ -798,8 +798,9 @@ fn clamp_to_control(band: usize, what: &str, value: f32) -> f32 {
 }
 
 /// `mouseDrag` by `delta` (a fraction of the editor's height, down
-/// positive). A shift drag moves every threshold, unclamped. Returns the
-/// popup text when a threshold moved.
+/// positive), which does nothing unless a point was grabbed. A shift drag
+/// moves every threshold, unclamped. Returns the popup text when a
+/// threshold moved.
 fn drag(host: &Host, state: &mut DragState, delta: f32, shift: bool) -> Option<String> {
     let delta_db = (MIN_DB - MAX_DB) * delta;
     let delta_ratio = delta * RATIO_EDIT_MULTIPLIER;
@@ -808,6 +809,8 @@ fn drag(host: &Host, state: &mut DragState, delta: f32, shift: bool) -> Option<S
         values,
         begun,
     } = state;
+    // mouseDrag returns first when nothing is hovered, shift or not.
+    let point = (*point)?;
     if shift {
         let mut text = None;
         for band in 0..MAX_BANDS {
@@ -822,7 +825,7 @@ fn drag(host: &Host, state: &mut DragState, delta: f32, shift: bool) -> Option<S
         }
         return text;
     }
-    match (*point)? {
+    match point {
         DragPoint::UpperThreshold(band) => {
             let db = values.upper_threshold[band] + delta_db;
             Some(set_threshold(host, begun, values, band, true, db, true))

@@ -58,13 +58,28 @@ pub struct EqualizerResponse {
     pub db_buffer_ratio: f32,
 }
 
-/// A handle drag in progress: the band, and its cutoff and gain as the
-/// drag has set them (the host may apply a set a frame later).
+/// A handle held since a press on it: the band, its cutoff and gain as the
+/// drag has set them (the host may apply a set a frame later), and whether
+/// the drag has moved it yet, which opens its gestures.
 #[derive(Clone, Copy, Debug)]
 struct Drag {
     band: usize,
     cutoff: f32,
     gain: f32,
+    moved: bool,
+}
+
+/// Each band's handle position, in pixels from the display's top left
+/// (none for a band the display doesn't have).
+type Handles = [Option<(f32, f32)>; 3];
+
+/// What the display keeps between frames.
+#[derive(Clone, Copy, Debug, Default)]
+struct ResponseState {
+    drag: Option<Drag>,
+    /// The handles as last drawn, and the band drawn selected. With no band
+    /// selected upstream draws its control points where they last were.
+    drawn: Option<(usize, Handles)>,
 }
 
 thread_local! {
@@ -168,12 +183,7 @@ impl EqualizerResponse {
 
     /// `getHoveredBand`: the band whose handle is nearest the pointer,
     /// within 6% of the width.
-    fn hovered_band(
-        &self,
-        positions: &[Option<(f32, f32)>; 3],
-        width: f32,
-        (x, y): (f32, f32),
-    ) -> Option<usize> {
+    fn hovered_band(&self, positions: &Handles, width: f32, (x, y): (f32, f32)) -> Option<usize> {
         let grab_distance = 0.06 * width;
         let distance = |position: Option<(f32, f32)>| {
             position.map(|(px, py)| (px - x) * (px - x) + (py - y) * (py - y))
@@ -196,10 +206,12 @@ impl EqualizerResponse {
         None
     }
 
-    /// Handles the mouse and draws the display. `selected` is the band the
-    /// section shows (0 low, 1 band, 2 high); a press on a handle selects
-    /// its band. `popup` is the cutoff knob, for its value popup while a
-    /// handle is dragged.
+    /// Handles the mouse and draws the display. `selected` is the band
+    /// drawn selected (0 low, 1 band, 2 high), or none after a press away
+    /// from the handles. A press on a handle selects its band, which this
+    /// returns for the section's tabs (`Listener::lowBandSelected` and the
+    /// like). `popup` is the cutoff knob, for its value popup while a handle
+    /// is dragged.
     #[allow(clippy::too_many_arguments)]
     pub fn show(
         &self,
@@ -209,81 +221,96 @@ impl EqualizerResponse {
         scope: &Scope,
         overlay: &mut Overlay,
         bounds: Rect,
-        selected: &mut usize,
+        selected: &mut Option<usize>,
         popup: Option<(Slider, Rect)>,
-    ) {
+    ) -> Option<usize> {
         let host = live.host();
         let id = ui.scope_id().with(("equalizer response", self.low.cutoff));
         let rect = pixels.rect(bounds.into());
         let response = ui.interact(rect, id, Sense::click_and_drag());
-        let mut drag: Option<Drag> = ui.data(|data| data.get_temp::<Option<Drag>>(id)).flatten();
+        let mut state: ResponseState = ui.data(|data| data.get_temp(id)).unwrap_or_default();
         let bands = self.bands();
-        let positions: [Option<(f32, f32)>; 3] = std::array::from_fn(|i| {
-            let band = bands[i]?;
-            let (cutoff, gain) = match drag.filter(|drag| drag.band == i) {
-                Some(drag) => (drag.cutoff, drag.gain),
-                None => (host.value(band.cutoff), host.value(band.gain)),
-            };
-            Some(self.position(bounds, band, cutoff, gain))
-        });
+        let positions = |drag: Option<Drag>| -> Handles {
+            std::array::from_fn(|i| {
+                let band = bands[i]?;
+                let (cutoff, gain) = match drag.filter(|drag| drag.band == i) {
+                    Some(drag) => (drag.cutoff, drag.gain),
+                    None => (host.value(band.cutoff), host.value(band.gain)),
+                };
+                Some(self.position(bounds, band, cutoff, gain))
+            })
+        };
         let ppp = pixels.pixels_per_point();
         let local = |pos: egui::Pos2| ((pos.x - rect.min.x) * ppp, (pos.y - rect.min.y) * ppp);
 
-        let pressed = ui.input(|input| input.pointer.primary_pressed());
+        let mut chosen = None;
+        let (pressed, moved) = ui.input(|input| {
+            (
+                input.pointer.primary_pressed(),
+                input.pointer.delta() != egui::Vec2::ZERO,
+            )
+        });
         if pressed && response.is_pointer_button_down_on() {
-            // mouseDown: the band under the pointer is selected and dragged.
-            let band = response
-                .interact_pointer_pos()
-                .and_then(|pos| self.hovered_band(&positions, bounds.width as f32, local(pos)));
-            if let Some(band) = band {
-                *selected = band;
+            // mouseDown: selects the band under the pointer (none away from
+            // the handles); only a drag moves it.
+            let band = response.interact_pointer_pos().and_then(|pos| {
+                self.hovered_band(&positions(None), bounds.width as f32, local(pos))
+            });
+            *selected = band;
+            chosen = band;
+            state.drag = band.map(|band| {
                 let controls = bands[band].expect("a hovered band exists");
-                host.begin(controls.cutoff);
-                host.begin(controls.gain);
-                drag = Some(Drag {
+                Drag {
                     band,
                     cutoff: host.value(controls.cutoff),
                     gain: host.value(controls.gain),
-                });
-            }
-        }
-        if let Some(mut current) = drag {
-            let controls = bands[current.band].expect("a dragged band exists");
+                    moved: false,
+                }
+            });
+        } else if let Some(mut drag) = state.drag {
+            let controls = bands[drag.band].expect("a dragged band exists");
             if response.is_pointer_button_down_on() {
-                if let Some(pos) = response.interact_pointer_pos() {
-                    // moveFilterSettings.
+                if let (true, Some(pos)) = (moved, response.interact_pointer_pos()) {
+                    // mouseDrag: moveFilterSettings.
+                    if !drag.moved {
+                        host.begin(controls.cutoff);
+                        host.begin(controls.gain);
+                        drag.moved = true;
+                    }
                     let (x, y) = local(pos);
                     let cutoff = Host::info(controls.cutoff);
                     let ratio = (x / bounds.width as f32).clamp(0.0, 1.0);
-                    current.cutoff = ratio * (cutoff.max - cutoff.min) + cutoff.min;
-                    host.set(controls.cutoff, current.cutoff);
+                    drag.cutoff = ratio * (cutoff.max - cutoff.min) + cutoff.min;
+                    host.set(controls.cutoff, drag.cutoff);
                     let gain = Host::info(controls.gain);
                     let height = bounds.height as f32;
                     let local_position = y - 0.5 * self.db_buffer_ratio * height;
                     let ratio =
                         (local_position / ((1.0 - self.db_buffer_ratio) * height)).clamp(0.0, 1.0);
-                    current.gain = ratio * (gain.min - gain.max) + gain.max;
-                    host.set(controls.gain, current.gain);
+                    drag.gain = ratio * (gain.min - gain.max) + gain.max;
+                    host.set(controls.gain, drag.gain);
                     if let Some((slider, knob)) = popup {
                         overlay.value_popup = Some((
                             slider.name,
                             ValuePopup {
-                                text: slider.popup_text(current.cutoff),
+                                text: slider.popup_text(drag.cutoff),
                                 source: knob,
                                 placement: slider.popup_placement,
                             },
                         ));
                     }
                 }
-                drag = Some(current);
+                state.drag = Some(drag);
             } else {
                 // mouseUp.
-                host.end(controls.cutoff);
-                host.end(controls.gain);
-                drag = None;
+                if drag.moved {
+                    host.end(controls.cutoff);
+                    host.end(controls.gain);
+                }
+                state.drag = None;
             }
         }
-        if drag.is_none() {
+        if state.drag.is_none_or(|drag| !drag.moved) {
             // The cutoff's popup shows only while a handle is dragged.
             if let Some((slider, _)) = popup {
                 if overlay
@@ -295,17 +322,25 @@ impl EqualizerResponse {
                 }
             }
         }
-        ui.data_mut(|data| data.insert_temp(id, drag));
+        if let Some(band) = *selected {
+            state.drawn = Some((band, positions(state.drag)));
+        }
+        ui.data_mut(|data| data.insert_temp(id, state));
 
-        self.paint(
-            live,
-            pixels,
-            scope,
-            bounds,
-            *selected,
-            &positions,
-            drag.is_some(),
-        );
+        if let Some((band, drawn)) = state.drawn {
+            self.paint(
+                live,
+                pixels,
+                scope,
+                bounds,
+                band,
+                &drawn,
+                state.drag.is_some(),
+            );
+        } else {
+            self.paint(live, pixels, scope, bounds, 0, &positions(None), false);
+        }
+        chosen
     }
 
     /// `paintBackground` and `render`.
@@ -317,7 +352,7 @@ impl EqualizerResponse {
         scope: &Scope,
         bounds: Rect,
         selected: usize,
-        positions: &[Option<(f32, f32)>; 3],
+        positions: &Handles,
         dragging: bool,
     ) {
         const LINE_SPACING: i32 = 10;

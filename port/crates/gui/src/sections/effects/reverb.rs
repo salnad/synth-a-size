@@ -135,8 +135,12 @@ pub struct ReverbSection {
     size: Slider,
     dry_wet: Slider,
     decay_time: Slider,
-    /// The response's band: 0 low, 2 high (`setSelectedBand(value * 2)`).
+    /// The shelf the knobs show: 0 low, 2 high, as the response numbers
+    /// them (`setSelectedBand(value * 2)`).
     selected_band: usize,
+    /// The band the response draws selected (none after a press away from
+    /// its handles).
+    response_band: Option<usize>,
 }
 
 impl Default for ReverbSection {
@@ -154,6 +158,7 @@ impl Default for ReverbSection {
             dry_wet: rotary("reverb_dry_wet"),
             decay_time: rotary("reverb_decay_time"),
             selected_band: 0,
+            response_band: Some(0),
         }
     }
 }
@@ -221,16 +226,19 @@ impl ReverbSection {
             db_buffer_ratio: FEEDBACK_FILTER_BUFFER,
         };
         let popup = Some((self.cutoffs[shelf], l.cutoff));
-        response.show(
+        let chosen = response.show(
             ui,
             &live,
             pixels,
             scope,
             overlay,
             l.response,
-            &mut self.selected_band,
+            &mut self.response_band,
             popup,
         );
+        if let Some(band) = chosen {
+            self.selected_band = band;
+        }
 
         let mut panel = Panel::new(ui, host, pixels, *scope, overlay, clip);
         let shelf = self.selected_band / 2;
@@ -257,6 +265,7 @@ impl ReverbSection {
         let id = panel.ui.scope_id().with("reverb selected band");
         if tabs.interact(panel.ui, pixels, id, l.selected_band, &mut selected) {
             self.selected_band = selected * 2;
+            self.response_band = Some(self.selected_band);
         }
         tabs.paint(
             pixels,

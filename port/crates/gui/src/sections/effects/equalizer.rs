@@ -143,13 +143,15 @@ const BANDS: [EqBand; 3] = [
 /// middle, a low pass for the high.
 const MODES: [&str; 3] = ["eq_low_mode", "eq_band_mode", "eq_high_mode"];
 
-/// The section's controls (`EqualizerSection`'s constructor), and the band
-/// its knobs show (`selected_band_`, which isn't a parameter).
+/// The section's controls (`EqualizerSection`'s constructor), the band its
+/// knobs show (`selected_band_`, which isn't a parameter), and the band the
+/// response draws selected (none after a press away from its handles).
 pub struct EqualizerSection {
     cutoffs: [Slider; 3],
     resonances: [Slider; 3],
     gains: [Slider; 3],
     selected_band: usize,
+    response_band: Option<usize>,
 }
 
 impl Default for EqualizerSection {
@@ -164,6 +166,7 @@ impl Default for EqualizerSection {
             }),
             gains: BANDS.map(|band| Slider::new(band.gain, SliderStyle::Rotary).bipolar()),
             selected_band: 0,
+            response_band: Some(0),
         }
     }
 }
@@ -224,16 +227,18 @@ impl EqualizerSection {
             db_buffer_ratio: DEFAULT_DB_BUFFER_RATIO,
         };
         let popup = Some((self.cutoffs[self.selected_band], l.cutoff));
-        response.show(
+        if let Some(band) = response.show(
             ui,
             &live,
             pixels,
             scope,
             overlay,
             l.response,
-            &mut self.selected_band,
+            &mut self.response_band,
             popup,
-        );
+        ) {
+            self.selected_band = band;
+        }
 
         let mut panel = Panel::new(ui, host, pixels, *scope, overlay, clip);
         for (index, rect) in [l.low_mode, l.band_mode, l.high_mode]
@@ -257,6 +262,7 @@ impl EqualizerSection {
             if panel.shape_button(MODES[index], button, rect).clicked {
                 host.set_once(MODES[index], if modes[index] { 0.0 } else { 1.0 });
                 self.selected_band = index;
+                self.response_band = Some(index);
             }
         }
         let band = self.selected_band;
@@ -272,13 +278,16 @@ impl EqualizerSection {
             ..TabSelector::new(&["LOW", "BAND", "HIGH"])
         };
         let id = panel.ui.scope_id().with("eq selected band");
-        tabs.interact(
+        if tabs.interact(
             panel.ui,
             pixels,
             id,
             l.selected_band,
             &mut self.selected_band,
-        );
+        ) {
+            // setSelectedBand.
+            self.response_band = Some(self.selected_band);
+        }
         tabs.paint(pixels, &panel.scope, l.selected_band, self.selected_band);
         viewer_corners(&mut panel, l.response);
         panel.finish();

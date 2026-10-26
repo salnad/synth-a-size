@@ -520,3 +520,105 @@ fn track_presses_page_within_the_column() {
     release(&mut harness, below_thumb);
     assert_eq!(fixture.interface.borrow().effects_scroll(), max_scroll);
 }
+
+/// Where the EQ's band `band` handle is, for the controls' current values.
+fn eq_handle(fixture: &Fixture, band: &str) -> (Pos2, EqualizerLayout) {
+    let (fx, top) = fixture.effects_layout();
+    let bounds = fx.effects[Effect::Eq as usize].unwrap();
+    let layout = EqualizerLayout::new(&top.within(Effect::Eq.skin()), bounds);
+    let response = layout.response;
+    let cutoff_info = registry().get(&format!("eq_{band}_cutoff")).unwrap();
+    let gain_info = registry().get("eq_low_gain").unwrap();
+    let buffer = (gain_info.max - gain_info.min) * 0.2;
+    let (min_db, max_db) = (gain_info.min - buffer, gain_info.max + buffer);
+    let cutoff = fixture.synth.value(&format!("eq_{band}_cutoff"));
+    let gain = fixture.synth.value(&format!("eq_{band}_gain"));
+    let pos = Pos2::new(
+        response.x as f32
+            + response.width as f32 * (cutoff - cutoff_info.min)
+                / (cutoff_info.max - cutoff_info.min),
+        response.y as f32 + response.height as f32 * (max_db - gain) / (max_db - min_db),
+    );
+    (pos, layout)
+}
+
+/// A click beside an EQ handle selects its band without moving it
+/// (upstream's mouseDown selects; only mouseDrag moves), so the knobs then
+/// turn that band.
+#[test]
+fn a_click_beside_an_eq_handle_selects_without_moving_it() {
+    let fixture = Fixture::new(Apply::NextFrame, &[Effect::Eq]);
+    let mut harness = fixture.harness();
+    let (handle, layout) = eq_handle(&fixture, "band");
+    let (cutoff, gain) = (
+        fixture.synth.value("eq_band_cutoff"),
+        fixture.synth.value("eq_band_gain"),
+    );
+    let beside = handle + egui::vec2(6.0, 0.0);
+    press(&mut harness, beside);
+    release(&mut harness, beside);
+    assert_eq!(fixture.synth.value("eq_band_cutoff"), cutoff);
+    assert_eq!(fixture.synth.value("eq_band_gain"), gain);
+    assert_eq!(fixture.take_log(), Vec::<String>::new());
+
+    let knob = centre(layout.cutoff);
+    drag(&mut harness, knob, knob - egui::vec2(0.0, 20.0), 4);
+    assert!(
+        fixture.synth.value("eq_band_cutoff") > cutoff,
+        "the band's knob"
+    );
+    let log = fixture.take_log();
+    assert_eq!(gesture_count(&log, "eq_low_cutoff"), (0, 0), "{log:?}");
+}
+
+/// A drag that starts away from the EQ's handles moves nothing: the press
+/// selects no band.
+#[test]
+fn a_drag_away_from_the_eq_handles_moves_nothing() {
+    let fixture = Fixture::new(Apply::NextFrame, &[Effect::Eq]);
+    let mut harness = fixture.harness();
+    let (_, layout) = eq_handle(&fixture, "low");
+    let response = layout.response;
+    let empty = Pos2::new(
+        (response.x + response.width) as f32 - 8.0,
+        (response.y + response.height) as f32 - 8.0,
+    );
+    drag(&mut harness, empty, empty - egui::vec2(30.0, 30.0), 6);
+    let log = fixture.take_log();
+    assert!(log.iter().all(|line| !line.contains("eq_")), "{log:?}");
+}
+
+/// A Shift-drag from empty compressor space moves nothing (upstream's
+/// mouseDrag returns first while nothing is hovered); from a threshold it
+/// moves every threshold.
+#[test]
+fn a_shift_drag_needs_a_grabbed_compressor_point() {
+    let fixture = Fixture::new(Apply::NextFrame, &[Effect::Compressor]);
+    let mut harness = fixture.harness();
+    let (fx, top) = fixture.effects_layout();
+    let bounds = fx.effects[Effect::Compressor as usize].unwrap();
+    let editor = CompressorLayout::new(&top.within(Effect::Compressor.skin()), bounds).editor;
+    harness.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    // Between the low and middle bands, nothing is under the pointer.
+    let gap = Pos2::new(
+        editor.x as f32 + 0.34 * editor.width as f32,
+        editor.y as f32 + 0.5 * editor.height as f32,
+    );
+    drag(&mut harness, gap, gap + egui::vec2(0.0, 20.0), 6);
+    let log = fixture.take_log();
+    assert!(
+        log.iter().all(|line| !line.contains("compressor_")),
+        "{log:?}"
+    );
+
+    let threshold = fixture.synth.value("compressor_low_upper_threshold");
+    let band_threshold = fixture.synth.value("compressor_band_upper_threshold");
+    let x = editor.x as f32 + 0.05 * editor.width as f32 + 0.4 / 3.0 * editor.width as f32;
+    let t = (threshold - -80.0) / 80.0;
+    let y_for_db = editor.height as f32 * (1.0 - (2.0 * t - 1.0)) * 0.5;
+    let from = Pos2::new(x, editor.y as f32 + y_for_db.max(8.0 * top.size_ratio()));
+    drag(&mut harness, from, from + egui::vec2(0.0, 20.0), 6);
+    harness.event(Event::ModifiersChanged(Modifiers::NONE));
+    assert!(fixture.synth.value("compressor_low_upper_threshold") < threshold);
+    assert!(fixture.synth.value("compressor_band_upper_threshold") < band_threshold);
+}
