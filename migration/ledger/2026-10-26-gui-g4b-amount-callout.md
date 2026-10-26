@@ -35,6 +35,11 @@ does: `positionModulationAmountSlidersCallout`,
   amount, as upstream's `ModulationAmountKnob::mouseDown` does
   (`toggleBypass`, then `SynthSlider::mouseDown`). This applies to every
   slider, as it does upstream.
+- **A double click needs the same button twice** (Voice Reviewer's note on
+  #155). JUCE counts clicks only while each press has the same buttons as
+  the last (`MouseInputSourceImpl::setButtons`). The slider's last press now
+  records its button, and a menu press counts as one, so a middle click
+  then a left one no longer returns a slider to its default.
 - **New GUI preset and view `modulations_many`**, rendered animated: LFO 1
   on seven controls.
 
@@ -59,6 +64,9 @@ does: `positionModulationAmountSlidersCallout`,
     and the callout stays open.
   - `a_middle_drag_on_an_amount_knob_bypasses_and_drags`: one bypass
     gesture and one amount gesture.
+  - `a_double_click_needs_the_same_button_twice`: a middle click then a
+    left one leaves the value, and two middle clicks return it to the
+    default. It fails with the button check removed.
 - `cargo clippy --workspace --all-targets -D warnings`, `cargo fmt`, the
   `sas-gui` tests, `gui_reference.py layout --check` and `generate.py
   --check` pass.

@@ -3502,3 +3502,42 @@ fn a_middle_drag_on_an_amount_knob_bypasses_and_drags() {
     assert_eq!(fixture.synth.value("modulation_1_bypass"), 1.0);
     assert!(fixture.synth.value("modulation_1_amount") > 0.0);
 }
+
+/// JUCE counts a double click only when both presses use the same buttons
+/// (`MouseInputSourceImpl::setButtons`), so a middle click then a left one
+/// leaves the value, while two middle clicks return it to the default.
+#[test]
+fn a_double_click_needs_the_same_button_twice() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let (_, portamento) = fixture.layouts();
+    let start = centre(portamento.portamento_time);
+    drag(
+        &mut harness,
+        start,
+        start + egui::vec2(0.0, -60.0),
+        Modifiers::NONE,
+    );
+    let default = registry().get("portamento_time").unwrap().default_value;
+    let dragged = fixture.synth.value("portamento_time");
+    assert_ne!(dragged, default);
+    let past_timeout = |harness: &mut egui_kittest::Harness<'_>| {
+        for _ in 0..30 {
+            harness.step();
+        }
+    };
+    let click_with = |harness: &mut egui_kittest::Harness<'_>, button| {
+        press(harness, start, button, Modifiers::NONE);
+        release(harness, start, button, Modifiers::NONE);
+    };
+
+    past_timeout(&mut harness);
+    click_with(&mut harness, PointerButton::Middle);
+    click_with(&mut harness, PointerButton::Primary);
+    assert_eq!(fixture.synth.value("portamento_time"), dragged);
+
+    past_timeout(&mut harness);
+    click_with(&mut harness, PointerButton::Middle);
+    click_with(&mut harness, PointerButton::Middle);
+    assert_eq!(fixture.synth.value("portamento_time"), default);
+}
