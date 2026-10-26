@@ -15,10 +15,15 @@ note and turns the audio into the oscillator's wavetable.
     note 16.
   - `Resynthesizer` runs these on a thread of its own, started by the first
     resynthesis. Each job builds a fresh synth from the patch with the
-    thread's own seed counter restarted at 0 (`use_thread_seed_counter`,
-    as L6's preview engine does), and loads the result through
+    thread's own seed counter restarted at 0 (`isolate_seeds`, which also
+    makes sure the process's shared oscillator table exists first, as L6's
+    preview engine does), and loads the result through
     `EditHandle::set_wavetable`. The process's counter never moves, and the
     audio thread is untouched.
+  - Dropping it (the plugin unloading) stops a running render at its next
+    64-sample block and skips queued jobs, as #102 does for the preview.
+    Each job runs under `catch_unwind`, so a panic loses only its own
+    result, and `wait_idle` still returns.
 - `EditorModel::resynthesize_to_wavetable(osc)` returns at once. The
   plugin starts the job with the live patch (`SynthParams::preset_state`)
   at the host's sample rate, which `SynthParams` now keeps from
@@ -31,10 +36,16 @@ note and turns the audio into the oscillator's wavetable.
 
 **Verified.**
 
-- `resynthesis` unit tests: the render is 4 s, normalized to a peak of 1,
-  sounding from the note on, and the same patch from the same seeds renders
-  the same. The creator is one pitched file source named "Resynthesize",
-  its window one period of note 16.
+- `resynthesis` unit tests (each test seeds its thread as the worker
+  does, so they pass in any order in parallel runs):
+  - the render is 4 s, normalized to a peak of 1, sounding from the note
+    on, and the same patch from the same seeds renders the same;
+  - the creator is one pitched file source named "Resynthesize", its
+    window one period of note 16;
+  - a render stops at the block after it's told to;
+  - a panicking job leaves the worker running the next;
+  - dropping the resynthesizer stops the running job and skips the queued
+    ones.
 - `tests/resynthesis_seeds.rs` (its own binary, since the counter is
   process-wide): two resyntheses load "Resynthesize" into oscillators 2
   and 3, leave oscillator 1 alone, move the revision, give both the same

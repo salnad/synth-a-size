@@ -21,7 +21,7 @@ use sas_preset::{GuiConnection, InitContent, PresetState, SampleState, SlotValue
 use crate::chat::PluginChat;
 use crate::midi_learn::MidiLearn;
 use crate::params::SynthParams;
-use crate::resynthesis::Resynthesizer;
+use crate::resynthesis::{Job, Resynthesizer};
 use crate::state;
 
 /// The editor's view of one plugin instance.
@@ -289,10 +289,12 @@ impl EditorModel for PluginModel {
         if oscillator >= state.wavetables.len() {
             return;
         }
-        let sample_rate = self.params.sample_rate().round() as i32;
-        let bpm = self.params.host_tempo();
-        self.resynthesizer
-            .start(oscillator, state, sample_rate, bpm);
+        self.resynthesizer.start(Job {
+            oscillator,
+            state,
+            sample_rate: self.params.sample_rate().round() as i32,
+            bpm: self.params.host_tempo(),
+        });
     }
 
     fn with_sample(&self, f: &mut dyn FnMut(&SampleState)) {

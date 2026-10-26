@@ -15,8 +15,13 @@
 //! audio thread nor the process's seed counter is touched. The result
 //! reaches the oscillator through the edit bus like any wavetable edit
 //! (D22 records how the fresh synth's render can differ).
+//!
+//! Dropping the [`Resynthesizer`] stops a running render at its next block
+//! and skips queued ones. A job that panics loses only its own result.
 
-use std::sync::{mpsc, Arc, Mutex};
+use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 
 use sas_common::random::use_thread_seed_counter;
@@ -40,10 +45,28 @@ const PRE_PROCESS_SAMPLES: usize = 44_100;
 /// `kBufferSize`.
 const BUFFER_SIZE: usize = 64;
 
+/// Gives the calling thread a seed counter of its own, restarted at 0, after
+/// making sure the process's shared oscillator table (`RandomValues`) exists.
+/// The first oscillator built in the process creates that table and takes
+/// one seed for it; taking it before the restart means a render on this
+/// thread draws the same seeds whichever thread built a synth first, and
+/// the process's counter never moves.
+pub fn isolate_seeds() {
+    use_thread_seed_counter(0);
+    RandomValues::instance();
+    use_thread_seed_counter(0);
+}
+
 /// `renderAudioForResynthesis(data, samples, note)` on a fresh synth playing
 /// `state` at `bpm`: a second of running in, then the note for
 /// `RESYNTHESIZE_SECONDS`, the left channel normalized to its peak.
-pub fn render(state: &PresetState, sample_rate: i32, bpm: f64) -> Vec<f32> {
+/// `stopping` is asked before each block; `None` when it said stop.
+pub fn render(
+    state: &PresetState,
+    sample_rate: i32,
+    bpm: f64,
+    stopping: &dyn Fn() -> bool,
+) -> Option<Vec<f32>> {
     let samples = (sample_rate as f32 * RESYNTHESIZE_SECONDS) as usize;
     let mut synth = Synth::new();
     synth.load_preset(state);
@@ -56,6 +79,9 @@ pub fn render(state: &PresetState, sample_rate: i32, bpm: f64) -> Vec<f32> {
 
     synth.all_sounds_off();
     for _ in (0..PRE_PROCESS_SAMPLES).step_by(BUFFER_SIZE) {
+        if stopping() {
+            return None;
+        }
         synth.correct_to_time(current_time);
         current_time += BUFFER_SIZE as f64 * sample_time;
         synth.process(&mut left, &mut right);
@@ -65,6 +91,9 @@ pub fn render(state: &PresetState, sample_rate: i32, bpm: f64) -> Vec<f32> {
     let mut data = vec![0.0f32; samples];
     let mut max_value = 0.01f32;
     for start in (0..samples).step_by(BUFFER_SIZE) {
+        if stopping() {
+            return None;
+        }
         let num_samples = (samples - start).min(BUFFER_SIZE);
         synth.correct_to_time(current_time);
         current_time += num_samples as f64 * sample_time;
@@ -80,7 +109,7 @@ pub fn render(state: &PresetState, sample_rate: i32, bpm: f64) -> Vec<f32> {
         *sample *= scale;
     }
     synth.all_sounds_off();
-    data
+    Some(data)
 }
 
 /// `resynthesizeToWavetable`'s creator: `audio` loaded pitched with wave
@@ -110,19 +139,33 @@ pub fn creator_from_audio(
     Some(creator)
 }
 
-struct Job {
-    oscillator: usize,
-    state: PresetState,
-    sample_rate: i32,
-    bpm: f64,
+/// One resynthesis: the patch, where its result goes, and how to render it.
+pub struct Job {
+    pub oscillator: usize,
+    pub state: PresetState,
+    pub sample_rate: i32,
+    pub bpm: f64,
+}
+
+/// What the worker does with a job, given the stop check.
+type Runner = Box<dyn Fn(Job, &dyn Fn() -> bool) + Send>;
+
+struct Worker {
+    jobs: Option<mpsc::Sender<Job>>,
+    thread: Option<JoinHandle<()>>,
 }
 
 /// The thread resyntheses run on, started by the first one.
 pub struct Resynthesizer {
     edits: EditHandle,
-    worker: Mutex<Option<(mpsc::Sender<Job>, JoinHandle<()>)>>,
-    /// Resyntheses queued or running, for tests to wait on.
-    busy: Arc<(Mutex<usize>, std::sync::Condvar)>,
+    worker: Mutex<Option<Worker>>,
+    /// Set on drop: a running render stops at its next block, queued jobs
+    /// are skipped.
+    stop: Arc<AtomicBool>,
+    /// Jobs queued or running, for [`wait_idle`](Self::wait_idle).
+    busy: Arc<(Mutex<usize>, Condvar)>,
+    /// Replaces the real job in tests.
+    runner: Mutex<Option<Runner>>,
 }
 
 impl Resynthesizer {
@@ -130,43 +173,74 @@ impl Resynthesizer {
         Resynthesizer {
             edits,
             worker: Mutex::new(None),
-            busy: Arc::new((Mutex::new(0), std::sync::Condvar::new())),
+            stop: Arc::new(AtomicBool::new(false)),
+            busy: Arc::new((Mutex::new(0), Condvar::new())),
+            runner: Mutex::new(None),
         }
     }
 
-    /// Renders `state` at `sample_rate` and `bpm` (the host's) and loads
-    /// the result into `oscillator`, on the worker thread. Returns at once;
-    /// the oscillator changes when the render is done (about a second of
-    /// work), through the edit bus.
-    pub fn start(&self, oscillator: usize, state: PresetState, sample_rate: i32, bpm: f64) {
+    /// A resynthesizer whose worker runs `runner` for each job instead of
+    /// the render (tests of the worker itself).
+    pub fn with_runner(
+        edits: EditHandle,
+        runner: impl Fn(Job, &dyn Fn() -> bool) + Send + 'static,
+    ) -> Resynthesizer {
+        let resynthesizer = Resynthesizer::new(edits);
+        *resynthesizer.runner.lock().unwrap() = Some(Box::new(runner));
+        resynthesizer
+    }
+
+    /// Renders `job.state` and loads the result into `job.oscillator`, on
+    /// the worker thread. Returns at once; the oscillator changes when the
+    /// render is done (about half a second of work), through the edit bus.
+    pub fn start(&self, job: Job) {
         let mut worker = self.worker.lock().unwrap();
-        let (jobs, _) = worker.get_or_insert_with(|| {
-            let (jobs, receiver) = mpsc::channel::<Job>();
-            let edits = self.edits.clone();
-            let busy = self.busy.clone();
-            let thread = std::thread::Builder::new()
-                .name("synth-a-size resynthesis".to_string())
-                .spawn(move || {
-                    for job in receiver {
-                        resynthesize(&edits, job);
-                        let (count, done) = &*busy;
-                        *count.lock().unwrap() -= 1;
-                        done.notify_all();
-                    }
-                })
-                .expect("spawn the resynthesis thread");
-            (jobs, thread)
-        });
+        let worker = worker.get_or_insert_with(|| self.spawn());
         *self.busy.0.lock().unwrap() += 1;
-        let job = Job {
-            oscillator,
-            state,
-            sample_rate,
-            bpm,
-        };
-        if jobs.send(job).is_err() {
-            *self.busy.0.lock().unwrap() -= 1;
+        let sent = worker
+            .jobs
+            .as_ref()
+            .is_some_and(|jobs| jobs.send(job).is_ok());
+        if !sent {
+            self.finished();
         }
+    }
+
+    fn spawn(&self) -> Worker {
+        let (jobs, receiver) = mpsc::channel::<Job>();
+        let edits = self.edits.clone();
+        let stop = self.stop.clone();
+        let busy = self.busy.clone();
+        let runner = self.runner.lock().unwrap().take();
+        let thread = std::thread::Builder::new()
+            .name("synth-a-size resynthesis".to_string())
+            .spawn(move || {
+                let stopping = || stop.load(Ordering::Relaxed);
+                for job in receiver {
+                    if !stopping() {
+                        // A panicking job loses its own result only; the
+                        // worker goes on to the next.
+                        let _ = catch_unwind(AssertUnwindSafe(|| match &runner {
+                            Some(runner) => runner(job, &stopping),
+                            None => resynthesize(&edits, job, &stopping),
+                        }));
+                    }
+                    let (count, done) = &*busy;
+                    *count.lock().unwrap() -= 1;
+                    done.notify_all();
+                }
+            })
+            .expect("spawn the resynthesis thread");
+        Worker {
+            jobs: Some(jobs),
+            thread: Some(thread),
+        }
+    }
+
+    fn finished(&self) {
+        let (count, done) = &*self.busy;
+        *count.lock().unwrap() -= 1;
+        done.notify_all();
     }
 
     /// Waits until every started resynthesis has finished.
@@ -181,24 +255,22 @@ impl Resynthesizer {
 
 impl Drop for Resynthesizer {
     fn drop(&mut self) {
-        if let Some((jobs, thread)) = self.worker.get_mut().unwrap().take() {
-            drop(jobs);
-            let _ = thread.join();
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(mut worker) = self.worker.get_mut().unwrap().take() {
+            worker.jobs = None;
+            if let Some(thread) = worker.thread.take() {
+                let _ = thread.join();
+            }
         }
     }
 }
 
 /// One job, on the worker thread.
-fn resynthesize(edits: &EditHandle, job: Job) {
-    // The first oscillator built in the process takes one seed for a shared
-    // table (`RandomValues`); taking it from this thread's counter keeps
-    // every build the same. Then each resynthesis starts from 0, so it
-    // depends only on the patch, and the process's counter never moves.
-    use_thread_seed_counter(0);
-    RandomValues::instance();
-    use_thread_seed_counter(0);
-
-    let audio = render(&job.state, job.sample_rate, job.bpm);
+fn resynthesize(edits: &EditHandle, job: Job, stopping: &dyn Fn() -> bool) {
+    isolate_seeds();
+    let Some(audio) = render(&job.state, job.sample_rate, job.bpm, stopping) else {
+        return;
+    };
     let Some(base) = job.state.wavetables.get(job.oscillator).cloned() else {
         return;
     };
@@ -210,17 +282,27 @@ fn resynthesize(edits: &EditHandle, job: Job) {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::AtomicUsize;
+    use std::time::{Duration, Instant};
+
     use super::*;
+    use sas_engine::document::PresetDocument;
+    use sas_engine::edit_bus::EditBus;
     use sas_preset::InitContent;
+
+    fn init_state() -> PresetState {
+        PresetState::new(&InitContent { sample_seed: 0 })
+    }
+
+    fn never() -> bool {
+        false
+    }
 
     #[test]
     fn the_render_is_four_seconds_normalized_to_its_peak() {
-        let state = PresetState::new(&InitContent { sample_seed: 0 });
-        // As the worker does: the shared table first, then the counter from
-        // 0, so the render doesn't depend on which test built a synth first.
-        RandomValues::instance();
-        use_thread_seed_counter(0);
-        let audio = render(&state, 44_100, 120.0);
+        let state = init_state();
+        isolate_seeds();
+        let audio = render(&state, 44_100, 120.0, &never).unwrap();
         assert_eq!(audio.len(), 176_400);
         let peak = audio
             .iter()
@@ -230,16 +312,15 @@ mod tests {
         assert!(audio[..4410].iter().any(|sample| sample.abs() > 0.1));
         // The same patch from the same seeds renders the same, as each job
         // on the worker does.
-        use_thread_seed_counter(0);
-        assert_eq!(render(&state, 44_100, 120.0), audio);
+        isolate_seeds();
+        assert_eq!(render(&state, 44_100, 120.0, &never).unwrap(), audio);
     }
 
     #[test]
     fn the_creator_is_one_pitched_file_source_named_resynthesize() {
-        let state = PresetState::new(&InitContent { sample_seed: 0 });
-        RandomValues::instance();
-        use_thread_seed_counter(0);
-        let audio = render(&state, 44_100, 120.0);
+        let state = init_state();
+        isolate_seeds();
+        let audio = render(&state, 44_100, 120.0, &never).unwrap();
         let creator = creator_from_audio(state.wavetables[0].clone(), &audio, 44_100).unwrap();
         assert_eq!(creator.name, "Resynthesize");
         assert_eq!(creator.groups.len(), 1);
@@ -250,5 +331,69 @@ mod tests {
         };
         let window = 44_100.0 / utils::midi_note_to_frequency(16.0);
         assert_eq!(file_source.window_size, window as f64);
+    }
+
+    #[test]
+    fn a_render_stops_at_the_next_block() {
+        isolate_seeds();
+        let blocks = AtomicUsize::new(0);
+        let stop_after_ten = || blocks.fetch_add(1, Ordering::Relaxed) >= 10;
+        assert!(render(&init_state(), 44_100, 120.0, &stop_after_ten).is_none());
+        assert_eq!(blocks.load(Ordering::Relaxed), 11);
+    }
+
+    fn edits() -> EditHandle {
+        let (edits, _consumer) =
+            EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+        edits
+    }
+
+    fn job(oscillator: usize) -> Job {
+        Job {
+            oscillator,
+            state: init_state(),
+            sample_rate: 44_100,
+            bpm: 120.0,
+        }
+    }
+
+    #[test]
+    fn a_panicking_job_leaves_the_worker_running() {
+        let ran = Arc::new(Mutex::new(Vec::new()));
+        let log = ran.clone();
+        let resynthesizer = Resynthesizer::with_runner(edits(), move |job, _| {
+            if job.oscillator == 0 {
+                panic!("a job failed");
+            }
+            log.lock().unwrap().push(job.oscillator);
+        });
+        resynthesizer.start(job(0));
+        resynthesizer.start(job(1));
+        resynthesizer.wait_idle();
+        assert_eq!(*ran.lock().unwrap(), [1]);
+    }
+
+    #[test]
+    fn dropping_stops_the_running_job_and_skips_queued_ones() {
+        let ran = Arc::new(AtomicUsize::new(0));
+        let count = ran.clone();
+        let resynthesizer = Resynthesizer::with_runner(edits(), move |_, stopping| {
+            count.fetch_add(1, Ordering::Relaxed);
+            // A long render that only ends when told to stop.
+            while !stopping() {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        });
+        for oscillator in 0..3 {
+            resynthesizer.start(job(oscillator));
+        }
+        while ran.load(Ordering::Relaxed) == 0 {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let dropped = Instant::now();
+        drop(resynthesizer);
+        assert!(dropped.elapsed() < Duration::from_secs(2));
+        // The running job stopped; the two queued never started.
+        assert_eq!(ran.load(Ordering::Relaxed), 1);
     }
 }
