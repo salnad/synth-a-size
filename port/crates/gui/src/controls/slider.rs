@@ -691,11 +691,12 @@ impl Slider {
             ..SliderEvent::default()
         };
 
-        let (pointer, modifiers, primary_down, secondary_down) = ui.input(|input| {
+        let (pointer, modifiers, primary_down, middle_down, secondary_down) = ui.input(|input| {
             (
                 input.pointer.interact_pos(),
                 input.modifiers,
                 input.pointer.button_down(PointerButton::Primary),
+                input.pointer.button_down(PointerButton::Middle),
                 input.pointer.button_down(PointerButton::Secondary),
             )
         });
@@ -731,8 +732,10 @@ impl Slider {
                 host.begin(self.name);
                 event.popup = true;
             }
-        } else if state.down && primary_down {
-            // mouseDrag. SynthSlider::mouseDrag ignores drags with alt held.
+        } else if state.down && (primary_down || middle_down) {
+            // mouseDrag, with any button but the menu's (juce::Slider drags
+            // with the middle one too). SynthSlider::mouseDrag ignores drags
+            // with alt held.
             if let (Some(pointer), false) = (pointer, modifiers.alt) {
                 if let Some((_, at)) = state.last_press {
                     state.moved |= pointer.distance(at) >= MOVED_SIGNIFICANTLY;

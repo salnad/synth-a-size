@@ -3466,3 +3466,39 @@ fn a_callout_knob_sets_its_slot() {
     );
     assert_eq!(knobs_of(&fixture, KnobKind::Callout).len(), 7);
 }
+
+/// A middle drag on an amount knob toggles its bypass and drags its amount
+/// too, as upstream's `mouseDown` toggles bypass and then hands the press
+/// to the slider, which drags with any button but the menu's.
+#[test]
+fn a_middle_drag_on_an_amount_knob_bypasses_and_drags() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    let mut harness = fixture.harness();
+    harness.step();
+    let knob = knobs_of(&fixture, KnobKind::Source)
+        .into_iter()
+        .find(|knob| knob.route.slot == 0)
+        .unwrap();
+    let start = centre(knob.bounds);
+    press(&mut harness, start, PointerButton::Middle, Modifiers::NONE);
+    move_to(&mut harness, start + egui::vec2(0.0, -20.0));
+    release(
+        &mut harness,
+        start + egui::vec2(0.0, -20.0),
+        PointerButton::Middle,
+        Modifiers::NONE,
+    );
+    let log = fixture.take_log();
+    let of = |name: &str| {
+        log.iter()
+            .filter(|line| line.ends_with(name))
+            .map(|line| line.split(' ').next().unwrap())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(of("modulation_1_bypass"), ["begin", "set", "end"]);
+    assert_eq!(of("modulation_1_amount"), ["begin", "set", "end"]);
+    harness.step();
+    assert_eq!(fixture.synth.value("modulation_1_bypass"), 1.0);
+    assert!(fixture.synth.value("modulation_1_amount") > 0.0);
+}

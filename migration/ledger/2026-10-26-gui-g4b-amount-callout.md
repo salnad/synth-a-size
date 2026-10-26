@@ -29,6 +29,12 @@ does: `positionModulationAmountSlidersCallout`,
     knobs inside are amount knobs like the others (`KnobKind::Callout`),
     with the same drag, popup and menu.
   - When the source no longer needs the callout, it closes.
+- **Sliders drag with the middle button too** (Voice Reviewer's note on
+  #153). `juce::Slider` drags with any button but the popup-menu one. So a
+  middle press on an amount knob both toggles its bypass and drags its
+  amount, as upstream's `ModulationAmountKnob::mouseDown` does
+  (`toggleBypass`, then `SynthSlider::mouseDown`). This applies to every
+  slider, as it does upstream.
 - **New GUI preset and view `modulations_many`**, rendered animated: LFO 1
   on seven controls.
 
@@ -51,6 +57,8 @@ does: `positionModulationAmountSlidersCallout`,
     closes them.
   - `a_callout_knob_sets_its_slot`: one gesture on `modulation_2_amount`,
     and the callout stays open.
+  - `a_middle_drag_on_an_amount_knob_bypasses_and_drags`: one bypass
+    gesture and one amount gesture.
 - `cargo clippy --workspace --all-targets -D warnings`, `cargo fmt`, the
   `sas-gui` tests, `gui_reference.py layout --check` and `generate.py
   --check` pass.
