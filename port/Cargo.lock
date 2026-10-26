@@ -2638,6 +2638,7 @@ dependencies = [
  "naga",
  "nice-plug",
  "nice-plug-egui",
+ "sas-common",
  "sas-engine",
  "sas-preset",
  "serde_json",
