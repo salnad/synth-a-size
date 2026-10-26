@@ -28,6 +28,7 @@ use crate::primitives::{Quad, QuadBatch, QuadKind};
 use crate::scope::Scope;
 use crate::sections::Panel;
 use crate::skin::{ColorId, ValueId};
+use crate::text::{Justify, Overflow};
 
 const MARKER_WIDTH: f32 = 9.0;
 const RING_THICKNESS: f32 = 0.45;
@@ -647,12 +648,12 @@ impl EnvelopeEditor {
                 )
                 .translated(bounds.x, bounds.y);
                 pixels.with_clip(clip, |pixels| {
-                    pixels.text_left(
+                    pixels.text_line(
                         &format_time(time),
                         label,
-                        Face::Regular,
-                        font_height,
-                        colour,
+                        (Face::Regular, font_height, colour),
+                        Justify::Left,
+                        Overflow::Fit,
                     )
                 });
                 index += 1;

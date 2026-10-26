@@ -45,6 +45,7 @@ use crate::sections::voice::{self, VoiceLayout, VoiceSection};
 use crate::sections::volume::{PeakLevels, VolumeLayout, VolumeSection};
 use crate::sections::{Overlay, Panel};
 use crate::skin::{ColorId, Section, Skin, ValueId};
+use crate::text::{Justify, Overflow};
 
 /// What the editor shows of the synth's state.
 pub trait EditorModel: Send + Sync + 'static {
@@ -592,12 +593,16 @@ impl Interface {
         // The name spans the logo button's width (`LogoSection::resized`:
         // a square as tall as the header less 2 * kLogoPaddingY).
         let point_height = bounds.width as f32 * 0.19;
-        pixels.text_centred(
+        pixels.text_line(
             PRODUCT_NAME,
             bounds,
-            Face::TitleRegular,
-            point_height,
-            logo.color(ColorId::WidgetPrimary1),
+            (
+                Face::TitleRegular,
+                point_height,
+                logo.color(ColorId::WidgetPrimary1),
+            ),
+            Justify::Centred,
+            Overflow::Fit,
         );
     }
 
@@ -626,12 +631,16 @@ impl Interface {
         if name.is_empty() {
             name = "Init Preset".to_string();
         }
-        pixels.text_centred(
+        pixels.text_line(
             &name,
             preset.text,
-            Face::Title,
-            preset.text_size,
-            header.color(ColorId::PresetText),
+            (
+                Face::Title,
+                preset.text_size,
+                header.color(ColorId::PresetText),
+            ),
+            Justify::Centred,
+            Overflow::Fit,
         );
 
         let arrow = header.color(ColorId::IconButtonOff);

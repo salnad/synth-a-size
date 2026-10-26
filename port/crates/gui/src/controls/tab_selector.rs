@@ -13,6 +13,7 @@ use crate::layout::Rect;
 use crate::paint::PixelPainter;
 use crate::scope::Scope;
 use crate::skin::ColorId;
+use crate::text::{Justify, Overflow};
 
 /// `TabSelector::kDefaultFontHeightPercent`.
 pub const DEFAULT_FONT_HEIGHT_PERCENT: f32 = 0.26;
@@ -100,7 +101,8 @@ impl TabSelector {
                 scope.color(ColorId::TextComponentText)
             };
             let cell = Rect::new(bounds.x + from, bounds.y, to - from, bounds.height);
-            pixels.text_centred(name, cell, Face::Light, point_height, colour);
+            let style = (Face::Light, point_height, colour);
+            pixels.text_line(name, cell, style, Justify::Centred, Overflow::Ellipsis);
         }
     }
 }

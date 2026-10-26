@@ -216,7 +216,7 @@ fn paint_text_button(
     background.rounding = scope.value(ValueId::LabelBackgroundRounding);
     layer.quad(background);
     let font_size = scope.value(ValueId::ButtonFontSize);
-    layer.text_centred(text, bounds, Face::Mono, font_size, colour);
+    layer.fitted_text(text, bounds, Face::Mono, font_size, colour);
 }
 
 /// `OpenGlButtonComponent::renderPowerButton` with the power style's

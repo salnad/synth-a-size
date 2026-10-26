@@ -29,6 +29,7 @@ pub mod scope;
 pub mod section;
 pub mod sections;
 pub mod skin;
+pub mod text;
 
 pub use chat::{
     ChatHost, ChatPanel, ChatPlacement, ChatSettingsView, ChatStyle, ChatView, FocusMode,

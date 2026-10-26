@@ -287,6 +287,7 @@ use crate::paint::{PixelPainter, RectF};
 use crate::primitives::{Quad, QuadBatch, QuadKind};
 use crate::section::{self, paint_border, Heading};
 use crate::skin::ColorId;
+use crate::text::{Justify, Overflow};
 
 /// The `effect_chain_order` control.
 pub const ORDER_CONTROL: &str = "effect_chain_order";
@@ -810,7 +811,7 @@ fn paint_tile(
     let text_x = width * LEFT_PADDING;
     let name = effect.name().split('_').next().unwrap_or_default();
     let text = format!("{}{}", name[..1].to_uppercase(), &name[1..]);
-    pixels.text_left(
+    pixels.text_line(
         &text,
         RectF::new(
             bounds.x as f32 + text_x,
@@ -818,9 +819,9 @@ fn paint_tile(
             width - text_x,
             height,
         ),
-        Face::Regular,
-        scope.size_ratio() * 12.0,
-        colour,
+        (Face::Regular, scope.size_ratio() * 12.0, colour),
+        Justify::Left,
+        Overflow::Ellipsis,
     );
 
     let icon_width = ICON_SIZE * height;

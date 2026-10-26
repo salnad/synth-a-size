@@ -388,7 +388,8 @@ impl<'a, 'b> Panel<'a, 'b> {
         );
     }
 
-    /// Text over the section's controls.
+    /// A `PlainTextComponent`'s centred text over the section's controls,
+    /// fitted like `Graphics::drawFittedText`.
     pub fn text_centred(
         &mut self,
         text: &str,
@@ -397,7 +398,7 @@ impl<'a, 'b> Panel<'a, 'b> {
         size: f32,
         colour: crate::colour::Colour,
     ) {
-        self.layer.text_centred(text, bounds, face, size, colour);
+        self.layer.fitted_text(text, bounds, face, size, colour);
     }
 
     /// Draws the section's controls (quads, then text), clipped to the

@@ -156,7 +156,7 @@ pub fn show(
         }),
         Shape::Text(text) => {
             let size = scope.value(crate::skin::ValueId::ButtonFontSize);
-            layer.text_centred(text, bounds, crate::fonts::Face::Mono, size, colour);
+            layer.fitted_text(text, bounds, crate::fonts::Face::Mono, size, colour);
         }
     }
     event
