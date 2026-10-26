@@ -344,7 +344,34 @@ fn advanced_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> {
     let scope = top.within(advanced::SKIN);
     let voice = VoiceSettingsLayout::new(&scope, tab.voice);
     let display = DisplaySettingsLayout::new(&scope, tab.display);
-    Some(match path.strip_prefix("master_controls/")? {
+    let rest = path.strip_prefix("master_controls/")?;
+    if let Some(rest) = rest.strip_prefix("OSC ") {
+        use sas_gui::sections::oscillator_advanced::OscillatorAdvancedLayout;
+        let (number, rest) = rest.split_at(1);
+        let index = number.parse::<usize>().ok()? - 1;
+        let l = OscillatorAdvancedLayout::new(&scope, tab.oscillators[index]);
+        let rest = rest.strip_prefix('/').unwrap_or(rest);
+        let (section, control) = rest.split_once('/').unwrap_or((rest, ""));
+        let prefix = format!("osc_{number}_");
+        return Some(
+            match (section, control.strip_prefix(&prefix).unwrap_or(control)) {
+                ("", _) => l.bounds,
+                (s, "") if s.ends_with("OPTIONS") => l.options,
+                (s, "") if s.ends_with("UNISON") => l.unison,
+                (_, "midi_track") => l.midi_track,
+                (_, "smooth_interpolation") => l.smooth_interpolation,
+                (_, "stack_style") => l.stack_style,
+                (_, "unison_blend") => l.unison_blend,
+                (_, "detune_range") => l.detune_range,
+                (_, "frame_spread") => l.frame_spread,
+                (_, "distortion_spread") => l.distortion_spread,
+                (_, "spectral_morph_spread") => l.spectral_morph_spread,
+                (_, "stereo_spread") => l.stereo_spread,
+                _ => return None,
+            },
+        );
+    }
+    Some(match rest {
         "VOICE" => tab.voice,
         "VOICE/mpe_enabled" => voice.mpe_enabled,
         "VOICE/voice_priority" => voice.voice_priority,
