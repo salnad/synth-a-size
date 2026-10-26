@@ -27,8 +27,10 @@ use sas_llm_agent::{
 };
 use sas_llm_control::{Controller, Policy, PresetLibrary, Side};
 use sas_llm_listen::PreviewEngine;
+use sas_preset::user_folders;
 
 use crate::chat_bridge::{ChatBridge, RemoteSession};
+use crate::config;
 use crate::keys::{KeyStore, NoKeys, SystemKeys};
 use crate::live::LiveSession;
 use crate::params::SynthParams;
@@ -174,6 +176,9 @@ pub struct PluginChat {
     worker: Mutex<Option<Worker>>,
     settings: Mutex<ChatSettings>,
     settings_path: Option<PathBuf>,
+    /// The plugin's config file, whose `data_directory` places the preset
+    /// folder when the chat settings name none (as the editor's browser).
+    config_path: Option<PathBuf>,
     keys: Box<dyn KeyStore>,
     /// The provider's key as last read, so the Keychain is read once per
     /// provider, not every frame.
@@ -186,8 +191,8 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 impl PluginChat {
-    /// The chat with the user's settings file, the system key store and the
-    /// system transport.
+    /// The chat with the user's settings file, the plugin's config file, the
+    /// system key store and the system transport.
     pub fn new(params: Arc<SynthParams>) -> PluginChat {
         PluginChat::with(
             params,
@@ -195,6 +200,7 @@ impl PluginChat {
             Box::new(SystemKeys),
             system_transport(),
         )
+        .with_config_file(config::config_file())
     }
 
     /// A chat with no settings file, no keys and no network: it stays off.
@@ -226,10 +232,33 @@ impl PluginChat {
             worker: Mutex::new(None),
             settings: Mutex::new(settings),
             settings_path,
+            config_path: None,
             keys,
             key: Mutex::new(None),
             transports,
         }
+    }
+
+    /// Reads the preset folder's root from `path`'s `data_directory`; without
+    /// a config file, the default root.
+    pub fn with_config_file(mut self, path: Option<PathBuf>) -> PluginChat {
+        self.config_path = path;
+        self
+    }
+
+    /// The folder the preset tools use: the chat settings' `preset_dir`,
+    /// else the Presets folder under the data directory (the config's
+    /// `data_directory` if it is an existing folder, else
+    /// `~/Music/synth-a-size`), the folder the editor's browser uses. Read
+    /// when a worker starts, so a changed data directory applies from the
+    /// next one.
+    pub fn preset_folder(&self) -> Option<PathBuf> {
+        if let Some(folder) = &lock(&self.settings).preset_dir {
+            return Some(folder.clone());
+        }
+        let configured = self.config_path.as_deref().and_then(config::data_directory);
+        user_folders::root(configured.as_deref())
+            .map(|root| user_folders::folder(&root, user_folders::Kind::Presets))
     }
 
     /// The editor opened: the session for its `GuiContext`, and how to wake
@@ -269,7 +298,7 @@ impl PluginChat {
             let provider = self.provider()?;
             let flags = StopFlags::default();
             let transport = (self.transports)(&provider, flags.check())?;
-            let library = lock(&self.settings).preset_folder().map(PresetLibrary::new);
+            let library = self.preset_folder().map(PresetLibrary::new);
             *worker = Some(spawn_worker(
                 provider,
                 transport,
