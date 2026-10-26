@@ -12,6 +12,7 @@
     { "name": "all_effects", "tab": "effects", "preset": "migration/corpus/gui/presets/all_effects.vital" },
     { "name": "all_effects_bottom", "tab": "effects", "preset": "migration/corpus/gui/presets/all_effects.vital", "effects_scroll": 10000 },
     { "name": "sample_on", "tab": "voice", "preset": "migration/corpus/gui/presets/sample_on.vital" },
-    { "name": "modulations", "tab": "voice", "preset": "migration/corpus/gui/presets/modulations.vital", "seconds": 0.05, "animate": true }
+    { "name": "modulations", "tab": "voice", "preset": "migration/corpus/gui/presets/modulations.vital", "seconds": 0.05, "animate": true },
+    { "name": "modulations_many", "tab": "voice", "preset": "migration/corpus/gui/presets/modulations_many.vital", "seconds": 0.05, "animate": true }
   ]
 }

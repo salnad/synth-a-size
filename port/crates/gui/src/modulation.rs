@@ -56,6 +56,10 @@ const DRAG_DROP_SKIN: &[Section] = &[Section::ModulationDragDrop];
 /// `SynthSlider::kLinearWidthPercent`.
 const LINEAR_WIDTH_PERCENT: f32 = 0.26;
 
+/// `showModulationAmountCallout`'s knob size and padding.
+const CALLOUT_KNOB: i32 = 30;
+const CALLOUT_PADDING: i32 = 5;
+
 /// `OpenGlMultiQuad::kAlphaInc`: how far the destinations fade per frame.
 const ALPHA_INC: f32 = 0.2;
 
@@ -342,7 +346,40 @@ pub struct SourceInput {
 #[derive(Clone, Copy, Debug)]
 struct SourceButton {
     name: &'static str,
+    bounds: Rect,
     area: Rect,
+}
+
+/// A source whose knobs don't fit in its button: the button over its
+/// modulation area that opens them in a callout (`ExpandModulationButton`).
+#[derive(Clone, Debug)]
+struct ExpandButton {
+    source: &'static str,
+    /// The source button's bounds.
+    button: Rect,
+    /// Where it is: the button's modulation area.
+    area: Rect,
+    /// Its connections' knob colours, for the rings it draws.
+    arcs: Vec<Colour>,
+}
+
+impl ExpandButton {
+    /// `getNumColumns`: the fewest columns whose cells, as tall as wide,
+    /// hold `count` within the button's height.
+    fn columns(&self, count: usize) -> usize {
+        let ratio = self.area.height as f32 / self.area.width as f32;
+        let mut columns = 1;
+        while columns * ((ratio * columns as f32) as usize) < count {
+            columns += 1;
+        }
+        columns
+    }
+}
+
+/// A source button's expand button state across frames.
+#[derive(Clone, Copy, Debug, Default)]
+struct ExpandState {
+    hover_amount: f32,
 }
 
 /// Which of a slot's amount knobs.
@@ -356,6 +393,9 @@ pub enum KnobKind {
     /// Beside its destination after the pointer went over that control
     /// (`modulation_hover_sliders_`).
     Hover,
+    /// In its source's callout (`modulation_amount_sliders_` moved to
+    /// `showModulationAmountCallout`).
+    Callout,
 }
 
 /// A modulation's amount knob to show this frame (`ModulationAmountKnob`).
@@ -395,6 +435,11 @@ pub struct ModulationManager {
     hovered: Option<&'static str>,
     /// The amount knobs shown last frame.
     knobs: Vec<AmountKnob>,
+    /// The source whose knobs show in the callout
+    /// (`current_expanded_modulation_`).
+    expanded: Option<&'static str>,
+    /// The editor's bounds, which the callout stays in.
+    editor: Rect,
 }
 
 impl ModulationManager {
@@ -478,6 +523,7 @@ impl ModulationManager {
         }
         self.sources.push(SourceButton {
             name,
+            bounds,
             area: modulation_area_bounds(bounds, widget_margin),
         });
         let response = ui.interact(pixels.rect(bounds.into()), id, Sense::click_and_drag());
@@ -753,6 +799,7 @@ impl ModulationManager {
         self.source_knobs(host, top, editor_width, &mut knobs);
         self.selected_knobs(host, &scope, top.size_ratio(), &mut knobs);
         self.hover_knobs(host, &scope, top.size_ratio(), &mut knobs);
+        self.callout_knobs(host, top, &mut knobs);
         self.knobs = knobs.clone();
         knobs
     }
@@ -784,7 +831,6 @@ impl ModulationManager {
         editor_width: i32,
         knobs: &mut Vec<AmountKnob>,
     ) {
-        const MAX_MODULATIONS_ACROSS: i32 = 3;
         const RIGHT_POPUP_POSITION_X: i32 = 150;
         for source in &self.sources {
             let connections: Vec<&Route> = self
@@ -793,10 +839,7 @@ impl ModulationManager {
                 .filter(|route| route.source == source.name)
                 .collect();
             let area = source.area;
-            let max_height = (MAX_MODULATIONS_ACROSS * area.height) / area.width.max(1);
-            if connections.is_empty()
-                || connections.len() as i32 > MAX_MODULATIONS_ACROSS * max_height
-            {
+            if connections.is_empty() || !Self::fits(area, connections.len()) {
                 continue;
             }
             for (i, route) in connections.into_iter().enumerate() {
@@ -948,6 +991,210 @@ impl ModulationManager {
             }
             x += delta_x;
             y += delta_y;
+        }
+    }
+
+    /// Whether `count` knobs fit in a source button's modulation `area`
+    /// (`kMaxModulationsAcross` across, as many rows as are as tall).
+    fn fits(area: Rect, count: usize) -> bool {
+        const MAX_MODULATIONS_ACROSS: i32 = 3;
+        let max_height = (MAX_MODULATIONS_ACROSS * area.height) / area.width.max(1);
+        count as i32 <= MAX_MODULATIONS_ACROSS * max_height
+    }
+
+    /// The expand buttons of the sources drawn whose knobs don't fit
+    /// (`positionModulationAmountSlidersCallout`).
+    fn expand_buttons(&self, top: &Scope) -> Vec<ExpandButton> {
+        self.sources
+            .iter()
+            .filter_map(|source| {
+                let routes: Vec<&Route> = self
+                    .routes()
+                    .iter()
+                    .filter(|route| route.source == source.name)
+                    .collect();
+                if routes.is_empty() || Self::fits(source.area, routes.len()) {
+                    return None;
+                }
+                Some(ExpandButton {
+                    source: source.name,
+                    button: source.bounds,
+                    area: source.area,
+                    arcs: routes
+                        .iter()
+                        .map(|route| self.destination_arc(top, &route.destination))
+                        .collect(),
+                })
+            })
+            .collect()
+    }
+
+    /// The callout's box for `expand`'s `count` knobs
+    /// (`showModulationAmountCallout`): 30 pixel knobs with 5 pixels round
+    /// them, centred under the source button and kept in the editor. Also
+    /// its column count.
+    fn callout_box(expand: &ExpandButton, count: usize, editor: Rect) -> (Rect, usize) {
+        let columns = expand.columns(count);
+        let rows = count.div_ceil(columns) as i32;
+        let width = CALLOUT_KNOB * columns as i32 + 2 * CALLOUT_PADDING;
+        let height = CALLOUT_KNOB * rows + 2 * CALLOUT_PADDING;
+        let x = (expand.button.x + (expand.button.width - width) / 2)
+            .max(0)
+            .min(editor.width - width);
+        let y = expand.button.bottom().min(editor.height - height);
+        (Rect::new(x, y, width, height), columns)
+    }
+
+    /// The expanded source's knobs in its callout, from the bottom row up.
+    fn callout_knobs(&self, host: &Host, top: &Scope, knobs: &mut Vec<AmountKnob>) {
+        let Some(source) = self.expanded else {
+            return;
+        };
+        let Some(expand) = self
+            .expand_buttons(top)
+            .into_iter()
+            .find(|expand| expand.source == source)
+        else {
+            return;
+        };
+        let routes: Vec<&Route> = self
+            .routes()
+            .iter()
+            .filter(|route| route.source == source)
+            .collect();
+        let (callout, columns) = Self::callout_box(&expand, routes.len(), self.editor);
+        for (i, route) in routes.into_iter().enumerate() {
+            let (row, column) = ((i / columns) as i32, (i % columns) as i32);
+            let x = column * CALLOUT_KNOB + CALLOUT_PADDING;
+            let y = callout.height - (row + 1) * CALLOUT_KNOB - CALLOUT_PADDING;
+            let arc = self.destination_arc(top, &route.destination);
+            let prefix = intern(format!("{}: ", Host::info(&route.destination).display_name));
+            knobs.push(AmountKnob {
+                kind: KnobKind::Callout,
+                route: route.clone(),
+                slider: knob_slider(
+                    host,
+                    KnobKind::Callout,
+                    route,
+                    arc,
+                    prefix,
+                    Placement::Below,
+                ),
+                bounds: Rect::new(callout.x + x, callout.y + y, CALLOUT_KNOB, CALLOUT_KNOB),
+            });
+        }
+    }
+
+    /// The expand buttons (`ExpandModulationButton`, a lighten button
+    /// triggered on press) and the open callout's box
+    /// (`modulation_expansion_box_`), into `layer` under the knobs. A press
+    /// on an expand button opens its source's callout, or closes it if it
+    /// is open (`buttonClicked`); a press elsewhere outside the callout
+    /// closes it (`expansionFocusLost`).
+    pub fn show_expansion(
+        &mut self,
+        ui: &mut Ui,
+        pixels: &PixelPainter,
+        layer: &mut crate::layer::Layer,
+        top: &Scope,
+        editor: Rect,
+    ) {
+        const HOVER_INC: f32 = 0.2;
+        self.editor = editor;
+        let expands = self.expand_buttons(top);
+        if self
+            .expanded
+            .is_some_and(|source| !expands.iter().any(|expand| expand.source == source))
+        {
+            self.expanded = None;
+        }
+        let (pressed, pointer) = ui.input(|input| {
+            (
+                input.pointer.button_pressed(PointerButton::Primary),
+                input.pointer.interact_pos(),
+            )
+        });
+        let pointer =
+            pointer.map(|pos| ((pos - pixels.area().min) * pixels.pixels_per_point()).to_pos2());
+        let inside = |rect: Rect| pointer.is_some_and(|p| RectF::from(rect).contains(p.x, p.y));
+        let mut on_expand = false;
+        let rounding = top.value(ValueId::LabelBackgroundRounding);
+        for expand in &expands {
+            let id = ui.scope_id().with(("expand modulation", expand.source));
+            let response = ui.interact(pixels.rect(expand.area.into()), id, Sense::click());
+            let mut state: ExpandState = ui.data(|data| data.get_temp(id)).unwrap_or_default();
+            state.hover_amount = if response.hovered() {
+                (state.hover_amount + HOVER_INC).min(1.0)
+            } else {
+                (state.hover_amount - HOVER_INC).max(0.0)
+            };
+            ui.data_mut(|data| data.insert_temp(id, state));
+            let down = response.is_pointer_button_down_on();
+            if pressed && inside(expand.area) {
+                on_expand = true;
+                let again = self.expanded == Some(expand.source);
+                self.expanded = (!again).then_some(expand.source);
+            }
+            // renderLightenButton: transparent white towards the lighten
+            // screen colour while hovered, the overlay screen while down.
+            let colour = if down {
+                top.color(ColorId::OverlayScreen)
+            } else {
+                Colour(0x00ff_ffff)
+                    .interpolated_with(top.color(ColorId::LightenScreen), state.hover_amount)
+            };
+            let mut background = Quad::new(QuadKind::RoundedRectangle, expand.area.into(), colour);
+            background.rounding = rounding;
+            layer.quad(background);
+            self.expand_rings(expand, layer);
+        }
+        if let Some(source) = self.expanded {
+            let expand = expands
+                .iter()
+                .find(|expand| expand.source == source)
+                .expect("checked above");
+            let (callout, _) = Self::callout_box(expand, expand.arcs.len(), editor);
+            if pressed && !on_expand && !inside(callout) {
+                self.expanded = None;
+            } else {
+                let scope = top.within(DRAG_DROP_SKIN);
+                let mut box_quad = Quad::new(
+                    QuadKind::RoundedRectangle,
+                    callout.into(),
+                    scope.color(ColorId::Body),
+                );
+                box_quad.rounding = scope.value(ValueId::BodyRounding);
+                layer.quad(box_quad);
+            }
+        }
+    }
+
+    /// `ExpandModulationButton::renderSliderQuads`: a ring per knob in the
+    /// knob's colour, in a grid of cells as tall as wide, from the bottom.
+    fn expand_rings(&self, expand: &ExpandButton, layer: &mut crate::layer::Layer) {
+        let count = expand.arcs.len();
+        let columns = expand.columns(count);
+        let (width, height) = (expand.area.width as f32, expand.area.height as f32);
+        let cell = width / columns as f32;
+        let rows = count.div_ceil(columns);
+        let y_offset = ((height - rows as f32 * cell) / 2.0) as i32 as f32;
+        for (i, &arc) in expand.arcs.iter().enumerate() {
+            let (row, column) = (i / columns, i % columns);
+            let x = column as f32 * cell;
+            let y = height - y_offset - (row + 1) as f32 * cell;
+            let mut ring = Quad::new(
+                QuadKind::Ring,
+                RectF::new(
+                    expand.area.x as f32 + x,
+                    expand.area.y as f32 + y,
+                    cell,
+                    cell,
+                ),
+                arc,
+            );
+            ring.alt_color = arc.with_multiplied_alpha(0.5);
+            ring.thickness = 2.0;
+            layer.quad(ring);
         }
     }
 

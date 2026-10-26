@@ -692,11 +692,12 @@ impl Slider {
             ..SliderEvent::default()
         };
 
-        let (pointer, modifiers, primary_down, secondary_down) = ui.input(|input| {
+        let (pointer, modifiers, primary_down, middle_down, secondary_down) = ui.input(|input| {
             (
                 input.pointer.interact_pos(),
                 input.modifiers,
                 input.pointer.button_down(PointerButton::Primary),
+                input.pointer.button_down(PointerButton::Middle),
                 input.pointer.button_down(PointerButton::Secondary),
             )
         });
@@ -714,11 +715,27 @@ impl Slider {
                 event.text_entry = true;
             } else if popup_menu {
                 event.menu_at = pointer;
+                // A press with other buttons ends a run of clicks.
+                if let Some(pointer) = pointer {
+                    let button = if secondary_down {
+                        PointerButton::Secondary
+                    } else {
+                        PointerButton::Primary
+                    };
+                    state.last_press = Some((now, pointer, button));
+                }
             } else if let Some(pointer) = pointer {
-                // MouseInputSource::getNumberOfMultipleClicks: a press near
-                // the previous one and soon after it.
-                let follows_press = state.last_press.is_some_and(|(time, at)| {
-                    now - time < DOUBLE_CLICK_TIMEOUT
+                let button = if primary_down || !middle_down {
+                    PointerButton::Primary
+                } else {
+                    PointerButton::Middle
+                };
+                // MouseInputSource::getNumberOfMultipleClicks: a press with
+                // the same buttons as the previous one, near it and soon
+                // after it.
+                let follows_press = state.last_press.is_some_and(|(time, at, last)| {
+                    last == button
+                        && now - time < DOUBLE_CLICK_TIMEOUT
                         && (pointer.x - at.x).abs() < MULTIPLE_CLICK_DISTANCE
                         && (pointer.y - at.y).abs() < MULTIPLE_CLICK_DISTANCE
                 });
@@ -728,14 +745,16 @@ impl Slider {
                 state.moved = false;
                 state.value = host.value(self.name);
                 state.proportion = self.proportion(state.value);
-                state.last_press = Some((now, pointer));
+                state.last_press = Some((now, pointer, button));
                 host.begin(self.name);
                 event.popup = true;
             }
-        } else if state.down && primary_down {
-            // mouseDrag. SynthSlider::mouseDrag ignores drags with alt held.
+        } else if state.down && (primary_down || middle_down) {
+            // mouseDrag, with any button but the menu's (juce::Slider drags
+            // with the middle one too). SynthSlider::mouseDrag ignores drags
+            // with alt held.
             if let (Some(pointer), false) = (pointer, modifiers.alt) {
-                if let Some((_, at)) = state.last_press {
+                if let Some((_, at, _)) = state.last_press {
                     state.moved |= pointer.distance(at) >= MOVED_SIGNIFICANTLY;
                 }
                 if pointer != state.last {
@@ -771,7 +790,7 @@ impl Slider {
             state.holding = HOLD_FRAMES;
             let long_press = state
                 .last_press
-                .is_some_and(|(time, _)| now - time > LONG_PRESS);
+                .is_some_and(|(time, _, _)| now - time > LONG_PRESS);
             if self.double_click_returns && state.second_click && !state.moved && !long_press {
                 // Slider::mouseDoubleClick: back to the default value.
                 let value = self.double_click_value.unwrap_or(self.info.default_value);
@@ -869,8 +888,8 @@ struct DragState {
     /// Frames left to keep drawing `value` after a release, until the host
     /// shows it.
     holding: u8,
-    /// The time and place (points) of the last press.
-    last_press: Option<(f64, Pos2)>,
+    /// The time, place (points) and buttons of the last press.
+    last_press: Option<(f64, Pos2, PointerButton)>,
     /// This press followed the previous one closely enough to make a
     /// double click.
     second_click: bool,

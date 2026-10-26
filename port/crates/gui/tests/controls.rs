@@ -3379,3 +3379,165 @@ fn a_middle_click_on_an_amount_knob_toggles_bypass() {
     harness.step();
     assert_eq!(fixture.synth.value("modulation_1_bypass"), 1.0);
 }
+
+/// LFO 1 on seven controls: more knobs than its button holds.
+fn seven_on_lfo_1(fixture: &Fixture) {
+    let mut routing = fixture.synth.routing.lock().unwrap();
+    for destination in [
+        "osc_1_level",
+        "osc_1_pan",
+        "osc_1_wave_frame",
+        "osc_1_unison_detune",
+        "macro_control_2",
+        "reverb_dry_wet",
+        "env_1_attack",
+    ] {
+        routing.add_modulation("lfo_1", destination).unwrap();
+    }
+}
+
+/// Where LFO 1's expand button is: its button's modulation area.
+fn lfo_1_expand_button(fixture: &Fixture) -> Rect {
+    let interface = fixture.interface.borrow();
+    let layout = FullLayout::new(interface.skin(), 1400, 820);
+    let top = Scope::top(interface.skin(), layout.size_ratio);
+    let modulation = ModulationLayout::new(&top, layout.modulation);
+    let tabs = interface.modulation().tab_selector(1);
+    let tab = tabs.button_bounds(modulation.lfo_tabs, tabs.num_shown(|_| false))[0];
+    sas_gui::controls::modulation_button::modulation_area_bounds(tab, top.widget_margin() as i32)
+}
+
+/// A source with more knobs than fit shows an expand button instead; a
+/// press on it opens the knobs in a callout below the source, 30 pixels
+/// each from the bottom row up, and a press on it again or outside the
+/// callout closes it (`showModulationAmountCallout`, `expansionFocusLost`).
+#[test]
+fn a_source_with_more_knobs_than_fit_opens_them_in_a_callout() {
+    let fixture = Fixture::new();
+    seven_on_lfo_1(&fixture);
+    let mut harness = fixture.harness();
+    harness.step();
+    assert!(knobs_of(&fixture, KnobKind::Source).is_empty());
+    let expand = lfo_1_expand_button(&fixture);
+    click(&mut harness, centre(expand));
+    let callout = knobs_of(&fixture, KnobKind::Callout);
+    assert_eq!(callout.len(), 7);
+    assert!(callout
+        .iter()
+        .all(|knob| knob.bounds.width == 30 && knob.bounds.height == 30));
+    // The first row is the bottom one, left to right.
+    assert_eq!(callout[1].bounds.x - callout[0].bounds.x, 30);
+    assert!(callout.last().unwrap().bounds.y < callout[0].bounds.y);
+    assert_eq!(callout[0].route.destination, "osc_1_level");
+
+    click(&mut harness, centre(expand));
+    assert!(knobs_of(&fixture, KnobKind::Callout).is_empty());
+    click(&mut harness, centre(expand));
+    assert_eq!(knobs_of(&fixture, KnobKind::Callout).len(), 7);
+    click(&mut harness, Pos2::new(700.0, 5.0));
+    assert!(knobs_of(&fixture, KnobKind::Callout).is_empty());
+}
+
+/// A knob in the callout is an amount knob like the others: a drag on it
+/// is one gesture on its slot, and the callout stays open.
+#[test]
+fn a_callout_knob_sets_its_slot() {
+    let fixture = Fixture::new();
+    seven_on_lfo_1(&fixture);
+    let mut harness = fixture.harness();
+    harness.step();
+    click(&mut harness, centre(lfo_1_expand_button(&fixture)));
+    let knob = knobs_of(&fixture, KnobKind::Callout)[1].clone();
+    assert_eq!(knob.slider.name, "modulation_2_amount");
+    fixture.take_log();
+    drag(
+        &mut harness,
+        centre(knob.bounds),
+        centre(knob.bounds) + egui::vec2(0.0, -20.0),
+        Modifiers::NONE,
+    );
+    assert_eq!(
+        fixture.take_log(),
+        [
+            "begin modulation_2_amount",
+            "set modulation_2_amount",
+            "end modulation_2_amount"
+        ]
+    );
+    assert_eq!(knobs_of(&fixture, KnobKind::Callout).len(), 7);
+}
+
+/// A middle drag on an amount knob toggles its bypass and drags its amount
+/// too, as upstream's `mouseDown` toggles bypass and then hands the press
+/// to the slider, which drags with any button but the menu's.
+#[test]
+fn a_middle_drag_on_an_amount_knob_bypasses_and_drags() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    let mut harness = fixture.harness();
+    harness.step();
+    let knob = knobs_of(&fixture, KnobKind::Source)
+        .into_iter()
+        .find(|knob| knob.route.slot == 0)
+        .unwrap();
+    let start = centre(knob.bounds);
+    press(&mut harness, start, PointerButton::Middle, Modifiers::NONE);
+    move_to(&mut harness, start + egui::vec2(0.0, -20.0));
+    release(
+        &mut harness,
+        start + egui::vec2(0.0, -20.0),
+        PointerButton::Middle,
+        Modifiers::NONE,
+    );
+    let log = fixture.take_log();
+    let of = |name: &str| {
+        log.iter()
+            .filter(|line| line.ends_with(name))
+            .map(|line| line.split(' ').next().unwrap())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(of("modulation_1_bypass"), ["begin", "set", "end"]);
+    assert_eq!(of("modulation_1_amount"), ["begin", "set", "end"]);
+    harness.step();
+    assert_eq!(fixture.synth.value("modulation_1_bypass"), 1.0);
+    assert!(fixture.synth.value("modulation_1_amount") > 0.0);
+}
+
+/// JUCE counts a double click only when both presses use the same buttons
+/// (`MouseInputSourceImpl::setButtons`), so a middle click then a left one
+/// leaves the value, while two middle clicks return it to the default.
+#[test]
+fn a_double_click_needs_the_same_button_twice() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let (_, portamento) = fixture.layouts();
+    let start = centre(portamento.portamento_time);
+    drag(
+        &mut harness,
+        start,
+        start + egui::vec2(0.0, -60.0),
+        Modifiers::NONE,
+    );
+    let default = registry().get("portamento_time").unwrap().default_value;
+    let dragged = fixture.synth.value("portamento_time");
+    assert_ne!(dragged, default);
+    let past_timeout = |harness: &mut egui_kittest::Harness<'_>| {
+        for _ in 0..30 {
+            harness.step();
+        }
+    };
+    let click_with = |harness: &mut egui_kittest::Harness<'_>, button| {
+        press(harness, start, button, Modifiers::NONE);
+        release(harness, start, button, Modifiers::NONE);
+    };
+
+    past_timeout(&mut harness);
+    click_with(&mut harness, PointerButton::Middle);
+    click_with(&mut harness, PointerButton::Primary);
+    assert_eq!(fixture.synth.value("portamento_time"), dragged);
+
+    past_timeout(&mut harness);
+    click_with(&mut harness, PointerButton::Middle);
+    click_with(&mut harness, PointerButton::Middle);
+    assert_eq!(fixture.synth.value("portamento_time"), default);
+}
