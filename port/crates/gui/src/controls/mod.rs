@@ -7,6 +7,7 @@ pub mod button;
 pub mod filter_response;
 pub mod format;
 pub mod icon;
+pub mod modulation_button;
 pub mod oscilloscope;
 pub mod path;
 pub mod paths;

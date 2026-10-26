@@ -5,11 +5,16 @@
 
 use std::path::PathBuf;
 
+use sas_gui::controls::modulation_button::ModulationTabSelector;
 use sas_gui::layout::{FullLayout, Rect};
 use sas_gui::scope::Scope;
 use sas_gui::sections::bend::{self, BendLayout};
+use sas_gui::sections::envelope::{self, EnvelopeLayout};
+use sas_gui::sections::lfo::{self, LfoLayout};
+use sas_gui::sections::modulation::{ModulationInterface, ModulationLayout};
 use sas_gui::sections::oscillator::{self, OscillatorLayout};
 use sas_gui::sections::portamento::{self, PortamentoLayout};
+use sas_gui::sections::random::{self, RandomLayout};
 use sas_gui::sections::sample::{self, SampleLayout};
 use sas_gui::sections::synthesis::SynthesisLayout;
 use sas_gui::sections::voice::{self, VoiceLayout};
@@ -95,8 +100,103 @@ fn port_rect(skin: &Skin, layout: &FullLayout, path: &str, preset: Option<&str>)
         "header_section/VOLUME/volume" => volume.volume,
         "BEND/pitch_wheel" => bend.pitch_wheel,
         "BEND/mod_wheel" => bend.mod_wheel,
+        _ if path.starts_with("modulation/") => return modulation_rect(skin, layout, path),
         _ => return synthesis_rect(skin, layout, path, phase_visible(preset)),
     })
+}
+
+/// The modulation column, with the first source of each kind selected.
+fn modulation_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> {
+    let top = Scope::top(skin, layout.size_ratio);
+    let m = ModulationLayout::new(&top, layout.modulation);
+    let rest = path.strip_prefix("modulation/")?;
+    let tabs = |selector: &ModulationTabSelector, bounds: Rect, name: &str| {
+        let shown = selector.num_shown(|_| false);
+        let index = selector.buttons.iter().position(|b| b.name == name)?;
+        selector.button_bounds(bounds, shown).get(index).copied()
+    };
+    let interface = ModulationInterface::default();
+    if let Some(name) = rest.strip_prefix("env/") {
+        return tabs(interface.tab_selector(0), m.envelope_tabs, name);
+    }
+    if let Some(name) = rest.strip_prefix("lfo/") {
+        return tabs(interface.tab_selector(1), m.lfo_tabs, name);
+    }
+    if let Some(name) = rest.strip_prefix("random/") {
+        return tabs(interface.tab_selector(2), m.random_tabs, name);
+    }
+    if let Some(name) = rest.strip_prefix("top/") {
+        return tabs(interface.tab_selector(3), m.keyboard_top, name);
+    }
+    if let Some(name) = rest.strip_prefix("bottom/") {
+        return tabs(interface.tab_selector(4), m.keyboard_bottom, name);
+    }
+    if let Some(control) = rest.strip_prefix("ENVELOPE 1") {
+        let env = EnvelopeLayout::new(&top.within(envelope::SKIN), m.envelope);
+        let knob = |i: usize| Some(env.knobs[i]);
+        return match control {
+            "" => Some(env.bounds),
+            "/env_1_delay" => knob(0),
+            "/env_1_attack" => knob(1),
+            "/env_1_hold" => knob(2),
+            "/env_1_decay" => knob(3),
+            "/env_1_sustain" => knob(4),
+            "/env_1_release" => knob(5),
+            "/env_1" => Some(env.editor),
+            "/Magnifying Glass" => Some(env.magnifying_glass),
+            _ => None,
+        };
+    }
+    if let Some(control) = rest.strip_prefix("LFO 1") {
+        let l = LfoLayout::new(&top.within(lfo::SKIN), m.lfo);
+        return Some(match control {
+            "" => l.bounds,
+            "/lfo_1_tempo" | "/lfo_1_frequency" => l.rate,
+            "/lfo_1_keytrack_transpose" => l.keytrack_transpose,
+            "/lfo_1_keytrack_tune" => l.keytrack_tune,
+            "/lfo_1_sync" => l.sync,
+            "/lfo_1_sync_type" => l.sync_type,
+            "/lfo_1_phase" => l.phase,
+            "/lfo_1_smooth_time" | "/lfo_1_fade_time" => l.fade,
+            "/Smooth Mode Text" | "/Smooth Mode" => l.smooth_mode,
+            "/lfo_1_delay_time" => l.delay,
+            "/lfo_1_stereo" => l.stereo,
+            "/paint_pattern" => l.paint_pattern,
+            "/grid_size_x" => l.grid_size_x,
+            "/grid_size_y" => l.grid_size_y,
+            "/paint" => l.paint,
+            "/smooth" => l.smooth,
+            "/lfo_1" => l.editor,
+            "/preset_selector" => l.preset_selector.bounds,
+            "/preset_selector/Text" => l.preset_selector.text,
+            "/preset_selector/Prev" => l.preset_selector.previous,
+            "/preset_selector/Next" => l.preset_selector.next,
+            _ => return None,
+        });
+    }
+    if let Some(control) = rest.strip_prefix("RANDOM 1") {
+        let r = RandomLayout::new(&top.within(random::SKIN), m.random);
+        return Some(match control {
+            "" => r.bounds,
+            "/random_1_frequency" | "/random_1_tempo" => r.rate,
+            "/random_1_keytrack_transpose" => r.keytrack_transpose,
+            "/random_1_keytrack_tune" => r.keytrack_tune,
+            "/random_1_sync" => r.sync,
+            "/random_1_style" => r.style,
+            "/random_1" => r.viewer,
+            "/random_1_stereo" => r.stereo,
+            "/random_1_sync_type" => r.sync_type,
+            _ => return None,
+        });
+    }
+    match rest {
+        "env" => Some(m.envelope_tabs),
+        "lfo" => Some(m.lfo_tabs),
+        "random" => Some(m.random_tabs),
+        "top" => Some(m.keyboard_top),
+        "bottom" => Some(m.keyboard_bottom),
+        _ => None,
+    }
 }
 
 /// The Voice tab's synthesis column, with the distortion phase slider

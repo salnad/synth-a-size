@@ -11,9 +11,13 @@
 //! the interface and its changes to the host.
 
 pub mod bend;
+pub mod envelope;
 pub mod keyboard;
+pub mod lfo;
+pub mod modulation;
 pub mod oscillator;
 pub mod portamento;
+pub mod random;
 pub mod sample;
 pub mod synthesis;
 pub mod voice;
@@ -275,6 +279,16 @@ impl<'a, 'b> Panel<'a, 'b> {
     /// A quad drawn with the section's controls.
     pub fn quad(&mut self, quad: crate::primitives::Quad) {
         self.layer.quad(quad);
+    }
+
+    /// `OpenGlComponent::renderCorners`: a widget's corners rounded off in
+    /// the body colour.
+    pub fn widget_corners(&mut self, bounds: Rect) {
+        let rounding = self.scope.value(crate::skin::ValueId::WidgetRoundedCorner);
+        let body = self.scope.color(crate::skin::ColorId::Body);
+        for corner in crate::primitives::Quad::corners(bounds.into(), rounding, body) {
+            self.layer.quad(corner);
+        }
     }
 
     /// The layer the section's controls draw into, for components that

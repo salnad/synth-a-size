@@ -38,6 +38,11 @@ impl Colour {
         self.0 as u8
     }
 
+    /// `Colour::withAlpha` (a byte).
+    pub fn with_alpha(self, alpha: u8) -> Colour {
+        Colour(((alpha as u32) << 24) | (self.0 & 0x00ff_ffff))
+    }
+
     /// `Colour::withMultipliedAlpha` (`withAlpha` rounds to a byte).
     pub fn with_multiplied_alpha(self, multiplier: f32) -> Colour {
         if multiplier >= 1.0 {

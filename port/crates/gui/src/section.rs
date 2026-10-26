@@ -279,6 +279,160 @@ pub fn draw_label_connection(pixels: &PixelPainter, scope: &Scope, left: Rect, r
     );
 }
 
+/// `SynthSection::placeTempoControls` for a rate area at `(x, y, width,
+/// height)`: the rate slider and, at its right, the sync selector.
+/// Returns (rate, sync, the rate's modulation area relative to the rate).
+pub fn place_tempo_controls(
+    scope: &Scope,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+) -> (Rect, Rect, Rect) {
+    const MAX_SYNC_WIDTH_RATIO: f32 = 0.35;
+    let sync_width =
+        (width as f32 * MAX_SYNC_WIDTH_RATIO).min(scope.value(ValueId::TextComponentHeight)) as i32;
+    let sync_y = (y as f32
+        + (height - sync_width) as f32 / 2.0
+        + scope.value(ValueId::TextComponentOffset)) as i32;
+    let sync = Rect::new(x + width - sync_width, sync_y, sync_width, sync_width);
+    let rate = Rect::new(x, y, width - sync_width, height);
+    let modulation_area = Rect::new(0, sync_y - y, rate.width, sync_width);
+    (rate, sync, modulation_area)
+}
+
+/// The keytrack sliders' divider (`transpose_tune_divider_`): a one-pixel
+/// line at the centre of the rate's modulation area, a quarter of its
+/// height in from each end.
+pub fn keytrack_divider(rate: Rect, modulation_area: Rect) -> Rect {
+    let area = modulation_area.translated(rate.x, rate.y);
+    let reduce = area.height / 4;
+    let reduced = Rect::new(
+        area.x + reduce,
+        area.y + reduce,
+        area.width - 2 * reduce,
+        area.height - 2 * reduce,
+    );
+    Rect::new(reduced.x + reduced.width / 2, reduced.y, 1, reduced.height)
+}
+
+/// `OpenGlComponent::paintBackground`: a widget's backdrop. Its rounded
+/// corners are drawn over it in the body colour (`renderCorners`).
+pub fn paint_widget_background(pixels: &PixelPainter, scope: &Scope, bounds: Rect) {
+    pixels.fill_rect(bounds, scope.color(ColorId::WidgetBackground));
+}
+
+/// `SynthSection::getComponentShadowWidth`.
+pub fn component_shadow_width(scope: &Scope) -> i32 {
+    (scope.size_ratio() * 2.0).round() as i32
+}
+
+/// `SynthSection::paintTabShadow`: a shadow fading out round `bounds`,
+/// with rounded corners.
+pub fn paint_tab_shadow(pixels: &PixelPainter, scope: &Scope, bounds: Rect) {
+    use crate::paint::{Gradient, GradientKind};
+    const CORNER_SCALE: f32 = 0.707_106_77;
+    let corner_size = scope.value(ValueId::BodyRounding) as i32;
+    let shadow_size = component_shadow_width(scope);
+    let corner_and_shadow = corner_size + shadow_size;
+    let corner_shadow_offset = corner_size as f32 - corner_and_shadow as f32 * CORNER_SCALE;
+    let corner_ratio = corner_size as f32 / corner_and_shadow as f32;
+
+    let shadow = scope.color(ColorId::Shadow);
+    let transparent = shadow.with_alpha(0);
+    let (left, top, right, bottom) = (bounds.x, bounds.y, bounds.right(), bounds.bottom());
+    let (l, t, r, b) = (left as f32, top as f32, right as f32, bottom as f32);
+    let s = shadow_size as f32;
+    let linear = |from: (f32, f32), to: (f32, f32)| {
+        Gradient::new(GradientKind::Linear, from, shadow, to, transparent)
+    };
+
+    pixels.fill_rect_gradient(
+        Rect::new(
+            left - shadow_size,
+            top + corner_size,
+            shadow_size,
+            bottom - top - corner_size * 2,
+        ),
+        &linear((l, 0.0), (l - s, 0.0)),
+    );
+    pixels.fill_rect_gradient(
+        Rect::new(
+            right,
+            top + corner_size,
+            shadow_size,
+            bottom - top - corner_size * 2,
+        ),
+        &linear((r, 0.0), (r + s, 0.0)),
+    );
+    pixels.fill_rect_gradient(
+        Rect::new(
+            left + corner_size,
+            top - shadow_size,
+            right - left - corner_size * 2,
+            shadow_size,
+        ),
+        &linear((0.0, t), (0.0, t - s)),
+    );
+    pixels.fill_rect_gradient(
+        Rect::new(
+            left + corner_size,
+            bottom,
+            right - left - corner_size * 2,
+            shadow_size,
+        ),
+        &linear((0.0, b), (0.0, b + s)),
+    );
+
+    let c = corner_size as f32;
+    let o = corner_shadow_offset;
+    let corner = |centre: (f32, f32), edge: (f32, f32), area: Rect| {
+        let gradient = Gradient::new(GradientKind::Radial, centre, shadow, edge, transparent)
+            .with_stop(corner_ratio, shadow);
+        pixels.fill_rect_gradient(area, &gradient);
+    };
+    corner(
+        (l + c, t + c),
+        (l + o, t + o),
+        Rect::new(
+            left - shadow_size,
+            top - shadow_size,
+            corner_and_shadow,
+            corner_and_shadow,
+        ),
+    );
+    corner(
+        (r - c, t + c),
+        (r - o, t + o),
+        Rect::new(
+            right - corner_size,
+            top - shadow_size,
+            corner_and_shadow,
+            corner_and_shadow,
+        ),
+    );
+    corner(
+        (l + c, b - c),
+        (l + o, b - o),
+        Rect::new(
+            left - shadow_size,
+            bottom - corner_size,
+            corner_and_shadow,
+            corner_and_shadow,
+        ),
+    );
+    corner(
+        (r - c, b - c),
+        (r - o, b - o),
+        Rect::new(
+            right - corner_size,
+            bottom - corner_size,
+            corner_and_shadow,
+            corner_and_shadow,
+        ),
+    );
+}
+
 /// `SynthSection::kPowerButtonPaddingPercent`.
 const POWER_BUTTON_PADDING_PERCENT: f32 = 0.29;
 /// `SynthSection::paintHeadingText`'s font size, before scaling.
@@ -410,6 +564,18 @@ pub fn off_overlay(scope: &Scope, bounds: Rect) -> Quad {
         bounds.into(),
         scope.color(ColorId::Background).with_multiplied_alpha(0.8),
     )
+}
+
+/// `SynthSection::drawTempoDivider`: a 1-pixel line, half the sync
+/// selector's height, at its left edge.
+pub fn draw_tempo_divider(pixels: &PixelPainter, scope: &Scope, sync: Rect) {
+    const LINE_RATIO: f32 = 0.5;
+    let line_height = (sync.height as f32 * LINE_RATIO) as i32;
+    let y = sync.y + (sync.height - line_height) / 2;
+    pixels.fill_rect(
+        Rect::new(sync.x, y, 1, line_height),
+        scope.color(ColorId::LightenScreen),
+    );
 }
 
 #[cfg(test)]
