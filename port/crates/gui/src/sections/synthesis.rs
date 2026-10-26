@@ -114,7 +114,7 @@ impl SynthesisInterface {
         let scope = top.within(oscillator::SKIN);
         let oscillator_layouts = self.oscillator_layouts(host, top, &layout);
         for (section, section_layout) in self.oscillators.iter().zip(&oscillator_layouts) {
-            section.paint_background(pixels, &scope, section_layout);
+            section.paint_background(pixels, &scope, section_layout, host);
             let mut panel = Panel::new(ui, host, pixels, scope, overlay, section_layout.bounds);
             section.show(&mut panel, section_layout);
             panel.finish();
