@@ -528,6 +528,11 @@ struct LineBuffers {
 
 struct LinePipelines {
     target: WgpuTarget,
+    /// `None` if the device rejected them.
+    built: Option<BuiltLinePipelines>,
+}
+
+struct BuiltLinePipelines {
     layout: wgpu::BindGroupLayout,
     line: wgpu::RenderPipeline,
     fill: wgpu::RenderPipeline,
@@ -535,6 +540,13 @@ struct LinePipelines {
 
 impl LinePipelines {
     fn new(device: &wgpu::Device, target: WgpuTarget) -> LinePipelines {
+        LinePipelines {
+            target,
+            built: super::validated(device, "line", || Self::build(device, target)),
+        }
+    }
+
+    fn build(device: &wgpu::Device, target: WgpuTarget) -> BuiltLinePipelines {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("sas-gui lines"),
             source: wgpu::ShaderSource::Wgsl(include_str!("line.wgsl").into()),
@@ -601,13 +613,21 @@ impl LinePipelines {
                 cache: None,
             })
         };
-        LinePipelines {
-            target,
+        BuiltLinePipelines {
             line: build(("line_vs", "line_fs"), wgpu::VertexFormat::Float32x3),
             fill: build(("fill_vs", "fill_fs"), wgpu::VertexFormat::Float32x4),
             layout,
         }
     }
+}
+
+pub(super) fn pipelines_ready(
+    resources: &egui_wgpu::CallbackResources,
+    target: WgpuTarget,
+) -> bool {
+    resources
+        .get::<LinePipelines>()
+        .is_some_and(|lines| lines.target == target && lines.built.is_some())
 }
 
 fn bytes(values: &[f32]) -> Vec<u8> {
@@ -626,11 +646,19 @@ impl egui_wgpu::CallbackTrait for LineCallback {
         _encoder: &mut wgpu::CommandEncoder,
         resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
-        let target = super::target(resources);
+        let Some(target) = super::target(resources) else {
+            return Vec::new();
+        };
         if resources.get::<LinePipelines>().map(|p| p.target) != Some(target) {
             resources.insert(LinePipelines::new(device, target));
         }
-        let pipelines = resources.get::<LinePipelines>().expect("just inserted");
+        let Some(LinePipelines {
+            built: Some(pipelines),
+            ..
+        }) = resources.get::<LinePipelines>()
+        else {
+            return Vec::new();
+        };
         let vertex_buffer = |data: &[f32]| {
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("sas-gui line vertices"),
@@ -666,8 +694,16 @@ impl egui_wgpu::CallbackTrait for LineCallback {
         render_pass: &mut wgpu::RenderPass<'static>,
         resources: &egui_wgpu::CallbackResources,
     ) {
-        let (Some(pipelines), Some(buffers)) =
-            (resources.get::<LinePipelines>(), self.buffers.get())
+        if super::gpu_failed(resources) {
+            return;
+        }
+        let (
+            Some(LinePipelines {
+                built: Some(pipelines),
+                ..
+            }),
+            Some(buffers),
+        ) = (resources.get::<LinePipelines>(), self.buffers.get())
         else {
             return;
         };

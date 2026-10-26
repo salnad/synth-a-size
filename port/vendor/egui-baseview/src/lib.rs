@@ -9,7 +9,7 @@ use baseview::WindowSize;
 pub use keyboard_types::Key;
 pub use renderer::GraphicsConfig;
 #[cfg(feature = "wgpu")]
-pub use renderer::WgpuTarget;
+pub use renderer::{WgpuErrors, WgpuTarget, create_render_state};
 pub use window::{EguiWindow, EguiWindowSettings, Frame, KeyCapture, RepaintNotifier};
 
 /// Implement this trait to run an app with egui-baseview.

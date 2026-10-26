@@ -13,14 +13,19 @@
 //!
 //! The pipeline is built for the render target the editor window or the test
 //! renderer publishes as [`WgpuTarget`] in egui-wgpu's callback resources.
+//! If the device rejects a pipeline, or reports any error outside an error
+//! scope ([`WgpuErrors`]), the shader-drawn primitives stop drawing and the
+//! rest of the editor carries on.
 
 pub mod line;
 
+use std::future::Future;
 use std::sync::OnceLock;
+use std::task::{Context, Poll, Waker};
 
 use egui_wgpu::wgpu;
 use egui_wgpu::wgpu::util::DeviceExt;
-pub use nice_plug_egui::WgpuTarget;
+pub use nice_plug_egui::{WgpuErrors, WgpuTarget};
 
 use crate::colour::Colour;
 use crate::paint::{PixelPainter, RectF};
@@ -320,19 +325,22 @@ struct QuadCallback {
 }
 
 /// The pipelines (normal and additive blending), built once per render
-/// target.
+/// target; `None` if the device rejected them.
 struct QuadPipeline {
     target: WgpuTarget,
-    pipeline: wgpu::RenderPipeline,
-    additive: wgpu::RenderPipeline,
+    pipelines: Option<(wgpu::RenderPipeline, wgpu::RenderPipeline)>,
 }
 
 impl QuadPipeline {
     fn new(device: &wgpu::Device, target: WgpuTarget) -> QuadPipeline {
         QuadPipeline {
             target,
-            pipeline: Self::build(device, target, wgpu::BlendFactor::OneMinusSrcAlpha),
-            additive: Self::build(device, target, wgpu::BlendFactor::One),
+            pipelines: validated(device, "quad", || {
+                (
+                    Self::build(device, target, wgpu::BlendFactor::OneMinusSrcAlpha),
+                    Self::build(device, target, wgpu::BlendFactor::One),
+                )
+            }),
         }
     }
 
@@ -424,7 +432,9 @@ impl egui_wgpu::CallbackTrait for QuadCallback {
         _encoder: &mut wgpu::CommandEncoder,
         resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
-        let target = target(resources);
+        let Some(target) = target(resources) else {
+            return Vec::new();
+        };
         if resources.get::<QuadPipeline>().map(|p| p.target) != Some(target) {
             resources.insert(QuadPipeline::new(device, target));
         }
@@ -449,25 +459,64 @@ impl egui_wgpu::CallbackTrait for QuadCallback {
         render_pass: &mut wgpu::RenderPass<'static>,
         resources: &egui_wgpu::CallbackResources,
     ) {
-        let (Some(pipeline), Some(buffer)) = (resources.get::<QuadPipeline>(), self.buffer.get())
+        if gpu_failed(resources) {
+            return;
+        }
+        let (
+            Some(QuadPipeline {
+                pipelines: Some((pipeline, additive)),
+                ..
+            }),
+            Some(buffer),
+        ) = (resources.get::<QuadPipeline>(), self.buffer.get())
         else {
             return;
         };
-        render_pass.set_pipeline(if self.additive {
-            &pipeline.additive
-        } else {
-            &pipeline.pipeline
-        });
+        render_pass.set_pipeline(if self.additive { additive } else { pipeline });
         render_pass.set_vertex_buffer(0, buffer.slice(..));
         render_pass.draw(0..4, 0..self.count);
     }
 }
 
-/// The render target the window or test renderer published.
-pub(crate) fn target(resources: &egui_wgpu::CallbackResources) -> WgpuTarget {
-    *resources
-        .get::<WgpuTarget>()
-        .expect("the renderer publishes its WgpuTarget (see sas_gui::primitives)")
+/// The render target the window or test renderer published, or `None` if
+/// there is none or custom drawing is off ([`gpu_failed`]).
+pub(crate) fn target(resources: &egui_wgpu::CallbackResources) -> Option<WgpuTarget> {
+    if gpu_failed(resources) {
+        return None;
+    }
+    let Some(target) = resources.get::<WgpuTarget>() else {
+        nice_plug::nice_error!("no WgpuTarget published; shader-drawn primitives are off");
+        return None;
+    };
+    Some(WgpuTarget::new(target.format, target.msaa_samples))
+}
+
+/// Whether the device has reported an error outside an error scope, after
+/// which the custom pipelines draw nothing.
+pub(crate) fn gpu_failed(resources: &egui_wgpu::CallbackResources) -> bool {
+    resources
+        .get::<WgpuErrors>()
+        .is_some_and(|errors| errors.count() > 0)
+}
+
+/// What `build` creates, or `None` (logged) if the device reports a
+/// validation error while creating it.
+pub(crate) fn validated<T>(
+    device: &wgpu::Device,
+    what: &str,
+    build: impl FnOnce() -> T,
+) -> Option<T> {
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let built = build();
+    let mut error = std::pin::pin!(scope.pop());
+    // Native wgpu resolves the scope at once.
+    match error.as_mut().poll(&mut Context::from_waker(Waker::noop())) {
+        Poll::Ready(Some(error)) => {
+            nice_plug::nice_error!("the {what} pipeline is invalid, so it draws nothing: {error}");
+            None
+        }
+        Poll::Ready(None) | Poll::Pending => Some(built),
+    }
 }
 
 /// Upstream's `glBlendFunc(GL_SRC_ALPHA, dst)`. egui's target holds
@@ -487,13 +536,25 @@ pub(crate) fn straight_alpha_blend(dst_factor: wgpu::BlendFactor) -> wgpu::Blend
     }
 }
 
+/// Whether the quad and line pipelines are built and valid for `state`'s
+/// published target, with custom drawing on. For tests that render the
+/// editor.
+pub fn custom_drawing_ready(state: &egui_wgpu::RenderState) -> bool {
+    let renderer = state.renderer.read();
+    let resources = &renderer.callback_resources;
+    let Some(target) = target(resources) else {
+        return false;
+    };
+    resources
+        .get::<QuadPipeline>()
+        .is_some_and(|quads| quads.target == target && quads.pipelines.is_some())
+        && line::pipelines_ready(resources, target)
+}
+
 /// Publishes `state`'s target for the quads, as the patched egui-baseview
 /// does for the editor window. For offscreen renderers (tests, the gallery).
 pub fn publish_target(state: &egui_wgpu::RenderState, msaa_samples: u32) {
-    let target = WgpuTarget {
-        format: state.target_format,
-        msaa_samples,
-    };
+    let target = WgpuTarget::new(state.target_format, msaa_samples);
     state.renderer.write().callback_resources.insert(target);
 }
 

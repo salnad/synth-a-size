@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use baseview::{WindowContext, dpi::PhysicalSize};
 use egui::FullOutput;
@@ -11,15 +12,89 @@ use egui_wgpu::{
     },
 };
 
+#[cfg(all(feature = "log", not(feature = "tracing")))]
+use log::{error, info, warn};
+#[cfg(feature = "tracing")]
+use tracing::{error, info, warn};
+
 pub use egui_wgpu::WgpuConfiguration;
 
 /// synth-a-size patch: the format and sample count of the render pass that
 /// egui paint callbacks draw into. Inserted into the egui-wgpu renderer's
-/// `callback_resources` when the window's renderer is created.
+/// `callback_resources` by [`create_render_state`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WgpuTarget {
     pub format: egui_wgpu::wgpu::TextureFormat,
+    /// Always at least 1.
     pub msaa_samples: u32,
+}
+
+impl WgpuTarget {
+    /// The target for `RendererOptions::msaa_samples` of `msaa_samples`.
+    /// egui-wgpu reads 0 (its default) as no multisampling, and so does
+    /// [`Renderer::render`]: the pass is single-sampled, and a pipeline built
+    /// with a sample count of 0 fails validation.
+    pub fn new(format: egui_wgpu::wgpu::TextureFormat, msaa_samples: u32) -> Self {
+        Self {
+            format,
+            msaa_samples: msaa_samples.max(1),
+        }
+    }
+}
+
+/// synth-a-size patch: how many errors the device has reported outside any
+/// error scope. wgpu's default handler panics on them, which inside a plugin
+/// window takes the host down; [`create_render_state`] installs a handler
+/// that logs and counts them instead, and inserts this counter into the
+/// renderer's `callback_resources` so paint callbacks can stop drawing.
+#[derive(Debug, Clone, Default)]
+pub struct WgpuErrors(Arc<AtomicUsize>);
+
+impl WgpuErrors {
+    pub fn count(&self) -> usize {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
+const LOGGED_WGPU_ERRORS: usize = 8;
+
+/// synth-a-size patch: creates the render state a window draws with, as
+/// [`Renderer::new`] does: egui-wgpu's [`RenderState`] for `config`, a device
+/// error handler that logs instead of panicking ([`WgpuErrors`]), and the
+/// [`WgpuTarget`] for paint callbacks. Public so tests can build the same
+/// state without a window (`surface` `None`).
+pub async fn create_render_state(
+    config: &GraphicsConfig,
+    instance: &wgpu::Instance,
+    surface: Option<&Surface<'static>>,
+) -> Result<RenderState, WgpuError> {
+    let state = RenderState::create(
+        &config.wgpu_options,
+        instance,
+        surface,
+        config.renderer_options,
+    )
+    .await?;
+
+    let errors = WgpuErrors::default();
+    let counter = errors.clone();
+    state.device.on_uncaptured_error(Arc::new(move |e| {
+        let seen = counter.0.fetch_add(1, Ordering::Relaxed);
+        if seen < LOGGED_WGPU_ERRORS {
+            error!("wgpu error (custom drawing is turned off for this window): {e}");
+        } else if seen == LOGGED_WGPU_ERRORS {
+            error!("more wgpu errors; no longer logging them");
+        }
+    }));
+
+    let mut renderer = state.renderer.write();
+    renderer.callback_resources.insert(WgpuTarget::new(
+        state.target_format,
+        config.renderer_options.msaa_samples,
+    ));
+    renderer.callback_resources.insert(errors);
+    drop(renderer);
+    Ok(state)
 }
 
 #[derive(Debug, Clone)]
@@ -59,6 +134,8 @@ pub struct Renderer {
     msaa_samples: u32,
     width: u32,
     height: u32,
+    // synth-a-size patch: whether a frame has been presented.
+    presented: bool,
 }
 
 impl Renderer {
@@ -67,23 +144,16 @@ impl Renderer {
             Box::new(window.platform_handle()),
         ));
 
-        let surface = instance.create_surface(window.platform_handle()).unwrap();
+        let surface = instance.create_surface(window.platform_handle())?;
 
-        let msaa_samples = config.renderer_options.msaa_samples;
+        // synth-a-size patch: the same count as the published WgpuTarget.
+        let msaa_samples = config.renderer_options.msaa_samples.max(1);
 
-        let state = Arc::new(pollster::block_on(RenderState::create(
-            &config.wgpu_options,
+        let state = Arc::new(pollster::block_on(create_render_state(
+            &config,
             &instance,
             Some(&surface),
-            config.renderer_options,
         ))?);
-
-        // synth-a-size patch: paint callbacks need the render target's format
-        // and sample count to build matching pipelines.
-        state.renderer.write().callback_resources.insert(WgpuTarget {
-            format: state.target_format,
-            msaa_samples,
-        });
 
         Ok(Self {
             render_state: state,
@@ -94,6 +164,7 @@ impl Renderer {
             msaa_samples,
             width: 0,
             height: 0,
+            presented: false,
         })
     }
 
@@ -108,15 +179,20 @@ impl Renderer {
     fn configure_surface(&self, width: u32, height: u32) {
         let usage = TextureUsages::RENDER_ATTACHMENT;
 
+        // synth-a-size patch: log instead of panicking.
+        let Some(default_config) =
+            self.surface
+                .get_default_config(&self.render_state.adapter, width, height)
+        else {
+            error!("the window's surface is not supported by the adapter");
+            return;
+        };
         let mut surf_config = SurfaceConfiguration {
             usage,
             format: self.render_state.target_format,
             present_mode: self.config.wgpu_options.surface.present_mode,
             view_formats: vec![self.render_state.target_format],
-            ..self
-                .surface
-                .get_default_config(&self.render_state.adapter, width, height)
-                .expect("Unsupported surface")
+            ..default_config
         };
 
         if let Some(desired_maximum_frame_latency) = self
@@ -226,8 +302,10 @@ impl Renderer {
             wgpu::CurrentSurfaceTexture::Suboptimal(_) | wgpu::CurrentSurfaceTexture::Outdated => {
                 None
             }
+            // synth-a-size patch: the device's error handler has logged it.
             wgpu::CurrentSurfaceTexture::Validation => {
-                unreachable!("No error scope registered, so validation errors will panic")
+                warn!("skipping a frame: the surface texture failed validation");
+                return;
             }
             wgpu::CurrentSurfaceTexture::Lost => {
                 recreate_surface = true;
@@ -237,10 +315,14 @@ impl Renderer {
 
         let Some(output_frame) = output_frame else {
             if recreate_surface {
-                self.surface = self
-                    .instance
-                    .create_surface(window.platform_handle())
-                    .unwrap();
+                // synth-a-size patch: log instead of panicking.
+                match self.instance.create_surface(window.platform_handle()) {
+                    Ok(surface) => self.surface = surface,
+                    Err(e) => {
+                        error!("cannot recreate the window's surface: {e}");
+                        return;
+                    }
+                }
             }
 
             self.configure_surface(self.width, self.height);
@@ -305,5 +387,22 @@ impl Renderer {
             .submit(user_cmd_bufs.into_iter().chain([encoded]));
 
         self.render_state.queue.present(output_frame);
+
+        // synth-a-size patch: the editor-open smoke test looks for this line.
+        if !self.presented {
+            self.presented = true;
+            let errors = self
+                .render_state
+                .renderer
+                .read()
+                .callback_resources
+                .get::<WgpuErrors>()
+                .map_or(0, WgpuErrors::count);
+            info!(
+                "egui-baseview: presented the first frame ({}x{} px, {:?}, {} sample(s), {} device \
+                 error(s))",
+                self.width, self.height, self.render_state.target_format, self.msaa_samples, errors
+            );
+        }
     }
 }

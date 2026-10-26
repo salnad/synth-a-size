@@ -253,14 +253,22 @@ impl<E: Engine + Default> Plugin for SynthPlugin<E> {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Self::Editor> {
-        let model = editor::PluginModel::new(
-            self.params.clone(),
-            self.telemetry(),
-            self.keyboard.clone(),
-            self.processor.midi_learn().clone(),
-            Some(self.chat.clone()),
-        );
-        sas_gui::create_editor(self.editor_state.clone(), Arc::new(model))
+        // Called from the host's `createView`, which cannot unwind: a panic
+        // here means no editor, not a crashed host.
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let model = editor::PluginModel::new(
+                self.params.clone(),
+                self.telemetry(),
+                self.keyboard.clone(),
+                self.processor.midi_learn().clone(),
+                Some(self.chat.clone()),
+            );
+            sas_gui::create_editor(self.editor_state.clone(), Arc::new(model))
+        }))
+        .unwrap_or_else(|_| {
+            nice_plug::nice_error!("creating the editor panicked; the plugin has no editor");
+            None
+        })
     }
 
     fn filter_state(state: &mut PluginState) {
