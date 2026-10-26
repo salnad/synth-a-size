@@ -58,7 +58,7 @@
   scroll the effects column (`effects_scroll`, `ref-gui --effects-scroll`,
   `Interface::set_effects_scroll`). New views `all_effects` and
   `all_effects_bottom` show all nine sections between them.
-- The FL Studio checklist gets item 5, the Effects tab drags, with a
+- The FL Studio checklist gets item 6, the Effects tab drags, with a
   REAPER note.
 
 Not in G6a: Compressor, EQ and Reverb (G6b). The Effects tab's filter

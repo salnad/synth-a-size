@@ -122,7 +122,17 @@ repeat the check in FL Studio where the note says so.
      access to the app that asks, which is the host, so an "Always Allow"
      given to REAPER says nothing about FL Studio's prompt. Repeat it in FL
      Studio.
-5. **Effects tab drags (G6a).** Turn every effect on (the effect order's
+5. **Dragging a file into the editor (G5).** Drag an audio file from
+   Finder onto oscillator 1's wavetable view. While it hovers, the view
+   shows the import overlay (WAVETABLE, VOCODE, PITCH SPLICE) and the
+   pointer shows a copy badge; dropping loads it. Then drag from FL
+   Studio's browser too. Does FL Studio pass the drag through to the
+   plugin's view, or take it itself (for example, to load a sampler)?
+   - *REAPER:* runs there too, but only answers for REAPER: each host
+     decides whether a drag over a plugin window reaches the plugin. Try a
+     drag from Finder and one from REAPER's media explorer. FL Studio still
+     needs checking.
+6. **Effects tab drags (G6a).** Turn every effect on (the effect order's
    power buttons), then:
    - drag across the delay's echoes (feedback), the distortion's curve
      (drive) and the filter responses (chorus, delay, distortion, flanger,
@@ -136,17 +146,6 @@ repeat the check in FL Studio where the note says so.
    and reopening the project should keep it.
    - *REAPER:* gives an interim answer. Gestures, undo steps and the
      automation curve are the host's, so repeat the check in FL Studio.
-
-5. **Dragging a file into the editor (G5).** Drag an audio file from
-   Finder onto oscillator 1's wavetable view. While it hovers, the view
-   shows the import overlay (WAVETABLE, VOCODE, PITCH SPLICE) and the
-   pointer shows a copy badge; dropping loads it. Then drag from FL
-   Studio's browser too. Does FL Studio pass the drag through to the
-   plugin's view, or take it itself (for example, to load a sampler)?
-   - *REAPER:* runs there too, but only answers for REAPER: each host
-     decides whether a drag over a plugin window reaches the plugin. Try a
-     drag from Finder and one from REAPER's media explorer. FL Studio still
-     needs checking.
 
 ## Vendored egui-baseview
 
