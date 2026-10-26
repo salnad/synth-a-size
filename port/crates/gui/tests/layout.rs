@@ -8,7 +8,10 @@ use std::path::PathBuf;
 use sas_gui::layout::{FullLayout, Rect};
 use sas_gui::scope::Scope;
 use sas_gui::sections::bend::{self, BendLayout};
+use sas_gui::sections::oscillator::{self, OscillatorLayout};
 use sas_gui::sections::portamento::{self, PortamentoLayout};
+use sas_gui::sections::sample::{self, SampleLayout};
+use sas_gui::sections::synthesis::SynthesisLayout;
 use sas_gui::sections::voice::{self, VoiceLayout};
 use sas_gui::sections::volume::VolumeLayout;
 use sas_gui::skin::Skin;
@@ -40,8 +43,18 @@ fn fixtures() -> Vec<PathBuf> {
     files
 }
 
+/// What a preset in `migration/corpus/gui/presets/` changes about the
+/// layout: which oscillators show the distortion phase slider.
+fn phase_visible(preset: Option<&str>) -> [bool; 3] {
+    match preset {
+        None => [false; 3],
+        Some("migration/corpus/gui/presets/osc_3_sync.vital") => [false, false, true],
+        Some(preset) => panic!("{preset}: this test does not know the preset"),
+    }
+}
+
 /// The port's rectangle for each upstream component path it lays out.
-fn port_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> {
+fn port_rect(skin: &Skin, layout: &FullLayout, path: &str, preset: Option<&str>) -> Option<Rect> {
     let header = &layout.header;
     let top = Scope::top(skin, layout.size_ratio);
     let voice = VoiceLayout::new(&top.within(voice::SKIN), layout.voice);
@@ -82,6 +95,95 @@ fn port_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> {
         "header_section/VOLUME/volume" => volume.volume,
         "BEND/pitch_wheel" => bend.pitch_wheel,
         "BEND/mod_wheel" => bend.mod_wheel,
+        _ => return synthesis_rect(skin, layout, path, phase_visible(preset)),
+    })
+}
+
+/// The Voice tab's synthesis column, with the distortion phase slider
+/// shown on the oscillators `phase_visible` says.
+fn synthesis_rect(
+    skin: &Skin,
+    layout: &FullLayout,
+    path: &str,
+    phase_visible: [bool; 3],
+) -> Option<Rect> {
+    let top = Scope::top(skin, layout.size_ratio);
+    let synthesis = SynthesisLayout::new(&top, layout.main);
+    let rest = path.strip_prefix("synthesis/")?;
+    if let Some(rest) = rest.strip_prefix("SMP") {
+        let smp = SampleLayout::new(&top.within(sample::SKIN), synthesis.sample);
+        return Some(match rest {
+            "" => smp.bounds,
+            "/sample_on" => {
+                sas_gui::section::power_button_bounds(&top.within(sample::SKIN), smp.bounds)
+            }
+            "/Transpose Quantize" => smp.transpose_quantize,
+            "/sample_transpose" => smp.transpose,
+            "/sample_tune" => smp.tune,
+            "/sample_level" => smp.level,
+            "/sample_pan" => smp.pan,
+            "/preset_selector" => smp.preset_selector.bounds,
+            "/preset_selector/Text" => smp.preset_selector.text,
+            "/preset_selector/Prev" => smp.preset_selector.previous,
+            "/preset_selector/Next" => smp.preset_selector.next,
+            "/Destination Text" | "/Destination" => smp.destination,
+            "/Prev Destination" => smp.prev_destination,
+            "/Next Destination" => smp.next_destination,
+            "/sample_keytrack" => smp.keytrack,
+            "/sample_random_phase" => smp.random_phase,
+            "/sample_loop" => smp.loop_button,
+            "/sample_bounce" => smp.bounce,
+            _ => return None,
+        });
+    }
+    match rest {
+        "FILTER 1" => return Some(synthesis.filter_1),
+        "FILTER 2" => return Some(synthesis.filter_2),
+        _ => {}
+    }
+    let rest = rest.strip_prefix("OSC ")?;
+    let (number, rest) = rest.split_at(1);
+    let n: usize = number.parse().ok()?;
+    let scope = top.within(oscillator::SKIN);
+    let osc = OscillatorLayout::new(&scope, synthesis.oscillators[n - 1], phase_visible[n - 1]);
+    if rest.is_empty() {
+        return Some(osc.bounds);
+    }
+    let control = rest.strip_prefix('/')?;
+    let prefix = format!("osc_{n}_");
+    Some(match control.strip_prefix(&prefix).unwrap_or(control) {
+        "on" => sas_gui::section::power_button_bounds(&scope, osc.bounds),
+        "transpose" => osc.transpose,
+        "tune" => osc.tune,
+        "unison_voices" => osc.unison_voices,
+        "unison_detune" => osc.unison_detune,
+        "detune_power" => osc.detune_power,
+        "phase" => osc.phase,
+        "random_phase" => osc.random_phase,
+        "level" => osc.level,
+        "pan" => osc.pan,
+        "spectral_morph_amount" => osc.spectral_morph_amount,
+        "distortion_amount" => osc.distortion_amount,
+        "wave_frame" => osc.wave_frame,
+        "dimension" => osc.dimension,
+        "distortion_phase" => osc.distortion_phase?,
+        "Transpose Quantize" => osc.transpose_quantize,
+        "Frequency Morph Text" => osc.spectral_morph_text,
+        "Distortion Text" => osc.distortion_text,
+        "Spectral Morph" => osc.spectral_morph_selector,
+        "Distortion" => osc.distortion_selector,
+        "Prev Spectral" => osc.prev_spectral,
+        "Next Spectral" => osc.next_spectral,
+        "Prev Distortion" => osc.prev_distortion,
+        "Next Distortion" => osc.next_distortion,
+        "preset_selector" => osc.preset_selector.bounds,
+        "preset_selector/Text" => osc.preset_selector.text,
+        "preset_selector/Prev" => osc.preset_selector.previous,
+        "preset_selector/Next" => osc.preset_selector.next,
+        "edit" => osc.edit,
+        "Destination Text" | "Destination" => osc.destination,
+        "Prev Destination" => osc.prev_destination,
+        "Next Destination" => osc.next_destination,
         _ => return None,
     })
 }
@@ -114,14 +216,9 @@ fn layout_matches_upstream_at_every_size() {
             let expected = Rect::new(bounds[0], bounds[1], bounds[2], bounds[3]);
             // Entries laid out with a preset (`@preset` in layout_paths.txt)
             // name it; the port must lay the path out for that preset.
-            let actual = match entry.get("preset").map(|preset| preset.as_str().unwrap()) {
-                None => port_rect(&skin, &layout, path),
-                Some(preset) => panic!(
-                    "{}: {path} is laid out with {preset}, which this test does not know",
-                    file.display()
-                ),
-            }
-            .unwrap_or_else(|| panic!("{}: no port rectangle for {path}", file.display()));
+            let preset = entry.get("preset").map(|preset| preset.as_str().unwrap());
+            let actual = port_rect(&skin, &layout, path, preset)
+                .unwrap_or_else(|| panic!("{}: no port rectangle for {path}", file.display()));
             assert_eq!(actual, expected, "{path} at {width}x{height}");
             checked += 1;
         }

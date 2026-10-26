@@ -111,6 +111,13 @@ pub struct Slider {
     /// `TextSelector::long_lookup_`: the names the list shows, when they
     /// differ from the ones the slider shows.
     pub long_lookup: Option<&'static [&'static str]>,
+    /// `text_entry_width_percent_` (`setTextEntrySizePercent`).
+    pub text_entry_width_percent: f32,
+    /// `overrideValue(Skin::kTextComponentOffset, ...)`.
+    pub text_component_offset: Option<f32>,
+    /// `setDoubleClickReturnValue`: the value a double click sets, when it
+    /// isn't the parameter's default.
+    pub double_click_value: Option<f32>,
 }
 
 impl Slider {
@@ -129,7 +136,41 @@ impl Slider {
             active: true,
             text_selector: false,
             long_lookup: None,
+            text_entry_width_percent: TEXT_ENTRY_WIDTH_PERCENT,
+            text_component_offset: None,
+            double_click_value: None,
         }
+    }
+
+    /// `setMaxDisplayCharacters` and `setMaxDecimalPlaces`.
+    pub fn display(mut self, characters: usize, decimal_places: usize) -> Slider {
+        self.format.max_characters = characters;
+        self.format.max_decimal_places = decimal_places;
+        self
+    }
+
+    /// `setTextEntrySizePercent(width, ...)` (upstream reads only the
+    /// width) and `overrideValue(Skin::kTextComponentOffset, offset)`, as
+    /// the oscillator and sample text sliders set them.
+    pub fn text_entry(mut self, width_percent: f32, offset: Option<f32>) -> Slider {
+        self.text_entry_width_percent = width_percent;
+        self.text_component_offset = offset;
+        self
+    }
+
+    pub fn knob_size_scale(mut self, scale: f32) -> Slider {
+        self.knob_size_scale = scale;
+        self
+    }
+
+    pub fn popup_placement(mut self, placement: Placement) -> Slider {
+        self.popup_placement = placement;
+        self
+    }
+
+    fn text_offset(&self, scope: &Scope) -> f32 {
+        self.text_component_offset
+            .unwrap_or_else(|| scope.value(ValueId::TextComponentOffset))
     }
 
     /// A `TextSelector` (a text slider whose press opens its options),
@@ -410,7 +451,7 @@ impl Slider {
         } else {
             bounds.height as f32 * self.text_height_percentage
         };
-        let offset = scope.value(ValueId::TextComponentOffset).round();
+        let offset = self.text_offset(scope).round();
         let mut colour = scope.color(ColorId::TextComponentText);
         if !self.active {
             colour = colour.with_multiplied_alpha(0.5);
@@ -484,9 +525,9 @@ impl Slider {
         let font_size = scope.value(ValueId::TextComponentFontSize);
         let text_height = (font_size / TEXT_ENTRY_HEIGHT_PERCENT) as i32;
         if self.style.is_rotary() {
-            let text_width = (bounds.width as f32 * TEXT_ENTRY_WIDTH_PERCENT) as i32;
+            let text_width = (bounds.width as f32 * self.text_entry_width_percent) as i32;
             let y_offset = if self.style == SliderStyle::Text {
-                scope.value(ValueId::TextComponentOffset)
+                self.text_offset(scope)
             } else {
                 0.0
             };
@@ -600,7 +641,8 @@ impl Slider {
                 .is_some_and(|(time, _)| now - time > LONG_PRESS);
             if state.second_click && !state.moved && !long_press {
                 // Slider::mouseDoubleClick: back to the default value.
-                host.set_once(self.name, self.info.default_value);
+                let value = self.double_click_value.unwrap_or(self.info.default_value);
+                host.set_once(self.name, value);
                 event.popup = true;
             }
         }

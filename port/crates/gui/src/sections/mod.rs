@@ -12,7 +12,10 @@
 
 pub mod bend;
 pub mod keyboard;
+pub mod oscillator;
 pub mod portamento;
+pub mod sample;
+pub mod synthesis;
 pub mod voice;
 pub mod volume;
 
@@ -41,6 +44,13 @@ pub enum MenuOwner {
     StereoMode,
     /// A `TextSelector`'s options; the selected id is the value.
     Selector(Slider),
+    /// A section's list for control `name`: the selected id is the value,
+    /// set in one gesture (`SynthBase::valueChangedInternal`), then `then`
+    /// runs (the section's follow-up, e.g. resolving an FM cycle).
+    Control {
+        name: &'static str,
+        then: Option<fn(&Host)>,
+    },
 }
 
 /// A slider's text entry (`SynthSlider::showTextEntry`).
@@ -103,6 +113,12 @@ impl Overlay {
                         MenuOwner::Slider(..) => {}
                         MenuOwner::StereoMode => host.set_once("stereo_mode", id as f32),
                         MenuOwner::Selector(slider) => host.set_once(slider.name, id as f32),
+                        MenuOwner::Control { name, then } => {
+                            host.set_once(name, id as f32);
+                            if let Some(then) = then {
+                                then(host);
+                            }
+                        }
                     }
                 }
             }
@@ -118,6 +134,9 @@ pub struct Panel<'a, 'b> {
     pub scope: Scope<'a>,
     pub overlay: &'a mut Overlay,
     layer: Layer,
+    /// The always-on-top components (`setAlwaysOnTop`), drawn after the
+    /// rest: a switched-off section's overlay, then its power button.
+    on_top: Layer,
     clip: Rect,
 }
 
@@ -137,6 +156,7 @@ impl<'a, 'b> Panel<'a, 'b> {
             scope,
             overlay,
             layer: Layer::new(),
+            on_top: Layer::new(),
             clip,
         }
     }
@@ -144,6 +164,35 @@ impl<'a, 'b> Panel<'a, 'b> {
     /// Shows `slider` at `bounds`: handles its mouse, routes its popup, menu
     /// and text entry to the overlay, and draws it.
     pub fn slider(&mut self, slider: &Slider, bounds: Rect) {
+        self.slider_drawn(slider, bounds, true);
+    }
+
+    /// A slider that handles the mouse but draws nothing
+    /// (`InvisibleSlider`); something else draws in its place.
+    pub fn invisible_slider(&mut self, slider: &Slider, bounds: Rect) {
+        self.slider_drawn(slider, bounds, false);
+    }
+
+    /// A shape button with id `salt` in this section's scope.
+    pub fn shape_button(
+        &mut self,
+        salt: impl std::hash::Hash + std::fmt::Debug,
+        button: crate::controls::shape_button::ShapeButton,
+        bounds: Rect,
+    ) -> crate::controls::shape_button::ShapeEvent {
+        let id = self.ui.scope_id().with(salt);
+        crate::controls::shape_button::show(
+            self.ui,
+            self.pixels,
+            &mut self.layer,
+            &self.scope,
+            id,
+            button,
+            bounds,
+        )
+    }
+
+    fn slider_drawn(&mut self, slider: &Slider, bounds: Rect, draw: bool) {
         let event = slider.interact(self.ui, self.host, self.pixels, bounds);
         let value = self.host.value(slider.name);
         if event.popup {
@@ -191,6 +240,9 @@ impl<'a, 'b> Panel<'a, 'b> {
             let position = egui::pos2(bounds.x as f32, bounds.bottom() as f32);
             self.overlay.menu = Some(Menu::new(items, position, MenuOwner::Selector(*slider)));
         }
+        if !draw {
+            return;
+        }
         slider.paint(
             self.pixels,
             &mut self.layer,
@@ -227,6 +279,30 @@ impl<'a, 'b> Panel<'a, 'b> {
         self.layer.quad(quad);
     }
 
+    /// The layer the section's controls draw into, for components that
+    /// paint themselves.
+    pub fn layer(&mut self) -> &mut Layer {
+        &mut self.layer
+    }
+
+    /// `SynthSection::setActivator`: the power button and, while it is off,
+    /// the overlay over the section (both always on top).
+    pub fn activator(&mut self, button: &SynthButton, section: Rect) {
+        if !button.is_on(self.host) {
+            self.on_top
+                .quad(crate::section::off_overlay(&self.scope, section));
+        }
+        let bounds = crate::section::power_button_bounds(&self.scope, section);
+        button.show(
+            self.ui,
+            self.host,
+            self.pixels,
+            &mut self.on_top,
+            &self.scope,
+            bounds,
+        );
+    }
+
     /// Text over the section's controls.
     pub fn text_centred(
         &mut self,
@@ -243,5 +319,6 @@ impl<'a, 'b> Panel<'a, 'b> {
     /// section.
     pub fn finish(self) {
         self.layer.paint(self.pixels, RectF::from(self.clip));
+        self.on_top.paint(self.pixels, RectF::from(self.clip));
     }
 }

@@ -6,6 +6,8 @@
 pub mod button;
 pub mod format;
 pub mod oscilloscope;
+pub mod shape_button;
 pub mod slider;
 pub mod tab_selector;
+pub mod transpose_quantize;
 pub mod wheel;

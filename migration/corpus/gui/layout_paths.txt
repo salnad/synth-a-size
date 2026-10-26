@@ -47,3 +47,129 @@ PORTAMENTO/legato
 header_section/VOLUME/volume
 BEND/pitch_wheel
 BEND/mod_wheel
+
+# G3b: the oscillator and sample sections.
+synthesis/OSC 1
+synthesis/OSC 1/osc_1_on
+synthesis/OSC 1/osc_1_transpose
+synthesis/OSC 1/osc_1_tune
+synthesis/OSC 1/osc_1_unison_voices
+synthesis/OSC 1/osc_1_unison_detune
+synthesis/OSC 1/osc_1_detune_power
+synthesis/OSC 1/osc_1_phase
+synthesis/OSC 1/osc_1_random_phase
+synthesis/OSC 1/osc_1_level
+synthesis/OSC 1/osc_1_pan
+synthesis/OSC 1/osc_1_spectral_morph_amount
+synthesis/OSC 1/osc_1_distortion_amount
+synthesis/OSC 1/osc_1_wave_frame
+synthesis/OSC 1/osc_1_dimension
+synthesis/OSC 1/Transpose Quantize
+synthesis/OSC 1/Frequency Morph Text
+synthesis/OSC 1/Distortion Text
+synthesis/OSC 1/Spectral Morph
+synthesis/OSC 1/Distortion
+synthesis/OSC 1/Prev Spectral
+synthesis/OSC 1/Next Spectral
+synthesis/OSC 1/Prev Distortion
+synthesis/OSC 1/Next Distortion
+synthesis/OSC 1/preset_selector
+synthesis/OSC 1/preset_selector/Text
+synthesis/OSC 1/preset_selector/Prev
+synthesis/OSC 1/preset_selector/Next
+synthesis/OSC 1/edit
+synthesis/OSC 1/Destination Text
+synthesis/OSC 1/Destination
+synthesis/OSC 1/Prev Destination
+synthesis/OSC 1/Next Destination
+synthesis/OSC 2
+synthesis/OSC 2/osc_2_on
+synthesis/OSC 2/osc_2_transpose
+synthesis/OSC 2/osc_2_tune
+synthesis/OSC 2/osc_2_unison_voices
+synthesis/OSC 2/osc_2_unison_detune
+synthesis/OSC 2/osc_2_detune_power
+synthesis/OSC 2/osc_2_phase
+synthesis/OSC 2/osc_2_random_phase
+synthesis/OSC 2/osc_2_level
+synthesis/OSC 2/osc_2_pan
+synthesis/OSC 2/osc_2_spectral_morph_amount
+synthesis/OSC 2/osc_2_distortion_amount
+synthesis/OSC 2/osc_2_wave_frame
+synthesis/OSC 2/osc_2_dimension
+synthesis/OSC 2/Transpose Quantize
+synthesis/OSC 2/Frequency Morph Text
+synthesis/OSC 2/Distortion Text
+synthesis/OSC 2/Spectral Morph
+synthesis/OSC 2/Distortion
+synthesis/OSC 2/Prev Spectral
+synthesis/OSC 2/Next Spectral
+synthesis/OSC 2/Prev Distortion
+synthesis/OSC 2/Next Distortion
+synthesis/OSC 2/preset_selector
+synthesis/OSC 2/preset_selector/Text
+synthesis/OSC 2/preset_selector/Prev
+synthesis/OSC 2/preset_selector/Next
+synthesis/OSC 2/edit
+synthesis/OSC 2/Destination Text
+synthesis/OSC 2/Destination
+synthesis/OSC 2/Prev Destination
+synthesis/OSC 2/Next Destination
+synthesis/SMP
+synthesis/SMP/sample_on
+synthesis/SMP/Transpose Quantize
+synthesis/SMP/sample_transpose
+synthesis/SMP/sample_tune
+synthesis/SMP/sample_level
+synthesis/SMP/sample_pan
+synthesis/SMP/preset_selector
+synthesis/SMP/preset_selector/Text
+synthesis/SMP/preset_selector/Prev
+synthesis/SMP/preset_selector/Next
+synthesis/SMP/Destination Text
+synthesis/SMP/Destination
+synthesis/SMP/Prev Destination
+synthesis/SMP/Next Destination
+synthesis/SMP/sample_keytrack
+synthesis/SMP/sample_random_phase
+synthesis/SMP/sample_loop
+synthesis/SMP/sample_bounce
+synthesis/FILTER 1
+synthesis/FILTER 2
+
+# G3b: oscillator 3 with a wave morph that shows the distortion phase slider.
+@preset migration/corpus/gui/presets/osc_3_sync.vital
+synthesis/OSC 3
+synthesis/OSC 3/osc_3_on
+synthesis/OSC 3/osc_3_transpose
+synthesis/OSC 3/osc_3_tune
+synthesis/OSC 3/osc_3_unison_voices
+synthesis/OSC 3/osc_3_unison_detune
+synthesis/OSC 3/osc_3_detune_power
+synthesis/OSC 3/osc_3_phase
+synthesis/OSC 3/osc_3_random_phase
+synthesis/OSC 3/osc_3_level
+synthesis/OSC 3/osc_3_pan
+synthesis/OSC 3/osc_3_spectral_morph_amount
+synthesis/OSC 3/osc_3_distortion_amount
+synthesis/OSC 3/osc_3_wave_frame
+synthesis/OSC 3/osc_3_dimension
+synthesis/OSC 3/Transpose Quantize
+synthesis/OSC 3/Frequency Morph Text
+synthesis/OSC 3/Distortion Text
+synthesis/OSC 3/Spectral Morph
+synthesis/OSC 3/Distortion
+synthesis/OSC 3/Prev Spectral
+synthesis/OSC 3/Next Spectral
+synthesis/OSC 3/Prev Distortion
+synthesis/OSC 3/Next Distortion
+synthesis/OSC 3/preset_selector
+synthesis/OSC 3/preset_selector/Text
+synthesis/OSC 3/preset_selector/Prev
+synthesis/OSC 3/preset_selector/Next
+synthesis/OSC 3/edit
+synthesis/OSC 3/Destination Text
+synthesis/OSC 3/Destination
+synthesis/OSC 3/Prev Destination
+synthesis/OSC 3/Next Destination
+synthesis/OSC 3/osc_3_distortion_phase

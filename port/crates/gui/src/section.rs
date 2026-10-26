@@ -147,6 +147,138 @@ pub fn place_knobs_in_area(scope: &Scope, area: Rect, count: usize) -> Vec<Rect>
     bounds
 }
 
+/// `SynthSection::getSliderWidth`: a linear slider's full width, overlap
+/// included.
+pub fn slider_width(scope: &Scope) -> i32 {
+    scope.value(ValueId::SliderWidth) as i32
+}
+
+/// `SynthSection::getSliderOverlap`: how far a linear slider's bounds reach
+/// past its drawn track on each side.
+pub fn slider_overlap(scope: &Scope) -> i32 {
+    let total_width = slider_width(scope);
+    let extra = total_width % 2;
+    let width = ((0.26f32 * total_width as f32 * 0.5).floor() * 2.0) as i32 + extra;
+    (total_width - width) / 2
+}
+
+/// `SynthSection::getSliderOverlapWithSpace`.
+pub fn slider_overlap_with_space(scope: &Scope) -> i32 {
+    slider_overlap(scope) - scope.widget_margin() as i32
+}
+
+/// `SynthSection::placeJointControls`: two square controls at the ends of
+/// `(x, y, width, height)`, and the widget between them under the label.
+/// Returns (left, right, widget).
+pub fn place_joint_controls(
+    scope: &Scope,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+) -> (Rect, Rect, Rect) {
+    let width_control = height;
+    let label_height = scope.value(ValueId::LabelBackgroundHeight) as i32;
+    (
+        Rect::new(x, y, width_control, height),
+        Rect::new(x + width - width_control, y, width_control, height),
+        Rect::new(
+            x + width_control,
+            y + label_height,
+            width - 2 * width_control,
+            height - label_height,
+        ),
+    )
+}
+
+/// `SynthSection::paintJointControlBackground`.
+pub fn paint_joint_control_background(pixels: &PixelPainter, scope: &Scope, bounds: Rect) {
+    let Rect {
+        x,
+        y,
+        width,
+        height,
+    } = bounds;
+    let rounding = scope.value(ValueId::LabelBackgroundRounding);
+    pixels.fill_rect(
+        RectF::new(
+            x as f32 + rounding,
+            y as f32,
+            width as f32 - 2.0 * rounding,
+            height as f32 / 2.0,
+        ),
+        scope.color(ColorId::LabelBackground),
+    );
+
+    let label_height = scope.value(ValueId::LabelBackgroundHeight) as i32;
+    let half_label_height = label_height / 2;
+    let side_width = height;
+    let text_background = scope.color(ColorId::TextComponentBackground);
+    pixels.fill_rounded_rect(
+        Rect::new(x, y + half_label_height, width, height - half_label_height),
+        rounding,
+        text_background,
+    );
+    pixels.fill_rounded_rect(
+        Rect::new(x, y, side_width, height),
+        rounding,
+        text_background,
+    );
+    pixels.fill_rounded_rect(
+        Rect::new(x + width - side_width, y, side_width, height),
+        rounding,
+        text_background,
+    );
+
+    let mut label_colour = scope.color(ColorId::LabelBackground);
+    if label_colour.alpha() == 0 {
+        label_colour = scope.color(ColorId::Body);
+    }
+    let rect_width = (width - 2 * side_width).max(0);
+    pixels.fill_rect(
+        Rect::new(x + side_width, y, rect_width, half_label_height),
+        label_colour,
+    );
+    pixels.fill_rounded_rect(
+        Rect::new(x + side_width, y, rect_width, label_height),
+        rounding,
+        label_colour,
+    );
+}
+
+/// `SynthSection::paintJointControl`: the background and `name` across its
+/// top.
+pub fn paint_joint_control(pixels: &PixelPainter, scope: &Scope, bounds: Rect, name: &str) {
+    paint_joint_control_background(pixels, scope, bounds);
+    let (face, size, colour) = label_font(scope);
+    let label_height = scope.value(ValueId::LabelBackgroundHeight) as i32;
+    pixels.text_centred(
+        name,
+        Rect::new(bounds.x, bounds.y, bounds.width, label_height),
+        face,
+        size,
+        colour,
+    );
+}
+
+/// `SynthSection::drawLabelConnectionForComponents`: the bar joining two
+/// knobs' labels.
+pub fn draw_label_connection(pixels: &PixelPainter, scope: &Scope, left: Rect, right: Rect) {
+    let label_offset = scope.value(ValueId::LabelOffset) as i32;
+    let background_height = scope.value(ValueId::LabelBackgroundHeight) as i32;
+    let background_y = left.bottom() - background_height + label_offset;
+    let centre_x = |r: Rect| r.x + r.width / 2;
+    pixels.fill_rect(
+        Rect::new(
+            centre_x(left),
+            background_y,
+            centre_x(right) - centre_x(left),
+            background_height,
+        ),
+        scope.color(ColorId::LabelConnection),
+    );
+}
+
 /// `SynthSection::kPowerButtonPaddingPercent`.
 const POWER_BUTTON_PADDING_PERCENT: f32 = 0.29;
 /// `SynthSection::paintHeadingText`'s font size, before scaling.

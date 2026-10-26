@@ -1303,6 +1303,11 @@ GUI_PRESETS = {
         {"%s_on" % effect: 1.0 for effect in (
             "chorus", "compressor", "delay", "distortion", "eq", "filter_fx", "flanger", "phaser", "reverb")},
     ),
+    "osc_3_sync": preset(
+        "osc 3 sync",
+        "Oscillator 3 on with the Sync wave morph, so its section shows the distortion phase slider.",
+        {"osc_3_on": 1.0, "osc_3_distortion_type": 1.0},
+    ),
 }
 
 
