@@ -67,11 +67,12 @@ comes from GUI Builder's `FilterSection::fx()`, placed once it lands.
 **Known difference.** The side-by-side frames differ for the displays
 that read the engine's outputs (the chorus bars, the flanger's position,
 the phaser's cutoff and the distortion filter's modulated values).
-`ref-gui`'s engine never processes, so upstream's outputs read 0, while
-the gallery has no engine and shows the controls' values. Running the
-engine inside `ref-gui` crashes in `vital::Compressor::processWithInput`
-(a null input), even with the render harness's preparation. That is
-harness work for later. In the plugin, telemetry carries the live values.
+`ref-gui`'s engine hasn't run when it captures, so upstream's outputs read
+0, while the gallery has no engine and shows the controls' values. Running
+it here crashed because the blocks were 256 samples, over upstream's
+128-sample buffers. Harness Builder's #129 runs the engine in `ref-gui`;
+once it lands, the all-effects views play a MIDI clip on both sides. In
+the plugin, telemetry carries the live values.
 
 **Tests**
 
