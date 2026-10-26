@@ -457,17 +457,29 @@ impl Batch<'_> {
         Ok(())
     }
 
-    /// `SynthGuiInterface::setModulationValues` for modulation slot `slot`
-    /// (0-based): its amount, bipolar, stereo and bypass, set in the engine
-    /// as they are, with nothing rebuilt. The caller tells the host when the
-    /// user's action ends. A newer call for the same slot replaces one the
-    /// audio thread has not taken yet.
+    /// `SynthGuiInterface::setModulationValues`: the amount, bipolar,
+    /// stereo and bypass of the slot connecting `source` to `destination`,
+    /// found when called, set in the engine as they are, with nothing
+    /// rebuilt. The caller tells the host when the user's action ends.
+    /// Returns the slot, or `None` if the two are not connected (nothing
+    /// changes then, as upstream's `getConnectionIndex` check returns). A
+    /// newer call for the same slot replaces one the audio thread has not
+    /// taken yet.
     pub fn set_connection_values(
         &mut self,
-        slot: usize,
+        source: &str,
+        destination: &str,
         values: SlotValues,
-    ) -> Result<(), EditError> {
-        check_index(slot, MAX_MODULATION_CONNECTIONS)?;
+    ) -> Result<Option<usize>, EditError> {
+        let (source, destination) = route(source, destination)?;
+        let Some(slot) = self
+            .mirror
+            .document
+            .state
+            .modulation_index(source, destination)
+        else {
+            return Ok(None);
+        };
         let flag = |on: bool| if on { 1.0 } else { 0.0 };
         let number = slot + 1;
         for (suffix, value) in [
@@ -486,7 +498,7 @@ impl Batch<'_> {
             Target::ConnectionValues(slot),
             Payload::Values(values),
         ));
-        Ok(())
+        Ok(Some(slot))
     }
 
     /// LFO `lfo`'s shape (0-based).
@@ -756,8 +768,13 @@ impl EditHandle {
     }
 
     /// See [`Batch::set_connection_values`].
-    pub fn set_connection_values(&self, slot: usize, values: SlotValues) -> Result<(), EditError> {
-        self.single(|batch| batch.set_connection_values(slot, values))
+    pub fn set_connection_values(
+        &self,
+        source: &str,
+        destination: &str,
+        values: SlotValues,
+    ) -> Result<Option<usize>, EditError> {
+        self.single(|batch| batch.set_connection_values(source, destination, values))
     }
 
     /// See [`Batch::set_line_mapping`].
