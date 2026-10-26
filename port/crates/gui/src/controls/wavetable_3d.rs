@@ -437,33 +437,23 @@ impl Wavetable3d {
             _ => {}
         }
 
-        if self.drag.is_none()
-            && !response.hovered()
+        let hovered = response.hovered() || self.drag.is_some();
+        let was_hovered = panel.ui.data_mut(|data| {
+            let was = data.get_temp::<bool>(id).unwrap_or(false);
+            data.insert_temp(id, hovered);
+            was
+        });
+        if was_hovered
+            && !hovered
             && panel
                 .overlay
                 .value_popup
                 .as_ref()
                 .is_some_and(|(name, _)| *name == frame.name)
-            && response.hover_pos().is_none()
-            && panel
-                .ui
-                .input(|input| input.pointer.hover_pos())
-                .is_some_and(|pos| !rect.contains(pos))
-            && self.was_hovered(panel, id, response.hovered())
         {
             // mouseExit hides the frame slider's popup.
             panel.overlay.value_popup = None;
         }
-    }
-
-    /// Whether the pointer was over the view last frame (for `mouseExit`).
-    fn was_hovered(&self, panel: &mut Panel, id: egui::Id, hovered: bool) -> bool {
-        let was = panel
-            .ui
-            .data(|data| data.get_temp::<bool>(id))
-            .unwrap_or(false);
-        panel.ui.data_mut(|data| data.insert_temp(id, hovered));
-        was
     }
 
     /// `getOutputsTotal` for each control, and the morph and distortion

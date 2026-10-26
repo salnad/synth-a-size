@@ -16,8 +16,9 @@ use nice_plug::prelude::{FloatParam, FloatRange, IntParam, IntRange, Param, Para
 use sas_common::line_generator::LineGenerator;
 use sas_gui::controls::button::SynthButton;
 use sas_gui::controls::envelope_editor::{EnvelopeNames, Shape, Values as EnvelopeValues};
-use sas_gui::controls::slider::Slider;
+use sas_gui::controls::slider::{Slider, SliderStyle};
 use sas_gui::controls::tab_selector::TabSelector;
+use sas_gui::controls::wavetable_3d::Wavetable3d;
 use sas_gui::layout::{FullLayout, Rect};
 use sas_gui::paint::PixelPainter;
 use sas_gui::scope::Scope;
@@ -57,6 +58,9 @@ const CONTROLS: &[&str] = &[
     "osc_1_distortion_amount",
     "osc_1_spectral_morph_type",
     "osc_1_view_2d",
+    "osc_1_wave_frame",
+    "osc_1_spectral_morph_amount",
+    "osc_1_distortion_phase",
     "osc_2_distortion_type",
     "sample_destination",
     "env_2_attack",
@@ -2268,4 +2272,138 @@ fn the_lfo_stereo_knob_snaps_to_centre() {
     );
     let fine = fixture.synth.value("lfo_1_stereo");
     assert!(fine > 0.0 && fine < 0.1, "{fine}");
+}
+
+const WAVETABLE: Rect = Rect {
+    x: 40,
+    y: 40,
+    width: 200,
+    height: 100,
+};
+const FRAME_SLIDER: Rect = Rect {
+    x: 250,
+    y: 40,
+    width: 20,
+    height: 100,
+};
+
+/// Oscillator 1's wavetable view and its frame slider on their own.
+fn wavetable_harness<'a>(
+    fixture: &'a Fixture,
+    overlay: &'a RefCell<Overlay>,
+    view: &'a RefCell<Wavetable3d>,
+) -> Harness<'a> {
+    let mut harness = Harness::builder()
+        .with_size((400.0, 300.0))
+        .with_step_dt(1.0 / 60.0)
+        .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
+        .build_ui(move |ui| {
+            let area = ui.ctx().content_rect();
+            fixture.recorder.apply_pending();
+            let host = Host::tracking(
+                fixture.synth.as_ref(),
+                Some(&fixture.context),
+                &fixture.open,
+            );
+            let painter = ui.painter_at(area);
+            let pixels = PixelPainter::new(&painter, area, 1.0);
+            let interface = fixture.interface.borrow();
+            let top = Scope::top(interface.skin(), 1.0);
+            let mut overlay = overlay.borrow_mut();
+            let mut panel = Panel::new(
+                ui,
+                &host,
+                &pixels,
+                top,
+                &mut overlay,
+                Rect::new(0, 0, 400, 300),
+            );
+            let frame = Slider::new("osc_1_wave_frame", SliderStyle::Vertical);
+            view.borrow_mut().show(
+                &mut panel,
+                WAVETABLE,
+                (&frame, FRAME_SLIDER),
+                None,
+                None,
+                false,
+            );
+            panel.finish();
+        });
+    harness.step();
+    harness
+}
+
+#[test]
+fn dragging_the_wavetable_moves_the_frame_in_one_gesture() {
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let view = RefCell::new(Wavetable3d::new(0));
+    let mut harness = wavetable_harness(&fixture, &overlay, &view);
+    let start = centre(WAVETABLE);
+    press(&mut harness, start, PointerButton::Primary, Modifiers::NONE);
+    // The frame slider's popup shows at the slider, from the press.
+    {
+        let overlay = overlay.borrow();
+        let (name, popup) = overlay.value_popup.as_ref().unwrap();
+        assert_eq!(*name, "osc_1_wave_frame");
+        assert_eq!(popup.source, FRAME_SLIDER);
+    }
+    // The view's height spans the 256 frames: 20 pixels up is 51.2.
+    move_to(&mut harness, start + egui::vec2(0.0, -10.0));
+    move_to(&mut harness, start + egui::vec2(0.0, -20.0));
+    release(
+        &mut harness,
+        start + egui::vec2(0.0, -20.0),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    harness.step();
+    assert!((fixture.synth.value("osc_1_wave_frame") - 51.2).abs() < 1e-3);
+    assert_eq!(
+        fixture.take_log(),
+        [
+            "begin osc_1_wave_frame",
+            "set osc_1_wave_frame",
+            "end osc_1_wave_frame"
+        ]
+    );
+}
+
+#[test]
+fn a_wavetable_drag_holds_its_own_value_and_clamps() {
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let view = RefCell::new(Wavetable3d::new(0));
+    let mut harness = wavetable_harness(&fixture, &overlay, &view);
+    let start = Pos2::new(centre(WAVETABLE).x, WAVETABLE.bottom() as f32 - 5.0);
+    press(&mut harness, start, PointerButton::Primary, Modifiers::NONE);
+    // Past the top: clamped to the last frame, steps the host hasn't
+    // applied yet included.
+    for step in 1..=4 {
+        move_to(&mut harness, start + egui::vec2(0.0, -40.0 * step as f32));
+    }
+    // Back down 25 pixels from the clamp: 64 frames below the last.
+    move_to(&mut harness, start + egui::vec2(0.0, -135.0));
+    release(
+        &mut harness,
+        start + egui::vec2(0.0, -135.0),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    harness.step();
+    assert!((fixture.synth.value("osc_1_wave_frame") - 192.0).abs() < 1e-3);
+}
+
+#[test]
+fn leaving_the_wavetable_hides_the_frame_popup() {
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let view = RefCell::new(Wavetable3d::new(0));
+    let mut harness = wavetable_harness(&fixture, &overlay, &view);
+    let start = centre(WAVETABLE);
+    click(&mut harness, start);
+    assert!(overlay.borrow().value_popup.is_some());
+    move_to(&mut harness, Pos2::new(350.0, 250.0));
+    harness.step();
+    assert!(overlay.borrow().value_popup.is_none());
 }
