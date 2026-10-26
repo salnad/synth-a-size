@@ -9,9 +9,12 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use egui_kittest::Harness;
 use nice_plug::prelude::{FloatParam, FloatRange, IntParam, IntRange, Param};
+use sas_engine::edit_bus::PreparedWavetable;
+use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_gui::{EditorModel, Host, HostParam, Interface, Tab};
 use sas_preset::registry::{registry, ValueScale};
 use sas_preset::{InitContent, PresetState, SampleState};
@@ -37,6 +40,8 @@ struct ViewPreset {
     name: String,
     params: HashMap<String, Box<ViewParam>>,
     state: PresetState,
+    /// The preset's wavetables, rendered as the engine renders them.
+    wavetables: Vec<Option<Arc<Wavetable>>>,
 }
 
 impl ViewPreset {
@@ -76,10 +81,20 @@ impl ViewPreset {
                 Some((control.clone(), Box::new(param)))
             })
             .collect();
+        let wavetables = state
+            .wavetables
+            .iter()
+            .map(|creator| {
+                PreparedWavetable::render(creator.clone())
+                    .ok()
+                    .map(|prepared| prepared.wavetable().clone())
+            })
+            .collect();
         ViewPreset {
             name,
             params,
             state,
+            wavetables,
         }
     }
 }
@@ -91,6 +106,10 @@ impl EditorModel for ViewPreset {
 
     fn param(&self, name: &str) -> Option<HostParam> {
         self.params.get(name).map(|param| param.ptr())
+    }
+
+    fn wavetable(&self, oscillator: usize) -> Option<Arc<Wavetable>> {
+        self.wavetables.get(oscillator).cloned().flatten()
     }
 
     fn wavetable_name(&self, oscillator: usize) -> String {

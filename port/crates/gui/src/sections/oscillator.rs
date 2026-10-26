@@ -7,8 +7,10 @@
 //! (`vital/src/interface/editor_sections/oscillator_section.cpp`), and the
 //! FM/RM dependency check of `SynthesisInterface::distortionTypeChanged`.
 //!
-//! The wavetable view (`Wavetable3d`), the wavetable's name and browser,
+//! The wavetable view is `controls::wavetable_3d`. The wavetable's browser,
 //! the text-to-wavetable field and the edit button's action come later.
+
+use std::cell::RefCell;
 
 use super::{MenuOwner, Panel};
 use crate::colour::Colour;
@@ -16,6 +18,7 @@ use crate::controls::button::SynthButton;
 use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
 use crate::controls::slider::{Placement, Slider, SliderStyle};
 use crate::controls::transpose_quantize;
+use crate::controls::wavetable_3d::{RenderType, ViewSettings, Wavetable3d};
 use crate::fonts::Face;
 use crate::host::Host;
 use crate::layout::{PresetSelectorLayout, Rect};
@@ -575,6 +578,8 @@ impl OscillatorLayout {
 /// One oscillator section's controls (`OscillatorSection`'s constructor).
 pub struct OscillatorSection {
     index: usize,
+    /// The wavetable view, which keeps its drawing between frames.
+    view: RefCell<Wavetable3d>,
     names: Names,
     on: SynthButton,
     transpose: Slider,
@@ -599,6 +604,7 @@ impl OscillatorSection {
         let text = |name| Slider::new(name, SliderStyle::Text).text_entry(1.0, Some(0.0));
         OscillatorSection {
             index,
+            view: RefCell::new(Wavetable3d::new(index)),
             names,
             on: SynthButton::power(names.on),
             transpose: text(names.transpose).sensitivity(TRANSPOSE_MOUSE_SENSITIVITY),
@@ -670,6 +676,7 @@ impl OscillatorSection {
         pixels: &PixelPainter,
         scope: &Scope,
         layout: &OscillatorLayout,
+        host: &Host,
     ) {
         if layout.bounds.width == 0 {
             return;
@@ -678,7 +685,22 @@ impl OscillatorSection {
         paint_container(pixels, scope, layout.bounds, Heading::Sideways);
         paint_sideways_heading_text(pixels, scope, &name, layout.bounds, true);
 
-        // paintChildrenBackgrounds: the wavetable name's selector.
+        // paintChildrenBackgrounds: the wavetable view, then the
+        // wavetable name's selector.
+        {
+            let mut view = self.view.borrow_mut();
+            view.set_view_settings(ViewSettings::from_skin(scope));
+            let render_type = RenderType::from_value(host.value(self.names.view_2d));
+            let wavetable = host.model().wavetable(self.index);
+            view.paint_background(
+                pixels,
+                scope,
+                layout.wavetable,
+                render_type,
+                self.on.is_on(host),
+                wavetable.as_ref(),
+            );
+        }
         let preset = layout.preset_selector;
         pixels.fill_rounded_rect(
             preset.bounds,
@@ -715,6 +737,7 @@ impl OscillatorSection {
     /// The controls, the type texts and their selectors, and the power
     /// button with the section's off overlay.
     pub fn show(&self, panel: &mut Panel, layout: &OscillatorLayout) {
+        self.show_view(panel, layout);
         let host = panel.host;
         let active = self.on.is_on(host);
         let with_active = |slider: &Slider| {
@@ -976,6 +999,37 @@ impl OscillatorSection {
     }
 
     /// The wavetable's name strip and arrows, and the dimension button.
+    /// The wavetable view (`Wavetable3d`): its lines and its drag, which
+    /// moves the frame slider.
+    fn show_view(&self, panel: &mut Panel, layout: &OscillatorLayout) {
+        // Upstream's default until the editor has the animate setting.
+        const ANIMATE: bool = true;
+        let model = panel.host.model();
+        let wavetable = model.wavetable(self.index);
+        let mut view = self.view.borrow_mut();
+        let frame = (&self.wave_frame, layout.wave_frame);
+        match model.telemetry() {
+            Some(telemetry) => telemetry.read(|snapshot| {
+                view.show(
+                    panel,
+                    layout.wavetable,
+                    frame,
+                    wavetable.as_ref(),
+                    Some(snapshot),
+                    ANIMATE,
+                )
+            }),
+            None => view.show(
+                panel,
+                layout.wavetable,
+                frame,
+                wavetable.as_ref(),
+                None,
+                ANIMATE,
+            ),
+        }
+    }
+
     /// The wavetable's name with its arrows; browsing wavetables and the
     /// edit button come with the wavetable view.
     fn show_wavetable_buttons(&self, panel: &mut Panel, layout: &OscillatorLayout) {
