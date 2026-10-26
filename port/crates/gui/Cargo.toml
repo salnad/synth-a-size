@@ -26,6 +26,7 @@ focus-spike = []
 gpu-tests = []
 
 [dev-dependencies]
+keyboard-types = { version = "=0.8.3", default-features = false }
 naga = { version = "30.0.1", features = ["wgsl-in"] }
 egui_kittest.workspace = true
 

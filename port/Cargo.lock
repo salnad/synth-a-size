@@ -2635,6 +2635,7 @@ dependencies = [
  "egui",
  "egui-wgpu",
  "egui_kittest",
+ "keyboard-types",
  "naga",
  "nice-plug",
  "nice-plug-egui",

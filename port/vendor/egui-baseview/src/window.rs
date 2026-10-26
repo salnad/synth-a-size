@@ -780,6 +780,8 @@ impl<A: App> WindowHandler for EguiWindow<A> {
         let mut egui_input = self.egui_input.borrow_mut();
 
         let mut do_repaint = true;
+        // synth-a-size patch: a file drag's answer to baseview.
+        let mut drop_status = None;
 
         match &event {
             baseview::Event::Mouse(event) => match event {
@@ -863,6 +865,27 @@ impl<A: App> WindowHandler for EguiWindow<A> {
                 baseview::MouseEvent::CursorLeft => {
                     self.pointer_logical_pos.set(None);
                     egui_input.events.push(egui::Event::PointerGone);
+                }
+                // synth-a-size patch: file drops (`file_drop`).
+                baseview::MouseEvent::DragEntered { modifiers, .. }
+                | baseview::MouseEvent::DragMoved { modifiers, .. }
+                | baseview::MouseEvent::DragDropped { modifiers, .. } => {
+                    update_modifiers(&self.modifiers, modifiers, &mut egui_input);
+                    drop_status = crate::file_drop::handle_drag_event(
+                        event,
+                        self.system_scale_factor.get()
+                            * self.inner.borrow().egui_ctx.zoom_factor() as f64,
+                        &mut egui_input,
+                        &self.pointer_logical_pos,
+                    );
+                }
+                baseview::MouseEvent::DragLeft => {
+                    drop_status = crate::file_drop::handle_drag_event(
+                        event,
+                        self.system_scale_factor.get(),
+                        &mut egui_input,
+                        &self.pointer_logical_pos,
+                    );
                 }
                 _ => do_repaint = false,
             },
@@ -954,6 +977,11 @@ impl<A: App> WindowHandler for EguiWindow<A> {
 
         if do_repaint {
             self.window.request_redraw();
+        }
+
+        // synth-a-size patch: baseview accepts a file drag only on AcceptDrop.
+        if let Some(status) = drop_status {
+            return status;
         }
 
         // For keyboard events, also check if egui actually wants keyboard input
