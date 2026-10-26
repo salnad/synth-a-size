@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use sas_gui::controls::modulation_button::ModulationTabSelector;
 use sas_gui::layout::{FullLayout, Rect};
+use sas_gui::local::PRESET_STYLE_NAMES;
 use sas_gui::scope::Scope;
 use sas_gui::sections::bend::{self, BendLayout};
 use sas_gui::sections::envelope::{self, EnvelopeLayout};
@@ -16,6 +17,7 @@ use sas_gui::sections::lfo::{self, LfoLayout};
 use sas_gui::sections::modulation::{ModulationInterface, ModulationLayout};
 use sas_gui::sections::oscillator::{self, OscillatorLayout};
 use sas_gui::sections::portamento::{self, PortamentoLayout};
+use sas_gui::sections::preset_browser::PresetBrowserLayout;
 use sas_gui::sections::random::{self, RandomLayout};
 use sas_gui::sections::sample::{self, SampleLayout};
 use sas_gui::sections::synthesis::SynthesisLayout;
@@ -278,6 +280,8 @@ fn port_rect(skin: &Skin, layout: &FullLayout, path: &str, preset: Option<&str>)
         "header_section/preset_selector/Menu" => header.menu_button,
         "header_section/VOLUME" => header.volume,
         "header_section/view_spectrogram" => header.oscilloscope,
+        "header_section/Exit" => header.exit_temporary,
+        "header_section/Temporary" => header.temporary,
         "synthesis" | "master_controls" | "MODULATION MATRIX" => layout.main,
         "effects" => layout.effects,
         "modulation" => layout.modulation,
@@ -302,7 +306,28 @@ fn port_rect(skin: &Skin, layout: &FullLayout, path: &str, preset: Option<&str>)
         _ if path.starts_with("modulation/") => return modulation_rect(skin, layout, path),
         _ if path.starts_with("extra_mod_section/") => return extra_mod_rect(skin, layout, path),
         _ if path.starts_with("master_controls/") => return advanced_rect(skin, layout, path),
+        _ if path.starts_with("preset_browser") => return browser_rect(skin, layout, path),
         _ => return synthesis_rect(skin, layout, path, phase_visible(preset)),
+    })
+}
+
+/// The preset browser's parts (`PresetBrowser::resized`).
+fn browser_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> {
+    let top = Scope::top(skin, layout.size_ratio);
+    let browser = PresetBrowserLayout::new(&top, layout.browser);
+    Some(match path {
+        "preset_browser" => browser.bounds,
+        "preset_browser/Preset List" => browser.list,
+        "preset_browser/Selection List" => browser.folders,
+        "preset_browser/Preset" => browser.preset_text,
+        "preset_browser/Author" => browser.author_text,
+        "preset_browser/Search" => browser.search,
+        "preset_browser/Comments" => browser.comments,
+        _ => {
+            let name = path.strip_prefix("preset_browser/")?;
+            let index = PRESET_STYLE_NAMES.iter().position(|style| *style == name)?;
+            browser.styles[index]
+        }
     })
 }
 

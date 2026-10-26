@@ -31,7 +31,19 @@ itself:
 ref-gui [--out frame.png] [--layout layout.jsonl] [--preset file.vital]
         [--tab voice|effects|matrix|advanced] [--width 1400] [--height 820] [--frames 30]
         [--midi file.mid] [--seconds S] [--block-size 64] [--animate on|off]
+        [--overlay preset_browser]
 ```
+
+The interface draws with upstream's `DefaultLookAndFeel`, which the
+plugin's editor sets (`SynthEditor`), so components that don't set their
+own (text editors, scroll bars) look as they do in the plugin. The script
+runs `ref-gui` with `HOME` and `XDG_DATA_HOME` in an empty temporary folder,
+so upstream finds no config, favourites or presets on the machine running
+it.
+
+`--overlay preset_browser` opens the preset browser over the tab, as the
+header's preset selector does; in `views.json`, `"overlay":
+"preset_browser"`.
 
 ## A running engine
 

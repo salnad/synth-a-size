@@ -328,6 +328,7 @@ impl<'a> PixelPainter<'a> {
         let start = match justify {
             Justify::Left => -left,
             Justify::Centred => (width - (right - left)) / 2.0 - left,
+            Justify::Right => width - right,
         } / self.pixels_per_point
             + rect.min.x;
         let top = rect.center().y - galley.size().y / 2.0;

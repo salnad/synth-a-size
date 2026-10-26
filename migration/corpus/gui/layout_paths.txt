@@ -20,6 +20,8 @@ header_section/preset_selector/Save
 header_section/preset_selector/Menu
 header_section/VOLUME
 header_section/view_spectrogram
+header_section/Exit
+header_section/Temporary
 synthesis
 master_controls
 master_controls/OSC 1
@@ -320,6 +322,24 @@ extra_mod_section/MACRO/MACRO3/Edit 4
 extra_mod_section/MACRO/MACRO3/macro_control_4#2
 
 # G3b: oscillator 3 with a wave morph that shows the distortion phase slider.
+
+# The preset browser (laid out while hidden, as FullInterface::resized does).
+preset_browser
+preset_browser/Preset List
+preset_browser/Selection List
+preset_browser/Bass
+preset_browser/Lead
+preset_browser/Keys
+preset_browser/Pad
+preset_browser/Percussion
+preset_browser/Sequence
+preset_browser/Experiment
+preset_browser/SFX
+preset_browser/Template
+preset_browser/Preset
+preset_browser/Author
+preset_browser/Search
+preset_browser/Comments
 @preset migration/corpus/gui/presets/osc_3_sync.vital
 synthesis/OSC 3
 synthesis/OSC 3/osc_3_on

@@ -8,10 +8,13 @@
 // Usage:
 //   ref-gui [--out frame.png] [--layout layout.jsonl] [--preset file.vital]
 //           [--tab voice|effects|matrix|advanced] [--width 1400] [--height 820] [--frames 30]
-//           [--effects-scroll 0]
+//           [--effects-scroll 0] [--overlay preset_browser]
 //
 // --effects-scroll scrolls the effects column down that many pixels (the
 // viewport keeps it within the column).
+//
+// --overlay preset_browser opens the preset browser over the tab, as the
+// header's preset selector does.
 //
 // --layout writes the bounds of every named component, relative to the
 // interface, so the port's layout can be checked exactly. Without --out
@@ -33,6 +36,7 @@
 
 #include "JuceHeader.h"
 
+#include "default_look_and_feel.h"
 #include "effects_interface.h"
 #include "full_interface.h"
 #include "sound_engine.h"
@@ -69,6 +73,7 @@ struct Options {
   int frames = 30;
   int effects_scroll = 0;
   std::string layout;
+  std::string overlay;
 };
 
 int tabIndex(const std::string& tab) {
@@ -181,6 +186,9 @@ class CaptureInterface : public FullInterface {
 class RefGuiSynth : public Component, public harness::RenderLoop<SynthBase>, public SynthGuiInterface {
   public:
     explicit RefGuiSynth(const Options& options) : Component("ref-gui"), SynthGuiInterface(this, false) {
+      // As upstream's SynthEditor: components that don't set their own (text
+      // editors, scroll bars) draw with this, not JUCE's default.
+      setLookAndFeel(DefaultLookAndFeel::instance());
       engine_->setSampleRate(vital::kDefaultSampleRate);
       SynthGuiData data(this);
       gui_ = std::make_unique<CaptureInterface>(&data, options);
@@ -247,6 +255,8 @@ class RefGuiApplication : public JUCEApplication {
           options.layout = value;
         else if (key == "--effects-scroll")
           options.effects_scroll = std::stoi(value);
+        else if (key == "--overlay")
+          options.overlay = value;
         else
           return fail("unknown option " + key);
       }
@@ -254,7 +264,9 @@ class RefGuiApplication : public JUCEApplication {
       if ((options.out.empty() && options.layout.empty()) || tab < 0)
         return fail("usage: ref-gui (--out frame.png | --layout layout.jsonl) [--preset file.vital] "
                     "[--tab voice|effects|matrix|advanced] [--width W] [--height H] [--frames N] "
-                    "[--effects-scroll Y]");
+                    "[--effects-scroll Y] [--overlay preset_browser]");
+      if (!options.overlay.empty() && options.overlay != "preset_browser")
+        return fail("unknown overlay " + options.overlay);
 
       synth_ = std::make_unique<RefGuiSynth>(options);
       if (options.preset.empty()) {
@@ -309,6 +321,9 @@ class RefGuiApplication : public JUCEApplication {
           return fail("effects viewport not found");
         viewport->setViewPosition(0, options.effects_scroll);
       }
+
+      if (options.overlay == "preset_browser")
+        gui->setPresetBrowserVisibility(true, tab);
 
       if (!options.layout.empty()) {
         std::string out;

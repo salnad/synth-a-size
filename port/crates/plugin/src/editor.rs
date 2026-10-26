@@ -16,7 +16,7 @@ use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::telemetry::Telemetry;
 use sas_engine::Tuning;
 use sas_gui::{ChatHost, EditorModel, HostParam, Route};
-use sas_preset::{GuiConnection, InitContent, PresetState, SampleState, SlotValues};
+use sas_preset::{GuiConnection, InitContent, PresetState, SampleState, SaveInfo, SlotValues};
 
 use crate::chat::PluginChat;
 use crate::midi_learn::MidiLearn;
@@ -29,9 +29,10 @@ pub struct PluginModel {
     keyboard: KeyboardHandle,
     telemetry: Telemetry,
     midi_learn: Arc<MidiLearn>,
-    /// The preset name and the edit bus revision it was read at, so the
-    /// document mirror is read only after it changes.
-    preset_name: Mutex<(u64, String)>,
+    /// The preset's save info (name, author, comments) and the edit bus
+    /// revision it was read at, so the document mirror is read only after it
+    /// changes.
+    info: Mutex<(u64, SaveInfo)>,
     /// The connected modulation slots, read at an edit bus revision too.
     modulations: Mutex<(u64, Arc<[Route]>)>,
     chat: Option<Arc<PluginChat>>,
@@ -55,7 +56,7 @@ impl PluginModel {
     ) -> PluginModel {
         let edits = params.edit_handle();
         let revision = edits.revision();
-        let name = edits.with_document(|document| document.state.info.preset_name.clone());
+        let info = edits.with_document(|document| document.state.info.clone());
         let hz_frequency = midi_learn
             .config_file()
             .is_some_and(crate::config::display_hz_frequency);
@@ -68,7 +69,7 @@ impl PluginModel {
             keyboard,
             telemetry,
             midi_learn,
-            preset_name: Mutex::new((revision, name)),
+            info: Mutex::new((revision, info)),
             modulations: Mutex::new((revision, modulations)),
             chat,
             hz_frequency: AtomicBool::new(hz_frequency),
@@ -96,6 +97,22 @@ fn routes(document: &PresetDocument) -> Arc<[Route]> {
         .collect()
 }
 
+impl PluginModel {
+    /// The preset's save info, read from the edit bus once per revision.
+    fn with_info<T>(&self, read: impl FnOnce(&SaveInfo) -> T) -> T {
+        let edits = self.params.edit_handle();
+        let revision = edits.revision();
+        let mut cached = lock(&self.info);
+        if cached.0 != revision {
+            *cached = (
+                revision,
+                edits.with_document(|document| document.state.info.clone()),
+            );
+        }
+        read(&cached.1)
+    }
+}
+
 impl EditorModel for PluginModel {
     fn hz_frequency_display(&self) -> bool {
         self.hz_frequency.load(Ordering::Relaxed)
@@ -109,19 +126,15 @@ impl EditorModel for PluginModel {
     }
 
     fn preset_name(&self) -> String {
-        let edits = self.params.edit_handle();
-        let revision = edits.revision();
-        let mut cached = self
-            .preset_name
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if cached.0 != revision {
-            *cached = (
-                revision,
-                edits.with_document(|document| document.state.info.preset_name.clone()),
-            );
-        }
-        cached.1.clone()
+        self.with_info(|info| info.preset_name.clone())
+    }
+
+    fn preset_author(&self) -> String {
+        self.with_info(|info| info.author.clone())
+    }
+
+    fn preset_comments(&self) -> String {
+        self.with_info(|info| info.comments.clone())
     }
 
     fn telemetry(&self) -> Option<Telemetry> {
