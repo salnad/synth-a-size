@@ -741,7 +741,7 @@ impl OscillatorSection {
         // place.
         let mut detune_power = with_active(&self.detune_power);
         detune_power.style = SliderStyle::Curve;
-        panel.invisible_slider(&detune_power, layout.detune_power);
+        panel.slider_input(&detune_power, layout.detune_power);
         for quad in self.unison_quads(panel, layout.detune_power) {
             panel.layer().additive_quad(quad);
         }
