@@ -15,18 +15,19 @@
 //! rule 2).
 
 use egui::{Ui, UiBuilder};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use sas_common::line_generator::LineGenerator;
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::telemetry::Telemetry;
 use sas_engine::Tuning;
+use sas_preset::user_folders::{self, Kind};
 use sas_preset::SampleState;
 
 use crate::chat::{ChatPlacement, ChatStyle};
 use crate::controls::format;
 use crate::controls::oscilloscope;
-use crate::controls::shape_button;
 use crate::controls::tab_selector::{self, TabSelector};
 use crate::fonts::Face;
 use crate::host::{Host, HostParam};
@@ -41,6 +42,7 @@ use crate::sections::extra_mod::{self, ExtraModLayout, ExtraModSection};
 use crate::sections::keyboard::{self, KeyboardLayout, PlayingNote};
 use crate::sections::modulation::ModulationInterface;
 use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
+use crate::sections::preset_selector;
 use crate::sections::synthesis::SynthesisInterface;
 use crate::sections::voice::{self, VoiceLayout, VoiceSection};
 use crate::sections::volume::{PeakLevels, VolumeLayout, VolumeSection};
@@ -133,6 +135,40 @@ pub trait EditorModel: Send + Sync + 'static {
     fn load_tuning(&self, tuning: Tuning) {
         let _ = tuning;
     }
+
+    /// The user's chosen data folder (`LoadSave::getDataDirectory`'s
+    /// `"data_directory"` setting), if any; see [`user_folder`].
+    fn data_directory(&self) -> Option<PathBuf> {
+        None
+    }
+
+    /// `LoadSave::setDataDirectory`: keep `folder` as the data folder.
+    fn set_data_directory(&self, folder: PathBuf) {
+        let _ = folder;
+    }
+
+    /// `SynthBase::getActiveFile`: the preset file last loaded or saved.
+    fn active_preset_file(&self) -> Option<PathBuf> {
+        None
+    }
+
+    /// `SynthBase::loadFromFile`: plays the preset at `path`. The error is
+    /// for the user.
+    fn load_preset_file(&self, path: &Path) -> Result<(), String> {
+        let _ = path;
+        Err("there is no synth to load it into".to_string())
+    }
+
+    /// `SynthBase::saveToFile`: writes the current preset to `path` with
+    /// the preset extension, naming it after the file, and returns the path
+    /// written.
+    fn save_preset_file(&self, path: &Path) -> Result<PathBuf, String> {
+        let _ = path;
+        Err("there is no synth to save".to_string())
+    }
+
+    /// `SynthBase::loadInitPreset`.
+    fn init_preset(&self) {}
 
     /// `SynthBase::armMidiLearn(name)`: the next MIDI controller the engine
     /// receives learns parameter `name`.
@@ -242,6 +278,13 @@ pub trait EditorModel: Send + Sync + 'static {
     fn content_revision(&self) -> u64 {
         0
     }
+}
+
+/// The user folder for `kind`: under the model's data folder if it set one
+/// that exists, else under the default root.
+pub fn user_folder(model: &dyn EditorModel, kind: Kind) -> Option<PathBuf> {
+    let root = user_folders::root(model.data_directory().as_deref())?;
+    Some(user_folders::folder(&root, kind))
 }
 
 /// What the editor copies from the telemetry snapshot each frame.
@@ -443,6 +486,18 @@ impl Interface {
         self.volume
             .show(&mut panel, &volume_layout, live.map(|live| live.peaks));
         panel.finish();
+
+        let mut panel = Panel::new(
+            ui,
+            host,
+            pixels,
+            header,
+            &mut self.overlay,
+            layout.header.bounds,
+        );
+        preset_selector::show(&mut panel, &layout.header);
+        panel.finish();
+        advanced::poll_tuning_file(host, ui.ctx());
     }
 
     /// The selected tab's contents (`FullInterface::tabSelected` shows one
@@ -677,10 +732,6 @@ impl Interface {
             preset.text_size,
             header.color(ColorId::PresetText),
         );
-
-        let arrow = header.color(ColorId::IconButtonOff);
-        shape_button::paint_chevron(pixels, preset.previous, &shape_button::PREV, arrow);
-        shape_button::paint_chevron(pixels, preset.next, &shape_button::NEXT, arrow);
     }
 
     /// `TabSelector::mouseDown` / `mouseDrag` / `mouseUp`: the tab under the

@@ -23,11 +23,12 @@ use nice_plug_egui::baseview::PlatformHandle;
 /// How often the editor redraws to poll a dialog while one is open.
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 
-/// Open or save.
+/// Open a file, save one, or choose a folder.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DialogKind {
     Open,
     Save,
+    Folder,
 }
 
 /// What a dialog asks for.
@@ -61,6 +62,14 @@ impl FileRequest {
             kind: DialogKind::Save,
             file_name: Some(file_name.to_string()),
             ..FileRequest::open(title, filters)
+        }
+    }
+
+    /// A dialog choosing a folder (`FileChooser::browseForDirectory`).
+    pub fn folder(title: &str) -> FileRequest {
+        FileRequest {
+            kind: DialogKind::Folder,
+            ..FileRequest::open(title, Vec::new())
         }
     }
 
@@ -146,6 +155,12 @@ pub fn open(ctx: &egui::Context, id: egui::Id, request: &FileRequest) {
                 .pick_file()
                 .await
                 .map(|file| file.path().to_path_buf())
+        }),
+        DialogKind::Folder => Box::pin(async move {
+            dialog
+                .pick_folder()
+                .await
+                .map(|folder| folder.path().to_path_buf())
         }),
         DialogKind::Save => Box::pin(async move {
             dialog

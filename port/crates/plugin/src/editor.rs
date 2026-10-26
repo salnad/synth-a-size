@@ -2,6 +2,7 @@
 
 //! What the `sas-gui` editor reads from the plugin.
 
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -14,11 +15,12 @@ use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::telemetry::Telemetry;
 use sas_engine::Tuning;
 use sas_gui::{ChatHost, EditorModel, HostParam};
-use sas_preset::SampleState;
+use sas_preset::{InitContent, PresetState, SampleState};
 
 use crate::chat::PluginChat;
 use crate::midi_learn::MidiLearn;
 use crate::params::SynthParams;
+use crate::state;
 
 /// The editor's view of one plugin instance.
 pub struct PluginModel {
@@ -32,6 +34,12 @@ pub struct PluginModel {
     chat: Option<Arc<PluginChat>>,
     /// The frequency display setting, read from the config file once.
     hz_frequency: AtomicBool,
+    /// The config's data folder, read once.
+    data_directory: Mutex<Option<PathBuf>>,
+    /// `SynthBase::active_file_`.
+    active_file: Mutex<Option<PathBuf>>,
+    /// The host connection, once the editor has opened.
+    gui: Mutex<Option<GuiContext>>,
 }
 
 impl PluginModel {
@@ -48,6 +56,9 @@ impl PluginModel {
         let hz_frequency = midi_learn
             .config_file()
             .is_some_and(crate::config::display_hz_frequency);
+        let data_directory = midi_learn
+            .config_file()
+            .and_then(crate::config::data_directory);
         PluginModel {
             params,
             keyboard,
@@ -56,6 +67,9 @@ impl PluginModel {
             preset_name: Mutex::new((revision, name)),
             chat,
             hz_frequency: AtomicBool::new(hz_frequency),
+            data_directory: Mutex::new(data_directory),
+            active_file: Mutex::new(None),
+            gui: Mutex::new(None),
         }
     }
 }
@@ -216,6 +230,57 @@ impl EditorModel for PluginModel {
         let _ = self.params.edit_handle().set_tuning(tuning);
     }
 
+    fn data_directory(&self) -> Option<PathBuf> {
+        lock(&self.data_directory).clone()
+    }
+
+    fn set_data_directory(&self, folder: PathBuf) {
+        if let Some(path) = self.midi_learn.config_file() {
+            let _ = crate::config::save_data_directory(path, &folder);
+        }
+        *lock(&self.data_directory) = Some(folder);
+    }
+
+    fn active_preset_file(&self) -> Option<PathBuf> {
+        lock(&self.active_file).clone()
+    }
+
+    fn load_preset_file(&self, path: &Path) -> Result<(), String> {
+        let state = state::plugin_state_from_file(path).map_err(|error| error.to_string())?;
+        let gui = lock(&self.gui)
+            .clone()
+            .ok_or("the editor isn't connected to the host")?;
+        gui.set_state(state);
+        *lock(&self.active_file) = Some(path.to_path_buf());
+        Ok(())
+    }
+
+    fn save_preset_file(&self, path: &Path) -> Result<PathBuf, String> {
+        let written = state::save_preset_file(&self.params.preset_state(), path)
+            .map_err(|error| error.to_string())?;
+        // setPresetName: the synth takes the file's name.
+        let edits = self.params.edit_handle();
+        let mut info = edits.with_document(|document| document.state.info.clone());
+        info.preset_name = written
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        edits.set_info(info);
+        *lock(&self.active_file) = Some(written.clone());
+        Ok(written)
+    }
+
+    fn init_preset(&self) {
+        let init = PresetState::new(&InitContent { sample_seed: 0 });
+        if let (Some(gui), Ok(state)) = (
+            lock(&self.gui).clone(),
+            state::plugin_state_from_json(&init.to_json_string()),
+        ) {
+            gui.set_state(state);
+            *lock(&self.active_file) = None;
+        }
+    }
+
     fn arm_midi_learn(&self, name: &str) {
         self.midi_learn.arm(name);
     }
@@ -249,6 +314,7 @@ impl EditorModel for PluginModel {
     }
 
     fn attach(&self, gui: GuiContext, wake: Box<dyn Fn() + Send + Sync>) {
+        *lock(&self.gui) = Some(gui.clone());
         if let Some(chat) = &self.chat {
             chat.attach(gui, Arc::from(wake));
         }
@@ -257,6 +323,12 @@ impl EditorModel for PluginModel {
     fn chat(&self) -> Option<&dyn ChatHost> {
         self.chat.as_deref().map(|chat| chat as &dyn ChatHost)
     }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 #[cfg(test)]

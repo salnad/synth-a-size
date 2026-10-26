@@ -1,0 +1,221 @@
+// Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//! The header's preset selector: the previous and next arrows, the menu,
+//! and the save button. Ports `SynthPresetSelector`
+//! (`vital/src/interface/editor_components/synth_preset_selector.cpp`) and
+//! `PresetBrowser::jumpToPreset`.
+
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
+use egui::{PointerButton, Sense};
+use sas_engine::Tuning;
+use sas_preset::user_folders::{self, Kind, PRESET_EXTENSION};
+
+use super::advanced;
+use super::{MenuOwner, Panel};
+use crate::controls::file_dialog::{self, FileRequest};
+use crate::controls::path::Path;
+use crate::controls::paths;
+use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
+use crate::host::Host;
+use crate::interface::{user_folder, EditorModel};
+use crate::layout::{HeaderLayout, Rect};
+use crate::popup::{Menu, MenuItem};
+
+/// The menu's choices (`SynthPresetSelector`'s menu ids, for the items
+/// ported so far).
+const OPEN_EXTERNAL: i32 = 0;
+const EXPORT: i32 = 1;
+const INIT: i32 = 2;
+const LOAD_TUNING: i32 = 3;
+const CLEAR_TUNING: i32 = 4;
+const DATA_FOLDER: i32 = 5;
+
+fn open_dialog() -> egui::Id {
+    egui::Id::unique("open external preset")
+}
+
+fn export_dialog() -> egui::Id {
+    egui::Id::unique("export preset")
+}
+
+fn data_folder_dialog() -> egui::Id {
+    egui::Id::unique("data folder")
+}
+
+/// The pixel-snapped menu and save icons (`Paths::menu(height)`,
+/// `Paths::save(height)`) for a button `height` pixels tall, with their
+/// cache keys. One of each is kept per height the header has had.
+fn sized_icon(save: bool, height: i32) -> (&'static str, &'static Path) {
+    type Icons = HashMap<(bool, i32), (&'static str, &'static Path)>;
+    static ICONS: OnceLock<Mutex<Icons>> = OnceLock::new();
+    let mut icons = ICONS
+        .get_or_init(Mutex::default)
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    *icons.entry((save, height)).or_insert_with(|| {
+        let (name, path) = if save {
+            ("header save", paths::save(height))
+        } else {
+            ("header menu", paths::menu(height))
+        };
+        let key: &'static str = Box::leak(format!("{name} {height}").into_boxed_str());
+        (key, Box::leak(Box::new(path)))
+    })
+}
+
+/// `PresetBrowser::jumpToPreset(by)`: the preset `by` places from the
+/// active file among those beside it, wrapping round. Without an active
+/// file, the first (or last) preset in the user's preset folder.
+pub fn step_preset(model: &dyn EditorModel, by: i32) {
+    let next = match model.active_preset_file() {
+        Some(active) => user_folders::step(&active, by),
+        None => {
+            let folder = user_folder(model, Kind::Presets);
+            let files = folder.map_or_else(Vec::new, |folder| {
+                user_folders::files_in(&folder, PRESET_EXTENSION)
+            });
+            if by > 0 {
+                files.first().cloned()
+            } else {
+                files.last().cloned()
+            }
+        }
+    };
+    if let Some(path) = next {
+        let _ = model.load_preset_file(&path);
+    }
+}
+
+fn preset_filters() -> Vec<(String, Vec<String>)> {
+    vec![("Preset".to_string(), vec![PRESET_EXTENSION.to_string()])]
+}
+
+/// `SynthPresetSelector::menuCallback`.
+fn choose(host: &Host, ctx: &egui::Context, id: i32) {
+    let model = host.model();
+    match id {
+        OPEN_EXTERNAL => {
+            // importPreset: starts beside the active file.
+            let folder = model
+                .active_preset_file()
+                .and_then(|file| file.parent().map(|parent| parent.to_path_buf()))
+                .or_else(|| user_folder(model, Kind::Presets));
+            let mut request = FileRequest::open("Open Preset", preset_filters());
+            if let Some(folder) = folder {
+                request = request.in_folder(folder);
+            }
+            file_dialog::open(ctx, open_dialog(), &request);
+        }
+        EXPORT => {
+            let mut name = model.preset_name();
+            if name.is_empty() {
+                name = "Init Preset".to_string();
+            }
+            let file_name = format!("{name}.{PRESET_EXTENSION}");
+            let request = FileRequest::save("Export Preset", preset_filters(), &file_name);
+            file_dialog::open(ctx, export_dialog(), &request);
+        }
+        INIT => model.init_preset(),
+        LOAD_TUNING => advanced::open_tuning_file(ctx),
+        CLEAR_TUNING => {
+            let mut tuning: Tuning = model.tuning();
+            tuning.set_default_tuning();
+            model.load_tuning(tuning);
+        }
+        DATA_FOLDER => {
+            let mut request = FileRequest::folder("Choose Data Folder");
+            if let Some(root) = user_folders::root(model.data_directory().as_deref()) {
+                request = request.in_folder(root);
+            }
+            file_dialog::open(ctx, data_folder_dialog(), &request);
+        }
+        _ => {}
+    }
+}
+
+/// `SynthPresetSelector::showPopupMenu`, anchored below `anchor`.
+fn open_menu(panel: &mut Panel, anchor: Rect) {
+    let model = panel.host.model();
+    let mut items = vec![
+        MenuItem::new(OPEN_EXTERNAL, "Open External Preset"),
+        MenuItem::new(EXPORT, "Export Preset"),
+        MenuItem::divider(),
+        MenuItem::new(INIT, "Initialize Preset"),
+        MenuItem::divider(),
+        MenuItem::new(LOAD_TUNING, "Load Tuning File"),
+    ];
+    let tuning = model.tuning();
+    if !tuning.is_default() {
+        let name = model.tuning_name();
+        items.push(MenuItem::new(CLEAR_TUNING, format!("Clear Tuning: {name}")));
+    }
+    items.push(MenuItem::divider());
+    items.push(MenuItem::new(DATA_FOLDER, "Choose Data Folder..."));
+    let pos = egui::pos2(anchor.x as f32, anchor.bottom() as f32);
+    panel.overlay.menu = Some(Menu::new(items, pos, MenuOwner::Setting(choose)));
+}
+
+/// The arrows, the save and menu buttons, the name's right-click menu, and
+/// the answers from the dialogs the menu opens.
+pub fn show(panel: &mut Panel, header: &HeaderLayout) {
+    let model = panel.host.model();
+    let preset = header.preset;
+    let colours = ShapeColours::icon(&panel.scope);
+    let arrow = |shape| ShapeButton { shape, colours };
+    if panel
+        .shape_button("preset previous", arrow(Shape::Prev), preset.previous)
+        .clicked
+    {
+        step_preset(model, -1);
+    }
+    if panel
+        .shape_button("preset next", arrow(Shape::Next), preset.next)
+        .clicked
+    {
+        step_preset(model, 1);
+    }
+
+    // The save button opens the save section (G7c).
+    let (key, path) = sized_icon(true, header.save_button.height);
+    panel.shape_button(
+        "preset save",
+        arrow(Shape::Icon { key, path }),
+        header.save_button,
+    );
+    // The menu button is triggered on mouse down.
+    let (key, path) = sized_icon(false, header.menu_button.height);
+    if panel
+        .shape_button(
+            "preset menu",
+            arrow(Shape::Icon { key, path }),
+            header.menu_button,
+        )
+        .pressed
+    {
+        open_menu(panel, header.menu_button);
+    }
+    // textMouseUp: a right-click on the name opens the menu below it.
+    let rect = panel.pixels.rect(preset.text.into());
+    let response = panel.ui.interact(
+        rect,
+        panel.ui.scope_id().with("preset name"),
+        Sense::click(),
+    );
+    if response.clicked_by(PointerButton::Secondary) {
+        open_menu(panel, preset.text);
+    }
+
+    let ctx = panel.ui.ctx().clone();
+    if let Some(Some(path)) = file_dialog::take_result(&ctx, open_dialog()) {
+        let _ = model.load_preset_file(&path);
+    }
+    if let Some(Some(path)) = file_dialog::take_result(&ctx, export_dialog()) {
+        let _ = model.save_preset_file(&path);
+    }
+    if let Some(Some(folder)) = file_dialog::take_result(&ctx, data_folder_dialog()) {
+        model.set_data_directory(folder);
+    }
+}

@@ -587,17 +587,36 @@ fn tuning_dialog() -> egui::Id {
 /// "Load Tuning File..." (`kNumTunings`).
 fn choose_tuning(host: &Host, ctx: &egui::Context, index: i32) {
     if index == TUNING_NAMES.len() as i32 - 1 {
-        let filters = vec![(
-            "Tuning".to_string(),
-            file_dialog::extensions(&Tuning::all_file_extensions()),
-        )];
-        file_dialog::open(
-            ctx,
-            tuning_dialog(),
-            &FileRequest::open("Load Tuning", filters),
-        );
+        open_tuning_file(ctx);
     } else {
         load_tuning(host, index);
+    }
+}
+
+/// `TuningSelector::loadTuningFile`: the dialog for a tuning file, which
+/// [`poll_tuning_file`] then loads.
+pub fn open_tuning_file(ctx: &egui::Context) {
+    let filters = vec![(
+        "Tuning".to_string(),
+        file_dialog::extensions(&Tuning::all_file_extensions()),
+    )];
+    file_dialog::open(
+        ctx,
+        tuning_dialog(),
+        &FileRequest::open("Load Tuning", filters),
+    );
+}
+
+/// `loadTuningFile(file)`: a file chosen in the tuning dialog changes the
+/// synth's tuning as `SynthBase::loadTuningFile` does (a keyboard map keeps
+/// the scale). The interface calls this each frame, whichever tab shows.
+pub fn poll_tuning_file(host: &Host, ctx: &egui::Context) {
+    if let Some(Some(path)) = file_dialog::take_result(ctx, tuning_dialog()) {
+        let model = host.model();
+        let mut tuning = model.tuning();
+        if tuning.load_file(&path).is_ok() {
+            model.load_tuning(tuning);
+        }
     }
 }
 
@@ -641,15 +660,6 @@ fn show_tuning(panel: &mut Panel, bounds: Rect) {
         items.push(MenuItem::divider());
         items.push(MenuItem::new(4, "Load Tuning File..."));
         open_menu(panel, items, pos, choose_tuning);
-    }
-    // loadTuningFile(file): the chosen file changes the synth's tuning as
-    // `SynthBase::loadTuningFile` does (a keyboard map keeps the scale).
-    if let Some(Some(path)) = file_dialog::take_result(panel.ui.ctx(), tuning_dialog()) {
-        let model = panel.host.model();
-        let mut tuning = model.tuning();
-        if tuning.load_file(&path).is_ok() {
-            model.load_tuning(tuning);
-        }
     }
 }
 

@@ -612,6 +612,61 @@ impl Icon {
     }
 }
 
+/// `Paths::menu(width)`: three lines across a `width`-pixel square,
+/// snapped to whole pixels.
+pub fn menu(width: i32) -> Path {
+    const BUFFER: f32 = 0.2;
+    const LINE_WIDTH: f32 = 0.04;
+    const SPACING: f32 = 0.2;
+    let buffer = (width as f32 * BUFFER).round();
+    let line_width = ((width as f32 * LINE_WIDTH) as i32).max(1);
+    let spacing = (width as f32 * SPACING) as i32 as f32;
+    let center = (line_width % 2) as f32 * 0.5 + (width / 2) as f32;
+    let (w, lw) = (width as f32, line_width as f32);
+    let mut path = Path::new();
+    for y in [center - spacing, center, center + spacing] {
+        path.add_line_segment((buffer, y), (w - buffer, y), lw);
+    }
+    path.add_line_segment((0.0, 0.0), (0.0, 0.0), 0.2);
+    path.add_line_segment((w, w), (w, w), 0.2);
+    path
+}
+
+/// `Paths::save(width)`: a downward arrow into an open box, stroked with
+/// curved joints and rounded ends, in a `width`-pixel square.
+pub fn save(width: i32) -> Path {
+    const LINE_WIDTH: f32 = 0.04;
+    const SPACING_X: f32 = 0.3;
+    const SPACING_Y: f32 = 0.25;
+    const ARROW_MOVEMENT: f32 = 0.14;
+    const BOX_WRAP: f32 = 0.07;
+    let w = width as f32;
+    let line_width = ((w * LINE_WIDTH) as i32).max(1);
+    let spacing_x = (w * SPACING_X) as i32 as f32;
+    let spacing_y = (w * SPACING_Y) as i32 as f32;
+    let movement = w * ARROW_MOVEMENT / 2.0;
+    let wrap = w * BOX_WRAP;
+    let center = (line_width % 2) as f32 * 0.5 + (width / 2) as f32;
+
+    let mut outline = Path::new();
+    outline.move_to(center, center - spacing_y);
+    outline.line_to(center, center + movement);
+    outline.move_to(center - 2.0 * movement, center - movement);
+    outline.line_to(center, center + movement);
+    outline.line_to(center + 2.0 * movement, center - movement);
+    outline.move_to(center - spacing_x + wrap, center);
+    outline.line_to(center - spacing_x, center);
+    outline.line_to(center - spacing_x, center + spacing_y);
+    outline.line_to(center + spacing_x, center + spacing_y);
+    outline.line_to(center + spacing_x, center);
+    outline.line_to(center + spacing_x - wrap, center);
+
+    let mut path = outline.stroked(line_width as f32, JointStyle::Curved, EndCapStyle::Rounded);
+    path.add_line_segment((0.0, 0.0), (0.0, 0.0), 0.2);
+    path.add_line_segment((w, w), (w, w), 0.2);
+    path
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
