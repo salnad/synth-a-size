@@ -691,6 +691,12 @@ impl Interface {
         let pointer = ui
             .input(|input| input.pointer.hover_pos())
             .map(|pos| ((pos - pixels.area().min) * pixels.pixels_per_point()).to_pos2());
+        let editor = Rect::new(0, 0, width, height);
+        let mut expansion = crate::layer::Layer::new();
+        self.overlay
+            .modulation
+            .show_expansion(ui, pixels, &mut expansion, top, editor);
+        expansion.paint(pixels, editor.into());
         let knobs = self
             .overlay
             .modulation

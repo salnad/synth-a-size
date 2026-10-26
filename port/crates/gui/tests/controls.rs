@@ -3379,3 +3379,90 @@ fn a_middle_click_on_an_amount_knob_toggles_bypass() {
     harness.step();
     assert_eq!(fixture.synth.value("modulation_1_bypass"), 1.0);
 }
+
+/// LFO 1 on seven controls: more knobs than its button holds.
+fn seven_on_lfo_1(fixture: &Fixture) {
+    let mut routing = fixture.synth.routing.lock().unwrap();
+    for destination in [
+        "osc_1_level",
+        "osc_1_pan",
+        "osc_1_wave_frame",
+        "osc_1_unison_detune",
+        "macro_control_2",
+        "reverb_dry_wet",
+        "env_1_attack",
+    ] {
+        routing.add_modulation("lfo_1", destination).unwrap();
+    }
+}
+
+/// Where LFO 1's expand button is: its button's modulation area.
+fn lfo_1_expand_button(fixture: &Fixture) -> Rect {
+    let interface = fixture.interface.borrow();
+    let layout = FullLayout::new(interface.skin(), 1400, 820);
+    let top = Scope::top(interface.skin(), layout.size_ratio);
+    let modulation = ModulationLayout::new(&top, layout.modulation);
+    let tabs = interface.modulation().tab_selector(1);
+    let tab = tabs.button_bounds(modulation.lfo_tabs, tabs.num_shown(|_| false))[0];
+    sas_gui::controls::modulation_button::modulation_area_bounds(tab, top.widget_margin() as i32)
+}
+
+/// A source with more knobs than fit shows an expand button instead; a
+/// press on it opens the knobs in a callout below the source, 30 pixels
+/// each from the bottom row up, and a press on it again or outside the
+/// callout closes it (`showModulationAmountCallout`, `expansionFocusLost`).
+#[test]
+fn a_source_with_more_knobs_than_fit_opens_them_in_a_callout() {
+    let fixture = Fixture::new();
+    seven_on_lfo_1(&fixture);
+    let mut harness = fixture.harness();
+    harness.step();
+    assert!(knobs_of(&fixture, KnobKind::Source).is_empty());
+    let expand = lfo_1_expand_button(&fixture);
+    click(&mut harness, centre(expand));
+    let callout = knobs_of(&fixture, KnobKind::Callout);
+    assert_eq!(callout.len(), 7);
+    assert!(callout
+        .iter()
+        .all(|knob| knob.bounds.width == 30 && knob.bounds.height == 30));
+    // The first row is the bottom one, left to right.
+    assert_eq!(callout[1].bounds.x - callout[0].bounds.x, 30);
+    assert!(callout.last().unwrap().bounds.y < callout[0].bounds.y);
+    assert_eq!(callout[0].route.destination, "osc_1_level");
+
+    click(&mut harness, centre(expand));
+    assert!(knobs_of(&fixture, KnobKind::Callout).is_empty());
+    click(&mut harness, centre(expand));
+    assert_eq!(knobs_of(&fixture, KnobKind::Callout).len(), 7);
+    click(&mut harness, Pos2::new(700.0, 5.0));
+    assert!(knobs_of(&fixture, KnobKind::Callout).is_empty());
+}
+
+/// A knob in the callout is an amount knob like the others: a drag on it
+/// is one gesture on its slot, and the callout stays open.
+#[test]
+fn a_callout_knob_sets_its_slot() {
+    let fixture = Fixture::new();
+    seven_on_lfo_1(&fixture);
+    let mut harness = fixture.harness();
+    harness.step();
+    click(&mut harness, centre(lfo_1_expand_button(&fixture)));
+    let knob = knobs_of(&fixture, KnobKind::Callout)[1].clone();
+    assert_eq!(knob.slider.name, "modulation_2_amount");
+    fixture.take_log();
+    drag(
+        &mut harness,
+        centre(knob.bounds),
+        centre(knob.bounds) + egui::vec2(0.0, -20.0),
+        Modifiers::NONE,
+    );
+    assert_eq!(
+        fixture.take_log(),
+        [
+            "begin modulation_2_amount",
+            "set modulation_2_amount",
+            "end modulation_2_amount"
+        ]
+    );
+    assert_eq!(knobs_of(&fixture, KnobKind::Callout).len(), 7);
+}

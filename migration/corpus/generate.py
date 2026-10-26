@@ -1359,6 +1359,20 @@ GUI_PRESETS = {
             ("random_1", "osc_1_spectral_morph_amount", -0.5),
         ),
     ),
+    "modulations_many": preset(
+        "modulations many",
+        "LFO 1 on seven controls, more than its button holds, so it shows the expand button.",
+        {},
+        modulations=(
+            ("lfo_1", "osc_1_level", 0.5),
+            ("lfo_1", "osc_1_pan", -0.4, {"bipolar": 1.0}),
+            ("lfo_1", "osc_1_wave_frame", 0.3),
+            ("lfo_1", "osc_1_unison_detune", 0.6),
+            ("lfo_1", "macro_control_2", -0.2),
+            ("lfo_1", "reverb_dry_wet", 0.4),
+            ("lfo_1", "env_1_attack", 0.15),
+        ),
+    ),
 }
 
 
