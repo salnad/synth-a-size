@@ -8,14 +8,10 @@
 // Usage:
 //   ref-gui [--out frame.png] [--layout layout.jsonl] [--preset file.vital]
 //           [--tab voice|effects|matrix|advanced] [--width 1400] [--height 820] [--frames 30]
-//           [--effects-scroll 0] [--animate 0]
+//           [--effects-scroll 0]
 //
 // --effects-scroll scrolls the effects column down that many pixels (the
 // viewport keeps it within the column).
-//
-// --animate 1 renders with animation on (FullInterface::animate), which
-// the modulation overlay needs to draw at all (its amount knobs and
-// meters); other animated views then show the idle engine's outputs.
 //
 // --layout writes the bounds of every named component, relative to the
 // interface, so the port's layout can be checked exactly. Without --out
@@ -45,7 +41,6 @@ struct Options {
   int height = vital::kDefaultWindowHeight;
   int frames = 30;
   int effects_scroll = 0;
-  bool animate = false;
   std::string layout;
 };
 
@@ -207,8 +202,6 @@ class RefGuiApplication : public JUCEApplication {
           options.layout = value;
         else if (key == "--effects-scroll")
           options.effects_scroll = std::stoi(value);
-        else if (key == "--animate")
-          options.animate = std::stoi(value) != 0;
         else
           return fail("unknown option " + key);
       }
@@ -216,7 +209,7 @@ class RefGuiApplication : public JUCEApplication {
       if ((options.out.empty() && options.layout.empty()) || tab < 0)
         return fail("usage: ref-gui (--out frame.png | --layout layout.jsonl) [--preset file.vital] "
                     "[--tab voice|effects|matrix|advanced] [--width W] [--height H] [--frames N] "
-                    "[--effects-scroll Y] [--animate 0|1]");
+                    "[--effects-scroll Y]");
 
       synth_ = std::make_unique<RefGuiSynth>(options);
       if (options.preset.empty()) {
@@ -232,9 +225,8 @@ class RefGuiApplication : public JUCEApplication {
       FullInterface* gui = synth_->getGui();
       // The reference engine processes no audio, so animated views would show
       // its idle outputs (a filter response at cutoff 0) instead of the
-      // controls. Draw everything at rest, as with animation switched off,
-      // unless asked for the modulation overlay.
-      gui->animate(options.animate);
+      // controls. Draw everything at rest, as with animation switched off.
+      gui->animate(false);
       synth_->setOpaque(true);
       synth_->addAndMakeVisible(gui);
       synth_->setSize(options.width, options.height);

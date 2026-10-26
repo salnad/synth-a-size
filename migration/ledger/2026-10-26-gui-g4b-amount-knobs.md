@@ -57,16 +57,19 @@ G4b-1 (#150).
   - `Slider::double_click_returns` disables the double-click reset.
   - `menu_source_display_name` (`getMenuSourceDisplayName`).
   - `Panel::amount_knob` and its menu, and `slider_input`'s menu hook.
-- **ref-gui `--animate 1`** (and `"animate": true` in `views.json`):
-  upstream's modulation overlay draws only while animating
+- **The `modulations` view draws upstream animated.** Upstream's
+  modulation overlay draws only while animating
   (`ModulationManager::renderOpenGlComponents` returns early otherwise).
+  The view uses Harness Builder's ref-gui options from #129: `"animate":
+  true` with `"seconds": 0.05`, a short silent render that its guard
+  requires. The knobs don't depend on the engine.
 - **New GUI preset `modulations`** (`generate.py`): seven connections on
   oscillator 1 from LFO 1 (three), envelope 2, velocity, macro 1 (bypassed)
   and random 1. Its view renders with animation on.
 
 **Verified.**
 
-- **Pixels against ref-gui `--animate 1`** (image in the PR): the knobs in
+- **Pixels against ref-gui with animation on** (#129's `--animate on`, rendered locally) (image in the PR): the knobs in
   LFO 1's, envelope 2's, macro 1's, random 1's and velocity's buttons match
   upstream's in place, sweep and colour, including the bypassed grey and
   the negative amount. Upstream's source meters and the oscillator level's
@@ -82,8 +85,8 @@ G4b-1 (#150).
     gesture; Remove with no host write.
   - `a_middle_click_on_an_amount_knob_toggles_bypass`.
 - `cargo clippy --workspace --all-targets -D warnings`, `cargo fmt`, the
-  `sas-gui` tests, `gui_reference.py layout --check`, `generate.py --check`
-  and `test_gui_reference.py` pass.
+  `sas-gui` tests, `gui_reference.py layout --check` and `generate.py --check`
+  pass.
 
 **Not yet.**
 - G4b-2b: the expand button and callout.

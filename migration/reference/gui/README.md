@@ -30,13 +30,7 @@ itself:
 ```
 ref-gui [--out frame.png] [--layout layout.jsonl] [--preset file.vital]
         [--tab voice|effects|matrix|advanced] [--width 1400] [--height 820] [--frames 30]
-        [--effects-scroll 0] [--animate 0|1]
 ```
-
-Frames render with animation off, so views driven by the (silent) engine
-draw at rest. `--animate 1` (a view's `"animate": true` in
-`migration/corpus/gui/views.json`) turns it on for views of the modulation
-overlay, which upstream draws only while animating.
 
 ## Rules
 
