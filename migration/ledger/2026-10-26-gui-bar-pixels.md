@@ -13,6 +13,9 @@ upstream's.
 - `BarRenderer::quads` takes only the component's bounds (pixels) and
   uses them as upstream does; `paint` no longer passes the pixels per
   point.
+- The minimum width is 4 / width for horizontal bars too, as upstream's
+  `4.0f / getWidth()` (review, UI): the port took it from the height,
+  which their thickness is measured against.
 
 **Tests**
 
@@ -20,6 +23,7 @@ upstream's.
   twice the pixels (display scale 2) gives bars exactly twice as wide,
   with twice the shader size. A bar held to the minimum width is the same
   number of pixels at both sizes.
+- `controls::bars::horizontal_bars_take_the_minimum_from_the_width`.
 - `controls::bars::vertical_bars_follow_the_vertex_shader` is unchanged.
 
 No audio change.

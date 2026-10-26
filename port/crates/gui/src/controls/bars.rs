@@ -79,7 +79,9 @@ impl BarRenderer {
             return Vec::new();
         }
         let dimensions = if self.vertical { width } else { height };
-        let min_width = 4.0 / dimensions;
+        // Upstream's minimum is four pixels of the width whichever way the
+        // bars run (`4.0f / getWidth()`).
+        let min_width = 4.0 / width;
         let width_percent =
             min_width.max(self.bar_width * self.scale * 2.0 / self.num_points as f32);
         let mut quads = Vec::with_capacity(self.total_points());
@@ -200,5 +202,20 @@ mod tests {
             assert!((quads[0].rect.width - expected).abs() < 1e-4);
             assert!((quads[0].shader_values[0] - 2.0).abs() < 1e-4);
         }
+    }
+
+    /// Horizontal bars' minimum thickness is 4 / width too, as upstream's,
+    /// though their thickness is measured against the height: a thin bar in
+    /// a 200 × 40 component is (4 / 200) / 2 of the height, 0.4 pixels, with
+    /// a shader size of 0.4.
+    #[test]
+    fn horizontal_bars_take_the_minimum_from_the_width() {
+        let mut thin = BarRenderer::new(100, false);
+        thin.bar_width = 0.3;
+        thin.set_y(0, 1.0);
+        let quads = thin.quads(RectF::new(0.0, 0.0, 200.0, 40.0));
+        let bar = quads[0];
+        assert!((bar.rect.height - 0.4).abs() < 1e-4, "{}", bar.rect.height);
+        assert!((bar.shader_values[1] - 0.4).abs() < 1e-4);
     }
 }
