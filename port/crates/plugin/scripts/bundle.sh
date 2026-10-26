@@ -78,7 +78,7 @@ case "$(uname -s)" in
   <key>LSMinimumSystemVersion</key>
   <string>$MACOSX_DEPLOYMENT_TARGET</string>
   <key>NSHumanReadableCopyright</key>
-  <string>synth-a-size contributors, GPL-3.0-or-later</string>
+  <string>synth-a-size contributors, GPL-3.0-only</string>
 </dict>
 </plist>
 PLIST

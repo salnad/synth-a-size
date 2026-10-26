@@ -1,3 +1,4 @@
+// Portions Copyright (c) 2020 Raw Material Software Limited (JUCE 6: juce_audio_basics, ISC).
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Flush-to-zero for the duration of engine processing.

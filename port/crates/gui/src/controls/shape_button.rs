@@ -1,5 +1,6 @@
 // Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
-// SPDX-License-Identifier: GPL-3.0-or-later
+// Portions Copyright (c) 2020 Raw Material Software Limited (JUCE 6: juce_gui_basics, GPL-3.0-only).
+// SPDX-License-Identifier: GPL-3.0-or-later AND GPL-3.0-only
 
 //! `OpenGlShapeButton` and JUCE's `ShapeButton` with an empty shape: a
 //! button drawn as a path in the icon colours, fading to its hover colour.

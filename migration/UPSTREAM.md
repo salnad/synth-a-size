@@ -9,7 +9,7 @@ so the reference build never depends on network access.
 | Repository | https://github.com/mtytel/vital |
 | Commit | `636ca0ef517a4db087a6a08a6a8a5e704e21f836` (also in [`UPSTREAM_SHA`](UPSTREAM_SHA), read by the build and scripts) |
 | Commit date | 2022-04-20 ("Update README.md"), head of `main` when vendored |
-| License | GPLv3 (`vital/LICENSE`, unchanged). JUCE 6.0.5 is vendored in `vital/third_party/JUCE` under its GPLv3 option. |
+| License | GPLv3 (`vital/LICENSE`, unchanged). JUCE 6.0.5 is vendored in `vital/third_party/JUCE`: `juce_core`, `juce_audio_basics`, `juce_audio_devices` and `juce_events` under ISC, the other modules under JUCE's GPL option, which is version 3 only. |
 | Vendored | 2026-10-20 by `git archive <sha> \| tar -x` |
 | Plugin version at this commit | 1.0.6 (`ProjectInfo::versionString` of the plugin and standalone targets) |
 

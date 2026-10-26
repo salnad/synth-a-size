@@ -1,3 +1,6 @@
+// Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! The engine's random number generator: `vital::utils::RandomGenerator`
 //! (`vital/src/synthesis/framework/utils.h`, Copyright 2013-2019 Matt Tytel,
 //! GPL-3.0-or-later), a `std::mt19937` drawn through libstdc++'s

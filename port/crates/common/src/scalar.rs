@@ -1,3 +1,6 @@
+// Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Scalar (single-lane) versions of the upstream math helpers that
 //! non-processor code calls: `futils.h` (its polynomial `exp2`/`log2`, not
 //! libm), `utils.h` and the parts of `poly_utils.h` used on one value.

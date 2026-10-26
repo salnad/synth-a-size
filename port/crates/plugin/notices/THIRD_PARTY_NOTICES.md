@@ -1,8 +1,11 @@
 # Third-party notices
 
 synth-a-size is free software under the GNU General Public License,
-version 3 or later (`LICENSE.txt`). It is a port of an open-source GPLv3
-synthesizer and bundles the following third-party material.
+version 3 (`LICENSE.txt`). It includes code translated from JUCE under
+version 3 only, so the plugin as a whole is distributed under version 3
+only. Source files without such code are also available under version 3
+or later. It is a port of an open-source GPLv3 synthesizer and bundles the
+following third-party material.
 
 ## Fonts
 
@@ -14,6 +17,58 @@ source distributes them:
 | Lato Regular, Lato Light | Copyright (c) 2010-2011 by tyPoland Lukasz Dziedzic (http://www.typoland.com/), with Reserved Font Name "Lato" | SIL Open Font License 1.1 (`OFL-1.1.txt`) |
 | Montserrat Light, Montserrat Regular | Copyright 2011 The Montserrat Project Authors (https://github.com/JulietaUla/Montserrat) | SIL Open Font License 1.1 (`OFL-1.1.txt`) |
 | Droid Sans Mono | Digitized data copyright © 2007, Google Corporation | Apache License 2.0 (`Apache-2.0.txt`) |
+
+## Code translated from C++ libraries
+
+Parts of the plugin's source are translations of functions from two C++
+libraries that the upstream synthesizer's source distributes. Each such
+source file names what it translates and carries the copyright notice.
+
+### JUCE
+
+JUCE 6.0.5, Copyright (c) 2020 - Raw Material Software Limited. JUCE is
+available under commercial or open-source licences; synth-a-size uses it
+as follows:
+
+- `juce_dsp` (the FFT), `juce_graphics` (colours, paths and path
+  strokes), `juce_gui_basics` (slider dragging, click and double-click
+  timing, buttons, colour lookup) and `juce_data_structures` (the config
+  file location), under the GNU General Public License, version 3 only;
+- `juce_core` (base64, string and file-name helpers) and
+  `juce_audio_basics` (on-screen keyboard state, MIDI file reading, MPE
+  zones, MIDI event ordering, flush-to-zero), under the ISC licence:
+
+> Permission to use, copy, modify, and/or distribute this software for any
+> purpose with or without fee is hereby granted provided that the above
+> copyright notice and this permission notice appear in all copies.
+>
+> JUCE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY, AND ALL WARRANTIES, WHETHER
+> EXPRESSED OR IMPLIED, INCLUDING MERCHANTABILITY AND FITNESS FOR PURPOSE, ARE
+> DISCLAIMED.
+
+### JSON for Modern C++
+
+nlohmann/json 3.1.2 (its double-to-string conversion, which implements
+Florian Loitsch's Grisu2), Copyright (c) 2013-2018 Niels Lohmann
+<http://nlohmann.me>, under the MIT licence:
+
+> Permission is hereby granted, free of charge, to any person obtaining a copy
+> of this software and associated documentation files (the "Software"), to deal
+> in the Software without restriction, including without limitation the rights
+> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+> copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all
+> copies or substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+> IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+> FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+> AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+> LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+> SOFTWARE.
 
 ## Rust crates
 

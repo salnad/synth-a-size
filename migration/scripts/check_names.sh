@@ -25,6 +25,10 @@ check() {
 mapfile -t manifests < <(find "$repo/port" "$repo/migration/tools" -name Cargo.toml -not -path '*/target/*')
 check "Cargo manifests" "${manifests[@]}"
 
+# The bundle's notices are user visible: they credit third parties without
+# naming upstream or its author.
+check "bundle notices" "$repo"/port/crates/plugin/notices/*
+
 # Plugin identity (names, vendor, IDs, bundle metadata).
 mapfile -t plugin_sources < <(find "$repo/port/crates/plugin" -type f \( -name '*.rs' -o -name '*.toml' \) -not -path '*/target/*' \
   -not -path '*/tests/*')

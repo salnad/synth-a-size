@@ -2,7 +2,10 @@
 the vst of my dreams
 
 A Rust (nice-plug VST3/CLAP) port of an open-source wavetable synthesizer,
-with an LLM control layer on top. GPLv3.
+with an LLM control layer on top. GPLv3: the plugin as a whole is
+distributed under GPL version 3 only, because a few files translate code
+from JUCE's GPLv3-only modules. The rest of the source is
+GPL-3.0-or-later; each file's SPDX line says which.
 
 | Folder | Contents |
 |---|---|
