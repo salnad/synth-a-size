@@ -1,3 +1,6 @@
+// Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Ports `vital/src/common/wavetable/wavetable_group.{h,cpp}` (Copyright
 //! 2013-2019 Matt Tytel, GPL-3.0-or-later): a chain of one source followed
 //! by modifiers.

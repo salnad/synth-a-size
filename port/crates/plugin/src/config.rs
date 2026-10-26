@@ -1,4 +1,5 @@
 // Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
+// Portions Copyright (c) 2020 Raw Material Software Limited (JUCE 6: juce_data_structures, GPL-3.0 option).
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The user config file: the MIDI learn part of `LoadSave`

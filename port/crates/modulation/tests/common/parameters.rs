@@ -1,3 +1,4 @@
+// Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Test-only parameter lookup for the module parity tests.

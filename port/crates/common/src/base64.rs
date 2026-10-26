@@ -1,3 +1,6 @@
+// Portions Copyright (c) 2020 Raw Material Software Limited (JUCE 6: juce_core, ISC).
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Base64 as JUCE implements it (`juce_core/text/juce_Base64.cpp`), which
 //! upstream uses for wave data, audio and sample buffers inside JSON.
 //!

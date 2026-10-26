@@ -27,6 +27,28 @@ the upstream pin in [UPSTREAM.md](UPSTREAM.md).
    SSPL, non-commercial, GPL-2.0-only, etc.). The port is a derivative
    work of GPLv3 code. Keep upstream copyright notices when you translate
    a file, and say in the module docs which upstream file it ports.
+   - A port file starts with the credit lines, then a blank line, then its
+     module docs:
+
+     ```
+     // Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
+     // Portions Copyright (c) 2020 Raw Material Software Limited (JUCE 6: juce_core, ISC).
+     // SPDX-License-Identifier: GPL-3.0-or-later
+     ```
+
+   - The first line goes on any file translated from `/vital/src`,
+     including tables copied from it. The `Portions` line goes on any file
+     that reproduces a JUCE function's logic (from
+     `vital/third_party/JUCE/modules`), naming each module and the licence
+     its file header states: `ISC` for `juce_core`, `juce_audio_basics`
+     and the other ISC modules, `GPL-3.0 option` for `juce_dsp`,
+     `juce_graphics`, `juce_gui_basics` and the rest. Drawing the same
+     result another way (egui instead of `Graphics`), or matching one
+     observable behaviour, isn't a translation.
+   - A newly translated third-party library, or a JUCE module not yet
+     listed, also goes in the bundle's
+     `port/crates/plugin/notices/THIRD_PARTY_NOTICES.md`. That file is user
+     visible, so it names neither upstream nor its author (rule 2).
 2. **Never use the upstream product names for our product.** Crates,
    binaries, plugin names, vendor strings, bundle IDs, VST3/CLAP IDs,
    window titles, UI text, docs about our product and marketing copy must

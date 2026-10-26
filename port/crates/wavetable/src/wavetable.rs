@@ -1,3 +1,6 @@
+// Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Ports `vital/src/synthesis/lookups/wavetable.{h,cpp}` (Copyright 2013-2019
 //! Matt Tytel, GPL-3.0-or-later): the rendered frames and the band-limited
 //! lookup data the oscillator reads.
