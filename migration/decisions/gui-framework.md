@@ -122,11 +122,12 @@ repeat the check in FL Studio where the note says so.
      access to the app that asks, which is the host, so an "Always Allow"
      given to REAPER says nothing about FL Studio's prompt. Repeat it in FL
      Studio.
-5. **Dragging a file into the editor (G5).** Drag an audio file from
-   Finder onto oscillator 1's wavetable view. While it hovers, the view
-   shows the import overlay (WAVETABLE, VOCODE, PITCH SPLICE) and the
-   pointer shows a copy badge; dropping loads it. Then drag from FL
-   Studio's browser too. Does FL Studio pass the drag through to the
+5. **Dragging a file into the editor (G5).** Drag a WAV file from Finder
+   onto oscillator 1's wavetable view. While it hovers over the view, the
+   view shows the import overlay (WAVETABLE, VOCODE, PITCH SPLICE) and the
+   pointer shows a copy badge; elsewhere in the editor, and for two files
+   or a format the view doesn't take, there's no badge. Dropping on the
+   view loads it. Then drag from FL Studio's browser too. Does FL Studio pass the drag through to the
    plugin's view, or take it itself (for example, to load a sampler)?
    - *REAPER:* runs there too, but only answers for REAPER: each host
      decides whether a drag over a plugin window reaches the plugin. Try a

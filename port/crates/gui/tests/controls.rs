@@ -287,6 +287,23 @@ impl EditorModel for Synth {
         true
     }
 
+    fn audio_file_extensions(&self) -> &'static [&'static str] {
+        &["wav"]
+    }
+
+    fn load_audio_as_wavetable(
+        &self,
+        oscillator: usize,
+        path: &std::path::Path,
+        style: sas_gui::controls::wavetable_3d::AudioFileLoadStyle,
+    ) -> bool {
+        self.wavetable_edits
+            .lock()
+            .unwrap()
+            .push(format!("audio {oscillator} {} {style:?}", path.display()));
+        true
+    }
+
     fn load_default_wavetable(&self, oscillator: usize) {
         self.wavetable_edits
             .lock()
@@ -3575,5 +3592,108 @@ fn resynthesizing_reaches_the_model() {
         ["resynthesize 0"]
     );
     // The render's result arrives through the model; nothing reaches the host.
+    assert!(fixture.take_log().is_empty());
+}
+
+/// Drags `paths` over the wavetable view at `y` pixels below its top.
+fn hover_files(harness: &mut Harness, paths: &[&str], y: f32) {
+    let at = Pos2::new(centre(WAVETABLE).x, WAVETABLE.y as f32 + y);
+    harness.input_mut().hovered_files = paths
+        .iter()
+        .map(|path| egui::HoveredFile {
+            path: Some(path.into()),
+            mime: String::new(),
+        })
+        .collect();
+    harness.event(Event::PointerMoved(at));
+    harness.step();
+}
+
+/// Drops `paths` on the wavetable view at `y` pixels below its top.
+fn drop_files(harness: &mut Harness, paths: &[&str], y: f32) {
+    let at = Pos2::new(centre(WAVETABLE).x, WAVETABLE.y as f32 + y);
+    harness.input_mut().hovered_files.clear();
+    harness.input_mut().dropped_files = paths
+        .iter()
+        .map(|path| {
+            std::sync::Arc::new(nice_plug_egui::file_drop::DroppedPath(path.into()))
+                as egui::DroppedFileHandle
+        })
+        .collect();
+    harness.event(Event::PointerMoved(at));
+    harness.step();
+    harness.step();
+}
+
+#[test]
+fn the_wavetable_view_is_a_drop_target_for_the_models_audio_files() {
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let view = RefCell::new(Wavetable3d::new(0));
+    let mut harness = wavetable_harness(&fixture, &overlay, &view);
+    let _ = nice_plug_egui::file_drop::take_drop_targets(&harness.ctx);
+    harness.step();
+    let targets = nice_plug_egui::file_drop::take_drop_targets(&harness.ctx);
+    assert_eq!(targets.len(), 1);
+    assert_eq!(targets[0].extensions, ["wav"]);
+    assert_eq!(
+        targets[0].rect.min,
+        Pos2::new(WAVETABLE.x as f32, WAVETABLE.y as f32)
+    );
+}
+
+#[test]
+fn a_hovering_file_picks_how_it_loads_by_height() {
+    use sas_gui::controls::wavetable_3d::AudioFileLoadStyle;
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let view = RefCell::new(Wavetable3d::new(0));
+    let mut harness = wavetable_harness(&fixture, &overlay, &view);
+    // The view is 100 pixels high: the top 3/8 splices, the bottom 3/8
+    // pitch-splices, the middle vocodes.
+    for (y, style) in [
+        (10.0, AudioFileLoadStyle::WavetableSplice),
+        (50.0, AudioFileLoadStyle::Vocoded),
+        (90.0, AudioFileLoadStyle::Pitched),
+    ] {
+        hover_files(&mut harness, &["/tmp/loop.wav"], y);
+        assert_eq!(view.borrow().drag_load_style(), Some(style), "at {y}");
+    }
+    // Files the view doesn't take show no overlay.
+    for files in [&["/tmp/a.wav", "/tmp/b.wav"][..], &["/tmp/a.flac"][..]] {
+        hover_files(&mut harness, files, 50.0);
+        assert_eq!(view.borrow().drag_load_style(), None);
+    }
+    // Over the view's neighbour: none either.
+    harness.input_mut().hovered_files = vec![egui::HoveredFile {
+        path: Some("/tmp/loop.wav".into()),
+        mime: String::new(),
+    }];
+    harness.event(Event::PointerMoved(Pos2::new(350.0, 250.0)));
+    harness.step();
+    assert_eq!(view.borrow().drag_load_style(), None);
+}
+
+#[test]
+fn a_dropped_file_loads_by_where_it_landed() {
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let view = RefCell::new(Wavetable3d::new(0));
+    let mut harness = wavetable_harness(&fixture, &overlay, &view);
+    drop_files(&mut harness, &["/tmp/top.wav"], 10.0);
+    drop_files(&mut harness, &["/tmp/middle.wav"], 50.0);
+    drop_files(&mut harness, &["/tmp/bottom.wav"], 90.0);
+    // Files the view doesn't take load nothing.
+    drop_files(&mut harness, &["/tmp/a.wav", "/tmp/b.wav"], 50.0);
+    drop_files(&mut harness, &["/tmp/a.aiff"], 50.0);
+    assert_eq!(
+        *fixture.synth.wavetable_edits.lock().unwrap(),
+        [
+            "audio 0 /tmp/top.wav WavetableSplice",
+            "audio 0 /tmp/middle.wav Vocoded",
+            "audio 0 /tmp/bottom.wav Pitched",
+        ]
+    );
+    assert_eq!(view.borrow().drag_load_style(), None);
     assert!(fixture.take_log().is_empty());
 }

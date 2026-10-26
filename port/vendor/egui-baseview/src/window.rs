@@ -375,6 +375,8 @@ pub struct EguiWindow<A: App> {
     system_scale_factor: Cell<f64>,
     zoom_factor: Cell<f32>,
     pointer_logical_pos: Cell<Option<egui::Pos2>>,
+    /// synth-a-size patch: the last frame's file drop targets.
+    drop_targets: RefCell<Vec<crate::file_drop::DropTarget>>,
     current_cursor_icon: Cell<baseview::MouseCursor>,
     repaint_notifier: Option<RepaintNotifier>,
     modifiers: Cell<egui::Modifiers>,
@@ -472,6 +474,7 @@ impl<A: App> EguiWindow<A> {
             start_time,
             egui_input: egui_input.into(),
             pointer_logical_pos: None.into(),
+            drop_targets: RefCell::new(Vec::new()),
             current_cursor_icon: baseview::MouseCursor::Default.into(),
             system_scale_factor: system_scale_factor.into(),
             zoom_factor: zoom_factor.into(),
@@ -689,7 +692,11 @@ impl<A: App> EguiWindow<A> {
                 frame,
             } = &mut *inner;
 
-            egui_ctx.run_ui(egui_input, |ui| user_app.ui(ui, frame))
+            let output = egui_ctx.run_ui(egui_input, |ui| user_app.ui(ui, frame));
+            // synth-a-size patch: the frame's drop targets answer drags
+            // until the next frame (`file_drop`).
+            *self.drop_targets.borrow_mut() = crate::file_drop::take_drop_targets(egui_ctx);
+            output
         };
 
         let Some(viewport_output) = full_output.viewport_output.get(&self.viewport_id) else {
@@ -959,6 +966,7 @@ impl<A: App> EguiWindow<A> {
                             * self.inner.borrow().egui_ctx.zoom_factor() as f64,
                         &mut egui_input,
                         &self.pointer_logical_pos,
+                        &self.drop_targets.borrow(),
                     );
                 }
                 baseview::MouseEvent::DragLeft => {
@@ -967,6 +975,7 @@ impl<A: App> EguiWindow<A> {
                         self.system_scale_factor.get(),
                         &mut egui_input,
                         &self.pointer_logical_pos,
+                        &self.drop_targets.borrow(),
                     );
                 }
                 _ => do_repaint = false,

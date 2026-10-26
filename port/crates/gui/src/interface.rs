@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use sas_common::line_generator::LineGenerator;
+use sas_engine::sas_oscillators::sas_wavetable::creator::AudioFileLoadStyle;
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::telemetry::Telemetry;
 use sas_engine::Tuning;
@@ -335,6 +336,26 @@ pub trait EditorModel: Send + Sync + 'static {
     /// wavetable. Returns at once; the wavetable changes when the render is
     /// done (`content_revision` moves on).
     fn resynthesize_to_wavetable(&self, _oscillator: usize) {}
+
+    /// The audio file extensions a wavetable view takes
+    /// (`AudioFileDropSource::getExtensions`): lowercase, without the dot.
+    /// Empty takes none.
+    fn audio_file_extensions(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    /// `FullInterface::loadAudioAsWavetable`: loads the audio file at `path`
+    /// into oscillator `oscillator`'s wavetable as `style` (splice, vocode
+    /// or pitch splice), named after the file. Returns false, changing
+    /// nothing, when the file can't be read.
+    fn load_audio_as_wavetable(
+        &self,
+        _oscillator: usize,
+        _path: &std::path::Path,
+        _style: AudioFileLoadStyle,
+    ) -> bool {
+        false
+    }
 
     /// Calls `f` with the sample oscillator's audio, read in place: nothing
     /// is copied. `left` is the mono or left channel `SampleViewer` draws

@@ -11,13 +11,14 @@ use sas_common::json;
 use sas_common::line_generator::LineGenerator;
 use sas_engine::document::PresetDocument;
 use sas_engine::keyboard::KeyboardHandle;
-use sas_engine::sas_oscillators::sas_wavetable::creator::WavetableCreator;
+use sas_engine::sas_oscillators::sas_wavetable::creator::{AudioFileLoadStyle, WavetableCreator};
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::telemetry::Telemetry;
 use sas_engine::Tuning;
 use sas_gui::{ChatHost, EditorModel, HostParam, Route};
 use sas_preset::{GuiConnection, InitContent, PresetState, SampleState, SaveInfo, SlotValues};
 
+use crate::audio_file;
 use crate::chat::PluginChat;
 use crate::midi_learn::MidiLearn;
 use crate::params::SynthParams;
@@ -308,6 +309,45 @@ impl EditorModel for PluginModel {
             sample_rate: self.params.sample_rate().round() as i32,
             bpm: self.params.host_tempo(),
         });
+    }
+
+    fn audio_file_extensions(&self) -> &'static [&'static str] {
+        audio_file::AUDIO_EXTENSIONS
+    }
+
+    fn load_audio_as_wavetable(
+        &self,
+        oscillator: usize,
+        path: &Path,
+        style: AudioFileLoadStyle,
+    ) -> bool {
+        let Ok(bytes) = std::fs::read(path) else {
+            return false;
+        };
+        let Some(audio) = audio_file::read_wav(&bytes) else {
+            return false;
+        };
+        let text = audio_file::wavetable_data_string(&bytes);
+        let edits = self.params.edit_handle();
+        let Some(mut creator) =
+            edits.with_document(|document| document.state.wavetables.get(oscillator).cloned())
+        else {
+            return false;
+        };
+        creator.clear();
+        let fade_style = audio_file::fade_style_from_wavetable_string(&text);
+        if creator
+            .init_from_audio_file(&audio.first_channel, audio.sample_rate, style, fade_style)
+            .is_err()
+        {
+            return false;
+        }
+        creator.name = path
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        creator.author = audio_file::author_from_wavetable_string(&text);
+        edits.set_wavetable(oscillator, creator).is_ok()
     }
 
     fn with_sample(&self, f: &mut dyn FnMut(&SampleState)) {
@@ -643,5 +683,87 @@ mod tests {
         model.load_default_wavetable(1);
         assert_eq!(model.wavetable_name(1), "Init");
         assert_eq!(model.wavetable_name(0), "Copied");
+    }
+
+    /// A mono 16-bit WAV of a 441 Hz sine with a `clm ` chunk.
+    fn sine_wav(clm: &str) -> Vec<u8> {
+        let mut data = Vec::new();
+        for i in 0..44_100 {
+            let phase = std::f32::consts::TAU * i as f32 / 100.0;
+            data.extend_from_slice(&((phase.sin() * 16_000.0) as i16).to_le_bytes());
+        }
+        let mut fmt = Vec::new();
+        for field in [1u16, 1] {
+            fmt.extend_from_slice(&field.to_le_bytes());
+        }
+        fmt.extend_from_slice(&44_100u32.to_le_bytes());
+        fmt.extend_from_slice(&88_200u32.to_le_bytes());
+        fmt.extend_from_slice(&2u16.to_le_bytes());
+        fmt.extend_from_slice(&16u16.to_le_bytes());
+        let mut body = b"WAVE".to_vec();
+        for (label, chunk) in [
+            (b"fmt ", fmt),
+            (b"clm ", clm.as_bytes().to_vec()),
+            (b"data", data),
+        ] {
+            body.extend_from_slice(label);
+            body.extend_from_slice(&(chunk.len() as u32).to_le_bytes());
+            body.extend_from_slice(&chunk);
+        }
+        let mut file = b"RIFF".to_vec();
+        file.extend_from_slice(&(body.len() as u32).to_le_bytes());
+        file.extend_from_slice(&body);
+        file
+    }
+
+    #[test]
+    fn a_dropped_wav_becomes_the_oscillators_wavetable() {
+        let (edits, _consumer) =
+            EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+        let params = Arc::new(SynthParams::new(edits));
+        let (_writer, telemetry) = Telemetry::new(Arc::default());
+        let model = PluginModel::new(
+            params,
+            telemetry,
+            keyboard().0,
+            Arc::new(MidiLearn::in_memory()),
+            None,
+        );
+        assert_eq!(model.audio_file_extensions(), ["wav"]);
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("Sine Drop {}.wav", std::process::id()));
+        std::fs::write(&path, sine_wav("<!>2048 10000000 wavetable [Someone]")).unwrap();
+
+        for style in [
+            AudioFileLoadStyle::WavetableSplice,
+            AudioFileLoadStyle::Vocoded,
+            AudioFileLoadStyle::Pitched,
+        ] {
+            let revision = model.content_revision();
+            assert!(model.load_audio_as_wavetable(1, &path, style), "{style:?}");
+            assert_eq!(
+                model.wavetable_name(1),
+                format!("Sine Drop {}", std::process::id())
+            );
+            assert!(model.content_revision() > revision);
+            let json = model.wavetable_json(1).unwrap();
+            assert!(json.contains("\"author\":\"Someone\""), "{json}");
+        }
+        assert_eq!(model.wavetable_name(0), "Init");
+
+        // A file that isn't WAV, or isn't there, changes nothing.
+        let revision = model.content_revision();
+        let text = dir.join(format!("not-audio-{}.wav", std::process::id()));
+        std::fs::write(&text, "words").unwrap();
+        assert!(!model.load_audio_as_wavetable(1, &text, AudioFileLoadStyle::Pitched));
+        assert!(!model.load_audio_as_wavetable(
+            1,
+            &dir.join("missing.wav"),
+            AudioFileLoadStyle::Pitched
+        ));
+        assert!(!model.load_audio_as_wavetable(9, &path, AudioFileLoadStyle::Pitched));
+        assert_eq!(model.content_revision(), revision);
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_file(text).unwrap();
     }
 }
