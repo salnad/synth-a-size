@@ -75,11 +75,10 @@ Not credited, because they aren't translations:
   standard-library results, not library code.
 
 `controls/path.rs` (`Path`, `PathStrokeType`) merged with #116 without
-the JUCE line. It gets the same `Portions` line, `juce_graphics,
-GPL-3.0-only`, and the compound SPDX line, identical to Tabs Builder's G6a
-branch, so the two merge cleanly. `controls/icon.rs` (its own rasteriser)
-and `controls/shape_button.rs` (upstream's button, with JUCE's behaviour
-only) aren't JUCE translations. Two editors merged with #126 and #128,
+the JUCE line, and #122 then gave it the same `Portions` line,
+`juce_graphics, GPL-3.0-only`, and the compound SPDX line. `controls/icon.rs`
+(its own rasteriser) and `controls/shape_button.rs` (upstream's button, with
+JUCE's behaviour only) aren't JUCE translations. Two editors merged with #126 and #128,
 `controls/envelope_editor.rs` and `controls/line_editor.rs`, repeat the
 slider's JUCE multiple-click rules (`MouseInputSource`, `mouseDoubleClick`),
 so they get the `juce_gui_basics, GPL-3.0-only` line and the compound SPDX
