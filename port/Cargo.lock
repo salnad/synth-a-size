@@ -2639,7 +2639,9 @@ dependencies = [
  "nice-plug",
  "nice-plug-egui",
  "sas-engine",
+ "sas-filters",
  "sas-preset",
+ "sas-simd",
  "serde_json",
 ]
 
