@@ -434,6 +434,15 @@ mod tests {
         assert!(!model.load_wavetable_json(7, &json));
         assert_eq!(model.content_revision(), revision);
 
+        // Valid by `isValidJson` but unreadable (a group that isn't an
+        // object): upstream leaves the creator cleared and partly loaded,
+        // the port leaves the oscillator as it was (D21).
+        let unreadable = r#"{"version": "1.0.0", "name": "Broken", "groups": [7]}"#;
+        assert!(!model.load_wavetable_json(1, unreadable));
+        assert_eq!(model.wavetable_json(1).unwrap(), json);
+        assert_eq!(model.wavetable_name(1), "Copied");
+        assert_eq!(model.content_revision(), revision);
+
         // Initialize: the default table again.
         model.load_default_wavetable(1);
         assert_eq!(model.wavetable_name(1), "Init");

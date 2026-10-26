@@ -371,3 +371,18 @@ parity cost), and where it came from.
 - **Source:** D16 (MIDI learn, #99), option c of the owner's options
   (Salil, 2026-10-23).
 
+## I20. A local text-to-wavetable alternative
+
+- **Idea:** bring back "Text to Wavetable" (D20) without an online account:
+  turn a description into wavetable creator JSON locally, through the LLM
+  control layer (M9's `WavetableCreator` tools) or an offline generator,
+  and load it with `EditorModel::load_wavetable_json`.
+- **Why:** upstream's feature needs sign-in to its service, which the port
+  drops (rule 4). The port's LLM layer can already build wavetables from
+  text, so the menu item and field could come back on top of it.
+- **Tradeoff:**
+  - With the LLM layer it needs the chat's settings (off by default, an API
+    key) and a network connection; an offline generator would be weaker.
+  - The result won't match upstream's service, so it is a new feature,
+    not parity.
+- **Source:** D20 (UI Reviewer on #137, coordinator, 2026-10-26).

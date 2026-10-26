@@ -24,7 +24,8 @@ the pointer, with the items in upstream's order:
   `WavetableCreator::init`).
 
 Not here:
-- **Text to Wavetable** stays parked (GUI-only, needs sign-in).
+- **Text to Wavetable** is absent: it needs sign-in (D20). A local
+  alternative is parked as I20.
 - **Resynthesize Preset to Wavetable** comes as its own PR.
 
 The menu's choice goes through the overlay (`MenuOwner::Wavetable`,
@@ -38,9 +39,9 @@ bus (`PluginModel`):
   the creator (a line shape becomes a single line source, as in
   `jsonToState`), and sets it through `EditHandle::set_wavetable`. It
   returns false and changes nothing when the text isn't wavetable JSON or
-  can't be read. Upstream catches a parse error halfway through and renders
-  whatever state the creator was left in; the port leaves the oscillator's
-  table as it was.
+  can't be read. Upstream leaves the creator cleared and partly loaded when
+  valid-looking JSON fails to read, with no re-render; the port leaves the
+  oscillator unchanged (D21).
 - `load_default_wavetable(osc)`: `WavetableCreator::init` on the
   oscillator's creator, then `set_wavetable`.
 
@@ -52,8 +53,9 @@ prepared table through the edit bus, as for every wavetable edit.
 - sas-plugin, `wavetables_copy_paste_and_initialize`:
   - copying oscillator 1's JSON and pasting it into oscillator 2 gives
     the same JSON and name, and moves the revision;
-  - non-JSON, JSON without groups, and an oscillator past the last change
-    nothing;
+  - non-JSON, JSON without groups, an oscillator past the last, and JSON
+    that passes the validity check but can't be read (`"groups": [7]`)
+    change nothing, not even the revision;
   - Initialize gives "Init" on that oscillator only.
 - sas-gui, `tests/controls.rs`:
   - the menu lists Copy and Initialize, adds Paste only for wavetable
