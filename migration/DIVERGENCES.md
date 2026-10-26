@@ -604,7 +604,7 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
 - **Approved:** coordinator, relaying UI Reviewer's and Graph Reviewer's
   reviews of #137.
 
-### D22. The user data folder: one default root, and a menu item to choose it
+### D24. The user data folder: one default root, and a menu item to choose it
 
 - **Differs:** where the user's presets, wavetables, samples and LFOs live
   by default, how the user moves them, and the export dialog's starting
@@ -634,8 +634,8 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
   - The installer that let upstream's users choose the folder isn't ported
     (rule 3), so the menu item takes its place.
   - The pre-filled export name saves typing; the result is the same file.
-- **Approved:** coordinator, approving the G7 plan (configurable root via
-  `data_directory`) and relaying UI Reviewer's review of #148.
+- **Approved:** coordinator (G7 plan's data_directory decision), on UI
+  Reviewer's review of #148, 2026-10-26.
 
 ## Verification exceptions
 
