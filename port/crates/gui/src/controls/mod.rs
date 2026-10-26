@@ -4,6 +4,7 @@
 //! `editor_components` class.
 
 pub mod button;
+pub mod filter_response;
 pub mod format;
 pub mod oscilloscope;
 pub mod slider;
