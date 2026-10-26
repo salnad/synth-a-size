@@ -6,4 +6,4 @@ pub use opengl::renderer::{GraphicsConfig, Renderer};
 #[cfg(feature = "wgpu")]
 mod wgpu;
 #[cfg(feature = "wgpu")]
-pub use wgpu::renderer::{GraphicsConfig, Renderer, WgpuTarget};
+pub use wgpu::renderer::{GraphicsConfig, Renderer, WgpuErrors, WgpuTarget, create_render_state};

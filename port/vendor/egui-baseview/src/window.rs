@@ -1,4 +1,5 @@
 use std::cell::{Cell, RefCell};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -284,7 +285,12 @@ pub struct Frame {
 impl Drop for Frame {
     fn drop(&mut self) {
         for callback in self.on_close.drain(..) {
-            callback();
+            if let Err(payload) = catch_unwind(AssertUnwindSafe(callback)) {
+                error!(
+                    "egui-baseview: a window close callback panicked: {}",
+                    panic_message(&*payload)
+                );
+            }
         }
     }
 }
@@ -376,6 +382,9 @@ pub struct EguiWindow<A: App> {
 
     // Re-use the allocations from the previous output.
     full_output: RefCell<FullOutput>,
+
+    // synth-a-size patch: set once a callback has panicked.
+    failed: Cell<bool>,
 
     pub window: WindowContext,
 }
@@ -471,6 +480,7 @@ impl<A: App> EguiWindow<A> {
             modifiers: Cell::new(egui::Modifiers::default()),
             full_output: RefCell::new(FullOutput::default()),
             poll_repaint_timer_handle,
+            failed: Cell::new(false),
         })
     }
 
@@ -517,15 +527,27 @@ impl<A: App> EguiWindow<A> {
         Window::create_with_host(
             options,
             move |window| {
-                EguiWindow::new(
-                    window,
-                    settings.title,
-                    settings.graphics,
-                    app,
-                    settings.zoom_factor,
-                    settings.repaint_notifier,
-                    settings.repaint_poll_interval,
-                )
+                // synth-a-size patch: a panic while creating the renderer or
+                // building the app fails the window instead of unwinding
+                // into the host.
+                catch_unwind(AssertUnwindSafe(|| {
+                    EguiWindow::new(
+                        window,
+                        settings.title,
+                        settings.graphics,
+                        app,
+                        settings.zoom_factor,
+                        settings.repaint_notifier,
+                        settings.repaint_poll_interval,
+                    )
+                }))
+                .unwrap_or_else(|payload| {
+                    let message = panic_message(&*payload);
+                    error!("egui-baseview: creating the window panicked: {message}");
+                    Err(HandlerError::from_boxed(
+                        format!("creating the window panicked: {message}").into(),
+                    ))
+                })
             },
             host,
         )
@@ -569,12 +591,72 @@ fn update_modifiers(
     }
 }
 
+// synth-a-size patch: baseview calls the handler from platform callbacks
+// (`extern "C-unwind"` AppKit methods on macOS), so a panic in the app, egui
+// or the renderer would unwind into the host and abort it. Each callback runs
+// under `catch_unwind`; after a panic the window logs it and stops drawing and
+// handling input (the host keeps running; reopening the editor starts over).
 impl<A: App> WindowHandler for EguiWindow<A> {
     fn poll(&self) {
-        self.poll_repaint_timer();
+        self.guarded("poll", (), || self.poll_repaint_timer());
     }
 
     fn draw(&self) -> Result<(), HandlerError> {
+        self.guarded("draw", Ok(()), || self.draw_frame())
+    }
+
+    fn resized(&self, new_size: WindowSize) -> Result<(), HandlerError> {
+        self.guarded("resized", Ok(()), || self.handle_resize(new_size))
+    }
+
+    fn on_event(&self, event: Event) -> EventStatus {
+        self.guarded("on_event", EventStatus::Ignored, || {
+            self.handle_event(event)
+        })
+    }
+
+    fn on_timer(&self, timer: &baseview::TimerHandle) {
+        self.guarded("on_timer", (), || {
+            if timer == self.poll_repaint_timer_handle {
+                self.poll_repaint_timer();
+            }
+        });
+    }
+}
+
+/// The message of a panic payload.
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_owned()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "(no message)".to_owned()
+    }
+}
+
+impl<A: App> EguiWindow<A> {
+    /// Runs `callback`, or returns `fallback` if it panics or an earlier
+    /// callback did.
+    fn guarded<R>(&self, name: &str, fallback: R, callback: impl FnOnce() -> R) -> R {
+        if self.failed.get() {
+            return fallback;
+        }
+        match catch_unwind(AssertUnwindSafe(callback)) {
+            Ok(result) => result,
+            Err(payload) => {
+                self.failed.set(true);
+                error!(
+                    "egui-baseview: the window's {name} callback panicked ({}); the window \
+                     stops drawing and handling input",
+                    panic_message(&*payload)
+                );
+                fallback
+            }
+        }
+    }
+
+    fn draw_frame(&self) -> Result<(), HandlerError> {
         let (egui_input, logical_size) = {
             let mut egui_input = self.egui_input.borrow_mut();
             egui_input.time = Some(self.start_time.elapsed().as_secs_f64());
@@ -730,7 +812,7 @@ impl<A: App> WindowHandler for EguiWindow<A> {
         Ok(())
     }
 
-    fn resized(&self, new_size: WindowSize) -> Result<(), HandlerError> {
+    fn handle_resize(&self, new_size: WindowSize) -> Result<(), HandlerError> {
         let zoom_factor = self.inner.borrow().egui_ctx.zoom_factor();
 
         let total_scale_factor = new_size.scale_factor * zoom_factor as f64;
@@ -762,7 +844,7 @@ impl<A: App> WindowHandler for EguiWindow<A> {
         Ok(())
     }
 
-    fn on_event(&self, event: Event) -> EventStatus {
+    fn handle_event(&self, event: Event) -> EventStatus {
         let mut return_status = EventStatus::Captured;
 
         // Parent/embedded windows do not always gain keyboard focus
@@ -1005,12 +1087,6 @@ impl<A: App> WindowHandler for EguiWindow<A> {
             }
             baseview::Event::Window(_) => EventStatus::Captured,
             _ => EventStatus::Ignored,
-        }
-    }
-
-    fn on_timer(&self, timer: &baseview::TimerHandle) {
-        if timer == self.poll_repaint_timer_handle {
-            self.poll_repaint_timer();
         }
     }
 }

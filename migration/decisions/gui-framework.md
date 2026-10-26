@@ -146,6 +146,17 @@ repeat the check in FL Studio where the note says so.
    and reopening the project should keep it.
    - *REAPER:* gives an interim answer. Gestures, undo steps and the
      automation curve are the host's, so repeat the check in FL Studio.
+7. **The editor opens (check first, after every new bundle).** Insert the
+   plugin, open its editor, and check the shader-drawn parts draw (knob
+   arcs, the envelope and LFO lines, the oscilloscope); close and reopen it
+   and resize the window. A crash on opening was the 2026-10-26 sample-count
+   bug. If the editor opens but parts are missing, or anything looks wrong,
+   start the host from Terminal with the plugin's log on, for example
+   `NICE_LOG=$HOME/Desktop/sas.log /Applications/REAPER.app/Contents/MacOS/REAPER`,
+   and send the log: lines with `wgpu error`, `is invalid` or `panicked` are
+   errors the editor caught instead of crashing the host.
+   - *REAPER:* runs there too, but only answers for REAPER: each host
+     embeds the editor's view its own way. Repeat it in FL Studio.
 
 ## Vendored egui-baseview
 
@@ -154,9 +165,12 @@ need the render target's texture format and sample count to build a
 pipeline, and neither egui-wgpu's callback API nor egui-baseview exposes
 them. `port/vendor/egui-baseview` is egui-baseview 0.9.0, used through
 `[patch.crates-io]`, with small patches listed in its `PATCHES.md`: the
-render target in the renderer's callback resources, a window-close hook,
-and file drag-and-drop (patch 3, which hands baseview's file drags to egui
-as hovered and dropped files). It is excluded from the workspace, so its
+render target in the renderer's callback resources (its sample count at
+least 1), a window-close hook, file drag-and-drop (patch 3, which hands
+baseview's file drags to egui as hovered and dropped files), and host
+safety (patch 4: a wgpu error handler that logs instead of panicking, and
+`catch_unwind` around every window callback, so an editor failure never
+unwinds into the host). It is excluded from the workspace, so its
 code is not held to the port's lints, and patch 3's tests live in
 `port/crates/gui/tests/file_drop.rs`. Proposing the patches upstream needs
 a human.
@@ -168,4 +182,7 @@ a human.
 - Whether a host passes Finder drags through to the plugin's view is the
   host's choice; checklist item 5 checks it.
 - A host-less editor window on Linux (Xvfb) never draws a frame; only the
-  embedded (host) path is supported, and it is checked on macOS.
+  embedded (host) path is supported. CI opens it in a minimal VST3 host
+  (`vst3-editor-smoke`), in an NSWindow on macOS and an X11 window under
+  Xvfb on Linux, and draws every tab on a real device through the window's
+  render-state path (`sas-gui`'s `editor_gpu` test, lavapipe and Metal).

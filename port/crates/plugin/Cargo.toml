@@ -12,7 +12,10 @@ publish.workspace = true
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-nice-plug.workspace = true
+# nice-plug's logger: `nice_*!` and tracing output (including the editor's
+# caught panics and wgpu errors) and panics go to STDERR, or where `NICE_LOG`
+# says. Without it they are dropped.
+nice-plug = { workspace = true, features = ["tracing-subscriber"] }
 sas-common.workspace = true
 sas-engine.workspace = true
 sas-gui.workspace = true
