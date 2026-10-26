@@ -18,8 +18,8 @@ use crate::paint::PixelPainter;
 use crate::primitives::{Quad, QuadKind};
 use crate::scope::Scope;
 use crate::section::{
-    draw_label, draw_text_component_background, keytrack_divider, paint_widget_background,
-    place_tempo_controls,
+    draw_label, draw_tempo_divider, draw_text_component_background, keytrack_divider,
+    paint_widget_background, place_tempo_controls,
 };
 use crate::skin::{ColorId, Section, ValueId};
 
@@ -198,6 +198,7 @@ impl RandomSection {
         );
         draw_text_component_background(pixels, scope, layout.style, true);
         draw_text_component_background(pixels, scope, frequency, true);
+        draw_tempo_divider(pixels, scope, layout.sync);
         draw_label(pixels, scope, "STYLE", layout.style, true);
         draw_label(pixels, scope, "FREQUENCY", frequency, true);
 

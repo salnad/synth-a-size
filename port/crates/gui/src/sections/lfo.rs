@@ -21,9 +21,9 @@ use crate::popup::{Menu, MenuItem};
 use crate::primitives::{Quad, QuadKind};
 use crate::scope::Scope;
 use crate::section::{
-    draw_label, draw_text_component_background, keytrack_divider, label_background_bounds,
-    label_font, paint_widget_background, place_knobs_in_area, place_tempo_controls, slider_overlap,
-    slider_width, title_width,
+    draw_label, draw_tempo_divider, draw_text_component_background, keytrack_divider,
+    label_background_bounds, label_font, paint_widget_background, place_knobs_in_area,
+    place_tempo_controls, slider_overlap, slider_width, title_width,
 };
 use crate::skin::{ColorId, Section, ValueId};
 
@@ -319,6 +319,7 @@ impl LfoSection {
         );
         draw_text_component_background(pixels, scope, layout.sync_type, true);
         draw_text_component_background(pixels, scope, frequency, true);
+        draw_tempo_divider(pixels, scope, layout.sync);
         draw_label(pixels, scope, "MODE", layout.sync_type, true);
         draw_label(pixels, scope, "FREQUENCY", frequency, true);
         draw_label(pixels, scope, "DELAY", layout.delay, false);

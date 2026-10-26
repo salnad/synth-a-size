@@ -22,7 +22,8 @@ source's section, and the two rows of keyboard sources.
 - Shared: `PixelPainter::fill_rect_gradient` (JUCE's linear and radial
   `ColourGradient` fills), `with_clip`, `Colour::with_alpha`;
   `section::paint_tab_shadow`, `place_tempo_controls`, `keytrack_divider`,
-  `paint_widget_background`; `Panel::widget_corners`.
+  `paint_widget_background`, `draw_tempo_divider` (the LFO and random
+  sections' line at the sync selector's left edge); `Panel::widget_corners`.
 - UI Reviewer's follow-ups from #118: a released slider keeps drawing
   its own value until the host shows it (at most 10 frames), so a knob
   doesn't flash its old value after a double-click reset or the pitch
