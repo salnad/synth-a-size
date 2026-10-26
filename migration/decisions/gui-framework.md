@@ -123,21 +123,36 @@ repeat the check in FL Studio where the note says so.
      given to REAPER says nothing about FL Studio's prompt. Repeat it in FL
      Studio.
 
+5. **Dragging a file into the editor (G5).** Drag an audio file from
+   Finder onto oscillator 1's wavetable view. While it hovers, the view
+   shows the import overlay (WAVETABLE, VOCODE, PITCH SPLICE) and the
+   pointer shows a copy badge; dropping loads it. Then drag from FL
+   Studio's browser too. Does FL Studio pass the drag through to the
+   plugin's view, or take it itself (for example, to load a sampler)?
+   - *REAPER:* runs there too, but only answers for REAPER: each host
+     decides whether a drag over a plugin window reaches the plugin. Try a
+     drag from Finder and one from REAPER's media explorer. FL Studio still
+     needs checking.
+
 ## Vendored egui-baseview
 
 egui paint callbacks (how upstream's shader-drawn quads are drawn, from G2)
 need the render target's texture format and sample count to build a
 pipeline, and neither egui-wgpu's callback API nor egui-baseview exposes
-them. `port/vendor/egui-baseview` is egui-baseview 0.9.0 with one patch that
-publishes them in the renderer's callback resources (`PATCHES.md` there),
-used through `[patch.crates-io]`. Further adapter fixes (file drops) go in
-the same copy. It is excluded from the workspace, so its code is not held to
-the port's lints. Proposing the patch upstream needs a human.
+them. `port/vendor/egui-baseview` is egui-baseview 0.9.0, used through
+`[patch.crates-io]`, with small patches listed in its `PATCHES.md`: the
+render target in the renderer's callback resources, a window-close hook,
+and file drag-and-drop (patch 3, which hands baseview's file drags to egui
+as hovered and dropped files). It is excluded from the workspace, so its
+code is not held to the port's lints, and patch 3's tests live in
+`port/crates/gui/tests/file_drop.rs`. Proposing the patches upstream needs
+a human.
 
 ## Known limits
 
-- egui-baseview does not forward file drag-and-drop to egui yet, and FL
-  Studio may keep keyboard focus from text fields. The G1 focus check
-  (`--features focus-spike`) tests the second.
+- FL Studio may keep keyboard focus from text fields. The G1 focus check
+  (`--features focus-spike`) tests it.
+- Whether a host passes Finder drags through to the plugin's view is the
+  host's choice; checklist item 5 checks it.
 - A host-less editor window on Linux (Xvfb) never draws a frame; only the
   embedded (host) path is supported, and it is checked on macOS.

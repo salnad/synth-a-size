@@ -1,3 +1,5 @@
+// synth-a-size patch: file drops.
+pub mod file_drop;
 mod renderer;
 mod translate;
 mod window;
