@@ -162,6 +162,8 @@ def frames(out):
         if view.get("preset"):
             check_preset(view["preset"], VIEWS.name)
             args += ["--preset", str(REPO / view["preset"])]
+        if view.get("effects_scroll"):
+            args += ["--effects-scroll", str(view["effects_scroll"])]
         run_ref_gui(args)
         print(f"wrote {out / (view['name'] + '.png')}")
 

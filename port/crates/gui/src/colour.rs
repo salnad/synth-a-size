@@ -43,6 +43,17 @@ impl Colour {
         Colour(((alpha as u32) << 24) | (self.0 & 0x00ff_ffff))
     }
 
+    /// `Colour::getFloatAlpha`.
+    pub fn float_alpha(self) -> f32 {
+        self.alpha() as f32 / 255.0
+    }
+
+    /// `Colour::withAlpha(float)`: the alpha rounded to a byte.
+    pub fn with_float_alpha(self, alpha: f32) -> Colour {
+        let alpha = (255.0 * alpha).round().clamp(0.0, 255.0) as u32;
+        Colour((alpha << 24) | (self.0 & 0x00ff_ffff))
+    }
+
     /// `Colour::withMultipliedAlpha` (`withAlpha` rounds to a byte).
     pub fn with_multiplied_alpha(self, multiplier: f32) -> Colour {
         if multiplier >= 1.0 {

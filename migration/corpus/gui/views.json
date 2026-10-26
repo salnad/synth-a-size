@@ -1,5 +1,5 @@
 {
-  "description": "Views rendered from upstream's interface by migration/scripts/gui_reference.py frames, and from the port's editor by sas-gui's gallery test, for side-by-side comparison. A preset, when given, is a path from the repository root to authored content (never a factory preset).",
+  "description": "Views rendered from upstream's interface by migration/scripts/gui_reference.py frames, and from the port's editor by sas-gui's gallery test, for side-by-side comparison. A preset, when given, is a path from the repository root to authored content (never a factory preset). effects_scroll scrolls the effects column down that many pixels, kept within the column.",
   "views": [
     { "name": "init_voice", "tab": "voice" },
     { "name": "init_effects", "tab": "effects" },
@@ -8,6 +8,8 @@
     { "name": "filters_analog_comb", "tab": "voice", "preset": "migration/corpus/gui/presets/filters_analog_comb.vital" },
     { "name": "filters_formant_ladder", "tab": "voice", "preset": "migration/corpus/gui/presets/filters_formant_ladder.vital" },
     { "name": "filters_digital_diode", "tab": "voice", "preset": "migration/corpus/gui/presets/filters_digital_diode.vital" },
-    { "name": "filters_dirty_phaser", "tab": "voice", "preset": "migration/corpus/gui/presets/filters_dirty_phaser.vital" }
+    { "name": "filters_dirty_phaser", "tab": "voice", "preset": "migration/corpus/gui/presets/filters_dirty_phaser.vital" },
+    { "name": "all_effects", "tab": "effects", "preset": "migration/corpus/gui/presets/all_effects.vital" },
+    { "name": "all_effects_bottom", "tab": "effects", "preset": "migration/corpus/gui/presets/all_effects.vital", "effects_scroll": 10000 }
   ]
 }

@@ -33,6 +33,7 @@ use crate::layout::{FullLayout, Rect};
 use crate::paint::{PixelPainter, RectF};
 use crate::scope::Scope;
 use crate::sections::bend::{self, BendLayout, BendSection};
+use crate::sections::effects::EffectsTab;
 use crate::sections::keyboard::{self, KeyboardLayout, PlayingNote};
 use crate::sections::modulation::ModulationInterface;
 use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
@@ -256,6 +257,7 @@ pub struct Interface {
     modulation: ModulationInterface,
     playing_note: PlayingNote,
     overlay: Overlay,
+    effects: EffectsTab,
 }
 
 impl Default for Interface {
@@ -277,6 +279,7 @@ impl Interface {
             modulation: ModulationInterface::default(),
             playing_note: PlayingNote::default(),
             overlay: Overlay::default(),
+            effects: EffectsTab::default(),
         }
     }
 
@@ -290,6 +293,11 @@ impl Interface {
 
     pub fn set_tab(&mut self, tab: Tab) {
         self.tab = tab;
+    }
+
+    /// Scrolls the Effects tab's column down `y` pixels.
+    pub fn set_effects_scroll(&mut self, y: f32) {
+        self.effects.set_scroll(y);
     }
 
     /// The open popups.
@@ -379,8 +387,9 @@ impl Interface {
                 self.synthesis
                     .show(ui, host, pixels, &top, &mut self.overlay, layout.main)
             }
-            // G6: the effects interface, in `layout.effects`.
-            Tab::Effects => {}
+            Tab::Effects => self
+                .effects
+                .show(ui, host, pixels, layout, &top, &mut self.overlay),
             // G4: the modulation matrix.
             Tab::Matrix => {}
             // G6: the master controls interface, in `layout.main`.

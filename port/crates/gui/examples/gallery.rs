@@ -135,6 +135,11 @@ fn main() {
             .get("tab")
             .and_then(|v| v.as_str())
             .unwrap_or("voice")));
+        if let Some(scroll) = view.get("effects_scroll").and_then(|v| v.as_f64()) {
+            interface
+                .borrow_mut()
+                .set_effects_scroll(scroll as f32 * scale);
+        }
 
         let state = egui_kittest::wgpu::create_render_state(
             egui_kittest::wgpu::default_wgpu_setup(),
