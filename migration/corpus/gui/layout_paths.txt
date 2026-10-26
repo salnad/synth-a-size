@@ -1,8 +1,9 @@
 # Upstream components whose bounds the port's layout is checked against
 # (migration/scripts/gui_reference.py layout). Paths are component names from
-# the interface down, as ref-gui --layout prints them. Each GUI PR adds the
-# components it ports, each path once. Paths after an "@preset <file>" line
-# (a file in migration/corpus/gui/presets/, authored by
+# the interface down, as ref-gui --layout prints them; a name repeated in the
+# same place is "#2", "#3", ... after the first, in tree order. Each GUI PR
+# adds the components it ports, each path once. Paths after an
+# "@preset <file>" line (a file in migration/corpus/gui/presets/, authored by
 # migration/corpus/generate.py) are laid out with that preset loaded, and
 # their fixture entries name it; the rest use the init preset.
 
@@ -253,18 +254,22 @@ extra_mod_section/MACRO/MACRO0
 extra_mod_section/MACRO/MACRO0/macro_control_1
 extra_mod_section/MACRO/MACRO0/Macro Label 1
 extra_mod_section/MACRO/MACRO0/Edit 1
+extra_mod_section/MACRO/MACRO0/macro_control_1#2
 extra_mod_section/MACRO/MACRO1
 extra_mod_section/MACRO/MACRO1/macro_control_2
 extra_mod_section/MACRO/MACRO1/Macro Label 2
 extra_mod_section/MACRO/MACRO1/Edit 2
+extra_mod_section/MACRO/MACRO1/macro_control_2#2
 extra_mod_section/MACRO/MACRO2
 extra_mod_section/MACRO/MACRO2/macro_control_3
 extra_mod_section/MACRO/MACRO2/Macro Label 3
 extra_mod_section/MACRO/MACRO2/Edit 3
+extra_mod_section/MACRO/MACRO2/macro_control_3#2
 extra_mod_section/MACRO/MACRO3
 extra_mod_section/MACRO/MACRO3/macro_control_4
 extra_mod_section/MACRO/MACRO3/Macro Label 4
 extra_mod_section/MACRO/MACRO3/Edit 4
+extra_mod_section/MACRO/MACRO3/macro_control_4#2
 
 # G3b: oscillator 3 with a wave morph that shows the distortion phase slider.
 @preset migration/corpus/gui/presets/osc_3_sync.vital

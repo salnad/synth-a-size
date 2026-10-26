@@ -1010,26 +1010,17 @@ impl OscillatorSection {
         let wavetable = model.wavetable(self.index);
         let mut view = self.view.borrow_mut();
         let frame = (&self.wave_frame, layout.wave_frame);
-        match model.telemetry() {
-            Some(telemetry) => telemetry.read(|snapshot| {
-                view.show(
-                    panel,
-                    layout.wavetable,
-                    frame,
-                    wavetable.as_ref(),
-                    Some(snapshot),
-                    ANIMATE,
-                )
-            }),
-            None => view.show(
-                panel,
-                layout.wavetable,
-                frame,
-                wavetable.as_ref(),
-                None,
-                ANIMATE,
-            ),
-        }
+        let telemetry = model
+            .telemetry()
+            .map(|telemetry| telemetry.read(|snapshot| view.read_telemetry(snapshot)));
+        view.show(
+            panel,
+            layout.wavetable,
+            frame,
+            wavetable.as_ref(),
+            telemetry.as_ref(),
+            ANIMATE,
+        );
     }
 
     /// The wavetable's name with its arrows; browsing wavetables and the
