@@ -5,17 +5,18 @@
 //! buttons, stacked as tabs beside the envelopes, LFOs and randoms, or in a
 //! row for the keyboard sources.
 //!
-//! Ports `ModulationButton::paintBackground` / `getMeterBounds` and the
-//! click that selects a tab
+//! Ports `ModulationButton::paintBackground` / `getMeterBounds`, its mouse
+//! (through [`ModulationManager::source_button`]) and the click that selects
+//! a tab
 //! (`vital/src/interface/editor_components/modulation_button.cpp`), and
 //! `ModulationTabSelector`'s layout and painting (`modulation_tab_selector.cpp`).
-//! Dragging a source onto a control, its connections menu and its meter come
-//! with drag-to-modulate.
+//! The meter comes with the modulation meters.
 
-use egui::{Id, PointerButton, Sense, Ui};
+use egui::{Id, Ui};
 
 use crate::fonts::Face;
 use crate::layout::Rect;
+use crate::modulation::ModulationManager;
 use crate::paint::{Gradient, GradientKind, PixelPainter, RectF};
 use crate::scope::Scope;
 use crate::skin::{ColorId, ValueId};
@@ -188,11 +189,6 @@ impl ModulationButton {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-struct ButtonState {
-    down: bool,
-}
-
 /// A row or column of source buttons (`ModulationTabSelector`).
 #[derive(Clone, Debug)]
 pub struct ModulationTabSelector {
@@ -305,41 +301,45 @@ impl ModulationTabSelector {
         }
     }
 
-    /// The buttons' mouse handling: a press and release on a button clicks
-    /// it (`ModulationButton::mouseUp`'s `modulationClicked`). Returns the
-    /// clicked button.
+    /// The buttons' mouse handling (`ModulationButton::mouseDown` /
+    /// `mouseDrag` / `mouseUp`), through `modulation`: a press selects the
+    /// source, a drag out of the button maps it onto a control, and a press
+    /// and release on a button clicks it (`modulationClicked`).
     pub fn interact(
         &self,
         ui: &mut Ui,
         pixels: &PixelPainter,
+        modulation: &mut ModulationManager,
         id: Id,
         bounds: Rect,
         num_shown: usize,
-    ) -> Option<usize> {
-        let mut clicked = None;
+    ) -> TabInput {
+        let mut input = TabInput::default();
         for (i, rect) in self
             .button_bounds(bounds, num_shown)
             .into_iter()
             .enumerate()
         {
-            let button_id = id.with(i);
-            let response =
-                ui.interact(pixels.rect(rect.into()), button_id, Sense::click_and_drag());
-            let mut state: ButtonState =
-                ui.data(|data| data.get_temp(button_id)).unwrap_or_default();
-            let primary_down = ui.input(|input| input.pointer.button_down(PointerButton::Primary));
-            let down = (state.down || response.is_pointer_button_down_on()) && primary_down;
-            if state.down && !down {
-                let pointer = ui.input(|input| input.pointer.interact_pos());
-                if pointer.is_some_and(|pos| response.rect.contains(pos)) {
-                    clicked = Some(i);
-                }
+            let name = self.buttons[i].name;
+            let button = modulation.source_button(ui, pixels, id.with(i), name, rect);
+            if button.clicked {
+                input.clicked = Some(i);
             }
-            state.down = down;
-            ui.data_mut(|data| data.insert_temp(button_id, state));
+            if let Some(position) = button.menu {
+                input.menu = Some((name, position));
+            }
         }
-        clicked
+        input
     }
+}
+
+/// What a [`ModulationTabSelector`]'s buttons did this frame.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TabInput {
+    /// The button clicked.
+    pub clicked: Option<usize>,
+    /// A connected source right-clicked, and where (pixels).
+    pub menu: Option<(&'static str, egui::Pos2)>,
 }
 
 #[cfg(test)]

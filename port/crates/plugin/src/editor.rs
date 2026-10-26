@@ -8,13 +8,14 @@ use std::sync::{Arc, Mutex};
 use nice_plug::context::gui::GuiContext;
 use sas_common::json;
 use sas_common::line_generator::LineGenerator;
+use sas_engine::document::PresetDocument;
 use sas_engine::keyboard::KeyboardHandle;
 use sas_engine::sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::telemetry::Telemetry;
 use sas_engine::Tuning;
-use sas_gui::{ChatHost, EditorModel, HostParam};
-use sas_preset::SampleState;
+use sas_gui::{ChatHost, EditorModel, HostParam, Route};
+use sas_preset::{GuiConnection, SampleState, SlotValues};
 
 use crate::chat::PluginChat;
 use crate::midi_learn::MidiLearn;
@@ -29,6 +30,8 @@ pub struct PluginModel {
     /// The preset name and the edit bus revision it was read at, so the
     /// document mirror is read only after it changes.
     preset_name: Mutex<(u64, String)>,
+    /// The connected modulation slots, read at an edit bus revision too.
+    modulations: Mutex<(u64, Arc<[Route]>)>,
     chat: Option<Arc<PluginChat>>,
     /// The frequency display setting, read from the config file once.
     hz_frequency: AtomicBool,
@@ -48,16 +51,35 @@ impl PluginModel {
         let hz_frequency = midi_learn
             .config_file()
             .is_some_and(crate::config::display_hz_frequency);
+        let modulations = edits.with_document(routes);
         PluginModel {
             params,
             keyboard,
             telemetry,
             midi_learn,
             preset_name: Mutex::new((revision, name)),
+            modulations: Mutex::new((revision, modulations)),
             chat,
             hz_frequency: AtomicBool::new(hz_frequency),
         }
     }
+}
+
+/// The document's connected modulation slots.
+fn routes(document: &PresetDocument) -> Arc<[Route]> {
+    let state = &document.state;
+    state
+        .connection_order()
+        .iter()
+        .map(|&slot| {
+            let connection = &state.modulations()[slot];
+            Route {
+                slot,
+                source: connection.source.clone(),
+                destination: connection.destination.clone(),
+            }
+        })
+        .collect()
 }
 
 impl EditorModel for PluginModel {
@@ -124,6 +146,50 @@ impl EditorModel for PluginModel {
         self.params
             .edit_handle()
             .with_document(|document| document.state.info.macro_name(index))
+    }
+
+    fn modulations(&self) -> Arc<[Route]> {
+        let edits = self.params.edit_handle();
+        let revision = edits.revision();
+        let mut cached = self
+            .modulations
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if cached.0 != revision {
+            *cached = (revision, edits.with_document(routes));
+        }
+        cached.1.clone()
+    }
+
+    fn connect_modulation(
+        &self,
+        source: &str,
+        destination: &str,
+        values: SlotValues,
+    ) -> Option<GuiConnection> {
+        self.params
+            .edit_handle()
+            .connect_modulation(source, destination, values)
+            .ok()
+    }
+
+    fn set_connection_values(&self, source: &str, destination: &str, values: SlotValues) -> bool {
+        self.params
+            .edit_handle()
+            .set_connection_values(source, destination, values)
+            .is_ok()
+    }
+
+    fn edit_generation(&self) -> u64 {
+        self.params.edit_handle().generation()
+    }
+
+    fn disconnect_modulation(&self, source: &str, destination: &str) -> Option<usize> {
+        self.params
+            .edit_handle()
+            .disconnect_modulation(source, destination)
+            .ok()
+            .flatten()
     }
 
     fn tuning_name(&self) -> String {

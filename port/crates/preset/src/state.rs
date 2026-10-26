@@ -185,6 +185,9 @@ impl SaveInfo {
 pub struct PresetState {
     controls: BTreeMap<String, f32>,
     modulations: Vec<ModulationSlot>,
+    /// The connected slots in `SynthBase::mod_connections_` order: slot
+    /// order after a load, then each new connection last.
+    connection_order: Vec<usize>,
     pub sample: SampleState,
     pub wavetables: Vec<WavetableCreator>,
     pub lfos: Vec<LineGenerator>,
@@ -200,6 +203,7 @@ impl PresetState {
         let mut state = PresetState {
             controls: BTreeMap::new(),
             modulations: vec![ModulationSlot::default(); MAX_MODULATION_CONNECTIONS],
+            connection_order: Vec::new(),
             sample: SampleState::white_noise(init.sample_seed),
             wavetables: Vec::new(),
             lfos: Vec::new(),
@@ -254,6 +258,13 @@ impl PresetState {
         &self.modulations
     }
 
+    /// The connected slots in the order the synth keeps its connections
+    /// (`SynthBase::mod_connections_`, which `getSourceConnections` lists):
+    /// slot order after a load, then each new connection last.
+    pub fn connection_order(&self) -> &[usize] {
+        &self.connection_order
+    }
+
     /// Mutable access to one slot's line mapping.
     pub fn line_mapping_mut(&mut self, slot: usize) -> Option<&mut LineGenerator> {
         self.modulations
@@ -292,6 +303,7 @@ impl PresetState {
         let slot = &mut self.modulations[index];
         slot.source = source.to_string();
         slot.destination = destination.to_string();
+        self.connection_order.push(index);
         let bipolar = if engine::is_source_default_bipolar(source) {
             1.0
         } else {
@@ -363,11 +375,13 @@ impl PresetState {
         let index = self.modulation_index(source, destination)?;
         self.modulations[index].source.clear();
         self.modulations[index].destination.clear();
+        self.connection_order.retain(|&slot| slot != index);
         Some(index)
     }
 
     /// `SynthBase::clearModulations`.
     pub fn clear_modulations(&mut self) {
+        self.connection_order.clear();
         for slot in &mut self.modulations {
             slot.source.clear();
             slot.destination.clear();
@@ -530,6 +544,7 @@ impl PresetState {
             }
             slot.source = source;
             slot.destination = destination;
+            self.connection_order.push(index);
             if modulation.count("line_mapping") != 0 {
                 slot.line_mapping
                     .from_json(modulation.get("line_mapping")?)?;
@@ -596,5 +611,26 @@ mod tests {
         assert_eq!(file_name_without_extension("/a/b.c/name"), "name");
         assert_eq!(file_name_without_extension("x.y.vital"), "x.y");
         assert_eq!(file_name_without_extension("/a/.vital"), ".vital");
+    }
+
+    /// `mod_connections_`: a load connects in slot order, a new connection
+    /// goes last even in a lower slot, and a removed one leaves the rest in
+    /// place.
+    #[test]
+    fn connections_keep_the_order_they_were_made_in() {
+        let mut state = PresetState::new(&InitContent { sample_seed: 0 });
+        state.add_modulation("lfo_1", "osc_1_level").unwrap();
+        state.add_modulation("lfo_2", "osc_2_level").unwrap();
+        state.add_modulation("env_2", "osc_3_level").unwrap();
+        assert_eq!(state.connection_order(), [0, 1, 2]);
+        state.remove_modulation("lfo_1", "osc_1_level");
+        state.add_modulation("random_1", "filter_1_cutoff").unwrap();
+        assert_eq!(state.connection_order(), [1, 2, 0]);
+
+        let mut loaded = PresetState::new(&InitContent { sample_seed: 0 });
+        loaded.load_json(&state.to_json()).unwrap();
+        assert_eq!(loaded.connection_order(), [0, 1, 2]);
+        loaded.clear_modulations();
+        assert!(loaded.connection_order().is_empty());
     }
 }

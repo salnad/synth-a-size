@@ -535,6 +535,17 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
   - G3b: the oscillator and sample sections' menus and prev/next arrows
     (spectral morph, distortion and destination types;
     `port/crates/gui/src/sections/oscillator.rs` and `sample.rs`, #118).
+  - G4b: dragging a modulation source onto a control
+    (`ModulationManager::modulationDraggedToComponent` /
+    `setTemporaryModulationBipolar` / `endModulationMap`;
+    `port/crates/gui/src/modulation.rs`). Upstream tells the host nothing
+    at all here: the slot's values go to the synth with `valueChanged` and
+    the connection through the engine's change queue. The port's slot
+    values are host parameters, so the connection left at the release gets
+    one gesture per slot parameter (power, amount, bipolar, stereo,
+    bypass) then; the connections the drag passed over reach the engine
+    through the edit bus only and never the host, and keep the drag's
+    values in their freed slot as upstream's do.
   Later sites cite D18 rather than adding entries.
 - **Approved:** UI Reviewer on #127; the coordinator asked for the
   port-wide rule.

@@ -11,12 +11,14 @@
 //! macro's name (with the icons' follow-up) come later; the names show the
 //! synth's.
 
-use super::Panel;
+use super::{MenuOwner, Panel};
 use crate::controls::modulation_button::{ButtonStyle, ModulationButton, ModulationTabSelector};
 use crate::controls::slider::{Placement, Slider, SliderStyle};
 use crate::fonts::Face;
 use crate::layout::Rect;
+use crate::modulation::disconnect_menu;
 use crate::paint::PixelPainter;
+use crate::popup::Menu;
 use crate::scope::Scope;
 use crate::section::{
     draw_label_background, label_background_bounds, paint_body, paint_border, paint_tab_shadow,
@@ -188,6 +190,39 @@ impl ExtraModSection {
     /// The macro knobs and their names.
     pub fn show(&self, panel: &mut Panel, layout: &ExtraModLayout) {
         let host = panel.host;
+        let mut menu = None;
+        for (i, single) in layout.macros.iter().enumerate() {
+            let id = panel.ui.scope_id().with(("macro source", i));
+            let name = self.sources[i].name;
+            let input = panel.overlay.modulation.source_button(
+                panel.ui,
+                panel.pixels,
+                id,
+                name,
+                single.source,
+            );
+            if let Some(position) = input.menu {
+                menu = Some((name, position));
+            }
+        }
+        let id = panel.ui.scope_id().with("wheel sources");
+        let input = self.other.interact(
+            panel.ui,
+            panel.pixels,
+            &mut panel.overlay.modulation,
+            id,
+            layout.other,
+            self.other.buttons.len(),
+        );
+        menu = input.menu.or(menu);
+        if let Some((source, position)) = menu {
+            let items = disconnect_menu(panel.overlay.modulation.routes(), source);
+            panel.overlay.menu = Some(Menu::new(
+                items,
+                position,
+                MenuOwner::ModulationSource(source),
+            ));
+        }
         let size = panel.scope.value(ValueId::LabelHeight);
         let colour = panel.scope.color(ColorId::BodyText);
         for (i, single) in layout.macros.iter().enumerate() {

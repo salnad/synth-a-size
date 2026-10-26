@@ -36,6 +36,12 @@ impl RectF {
     }
 
     /// `Rectangle::reduced`.
+    /// Whether the point is inside (`juce::Rectangle::contains`: the left
+    /// and top edges are, the right and bottom ones aren't).
+    pub fn contains(&self, x: f32, y: f32) -> bool {
+        x >= self.x && y >= self.y && x < self.x + self.width && y < self.y + self.height
+    }
+
     pub fn reduced(&self, amount: f32) -> RectF {
         RectF::new(
             self.x + amount,
