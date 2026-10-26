@@ -25,7 +25,7 @@ use sas_engine::sas_oscillators::synth_oscillator::{
     set_spectral_morph_values_for, uses_distortion_phase,
 };
 use sas_engine::telemetry::{
-    destination_id, status_id, DestinationId, StatusId, TelemetrySnapshot,
+    destination_id, status_id, DestinationId, ModulationTotal, StatusId, TelemetrySnapshot,
 };
 use sas_simd::{futils, poly_utils, utils, PolyFloat, PolyInt};
 
@@ -214,6 +214,17 @@ struct Drag {
     begun: bool,
 }
 
+/// The telemetry the view shows: whether voices are playing and the
+/// modulated totals of its controls.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ViewTelemetry {
+    voices_on: bool,
+    wave_frame: Option<ModulationTotal>,
+    spectral_morph: Option<ModulationTotal>,
+    distortion: Option<ModulationTotal>,
+    distortion_phase: Option<ModulationTotal>,
+}
+
 /// `Wavetable3d`.
 pub struct Wavetable3d {
     index: usize,
@@ -335,10 +346,27 @@ impl Wavetable3d {
         }
     }
 
+    /// What [`Self::show`] reads from `snapshot`, copied out so the
+    /// snapshot's lock is released before the view draws.
+    pub fn read_telemetry(&self, snapshot: &TelemetrySnapshot) -> ViewTelemetry {
+        let controls = &self.controls;
+        let total = |id: Option<DestinationId>| id.map(|id| snapshot.modulation_total(id));
+        ViewTelemetry {
+            voices_on: controls
+                .num_voices
+                .is_some_and(|id| snapshot.status(id)[0] > 0.0),
+            wave_frame: total(controls.wave_frame_total),
+            spectral_morph: total(controls.spectral_morph_total),
+            distortion: total(controls.distortion_total),
+            distortion_phase: total(controls.distortion_phase_total),
+        }
+    }
+
     /// The mouse and the lines (`mouseDown`, `mouseDrag`, `mouseExit`,
     /// `render`). `frame_slider` is the oscillator's wave frame slider and
     /// its bounds: a drag on the view moves it and shows its popup.
-    /// `telemetry` is this frame's snapshot, if the engine publishes one;
+    /// `telemetry` is what [`Self::read_telemetry`] copied from this frame's
+    /// snapshot, if the engine publishes one;
     /// `animate` is the interface's animate switch.
     #[allow(clippy::too_many_arguments)]
     pub fn show(
@@ -347,7 +375,7 @@ impl Wavetable3d {
         bounds: Rect,
         frame_slider: (&Slider, Rect),
         wavetable: Option<&Arc<Wavetable>>,
-        telemetry: Option<&TelemetrySnapshot>,
+        telemetry: Option<&ViewTelemetry>,
         animate: bool,
     ) {
         self.interact(panel, bounds, frame_slider);
@@ -473,21 +501,18 @@ impl Wavetable3d {
     fn render_values(
         &self,
         panel: &Panel,
-        telemetry: Option<&TelemetrySnapshot>,
+        telemetry: Option<&ViewTelemetry>,
         animate: bool,
         render_type: RenderType,
     ) -> RenderValues {
         let host = panel.host;
         let controls = &self.controls;
-        let voices_on = telemetry
-            .zip(controls.num_voices)
-            .is_some_and(|(snapshot, id)| snapshot.status(id)[0] > 0.0);
-        let total = |id: Option<DestinationId>, slider: &str| -> PolyFloat {
+        let voices_on = telemetry.is_some_and(|telemetry| telemetry.voices_on);
+        let total = |total: fn(&ViewTelemetry) -> Option<ModulationTotal>, slider: &str| {
             let default = PolyFloat::splat(host.value(slider));
-            let (Some(snapshot), Some(id)) = (telemetry, id) else {
+            let Some(total) = telemetry.and_then(total) else {
                 return default;
             };
-            let total = snapshot.modulation_total(id);
             if !total.enabled || !animate {
                 return default;
             }
@@ -501,24 +526,21 @@ impl Wavetable3d {
         let spectral_morph_type = host.value(controls.spectral_morph_type) as i32;
         let distortion_type = host.value(controls.distortion_type) as i32;
 
-        let wave_frame = total(controls.wave_frame_total, controls.wave_frame);
+        let wave_frame = total(|t| t.wave_frame, controls.wave_frame);
         let mut spectral_morph = [poly_utils::clamp(
-            total(
-                controls.spectral_morph_total,
-                controls.spectral_morph_amount,
-            ),
+            total(|t| t.spectral_morph, controls.spectral_morph_amount),
             0.0,
             1.0,
         )];
         set_spectral_morph_values_for(spectral_morph_type, &mut spectral_morph, false);
         let mut distortion = [poly_utils::clamp(
-            total(controls.distortion_total, controls.distortion_amount),
+            total(|t| t.distortion, controls.distortion_amount),
             0.0,
             1.0,
         )];
         set_distortion_values_for(distortion_type, &mut distortion, false);
         let distortion_phase = if uses_distortion_phase(distortion_type) {
-            let phase = total(controls.distortion_phase_total, controls.distortion_phase);
+            let phase = total(|t| t.distortion_phase, controls.distortion_phase);
             poly_utils::to_int(phase * PolyFloat::splat(UINT_MAX_F) - PolyFloat::splat(INT_MAX_F))
         } else {
             PolyInt::zero()

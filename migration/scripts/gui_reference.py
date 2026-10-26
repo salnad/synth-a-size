@@ -107,9 +107,14 @@ def layout_for(width, height, paths, preset=None):
             args += ["--preset", str(REPO / preset)]
         run_ref_gui(args)
         entries = {}
+        seen = {}
         for line in dump.read_text().splitlines():
             entry = json.loads(line)
-            entries.setdefault(entry["path"], entry)
+            # Siblings can share a name (a macro's knob and source button):
+            # later ones, in tree order, are "path#2", "path#3", ...
+            count = seen[entry["path"]] = seen.get(entry["path"], 0) + 1
+            key = entry["path"] if count == 1 else f'{entry["path"]}#{count}'
+            entries[key] = entry
     missing = [path for path in paths if path not in entries]
     if missing:
         with_preset = f" with {preset}" if preset else ""

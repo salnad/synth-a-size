@@ -61,8 +61,8 @@ pub struct ExtraModLayout {
 /// `SynthSection::placeRotaryOption`: a small square off the knob's centre.
 pub fn rotary_option_bounds(scope: &Scope, knob: Rect) -> Rect {
     let width = scope.value(ValueId::RotaryOptionWidth) as i32;
-    let offset_x = scope.value(ValueId::RotaryOptionXOffset) as i32 - width / 2;
-    let offset_y = scope.value(ValueId::RotaryOptionYOffset) as i32 - width / 2;
+    let offset_x = (scope.value(ValueId::RotaryOptionXOffset) - (width / 2) as f32) as i32;
+    let offset_y = (scope.value(ValueId::RotaryOptionYOffset) - (width / 2) as f32) as i32;
     let centre_x = knob.x + knob.width / 2;
     let centre_y = knob.y + knob.height / 2;
     Rect::new(centre_x + offset_x, centre_y + offset_y, width, width)
@@ -195,5 +195,32 @@ impl ExtraModSection {
             let name = host.model().macro_name(i);
             panel.text_centred(&name, single.label, Face::Regular, size, colour);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::skin::Skin;
+
+    /// `placeRotaryOption` subtracts the integer half width from the
+    /// float offset and truncates after, which differs from truncating
+    /// first when the offset comes out negative.
+    #[test]
+    fn rotary_option_offsets_truncate_after_subtracting_the_half_width() {
+        let skin = Skin::default();
+        // The oscillator's: width 24 * 0.75 = 18, Y offset 1 * 0.75; the
+        // macro's: width 22, offsets 25 and 24.
+        let oscillator = Scope::top(&skin, 0.75).within(&[Section::Oscillator]);
+        let knob = Rect::new(100, 100, 40, 40);
+        assert_eq!(
+            rotary_option_bounds(&oscillator, knob),
+            Rect::new(120 + 27 - 9, 120 - 8, 18, 18)
+        );
+        let macros = Scope::top(&skin, 1.0).within(MACRO_SKIN);
+        assert_eq!(
+            rotary_option_bounds(&macros, knob),
+            Rect::new(120 + 25 - 11, 120 + 24 - 11, 22, 22)
+        );
     }
 }

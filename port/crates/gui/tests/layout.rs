@@ -324,6 +324,8 @@ fn extra_mod_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> 
             let control = control.strip_prefix('/');
             match control {
                 None => m.bounds,
+                // The knob and the source button share the macro's name.
+                Some(c) if c.starts_with("macro_control_") && c.ends_with("#2") => m.source,
                 Some(c) if c.starts_with("macro_control_") => m.knob,
                 Some(c) if c.starts_with("Macro Label ") => m.label,
                 Some(c) if c.starts_with("Edit ") => m.edit,
