@@ -11,6 +11,8 @@ from the editor, and the header's preset arrows, menu and save button.
   the port has no factory folders beside a `User` one).
 - The config's `"data_directory"` moves the root, as upstream's
   `LoadSave::getDataDirectory` does, when it names an existing folder.
+  The single default root, the "Choose Data Folder..." item and the
+  pre-filled export name are D22 in `migration/DIVERGENCES.md`.
 - The file extensions (preset, wavetable, LFO, bank) live here too; the
   plugin's `PRESET_EXTENSION` is this one.
 - `files_in` sorts as `LoadSave::FileSorterAscending` does (lower-cased
