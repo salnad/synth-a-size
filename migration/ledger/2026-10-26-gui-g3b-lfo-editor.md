@@ -18,7 +18,7 @@ controls around it.
   point, a power's middle or a grid cell), removes a point, resets a
   power, copies the shape as JSON and flips it. "Set Start Point" on a
   grid cell keeps the cell it was opened on, so it works where upstream's
-  has already lost the cell by the time the choice arrives (D18 in
+  has already lost the cell by the time the choice arrives (D19 in
   `migration/DIVERGENCES.md`).
 - The editor keeps its own copy while editing and until the synth has it,
   so it never draws a stale shape.

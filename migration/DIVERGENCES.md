@@ -506,7 +506,7 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
 - **Approved:** Salil, 2026-10-23. Reviewed by Graph Reviewer and Parity
   Reviewer on #99.
 
-### D18. "Set Start Point" on an LFO grid cell sets the phase
+### D19. "Set Start Point" on an LFO grid cell sets the phase
 
 *Proposed in #128.*
 
@@ -527,7 +527,8 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
 - **Why:** upstream offers the item and then can't carry it out; there is no
   meaningful behaviour to reproduce. This follows D1's and D15's precedent
   of not replicating upstream bugs.
-- **Approved:** pending Voice Reviewer's review of #128.
+- **Approved:** coordinator, 2026-10-26, on Voice Reviewer's review of
+  #128 (keep the working behaviour, following D1 and D15).
 
 ## Verification exceptions
 
