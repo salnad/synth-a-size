@@ -23,7 +23,8 @@ then ends it with full stops.
 - `PixelPainter::text_centred` and `text_left` are `drawText(..., false)`,
   which slider text, section labels and headings, the LFO's "-" and the
   sample's "PITCH" use upstream. `Layer::text_centred` curtails, and the
-  new `Layer::fitted_text` fits.
+  new `Layer::fitted_text` fits. The new `Panel::curtailed_text` draws the
+  macro names, which `MacroLabel::paint` draws with `drawText(..., false)`.
 - The call sites whose upstream mode isn't plain curtailing:
   - **Ellipsis** (`drawText`'s default): the tab selector, the modulation
     buttons' names, the effect tiles' names (`DragDropEffectOrder`) and
@@ -56,10 +57,8 @@ then ends it with full stops.
   - Every other view's text is pixel-identical to before, apart from one
     label.
 - The reverb's "PRE HIGH CUT" (a `drawLabelForComponent`, so curtailed)
-  now reads "PRE HIGH CU". The port draws the reverb's labels about 9%
-  larger than the reference (73 against 67 pixels of ink, 10 against 8
-  rows), while other sections' labels match. That size is the effects
-  tab's to fix; curtailing only shows it.
+  reads "PRE HIGH CU" here: the port drew the reverb's labels about 9%
+  larger than the reference, which Tabs Builder fixes in #144.
 - `cargo clippy --workspace --all-targets -D warnings`, `cargo fmt`, the
   `sas-gui` tests and `gui_reference.py layout --check` pass.
 

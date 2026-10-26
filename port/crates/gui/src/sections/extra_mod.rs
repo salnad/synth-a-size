@@ -193,7 +193,8 @@ impl ExtraModSection {
         for (i, single) in layout.macros.iter().enumerate() {
             panel.slider(&self.knobs[i], single.knob);
             let name = host.model().macro_name(i);
-            panel.text_centred(&name, single.label, Face::Regular, size, colour);
+            // MacroLabel::paint: drawText, not a PlainTextComponent.
+            panel.curtailed_text(&name, single.label, Face::Regular, size, colour);
         }
     }
 }

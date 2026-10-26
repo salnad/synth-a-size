@@ -401,6 +401,19 @@ impl<'a, 'b> Panel<'a, 'b> {
         self.layer.fitted_text(text, bounds, face, size, colour);
     }
 
+    /// Centred text over the section's controls, curtailed like
+    /// `Graphics::drawText(..., false)`.
+    pub fn curtailed_text(
+        &mut self,
+        text: &str,
+        bounds: Rect,
+        face: crate::fonts::Face,
+        size: f32,
+        colour: crate::colour::Colour,
+    ) {
+        self.layer.text_centred(text, bounds, face, size, colour);
+    }
+
     /// Draws the section's controls (quads, then text), clipped to the
     /// section.
     pub fn finish(self) {
