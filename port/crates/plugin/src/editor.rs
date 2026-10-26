@@ -58,16 +58,17 @@ impl PluginModel {
 
 /// The document's connected modulation slots.
 fn routes(document: &PresetDocument) -> Arc<[Route]> {
-    document
-        .state
-        .modulations()
+    let state = &document.state;
+    state
+        .connection_order()
         .iter()
-        .enumerate()
-        .filter(|(_, slot)| !slot.source.is_empty() && !slot.destination.is_empty())
-        .map(|(slot, connection)| Route {
-            slot,
-            source: connection.source.clone(),
-            destination: connection.destination.clone(),
+        .map(|&slot| {
+            let connection = &state.modulations()[slot];
+            Route {
+                slot,
+                source: connection.source.clone(),
+                destination: connection.destination.clone(),
+            }
         })
         .collect()
 }
@@ -152,11 +153,15 @@ impl EditorModel for PluginModel {
             .ok()
     }
 
-    fn set_connection_values(&self, slot: usize, values: SlotValues) -> bool {
+    fn set_connection_values(&self, source: &str, destination: &str, values: SlotValues) -> bool {
         self.params
             .edit_handle()
-            .set_connection_values(slot, values)
+            .set_connection_values(source, destination, values)
             .is_ok()
+    }
+
+    fn edit_generation(&self) -> u64 {
+        self.params.edit_handle().generation()
     }
 
     fn disconnect_modulation(&self, source: &str, destination: &str) -> Option<usize> {

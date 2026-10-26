@@ -59,9 +59,8 @@ const MENU_DISCONNECT_ALL: i32 = 1;
 const MENU_MODULATION_LIST: i32 = 2;
 
 /// `ModulationButton::mouseDown`'s menu for `source`: "Disconnect from"
-/// each destination, then "Disconnect all" when there are several. The
-/// connections are in slot order (upstream lists them in the order they
-/// were made).
+/// each destination, in the order the synth keeps its connections
+/// (`getSourceConnections`), then "Disconnect all" when there are several.
 pub fn disconnect_menu(routes: &[Route], source: &str) -> Vec<MenuItem> {
     let connections: Vec<&Route> = routes
         .iter()
@@ -133,28 +132,50 @@ pub struct Destination {
 /// drag ends. Shared with the editor window, which commits it if the window
 /// closes mid-drag.
 #[derive(Clone, Debug, Default)]
-pub struct PendingConnection(Arc<Mutex<Option<HostValues>>>);
+pub struct PendingConnection(Arc<Mutex<Option<Pending>>>);
 
 /// Host parameters and the values they take.
 type HostValues = Vec<(&'static str, f32)>;
 
+/// A connection's host values, with the route and the synth state they
+/// belong to.
+#[derive(Clone, Debug)]
+struct Pending {
+    route: Route,
+    /// [`EditorModel::edit_generation`](crate::EditorModel::edit_generation)
+    /// when the drag connected it.
+    generation: u64,
+    values: HostValues,
+}
+
 impl PendingConnection {
-    fn set(&self, changes: Option<HostValues>) {
+    fn set(&self, pending: Option<Pending>) {
         *self
             .0
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = changes;
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = pending;
     }
 
     /// Writes the pending values to the host, one gesture each, and forgets
-    /// them.
+    /// them. Nothing is written if a preset load or state restore has
+    /// replaced the synth's state since, or the route no longer holds its
+    /// slot.
     pub fn commit(&self, host: &Host) {
-        let changes = self
+        let pending = self
             .0
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .take();
-        for (name, value) in changes.into_iter().flatten() {
+        let Some(pending) = pending else {
+            return;
+        };
+        let model = host.model();
+        if model.edit_generation() != pending.generation
+            || !model.modulations().contains(&pending.route)
+        {
+            return;
+        }
+        for (name, value) in pending.values {
             host.set_once(name, value);
         }
     }
@@ -169,6 +190,19 @@ struct Temporary {
 }
 
 impl Temporary {
+    /// What the host is to be told for this connection from `source`.
+    fn pending(&self, source: &str, generation: u64) -> Pending {
+        Pending {
+            route: Route {
+                slot: self.connection.slot,
+                source: source.to_string(),
+                destination: self.destination.to_string(),
+            },
+            generation,
+            values: self.host_values(),
+        }
+    }
+
     /// The connection's host parameter changes with the slot's current
     /// values.
     fn host_values(&self) -> HostValues {
@@ -237,12 +271,32 @@ pub struct ModulationManager {
     quads: Vec<(Quad, Rect)>,
     alpha: f32,
     pending: PendingConnection,
+    /// The synth state's generation as of this frame.
+    generation: u64,
 }
 
 impl ModulationManager {
-    /// The connections, read from `routes` for this frame; forgets last
-    /// frame's destinations.
-    pub fn begin_frame(&mut self, routes: Arc<[Route]>) {
+    /// The connections, read from `routes` for this frame, with the synth
+    /// state's `generation`; forgets last frame's destinations. A
+    /// connection the drag made that a preset load, a state restore or
+    /// another editor of the synth (the chat) has removed since is
+    /// forgotten, and nothing will be written for it.
+    pub fn begin_frame(&mut self, routes: Arc<[Route]>, generation: u64) {
+        let restored = generation != self.generation;
+        self.generation = generation;
+        if let Some(drag) = &mut self.drag {
+            let gone = drag.temporary.as_ref().is_some_and(|temporary| {
+                !routes.iter().any(|route| {
+                    route.slot == temporary.connection.slot
+                        && route.source == drag.source
+                        && route.destination == temporary.destination
+                })
+            });
+            if restored || gone {
+                drag.temporary = None;
+                self.pending.set(None);
+            }
+        }
         self.routes = Some(routes);
         self.destinations.clear();
         self.current_bounds = None;
@@ -412,9 +466,10 @@ impl ModulationManager {
                 let info = Host::info(temporary.destination);
                 let values =
                     SlotValues::dragged_to(info, host.value(temporary.destination), drag.bipolar);
-                if model.set_connection_values(temporary.connection.slot, values) {
+                if model.set_connection_values(drag.source, temporary.destination, values) {
                     temporary.values = values;
-                    self.pending.set(Some(temporary.host_values()));
+                    self.pending
+                        .set(Some(temporary.pending(drag.source, self.generation)));
                 }
             }
         }
@@ -432,7 +487,8 @@ impl ModulationManager {
                 connection,
                 values,
             };
-            self.pending.set(Some(temporary.host_values()));
+            self.pending
+                .set(Some(temporary.pending(drag.source, self.generation)));
             drag.temporary = Some(temporary);
         }
     }

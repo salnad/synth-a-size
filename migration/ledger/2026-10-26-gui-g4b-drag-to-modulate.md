@@ -6,11 +6,17 @@
 `EditHandle::set_connection_values`.
 
 - **`EditorModel`:**
-  - `modulations()` gives the connected slots, as `Route`s. The plugin
-    reads them from the document mirror, cached by edit revision.
+  - `modulations()` gives the connected slots, as `Route`s, in the order
+    the synth keeps them (`SynthBase::mod_connections_`). The plugin reads
+    them from the document mirror, cached by edit revision.
+    `PresetState::connection_order` keeps that order: slot order after a
+    load, then each new connection last.
   - `connect_modulation(source, destination, SlotValues)`,
-    `set_connection_values(slot, values)` and `disconnect_modulation` go
-    through the edit bus.
+    `set_connection_values(source, destination, values)` (#149, found by
+    route when called) and `disconnect_modulation` go through the edit
+    bus.
+  - `edit_generation()` reports the bus generation, which a preset load or
+    state restore bumps.
 - **Source buttons.**
   - The modulation column's tabs, the macro source buttons and the pitch
     and mod wheels report their mouse to the manager.
@@ -19,8 +25,8 @@
     (`modulationClicked`). Dragging out of the button starts the map
     (`startModulationMap`), which needs a free slot (`hasFreeConnection`).
   - A right-click on a connected source opens "Disconnect from …" and
-    "Disconnect all". Upstream lists the connections in the order they were
-    made, the port in slot order.
+    "Disconnect all", listing its connections in upstream's
+    `getSourceConnections` order.
   - The column's tabs now show one past the last connected source, as
     upstream's do; the stub said nothing was connected.
 - **Destinations.** `Panel::slider` registers each modulatable slider of a
@@ -54,6 +60,12 @@
       once the release writes them.
   - **Closing the editor mid-drag** commits the pending connection to the
     host from the window's close hook (`Interface::pending_connection`).
+  - **A connection that goes away mid-drag is dropped with nothing
+    written.** This covers a preset load or state restore, or another
+    editor of the synth (a chat job) removing or replacing the route. The
+    pending write remembers the generation and the route (slot, source,
+    destination). Each frame drops it if either has changed, and the
+    release and the close hook check both again before writing.
 
 **Verified.**
 
@@ -66,10 +78,17 @@
   macro 1 sets the slot's values to amount 0.25, bipolar, in the engine
   with no host call. The release makes the same five gestures with those
   values.
-- `a_drag_released_off_the_controls_leaves_nothing`,
-  `no_drag_starts_without_a_free_slot` and
-  `a_connected_sources_menu_disconnects_it`: the menu items, and that a
-  choice disconnects without a host call.
+- `a_drag_released_off_the_controls_leaves_nothing` and
+  `no_drag_starts_without_a_free_slot`.
+- `a_connected_sources_menu_disconnects_it`: macro 1 connected, macro 2
+  connected, then macro 1 reconnected in its old slot. The menu lists
+  macro 2 before macro 1, as upstream does, and a choice disconnects
+  without a host call.
+- `a_restore_mid_drag_drops_the_pending_connection`,
+  `a_restore_before_the_window_closes_drops_the_pending_connection` and
+  `closing_mid_drag_writes_the_pending_connection`.
+- `connections_keep_the_order_they_were_made_in` (`sas-preset`): load,
+  append, remove and clear.
 - A render of the port mid-drag (image in the PR) shows the lit
   destinations, the ring and the selected tab's outline. ref-gui can't
   render a drag in progress.

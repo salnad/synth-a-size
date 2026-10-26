@@ -5,6 +5,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use egui::{Event, Key, Modifiers, PointerButton, Pos2};
@@ -132,6 +133,8 @@ struct Synth {
     routing: Mutex<PresetState>,
     /// The modulation edits the editor sent the engine, in order.
     bus: Mutex<Vec<String>>,
+    /// Bumped by a simulated preset load or state restore.
+    generation: AtomicU64,
 }
 
 impl Synth {
@@ -170,6 +173,7 @@ impl Synth {
             lfos: Mutex::default(),
             routing: Mutex::new(PresetState::new(&InitContent { sample_seed: 0 })),
             bus: Mutex::default(),
+            generation: AtomicU64::new(0),
         })
     }
 
@@ -239,16 +243,21 @@ impl EditorModel for Synth {
     fn modulations(&self) -> Arc<[Route]> {
         let routing = self.routing.lock().unwrap();
         routing
-            .modulations()
+            .connection_order()
             .iter()
-            .enumerate()
-            .filter(|(_, slot)| !slot.source.is_empty())
-            .map(|(slot, connection)| Route {
-                slot,
-                source: connection.source.clone(),
-                destination: connection.destination.clone(),
+            .map(|&slot| {
+                let connection = &routing.modulations()[slot];
+                Route {
+                    slot,
+                    source: connection.source.clone(),
+                    destination: connection.destination.clone(),
+                }
             })
             .collect()
+    }
+
+    fn edit_generation(&self) -> u64 {
+        self.generation.load(Ordering::Relaxed)
     }
 
     fn connect_modulation(
@@ -275,7 +284,11 @@ impl EditorModel for Synth {
         Some(connection)
     }
 
-    fn set_connection_values(&self, slot: usize, values: SlotValues) -> bool {
+    fn set_connection_values(&self, source: &str, destination: &str, values: SlotValues) -> bool {
+        let routing = self.routing.lock().unwrap();
+        let Some(slot) = routing.modulation_index(source, destination) else {
+            return true;
+        };
         self.bus.lock().unwrap().push(format!(
             "values {slot} {:.2} {}",
             values.amount,
@@ -2695,7 +2708,7 @@ fn no_drag_starts_without_a_free_slot() {
 }
 
 /// A right-click on a connected source offers to disconnect each of its
-/// destinations, and all of them; the choice disconnects without telling
+/// destinations, in the order they were connected, and all of them; the choice disconnects without telling
 /// the host.
 #[test]
 fn a_connected_sources_menu_disconnects_it() {
@@ -2704,6 +2717,10 @@ fn a_connected_sources_menu_disconnects_it() {
         let mut routing = fixture.synth.routing.lock().unwrap();
         routing.add_modulation("lfo_1", "macro_control_1").unwrap();
         routing.add_modulation("lfo_1", "macro_control_2").unwrap();
+        // Connected again in its old slot: now the newer connection, listed
+        // last as upstream's `getSourceConnections` lists it.
+        routing.remove_modulation("lfo_1", "macro_control_1");
+        routing.add_modulation("lfo_1", "macro_control_1").unwrap();
     }
     let mut harness = fixture.harness();
     let (source, ..) = modulation_spots(&fixture);
@@ -2725,8 +2742,8 @@ fn a_connected_sources_menu_disconnects_it() {
     assert_eq!(
         names,
         [
-            "Disconnect from Macro 1",
             "Disconnect from Macro 2",
+            "Disconnect from Macro 1",
             "Disconnect all"
         ]
     );
@@ -2739,9 +2756,88 @@ fn a_connected_sources_menu_disconnects_it() {
     sas_gui::modulation::disconnect_choice(&host, "lfo_1", menu.items[1].id);
     assert_eq!(
         *fixture.synth.bus.lock().unwrap(),
-        ["disconnect lfo_1 macro_control_2"]
+        ["disconnect lfo_1 macro_control_1"]
     );
     sas_gui::modulation::disconnect_choice(&host, "lfo_1", menu.items[2].id);
     assert!(fixture.synth.modulations().is_empty());
     assert_eq!(fixture.take_log(), Vec::<String>::new());
+}
+
+/// A preset load or state restore mid-drag replaces the connection the drag
+/// made: the release then writes nothing, so the old slot's values never
+/// reach the new preset's host parameters.
+#[test]
+fn a_restore_mid_drag_drops_the_pending_connection() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let (source, first, _) = modulation_spots(&fixture);
+    press(
+        &mut harness,
+        source,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    move_to(&mut harness, first);
+    assert_eq!(
+        *fixture.synth.bus.lock().unwrap(),
+        ["connect lfo_1 macro_control_1 1.00 unipolar"]
+    );
+    *fixture.synth.routing.lock().unwrap() = PresetState::new(&InitContent { sample_seed: 0 });
+    fixture.synth.generation.fetch_add(1, Ordering::Relaxed);
+    let away = Pos2::new(700.0, 5.0);
+    move_to(&mut harness, away);
+    release(&mut harness, away, PointerButton::Primary, Modifiers::NONE);
+    assert_eq!(
+        *fixture.synth.bus.lock().unwrap(),
+        ["connect lfo_1 macro_control_1 1.00 unipolar"]
+    );
+    assert_eq!(fixture.take_log(), Vec::<String>::new());
+}
+
+/// The same when the restore lands between the last frame and the window
+/// closing: the close hook writes nothing either.
+#[test]
+fn a_restore_before_the_window_closes_drops_the_pending_connection() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let (source, first, _) = modulation_spots(&fixture);
+    press(
+        &mut harness,
+        source,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    move_to(&mut harness, first);
+    let pending = fixture.interface.borrow().pending_connection();
+    fixture.synth.generation.fetch_add(1, Ordering::Relaxed);
+    let host = Host::tracking(
+        fixture.synth.as_ref(),
+        Some(&fixture.context),
+        &fixture.open,
+    );
+    pending.commit(&host);
+    assert_eq!(fixture.take_log(), Vec::<String>::new());
+}
+
+/// Without a restore, the close hook writes the connection the drag made.
+#[test]
+fn closing_mid_drag_writes_the_pending_connection() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let (source, first, _) = modulation_spots(&fixture);
+    press(
+        &mut harness,
+        source,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    move_to(&mut harness, first);
+    let pending = fixture.interface.borrow().pending_connection();
+    let host = Host::tracking(
+        fixture.synth.as_ref(),
+        Some(&fixture.context),
+        &fixture.open,
+    );
+    pending.commit(&host);
+    assert_eq!(fixture.take_log(), SLOT_1_GESTURES);
 }

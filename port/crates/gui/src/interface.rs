@@ -111,8 +111,9 @@ pub trait EditorModel: Send + Sync + 'static {
         format!("MACRO {}", index + 1)
     }
 
-    /// The modulation bank's connected slots, in slot order
-    /// (`ModulationConnectionBank`).
+    /// The modulation bank's connected slots, in the order the synth keeps
+    /// them (`SynthBase::mod_connections_`: slot order after a load, then
+    /// each new connection last).
     fn modulations(&self) -> Arc<[Route]> {
         Arc::from([])
     }
@@ -132,13 +133,20 @@ pub trait EditorModel: Send + Sync + 'static {
         None
     }
 
-    /// `SynthGuiInterface::setModulationValues` for modulation slot `slot`
-    /// in the engine; the caller tells the host when the user's action
+    /// `SynthGuiInterface::setModulationValues` in the engine, for the
+    /// slot connecting `source` to `destination` now (nothing if they
+    /// aren't connected); the caller tells the host when the user's action
     /// ends. False when the synth can't take it now (its edit queue is
     /// full).
-    fn set_connection_values(&self, slot: usize, values: SlotValues) -> bool {
-        let _ = (slot, values);
+    fn set_connection_values(&self, source: &str, destination: &str, values: SlotValues) -> bool {
+        let _ = (source, destination, values);
         true
+    }
+
+    /// Changes when a preset load or host state restore replaces the synth's
+    /// state (`EditHandle::generation`).
+    fn edit_generation(&self) -> u64 {
+        0
     }
 
     /// `SynthGuiInterface::disconnectModulation`; the slot, if they were
@@ -423,9 +431,10 @@ impl Interface {
         let painter = ui.painter_at(area);
         let pixels = PixelPainter::new(&painter, area, pixels_per_point);
 
+        let model = host.model();
         self.overlay
             .modulation
-            .begin_frame(host.model().modulations());
+            .begin_frame(model.modulations(), model.edit_generation());
         self.paint_background(&pixels, &layout, width, height);
         self.paint_header(&pixels, &layout, host.model());
         self.handle_tabs(ui, &pixels, &layout);
