@@ -27,8 +27,8 @@ controls around it.
   from the pattern names), the paint and smooth buttons, and the shape's
   name in the strip.
 - Double clicks follow JUCE's rules, as `Slider`'s do (0.4 s and 8 points),
-  and act on the second press after `mouseDown`, as upstream's
-  `mouseDoubleClick` does.
+  and act at the second click's release, as JUCE delivers
+  `mouseDoubleClick` after `mouseUp`.
 - `Slider::snap_to_value` (`snapToValue`, `SynthSlider::snapValue`): a drag
   within 5% of the range of the value lands on it, unless Command is held.
   The LFO stereo slider snaps to 0; the filters' blend to 1 and formant

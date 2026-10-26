@@ -118,6 +118,8 @@ struct LineState {
     mouse_down: bool,
     /// The last press's time and place, for JUCE's double-click rules.
     last_press: Option<(f64, Pos2)>,
+    /// This press is a double click's second, acted on at its release.
+    double_click: bool,
 }
 
 impl Default for LineState {
@@ -135,6 +137,7 @@ impl Default for LineState {
             last: (0.0, 0.0),
             mouse_down: false,
             last_press: None,
+            double_click: false,
         }
     }
 }
@@ -714,12 +717,7 @@ impl LineEditor {
                             state.dragging = true;
                         }
                     }
-                    // mouseDoubleClick, after mouseDown on the second press.
-                    if double_click {
-                        changed |= double_click_at(&mut line, p, size, size_ratio, modifiers.shift);
-                        state.active_point = geometry(&line, size, size_ratio).hover_point(p);
-                        state.active_power = -1;
-                    }
+                    state.double_click = double_click;
                 } else if state.dragging && p != state.last {
                     // drawDrag.
                     if state.active_point >= 0 {
@@ -747,6 +745,16 @@ impl LineEditor {
                 state.last = p;
             }
         } else {
+            // mouseDoubleClick comes after the second click's mouseUp.
+            if state.mouse_down && state.double_click && !painting {
+                if let Some(pos) = pointer {
+                    let p = local(pos);
+                    changed |= double_click_at(&mut line, p, size, size_ratio, modifiers.shift);
+                    state.active_point = geometry(&line, size, size_ratio).hover_point(p);
+                    state.active_power = -1;
+                }
+            }
+            state.double_click = false;
             state.dragging = false;
             state.painting_down = false;
             state.mouse_down = false;
