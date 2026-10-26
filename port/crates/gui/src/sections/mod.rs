@@ -166,13 +166,15 @@ impl<'a, 'b> Panel<'a, 'b> {
     /// Shows `slider` at `bounds`: handles its mouse, routes its popup, menu
     /// and text entry to the overlay, and draws it.
     pub fn slider(&mut self, slider: &Slider, bounds: Rect) {
-        self.slider_drawn(slider, bounds, true);
-    }
-
-    /// A slider that handles the mouse but draws nothing
-    /// (`InvisibleSlider`); something else draws in its place.
-    pub fn invisible_slider(&mut self, slider: &Slider, bounds: Rect) {
-        self.slider_drawn(slider, bounds, false);
+        let (value, hover) = self.slider_input(slider, bounds);
+        slider.paint(
+            self.pixels,
+            &mut self.layer,
+            &self.scope,
+            bounds,
+            value,
+            hover,
+        );
     }
 
     /// A shape button with id `salt` in this section's scope.
@@ -194,7 +196,11 @@ impl<'a, 'b> Panel<'a, 'b> {
         )
     }
 
-    fn slider_drawn(&mut self, slider: &Slider, bounds: Rect, draw: bool) {
+    /// [`slider`](Self::slider) without the drawing (`InvisibleSlider`),
+    /// for controls that draw themselves or are drawn by something else:
+    /// returns the value to draw (the held value while dragging, so the
+    /// drawing doesn't lag the host) and whether the pointer is over it.
+    pub fn slider_input(&mut self, slider: &Slider, bounds: Rect) -> (f32, bool) {
         let event = slider.interact(self.ui, self.host, self.pixels, bounds);
         let value = event.value.unwrap_or_else(|| self.host.value(slider.name));
         if event.popup {
@@ -242,17 +248,7 @@ impl<'a, 'b> Panel<'a, 'b> {
             let position = egui::pos2(bounds.x as f32, bounds.bottom() as f32);
             self.overlay.menu = Some(Menu::new(items, position, MenuOwner::Selector(*slider)));
         }
-        if !draw {
-            return;
-        }
-        slider.paint(
-            self.pixels,
-            &mut self.layer,
-            &self.scope,
-            bounds,
-            value,
-            event.hover,
-        );
+        (value, event.hover)
     }
 
     /// Opens `slider`'s text entry over `bounds`.
