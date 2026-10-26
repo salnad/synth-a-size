@@ -27,7 +27,11 @@ G3b/G4 (the LFO and random rates), so there is one copy.
   GPL-3.0-only) and the compound SPDX expression `GPL-3.0-or-later AND
   GPL-3.0-only`, following #120's rule 1.
 - `Panel::slider_input`: `Panel::slider` without the drawing, for controls
-  that draw themselves.
+  that draw themselves or are drawn by something else. It replaces #118's
+  `Panel::invisible_slider` (`InvisibleSlider`), which did the same; the
+  oscillator's detune power now calls it. It returns the value to draw,
+  the held value while dragging (#118's `event.value`), so the drawing
+  doesn't lag the host.
 
 **Tests**
 
