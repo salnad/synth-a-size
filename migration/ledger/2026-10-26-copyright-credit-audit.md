@@ -112,11 +112,16 @@ The notices don't name upstream or its author (rule 2), and
   requires;
 - when a library goes in the notices.
 
-**Needs the owner's sign-off:** rule 1's licence statement changes from
-"Everything stays GPL-3.0-or-later" to GPL-3.0-or-later for our code and
-GPLv3 only for the plugin as a whole. The alternative, keeping the whole
-plugin "or later", would mean replacing the seven GPL-3.0-only portions
-with code not derived from JUCE. The FFT fallback is among them, and the
+**Owner approval (Salil, 2026-10-26):** rule 1's licence statement
+changes from "Everything stays GPL-3.0-or-later" to:
+
+- our code is GPL-3.0-or-later;
+- files with JUCE GPL portions are also GPL-3.0-only;
+- the shipped plugin is GPLv3 only.
+
+He approved #120 as written. The alternative, keeping the whole plugin "or
+later", would have meant replacing the seven GPL-3.0-only portions with
+code not derived from JUCE. The FFT fallback is among them, and the
 reference pins it for parity.
 
 Checks: `check_names.sh` passes (and fails on an injected name in the
