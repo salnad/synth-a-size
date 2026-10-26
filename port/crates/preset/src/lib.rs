@@ -39,6 +39,7 @@ pub mod sample;
 mod state;
 pub mod strings;
 pub mod upgrade;
+pub mod user_folders;
 pub mod version;
 
 pub use registry::{lookup, registry, ParamInfo, Registry, ValueScale};

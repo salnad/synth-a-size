@@ -5,6 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
+use sas_preset::user_folders;
 use serde::{Deserialize, Serialize};
 
 use crate::provider::{ProviderConfig, ProviderKind};
@@ -120,10 +121,12 @@ impl ChatSettings {
     }
 }
 
-/// The preset folder until the user picks one: `~/Music/synth-a-size/Presets`
-/// (a working default; the GUI plan's user-folder question is open).
+/// The preset folder until the user picks one: the user's Presets folder
+/// under the default root (`~/Music/synth-a-size/Presets`), the one the
+/// editor's preset browser uses.
 pub fn default_preset_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join("Music/synth-a-size/Presets"))
+    user_folders::default_root()
+        .map(|root| user_folders::folder(&root, user_folders::Kind::Presets))
 }
 
 /// The folder for per-user settings: `~/Library/Application Support/synth-a-size`

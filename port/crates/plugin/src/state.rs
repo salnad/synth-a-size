@@ -30,7 +30,7 @@ use crate::params::host_kind;
 pub const PRESET_FIELD: &str = "preset";
 
 /// File extension of the upstream preset format, kept for compatibility.
-pub const PRESET_EXTENSION: &str = "vital";
+pub use sas_preset::user_folders::PRESET_EXTENSION;
 
 /// The init content for a throwaway state whose sample is never used.
 const SCRATCH_INIT: InitContent = InitContent { sample_seed: 0 };

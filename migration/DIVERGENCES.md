@@ -615,6 +615,39 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
 - **Approved:** coordinator, relaying UI Reviewer's and Graph Reviewer's
   reviews of #137.
 
+### D24. The user data folder: one default root, and a menu item to choose it
+
+- **Differs:** where the user's presets, wavetables, samples and LFOs live
+  by default, how the user moves them, and the export dialog's starting
+  name.
+- **Upstream:** `LoadSave::getDataDirectory` defaults to a product-named
+  folder: in `~/Music` on macOS, `$XDG_DATA_HOME` (or `~/.local/share`)
+  on Linux, and `Documents` on Windows. The config's `data_directory`
+  overrides it, but only the factory-content installer's install-location
+  choice (`download_section.cpp`) and Import Bank write that key. The
+  preset menu (`SynthPresetSelector::showPopupMenu`) has no item for it.
+  Export Preset's dialog starts with no file name
+  (`FileChooser("Export Preset", File(), …)`).
+- **Port:** the default root is `~/Music/synth-a-size` on every platform
+  (`USERPROFILE\Music\synth-a-size` on Windows;
+  `sas_preset::user_folders::default_root`). The config's `data_directory`
+  overrides it as upstream's does, falling back to the default when the
+  folder doesn't exist. The preset menu ends with "Choose Data Folder...",
+  which picks a folder and saves it as `data_directory`
+  (`port/crates/gui/src/sections/preset_selector.rs`). Export Preset's
+  dialog starts with `<preset name>.vital`.
+- **Why:**
+  - The folder name follows the product name (migration/AGENTS.md rule 2).
+  - One location keeps the editor's folders and the chat's preset tools on
+    the same path. macOS is the shipped target and keeps upstream's
+    `~/Music` location. The Linux build is for development only, and
+    Windows isn't targeted.
+  - The installer that let upstream's users choose the folder isn't ported
+    (rule 3), so the menu item takes its place.
+  - The pre-filled export name saves typing; the result is the same file.
+- **Approved:** coordinator (G7 plan's data_directory decision), on UI
+  Reviewer's review of #148, 2026-10-26.
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change

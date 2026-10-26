@@ -22,6 +22,7 @@ pub mod modulation;
 pub mod oscillator;
 pub mod oscillator_advanced;
 pub mod portamento;
+pub mod preset_selector;
 pub mod random;
 pub mod sample;
 pub mod synthesis;

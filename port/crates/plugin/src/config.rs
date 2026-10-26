@@ -159,6 +159,26 @@ pub fn save_display_hz_frequency(path: &Path, hz_frequency: bool) -> std::io::Re
     save_json_to_config(path, &data)
 }
 
+/// `LoadSave::getDataDirectory`'s setting: the config's `"data_directory"`,
+/// if set.
+pub fn data_directory(path: &Path) -> Option<PathBuf> {
+    read_config(path)
+        .get("data_directory")
+        .ok()
+        .and_then(|value| value.to_str().ok().map(PathBuf::from))
+}
+
+/// `LoadSave::setDataDirectory`: rewrites the config's `"data_directory"`,
+/// keeping every other key.
+pub fn save_data_directory(path: &Path, folder: &Path) -> std::io::Result<()> {
+    let mut data = read_config(path);
+    if !data.is_null() && !data.is_object() {
+        data = Value::Null;
+    }
+    data.set("data_directory", folder.to_string_lossy().into_owned());
+    save_json_to_config(path, &data)
+}
+
 /// The MIDI map part of `loadConfig`: the map saved in the config file, empty
 /// if there is none.
 pub fn load_midi_map_config(path: &Path) -> MidiLearnMap {
@@ -280,6 +300,24 @@ mod tests {
         assert_eq!(load_midi_map_config(&path).len(), 1);
         save_display_hz_frequency(&path, false).unwrap();
         assert!(!display_hz_frequency(&path));
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// The data directory round-trips through the config file beside the
+    /// other settings.
+    #[test]
+    fn the_data_directory_round_trips() {
+        let folder = std::env::temp_dir().join(format!("sas-data-{}", std::process::id()));
+        let path = folder.join("test.config");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(data_directory(&path), None);
+        save_display_hz_frequency(&path, true).unwrap();
+        save_data_directory(&path, Path::new("/tmp/my presets")).unwrap();
+        assert_eq!(
+            data_directory(&path),
+            Some(PathBuf::from("/tmp/my presets"))
+        );
+        assert!(display_hz_frequency(&path));
         let _ = std::fs::remove_dir_all(&folder);
     }
 }

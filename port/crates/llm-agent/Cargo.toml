@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dependencies]
 sas-llm-control.workspace = true
+sas-preset.workspace = true
 # The CLI's preview engine for `audition` (a second synth; no network).
 sas-llm-listen.workspace = true
 serde = { version = "1", features = ["derive"] }

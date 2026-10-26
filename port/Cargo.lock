@@ -2688,6 +2688,7 @@ dependencies = [
  "native-tls",
  "sas-llm-control",
  "sas-llm-listen",
+ "sas-preset",
  "serde",
  "serde_json",
  "ureq",
