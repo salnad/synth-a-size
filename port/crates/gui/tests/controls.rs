@@ -1572,7 +1572,13 @@ fn the_wave_morph_menu_has_dividers_and_names_the_modulator() {
 
 #[test]
 fn an_fm_loop_between_oscillators_is_broken() {
-    let fixture = Fixture::new();
+    for deferred in [true, false] {
+        fm_loop_from_the_arrows(deferred);
+    }
+}
+
+fn fm_loop_from_the_arrows(deferred: bool) {
+    let fixture = Fixture::with_sets(deferred);
     let mut harness = fixture.harness();
     // Oscillator 1 reads oscillator 2 (FM <- Osc 2); oscillator 2 is on
     // Pulse, one before FM <- Osc 1.
@@ -1652,7 +1658,13 @@ fn the_sample_destination_wraps_round() {
 
 #[test]
 fn an_fm_loop_chosen_from_the_menu_is_broken() {
-    let fixture = Fixture::new();
+    for deferred in [true, false] {
+        fm_loop_from_the_menu(deferred);
+    }
+}
+
+fn fm_loop_from_the_menu(deferred: bool) {
+    let fixture = Fixture::with_sets(deferred);
     let mut harness = fixture.harness();
     fixture.synth.set("osc_1_distortion_type", 7.0);
     harness.step();

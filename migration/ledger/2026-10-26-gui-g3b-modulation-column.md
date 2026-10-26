@@ -23,6 +23,11 @@ source's section, and the two rows of keyboard sources.
   `ColourGradient` fills), `with_clip`, `Colour::with_alpha`;
   `section::paint_tab_shadow`, `place_tempo_controls`, `keytrack_divider`,
   `paint_widget_background`; `Panel::widget_corners`.
+- UI Reviewer's follow-ups from #118: a released slider keeps drawing
+  its own value until the host shows it (at most 10 frames), so a knob
+  doesn't flash its old value after a double-click reset or the pitch
+  wheel's spring-back; the FM loop tests run with the host applying sets
+  at once and a frame later.
 - Still to come: the envelope editor (4b), the LFO editor with its grid,
   paint and smooth controls (4c), the sync selector (Tabs Builder's shared
   `TempoSelector`, swapped in when it lands), the magnifying glass and

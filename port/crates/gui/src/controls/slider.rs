@@ -43,6 +43,9 @@ const DOUBLE_CLICK_TIMEOUT: f64 = 0.4;
 const MULTIPLE_CLICK_DISTANCE: f32 = 8.0;
 const MOVED_SIGNIFICANTLY: f32 = 4.0;
 const LONG_PRESS: f64 = 0.3;
+/// How many frames a released slider keeps drawing its own value while
+/// the host catches up with the last set (a few in CLAP).
+const HOLD_FRAMES: u8 = 10;
 /// `SynthSlider::kTextEntryHeightPercent`, `kDefaultTextEntryWidthPercent`.
 const TEXT_ENTRY_HEIGHT_PERCENT: f32 = 0.6;
 const TEXT_ENTRY_WIDTH_PERCENT: f32 = 0.9;
@@ -640,6 +643,7 @@ impl Slider {
                 }
             }
             event.value = Some(state.value);
+            state.holding = HOLD_FRAMES;
             let long_press = state
                 .last_press
                 .is_some_and(|(time, _)| now - time > LONG_PRESS);
@@ -647,12 +651,20 @@ impl Slider {
                 // Slider::mouseDoubleClick: back to the default value.
                 let value = self.double_click_value.unwrap_or(self.info.default_value);
                 host.set_once(self.name, value);
+                state.value = value;
                 event.value = Some(value);
                 event.popup = true;
             }
         }
         if state.down {
             event.value = Some(state.value);
+        } else if state.holding > 0 && event.value.is_none() {
+            if host.value(self.name) == state.value {
+                state.holding = 0;
+            } else {
+                state.holding -= 1;
+                event.value = Some(state.value);
+            }
         }
 
         if self.show_popup_on_hover && response.hovered() {
@@ -729,6 +741,9 @@ struct DragState {
     /// changes at once. The host applies a set later (a CLAP event, or after
     /// a VST3 block), so its value can lag.
     value: f32,
+    /// Frames left to keep drawing `value` after a release, until the host
+    /// shows it.
+    holding: u8,
     /// The time and place (points) of the last press.
     last_press: Option<(f64, Pos2)>,
     /// This press followed the previous one closely enough to make a
@@ -777,6 +792,7 @@ mod tests {
             last: Pos2::new(10.0, 10.0),
             proportion: 0.5,
             value: 0.0,
+            holding: 0,
             last_press: None,
             second_click: false,
             moved: false,
