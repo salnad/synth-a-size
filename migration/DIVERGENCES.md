@@ -506,6 +506,27 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
 - **Approved:** Salil, 2026-10-23. Reviewed by Graph Reviewer and Parity
   Reviewer on #99.
 
+### D18. Dragging the wavetable view moves the frame inside one host gesture
+
+- **Differs:** what the host is told while the user drags an oscillator's
+  wavetable view up or down to move its wave frame.
+- **Upstream:** `Wavetable3d::mouseDown` and `mouseDrag`
+  (`vital/src/interface/editor_components/wavetable_3d.cpp`) call
+  `setValue` on the oscillator's frame slider for each movement. A
+  programmatic `setValue` starts no gesture, so the host gets a bare
+  parameter edit per movement, with no begin or end around the drag.
+- **Port:** `Wavetable3d` (`port/crates/gui/src/controls/wavetable_3d.rs`)
+  begins a host gesture on the frame parameter at the press, sets the value
+  for each movement, and ends the gesture at the release, as the port's
+  sliders do. The values are the same as upstream's.
+- **Why:** hosts group edits by gesture. With one gesture around the drag,
+  FL Studio records one automation pass, which it can record in touch or
+  latch mode, and keeps one undo step for the whole drag, where bare edits
+  can leave one step per movement. The drag is a single user action, as a
+  slider drag is.
+- **Approved:** proposed in #127 (UI Reviewer). The FL Studio side
+  (one automation pass, one undo step) can also be seen in REAPER, with
+  the track's automation mode in Touch or Latch.
 ### D19. "Set Start Point" on an LFO grid cell sets the phase
 
 *Proposed in #128.*

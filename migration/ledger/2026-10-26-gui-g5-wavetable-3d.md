@@ -34,9 +34,9 @@ reads everything else itself from the host parameters: `osc_N_view_2d`
   the pointer leaves the view. The drag keeps its own value, as
   upstream's `current_value_` does, rather than reading the parameter back
   (the host applies sets a frame later).
-  - Divergence: upstream sets the slider without a host gesture. The port
-    wraps the drag in one gesture, so FL Studio records one automation
-    pass and one undo step.
+  - Divergence D18 (`DIVERGENCES.md`): upstream sets the slider without a
+    host gesture. The port wraps the drag in one gesture, so FL Studio
+    records one automation pass and one undo step.
 - **Painter:** `PixelPainter::gradient_polyline` (a stroke with a linear
   gradient, as a non-radial `ColourGradient`) and `Colour::with_alpha`.
 
