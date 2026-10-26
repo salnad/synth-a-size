@@ -139,8 +139,8 @@ pub fn digital(u: &FilterResponseUniforms, x: f32) -> f32 {
 
 /// `kCombFilterResponseVertexShader` at the line position (`x`, `y`): `y`
 /// picks how the response rounds off past its sixth cycle. Callers feed
-/// point `i` the y `(i / kCombAlternatePeriod) % 2` (period 2), as
-/// `FilterResponse` and `FlangerResponse` set up their lines, so the
+/// point `i` the y `(i / kCombAlternatePeriod) % 2`, as upstream sets up
+/// the line (period 3 in `FilterResponse`, 2 in `FlangerResponse`), so the
 /// rounded-off part alternates between its two values and fills solid.
 pub fn comb(u: &FilterResponseUniforms, x: f32, y: f32) -> f32 {
     const MAX_CYCLES: f32 = 6.0;
