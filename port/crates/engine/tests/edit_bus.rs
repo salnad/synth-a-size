@@ -36,6 +36,7 @@ enum Call {
     Disconnect(String, String),
     Lfo(usize, String),
     LineMapping(usize, String),
+    Values(usize, SlotValues),
     Wavetable(usize, usize),
     Sample(String),
     Tuning(String),
@@ -65,6 +66,9 @@ impl EditTarget for Recorder {
     fn set_line_mapping(&mut self, slot: usize, line: &mut LineGenerator) {
         self.0
             .push(Call::LineMapping(slot, line.name().to_string()));
+    }
+    fn set_connection_values(&mut self, slot: usize, values: &SlotValues) {
+        self.0.push(Call::Values(slot, *values));
     }
     fn swap_wavetable(&mut self, oscillator: usize, rendered: &mut Wavetable) {
         self.0
@@ -194,6 +198,95 @@ fn shape_edits_coalesce_newest_wins() {
         vec![
             Call::Lfo(0, "drag 99".into()),
             Call::LineMapping(5, "curve".into())
+        ]
+    );
+}
+
+#[test]
+fn connection_values_coalesce_and_update_the_mirror() {
+    let (edits, mut consumer) = EditBus::new(init_document());
+    let connection = edits
+        .connect_modulation("lfo_1", "filter_1_cutoff", DRAG)
+        .unwrap();
+    let bipolar = |amount: f32| SlotValues {
+        amount,
+        bipolar: true,
+        stereo: false,
+        bypass: false,
+    };
+    for i in 0..100 {
+        let slot = edits
+            .set_connection_values("lfo_1", "filter_1_cutoff", bipolar(i as f32 / 100.0))
+            .unwrap();
+        assert_eq!(slot, Some(connection.slot));
+    }
+    assert_eq!(
+        edits.set_connection_values("lfo_1", "no_such_control", DRAG),
+        Err(EditError::UnknownDestination("no_such_control".into()))
+    );
+    let mirror = edits.with_document(|document| {
+        ["amount", "bipolar", "stereo", "bypass"]
+            .map(|suffix| document.state.value(&format!("modulation_1_{suffix}")))
+    });
+    assert_eq!(mirror, [Some(0.99), Some(1.0), Some(0.0), Some(0.0)]);
+    let mut recorder = Recorder::default();
+    consumer.drain(&mut recorder);
+    assert_eq!(
+        recorder.0,
+        vec![
+            Call::Connect("lfo_1".into(), "filter_1_cutoff".into()),
+            Call::LineMapping(0, "Linear".into()),
+            Call::Values(0, bipolar(0.99)),
+        ]
+    );
+}
+
+/// `setModulationValues` finds the connection when called: for two that
+/// aren't connected (any more) nothing changes, not even the freed slot.
+#[test]
+fn connection_values_for_a_disconnected_route_change_nothing() {
+    let (edits, mut consumer) = EditBus::new(init_document());
+    edits
+        .connect_modulation("lfo_1", "filter_1_cutoff", DRAG)
+        .unwrap();
+    edits
+        .disconnect_modulation("lfo_1", "filter_1_cutoff")
+        .unwrap();
+    let mut recorder = Recorder::default();
+    consumer.drain(&mut recorder);
+    let slot_values = |edits: &sas_engine::edit_bus::EditHandle| {
+        edits.with_document(|document| {
+            ["amount", "bipolar", "stereo", "bypass"]
+                .map(|suffix| document.state.value(&format!("modulation_1_{suffix}")))
+        })
+    };
+    let before = slot_values(&edits);
+    let bipolar = SlotValues {
+        amount: 0.9,
+        bipolar: true,
+        stereo: true,
+        bypass: false,
+    };
+    assert_eq!(
+        edits.set_connection_values("lfo_1", "filter_1_cutoff", bipolar),
+        Ok(None)
+    );
+    // Another route in the freed slot is not the one asked for.
+    edits
+        .connect_modulation("env_2", "osc_1_level", DRAG)
+        .unwrap();
+    assert_eq!(
+        edits.set_connection_values("lfo_1", "filter_1_cutoff", bipolar),
+        Ok(None)
+    );
+    assert_eq!(slot_values(&edits), before);
+    let mut recorder = Recorder::default();
+    consumer.drain(&mut recorder);
+    assert_eq!(
+        recorder.0,
+        vec![
+            Call::Connect("env_2".into(), "osc_1_level".into()),
+            Call::LineMapping(0, "Linear".into()),
         ]
     );
 }
@@ -602,6 +695,79 @@ fn a_reused_slot_does_not_inherit_the_old_route() {
         ],
         [0.5, 0.0, 0.0, 0.0, 0.0]
     );
+}
+
+/// Setting a running connection's values over the bus plays bit for bit
+/// like setting its controls in place (`setModulationValues`'
+/// `valueChanged`), with nothing reconnected; and it is heard. The route is
+/// one the init patch plays (an LFO on oscillator 1's level), and stereo
+/// and bypass differ, so values landing on the wrong controls would show.
+#[test]
+fn connection_values_change_a_running_connection_in_place() {
+    let _rng = ENGINE_RNG.lock().unwrap_or_else(|p| p.into_inner());
+    const SOURCE: &str = "lfo_1";
+    const DESTINATION: &str = "osc_1_level";
+    let bipolar = SlotValues {
+        amount: 0.8,
+        bipolar: true,
+        stereo: true,
+        bypass: false,
+    };
+    #[derive(Clone, Copy, PartialEq)]
+    enum Change {
+        None,
+        OverBus,
+        InPlace,
+    }
+    let play = |change: Change| {
+        let mut synth = fresh_synth();
+        let (edits, mut consumer) = EditBus::new(init_document());
+        edits.connect_modulation(SOURCE, DESTINATION, DRAG).unwrap();
+        consumer.drain(&mut synth);
+        let mut out = Vec::new();
+        let (mut left, mut right) = (vec![0.0; 64], vec![0.0; 64]);
+        let mut seconds = 0.0;
+        for block in 0..300 {
+            if block == 150 {
+                match change {
+                    Change::None => {}
+                    Change::OverBus => {
+                        let slot = edits
+                            .set_connection_values(SOURCE, DESTINATION, bipolar)
+                            .unwrap();
+                        assert_eq!(slot, Some(0));
+                        consumer.drain(&mut synth);
+                    }
+                    Change::InPlace => {
+                        for (suffix, value) in [
+                            ("amount", 0.8),
+                            ("bipolar", 1.0),
+                            ("stereo", 1.0),
+                            ("bypass", 0.0),
+                        ] {
+                            synth.set_control(&format!("modulation_1_{suffix}"), value);
+                        }
+                    }
+                }
+            }
+            let midi: &[(usize, [u8; 3])] = if block == 0 {
+                &[(3, [0x90, 48, 100])]
+            } else {
+                &[]
+            };
+            synth.render_block(&mut left, &mut right, midi, &mut seconds, 44100);
+            out.extend(left.iter().zip(&right).flat_map(|(l, r)| [*l, *r]));
+        }
+        out
+    };
+    let (unchanged, bus, in_place) = (
+        play(Change::None),
+        play(Change::OverBus),
+        play(Change::InPlace),
+    );
+    assert!(bus.iter().any(|sample| *sample != 0.0));
+    assert!(bus != unchanged, "the edit is not heard");
+    assert!(bus == in_place, "the bus edit plays differently");
 }
 
 /// The corpus's septimal Scala scale.

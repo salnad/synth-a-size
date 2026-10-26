@@ -496,6 +496,20 @@ impl Synth {
         bypass.set_value(flag(values.bypass));
     }
 
+    /// The amount, bipolar, stereo and bypass controls of bank slot
+    /// `index` (`SynthGuiInterface::setModulationValues`'s `valueChanged`
+    /// calls); the connection keeps running.
+    pub fn set_connection_values(&mut self, index: usize, values: &SlotValues) {
+        let Some([_, amount, bipolar, stereo, bypass]) = self.slot_controls.get(index) else {
+            return;
+        };
+        let flag = |on: bool| if on { 1.0 } else { 0.0 };
+        amount.set_value(values.amount);
+        bipolar.set_value(flag(values.bipolar));
+        stereo.set_value(flag(values.stereo));
+        bypass.set_value(flag(values.bypass));
+    }
+
     /// `disconnectModulation(source, destination)`.
     pub fn disconnect_modulation(&mut self, source: &str, destination: &str) {
         let Some(position) = self

@@ -154,6 +154,7 @@ fn producer(edits: EditHandle, stop: Arc<AtomicBool>, routing: bool) -> usize {
         line.set_name(&format!("shape {count}"));
         retry(|| edits.set_lfo_shape(count % 8, line.clone()));
         retry(|| edits.set_line_mapping(count % 64, line.clone()));
+        retry(|| edits.set_connection_values("lfo_2", "filter_1_cutoff", drag(count)));
         if routing {
             let (source, destination) = routes[count % routes.len()];
             if count % 2 == 0 {

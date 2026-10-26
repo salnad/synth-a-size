@@ -17,8 +17,8 @@
 //!   (a wavetable is rendered there) and swapped into the engine, and the
 //!   replaced values travel back on a return queue, so the audio thread
 //!   never allocates or frees;
-//! - one pending slot per shape target (8 LFOs, 64 remap curves, 3
-//!   wavetables, the sample), newest wins: a push replaces a payload the
+//! - one pending slot per target (8 LFOs, 64 remap curves, 3 wavetables,
+//!   the sample, the tuning, and 64 connections' slot values), newest wins: a push replaces a payload the
 //!   audio thread has not taken yet, and a heap-free marker in the queue
 //!   keeps it ordered against connections;
 //! - a generation tag on every entry: a host state restore or preset load
@@ -28,12 +28,14 @@
 //!   so the plugin saves the edited state without a reload. The audio thread
 //!   never takes its lock.
 //!
-//! Controls are host parameters and don't travel here, with one exception:
+//! Controls are host parameters and don't travel here, with two exceptions:
 //! the power, amount, bipolar, stereo and bypass a new modulation slot takes
-//! travel with its connection, because upstream writes them to the engine
-//! right away. They are host parameters as well, and the plugin applies the
-//! bus before the block's parameter changes, so a host change in the same
-//! block wins.
+//! travel with its connection, and a connection's amount, bipolar, stereo
+//! and bypass can be set ([`EditHandle::set_connection_values`]), because
+//! upstream writes them to the engine right away (`synth_->valueChanged`)
+//! while the editor tells the host only when the user's action ends. They
+//! are host parameters as well, and the plugin applies the bus before the
+//! block's parameter changes, so a host change in the same block wins.
 
 use std::sync::atomic::{AtomicPtr, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
@@ -73,7 +75,8 @@ const LINE_MAPPING_SLOTS: usize = LFO_SLOTS + NUM_LFOS;
 const WAVETABLE_SLOTS: usize = LINE_MAPPING_SLOTS + MAX_MODULATION_CONNECTIONS;
 const SAMPLE_SLOT: usize = WAVETABLE_SLOTS + NUM_OSCILLATORS;
 const TUNING_SLOT: usize = SAMPLE_SLOT + 1;
-const NUM_SLOTS: usize = TUNING_SLOT + 1;
+const CONNECTION_VALUE_SLOTS: usize = TUNING_SLOT + 1;
+const NUM_SLOTS: usize = CONNECTION_VALUE_SLOTS + MAX_MODULATION_CONNECTIONS;
 
 /// What a modulation connection edit returns: the slot, whether it was
 /// created, and the host parameter changes the caller must also make (see
@@ -152,6 +155,7 @@ enum Target {
     Wavetable(usize),
     Sample,
     Tuning,
+    ConnectionValues(usize),
 }
 
 impl Target {
@@ -162,6 +166,7 @@ impl Target {
             Target::Wavetable(oscillator) => WAVETABLE_SLOTS + oscillator,
             Target::Sample => SAMPLE_SLOT,
             Target::Tuning => TUNING_SLOT,
+            Target::ConnectionValues(slot) => CONNECTION_VALUE_SLOTS + slot,
         }
     }
 
@@ -171,7 +176,8 @@ impl Target {
             s if s < WAVETABLE_SLOTS => Target::LineMapping(s - LINE_MAPPING_SLOTS),
             s if s < SAMPLE_SLOT => Target::Wavetable(s - WAVETABLE_SLOTS),
             SAMPLE_SLOT => Target::Sample,
-            _ => Target::Tuning,
+            TUNING_SLOT => Target::Tuning,
+            s => Target::ConnectionValues(s - CONNECTION_VALUE_SLOTS),
         }
     }
 }
@@ -184,6 +190,7 @@ enum Payload {
     Wavetable(Wavetable),
     Sample(Sample),
     Tuning(Tuning),
+    Values(SlotValues),
 }
 
 /// The newest payload for one target, with the sequence number of the
@@ -448,6 +455,50 @@ impl Batch<'_> {
             Payload::Line(line),
         ));
         Ok(())
+    }
+
+    /// `SynthGuiInterface::setModulationValues`: the amount, bipolar,
+    /// stereo and bypass of the slot connecting `source` to `destination`,
+    /// found when called, set in the engine as they are, with nothing
+    /// rebuilt. The caller tells the host when the user's action ends.
+    /// Returns the slot, or `None` if the two are not connected (nothing
+    /// changes then, as upstream's `getConnectionIndex` check returns). A
+    /// newer call for the same slot replaces one the audio thread has not
+    /// taken yet.
+    pub fn set_connection_values(
+        &mut self,
+        source: &str,
+        destination: &str,
+        values: SlotValues,
+    ) -> Result<Option<usize>, EditError> {
+        let (source, destination) = route(source, destination)?;
+        let Some(slot) = self
+            .mirror
+            .document
+            .state
+            .modulation_index(source, destination)
+        else {
+            return Ok(None);
+        };
+        let flag = |on: bool| if on { 1.0 } else { 0.0 };
+        let number = slot + 1;
+        for (suffix, value) in [
+            ("amount", values.amount),
+            ("bipolar", flag(values.bipolar)),
+            ("stereo", flag(values.stereo)),
+            ("bypass", flag(values.bypass)),
+        ] {
+            self.mirror
+                .document
+                .state
+                .set_value(&format!("modulation_{number}_{suffix}"), value)
+                .expect("every modulation slot control is in the registry");
+        }
+        self.staged.push(Staged::Pending(
+            Target::ConnectionValues(slot),
+            Payload::Values(values),
+        ));
+        Ok(Some(slot))
     }
 
     /// LFO `lfo`'s shape (0-based).
@@ -716,6 +767,16 @@ impl EditHandle {
         self.single(|batch| batch.disconnect_modulation(source, destination))
     }
 
+    /// See [`Batch::set_connection_values`].
+    pub fn set_connection_values(
+        &self,
+        source: &str,
+        destination: &str,
+        values: SlotValues,
+    ) -> Result<Option<usize>, EditError> {
+        self.single(|batch| batch.set_connection_values(source, destination, values))
+    }
+
     /// See [`Batch::set_line_mapping`].
     pub fn set_line_mapping(&self, slot: usize, line: LineGenerator) -> Result<(), EditError> {
         self.single(|batch| batch.set_line_mapping(slot, line))
@@ -827,6 +888,8 @@ pub trait EditTarget {
     fn disconnect_modulation(&mut self, source: &str, destination: &str);
     fn set_lfo_shape(&mut self, lfo: usize, line: &mut LineGenerator);
     fn set_line_mapping(&mut self, slot: usize, line: &mut LineGenerator);
+    /// Modulation slot `slot`'s amount, bipolar, stereo and bypass.
+    fn set_connection_values(&mut self, slot: usize, values: &SlotValues);
     fn swap_wavetable(&mut self, oscillator: usize, rendered: &mut Wavetable);
     fn swap_sample(&mut self, loaded: &mut Sample);
     /// Takes `tuning` in place of the engine's own, handing the old one back
@@ -859,6 +922,10 @@ impl EditTarget for Synth {
         Synth::set_line_mapping(self, slot, line);
     }
 
+    fn set_connection_values(&mut self, slot: usize, values: &SlotValues) {
+        Synth::set_connection_values(self, slot, values);
+    }
+
     fn swap_wavetable(&mut self, oscillator: usize, rendered: &mut Wavetable) {
         Synth::swap_wavetable(self, oscillator, rendered);
     }
@@ -888,6 +955,7 @@ impl EditTarget for () {
     fn disconnect_modulation(&mut self, _source: &str, _destination: &str) {}
     fn set_lfo_shape(&mut self, _lfo: usize, _line: &mut LineGenerator) {}
     fn set_line_mapping(&mut self, _slot: usize, _line: &mut LineGenerator) {}
+    fn set_connection_values(&mut self, _slot: usize, _values: &SlotValues) {}
     fn swap_wavetable(&mut self, _oscillator: usize, _rendered: &mut Wavetable) {}
     fn swap_sample(&mut self, _loaded: &mut Sample) {}
     fn swap_tuning(&mut self, _tuning: &mut Tuning) {}
@@ -1038,6 +1106,9 @@ impl EditConsumer {
                     }
                     (Target::Sample, Payload::Sample(sample)) => target.swap_sample(sample),
                     (Target::Tuning, Payload::Tuning(tuning)) => target.swap_tuning(tuning),
+                    (Target::ConnectionValues(index), Payload::Values(values)) => {
+                        target.set_connection_values(index, values)
+                    }
                     _ => unreachable!("each slot only takes its own payload"),
                 }
                 self.retire(Retired::Pending(pending));
