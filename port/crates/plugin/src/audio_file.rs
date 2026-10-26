@@ -212,10 +212,6 @@ const UNKNOWN_LENGTH: usize = 0xffff_ffff;
 /// present (D23).
 const MAX_ZERO_FILLED_FRAMES: usize = 1 << 24;
 
-/// Reads a WAV file's first channel as JUCE's `WavAudioFormatReader` and
-/// `AudioData` conversions give it: integer samples scaled by
-/// `1 / (1 + max)` (8-bit unsigned centred on 128), floats as they are.
-/// `None` when it isn't a WAV file this reader handles.
 /// Whether the bytes at `position` look like a RIFF chunk header: a
 /// printable four-character label and a length the file can hold.
 fn chunk_header_at(bytes: &[u8], position: usize) -> bool {
@@ -228,6 +224,10 @@ fn chunk_header_at(bytes: &[u8], position: usize) -> bool {
             .is_some_and(|length| (position + 8).saturating_add(length as usize) <= bytes.len())
 }
 
+/// Reads a WAV file's first channel as JUCE's `WavAudioFormatReader` and
+/// `AudioData` conversions give it: integer samples scaled by
+/// `1 / (1 + max)` (8-bit unsigned centred on 128), floats as they are.
+/// `None` when it isn't a WAV file this reader handles.
 pub fn read_wav(bytes: &[u8]) -> Option<Audio> {
     if bytes.get(0..4) != Some(b"RIFF") || bytes.get(8..12) != Some(b"WAVE") {
         return None;
