@@ -121,9 +121,9 @@ impl ChatSettings {
     }
 }
 
-/// The preset folder until the user picks one: the user's Presets folder
-/// under the default root (`~/Music/synth-a-size/Presets`), the one the
-/// editor's preset browser uses.
+/// The preset folder until the user picks one: the Presets folder under
+/// the default root (`~/Music/synth-a-size/Presets`). The editor uses the
+/// same folder until a data directory is configured.
 pub fn default_preset_dir() -> Option<PathBuf> {
     user_folders::default_root()
         .map(|root| user_folders::folder(&root, user_folders::Kind::Presets))

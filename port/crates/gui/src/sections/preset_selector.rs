@@ -11,6 +11,7 @@ use std::sync::{Mutex, OnceLock};
 
 use egui::{PointerButton, Sense};
 use sas_engine::Tuning;
+use sas_preset::registry::registry;
 use sas_preset::user_folders::{self, Kind, PRESET_EXTENSION};
 
 use super::advanced;
@@ -64,6 +65,65 @@ fn sized_icon(save: bool, height: i32) -> (&'static str, &'static Path) {
         let key: &'static str = Box::leak(format!("{name} {height}").into_boxed_str());
         (key, Box::leak(Box::new(path)))
     })
+}
+
+/// `SynthPresetSelector::modified_`, the `*` before the preset's name.
+/// `HeaderSection::notifyChange` sets it when a control's value changes by
+/// any route (the host, the editor, MIDI), except the pitch wheel; edits
+/// that change no control (routing, wavetables, tuning) leave it alone.
+/// `notifyFresh` clears it on a load or a save.
+#[derive(Default)]
+pub struct Modified {
+    modified: bool,
+    /// The synth's preset generation when the values were last read.
+    generation: Option<u64>,
+    /// Set for the frame after a load: a host's restore may finish setting
+    /// values after its generation moves.
+    settling: bool,
+    values: Vec<f32>,
+}
+
+impl Modified {
+    pub fn is_modified(&self) -> bool {
+        self.modified
+    }
+
+    /// `notifyFresh`.
+    pub fn fresh(&mut self) {
+        self.modified = false;
+        self.settling = true;
+    }
+
+    /// Reads every control's value, marking the preset modified if one
+    /// changed since the last frame at the same generation.
+    pub fn update(&mut self, host: &Host) {
+        let generation = host.model().preset_generation();
+        if self.generation != Some(generation) {
+            self.generation = Some(generation);
+            self.fresh();
+        }
+        let controls = registry().parameters();
+        let unread = self.values.len() != controls.len();
+        if unread {
+            self.values = vec![0.0; controls.len()];
+        }
+        let mut changed = false;
+        for (info, kept) in controls.iter().zip(&mut self.values) {
+            if info.name == "pitch_wheel" {
+                continue;
+            }
+            let value = host.value(&info.name);
+            if value.to_bits() != kept.to_bits() {
+                changed = true;
+                *kept = value;
+            }
+        }
+        if unread || self.settling {
+            self.settling = false;
+        } else if changed {
+            self.modified = true;
+        }
+    }
 }
 
 /// `PresetBrowser::jumpToPreset(by)`: the preset `by` places from the
@@ -160,7 +220,7 @@ fn open_menu(panel: &mut Panel, anchor: Rect) {
 
 /// The arrows, the save and menu buttons, the name's right-click menu, and
 /// the answers from the dialogs the menu opens.
-pub fn show(panel: &mut Panel, header: &HeaderLayout) {
+pub fn show(panel: &mut Panel, header: &HeaderLayout, modified: &mut Modified) {
     let model = panel.host.model();
     let preset = header.preset;
     let colours = ShapeColours::icon(&panel.scope);
@@ -213,7 +273,9 @@ pub fn show(panel: &mut Panel, header: &HeaderLayout) {
         let _ = model.load_preset_file(&path);
     }
     if let Some(Some(path)) = file_dialog::take_result(&ctx, export_dialog()) {
-        let _ = model.save_preset_file(&path);
+        if model.save_preset_file(&path).is_ok() {
+            modified.fresh();
+        }
     }
     if let Some(Some(folder)) = file_dialog::take_result(&ctx, data_folder_dialog()) {
         model.set_data_directory(folder);

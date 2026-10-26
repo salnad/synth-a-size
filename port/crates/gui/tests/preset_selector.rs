@@ -6,7 +6,7 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use egui::{Event, Modifiers, PointerButton, Pos2};
@@ -30,6 +30,7 @@ struct Synth {
     active_file: Mutex<Option<PathBuf>>,
     /// What the editor asked the synth to do with presets.
     calls: Mutex<Vec<String>>,
+    generation: AtomicU64,
 }
 
 impl Synth {
@@ -53,6 +54,7 @@ impl Synth {
             data_directory: Mutex::new(None),
             active_file: Mutex::new(None),
             calls: Mutex::new(Vec::new()),
+            generation: AtomicU64::new(0),
         })
     }
 
@@ -112,6 +114,11 @@ impl EditorModel for Synth {
     fn init_preset(&self) {
         self.calls.lock().unwrap().push("init".to_string());
         *self.active_file.lock().unwrap() = None;
+        self.generation.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn preset_generation(&self) -> u64 {
+        self.generation.load(Ordering::Relaxed)
     }
 }
 
@@ -313,4 +320,47 @@ fn the_menu_initializes_the_preset() {
     click(&mut harness, centre(menu));
     choose_row(&mut harness, menu.x as f32, menu.bottom() as f32, 3);
     assert_eq!(*fixture.synth.calls.lock().unwrap(), ["init"]);
+}
+
+/// Sets control `name` as the host would, outside the editor.
+fn set_from_host(fixture: &Fixture, name: &str, normalized: f32) {
+    let param = fixture.synth.params[name].as_ptr();
+    unsafe { param._internal_set_normalized_value(normalized) };
+}
+
+/// A control changed from outside the editor marks the preset modified
+/// (`HeaderSection::notifyChange`); the pitch wheel does not.
+#[test]
+fn a_control_change_marks_the_preset_modified_but_the_pitch_wheel_does_not() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    harness.step();
+    assert!(!fixture.interface.borrow().preset_modified());
+    set_from_host(&fixture, "pitch_wheel", 0.9);
+    harness.step();
+    assert!(!fixture.interface.borrow().preset_modified());
+    set_from_host(&fixture, "mod_wheel", 0.5);
+    harness.step();
+    assert!(fixture.interface.borrow().preset_modified());
+}
+
+/// A load clears the mark (`notifyFresh`), and the values it sets don't
+/// mark the new preset modified.
+#[test]
+fn a_load_clears_the_mark() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    set_from_host(&fixture, "osc_1_level", 0.25);
+    harness.step();
+    assert!(fixture.interface.borrow().preset_modified());
+    let menu = fixture.header().menu_button;
+    click(&mut harness, centre(menu));
+    set_from_host(&fixture, "osc_1_level", 0.75);
+    choose_row(&mut harness, menu.x as f32, menu.bottom() as f32, 3);
+    harness.step();
+    harness.step();
+    assert!(!fixture.interface.borrow().preset_modified());
+    set_from_host(&fixture, "osc_1_level", 0.5);
+    harness.step();
+    assert!(fixture.interface.borrow().preset_modified());
 }

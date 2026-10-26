@@ -347,6 +347,10 @@ impl EditorModel for PluginModel {
         }
     }
 
+    fn preset_generation(&self) -> u64 {
+        self.params.edit_handle().generation()
+    }
+
     fn arm_midi_learn(&self, name: &str) {
         self.midi_learn.arm(name);
     }
