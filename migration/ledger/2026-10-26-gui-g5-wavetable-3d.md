@@ -34,9 +34,12 @@ reads everything else itself from the host parameters: `osc_N_view_2d`
   the pointer leaves the view. The drag keeps its own value, as
   upstream's `current_value_` does, rather than reading the parameter back
   (the host applies sets a frame later).
-  - Divergence D18 (`DIVERGENCES.md`): upstream sets the slider without a
-    host gesture. The port wraps the drag in one gesture, so FL Studio
-    records one automation pass and one undo step.
+  - Divergence D18 (`DIVERGENCES.md`), a port-wide rule: where upstream
+    sets parameters with bare edits, the port wraps one user action in one
+    host gesture, so FL Studio records one automation pass and one undo
+    step. The drag begins its gesture on the first movement, so a click
+    that doesn't move sends nothing. D18 also lists #124's effect display
+    and order drags and #118's oscillator and sample menus and arrows.
 - **Painter:** `PixelPainter::gradient_polyline` (a stroke with a linear
   gradient, as a non-radial `ColourGradient`) and `Colour::with_alpha`.
 
@@ -63,7 +66,8 @@ Not in this PR:
     park off the right edge.
 - Interaction tests (`tests/controls.rs`, deferred host sets):
   - a 20-pixel drag on a 100-pixel view moves the frame 51.2 in one
-    begin/set/end gesture, with the popup at the frame slider;
+    begin/set/end gesture, with the popup at the frame slider; a click
+    that doesn't move sends nothing;
   - a drag past the top clamps to the last frame and comes back from the
     clamp;
   - leaving the view hides the popup.

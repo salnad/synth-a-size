@@ -209,6 +209,9 @@ struct Drag {
     value: f32,
     /// `last_edit_position_`'s y, in pixels.
     last_y: f32,
+    /// Whether the host gesture has begun: on the first movement, so a
+    /// click that doesn't move sends nothing.
+    begun: bool,
 }
 
 /// `Wavetable3d`.
@@ -413,8 +416,11 @@ impl Wavetable3d {
             (None, true, Some(y)) => {
                 // mouseDown: from the slider's value, with its popup.
                 let value = panel.host.value(frame.name);
-                panel.host.begin(frame.name);
-                self.drag = Some(Drag { value, last_y: y });
+                self.drag = Some(Drag {
+                    value,
+                    last_y: y,
+                    begun: false,
+                });
                 show_popup(panel, frame, frame_bounds, value);
             }
             (Some(mut drag), true, Some(y)) => {
@@ -424,14 +430,20 @@ impl Wavetable3d {
                     let range = frame.info.max - frame.info.min;
                     drag.value -= delta * range / bounds.height as f32;
                     drag.value = drag.value.clamp(frame.info.min, frame.info.max);
+                    if !drag.begun {
+                        panel.host.begin(frame.name);
+                        drag.begun = true;
+                    }
                     panel.host.set(frame.name, drag.value);
                     drag.last_y = y;
                     self.drag = Some(drag);
                 }
                 show_popup(panel, frame, frame_bounds, drag.value);
             }
-            (Some(_), false, _) => {
-                panel.host.end(frame.name);
+            (Some(drag), false, _) => {
+                if drag.begun {
+                    panel.host.end(frame.name);
+                }
                 self.drag = None;
             }
             _ => {}

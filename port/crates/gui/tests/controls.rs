@@ -2403,6 +2403,8 @@ fn leaving_the_wavetable_hides_the_frame_popup() {
     let start = centre(WAVETABLE);
     click(&mut harness, start);
     assert!(overlay.borrow().value_popup.is_some());
+    // A click that doesn't move edits nothing.
+    assert!(fixture.take_log().is_empty());
     move_to(&mut harness, Pos2::new(350.0, 250.0));
     harness.step();
     assert!(overlay.borrow().value_popup.is_none());
