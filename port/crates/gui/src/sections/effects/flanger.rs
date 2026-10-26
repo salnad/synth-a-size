@@ -150,7 +150,7 @@ impl ModulatedFilterControls {
             sync: TempoSelector::new(names[0]),
             phase_offset: Slider::new(names[1], SliderStyle::Rotary),
             mod_depth: Slider::new(names[2], SliderStyle::Rotary),
-            center: Slider::new(names[3], SliderStyle::Rotary),
+            center: Slider::new(names[3], SliderStyle::Rotary).hz_alternate(),
             frequency: Slider::new(names[4], SliderStyle::Text),
             tempo: Slider::new(names[5], SliderStyle::Text).sensitivity(TEMPO_DRAG_SENSITIVITY),
             feedback: if feedback_bipolar {

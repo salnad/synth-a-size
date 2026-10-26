@@ -120,7 +120,8 @@ impl Default for DistortionSection {
                 "distortion_filter_order",
                 Some(StringTable::DistortionFilterOrder.values()),
             ),
-            filter_cutoff: Slider::new("distortion_filter_cutoff", SliderStyle::Rotary),
+            filter_cutoff: Slider::new("distortion_filter_cutoff", SliderStyle::Rotary)
+                .hz_alternate(),
             filter_resonance: Slider::new("distortion_filter_resonance", SliderStyle::Rotary),
             filter_blend: Slider::new("distortion_filter_blend", SliderStyle::Rotary).bipolar(),
             drive: Slider::new("distortion_drive", SliderStyle::Rotary),

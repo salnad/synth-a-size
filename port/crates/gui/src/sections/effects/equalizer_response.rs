@@ -211,7 +211,8 @@ impl EqualizerResponse {
     /// from the handles. A press on a handle selects its band, which this
     /// returns for the section's tabs (`Listener::lowBandSelected` and the
     /// like). `popup` is the cutoff knob, for its value popup while a handle
-    /// is dragged.
+    /// is dragged. `under` draws what sits between the frequency lines and
+    /// the response (the EQ's spectrogram).
     #[allow(clippy::too_many_arguments)]
     pub fn show(
         &self,
@@ -223,6 +224,7 @@ impl EqualizerResponse {
         bounds: Rect,
         selected: &mut Option<usize>,
         popup: Option<(Slider, Rect)>,
+        under: &mut dyn FnMut(&PixelPainter),
     ) -> Option<usize> {
         let host = live.host();
         let id = ui.scope_id().with(("equalizer response", self.low.cutoff));
@@ -327,36 +329,20 @@ impl EqualizerResponse {
         }
         ui.data_mut(|data| data.insert_temp(id, state));
 
-        if let Some((band, drawn)) = state.drawn {
-            self.paint(
-                live,
-                pixels,
-                scope,
-                bounds,
-                band,
-                &drawn,
-                state.drag.is_some(),
-            );
-        } else {
-            self.paint(live, pixels, scope, bounds, 0, &positions(None), false);
-        }
+        let (band, drawn, dragging) = match state.drawn {
+            Some((band, drawn)) => (band, drawn, state.drag.is_some()),
+            None => (0, positions(None), false),
+        };
+        self.paint_background(pixels, scope, bounds);
+        under(pixels);
+        self.paint(live, pixels, scope, bounds, band, &drawn, dragging);
         chosen
     }
 
-    /// `paintBackground` and `render`.
-    #[allow(clippy::too_many_arguments)]
-    fn paint(
-        &self,
-        live: &Live,
-        pixels: &PixelPainter,
-        scope: &Scope,
-        bounds: Rect,
-        selected: usize,
-        positions: &Handles,
-        dragging: bool,
-    ) {
+    /// `paintBackground`: the frequency lines.
+    fn paint_background(&self, pixels: &PixelPainter, scope: &Scope, bounds: Rect) {
         const LINE_SPACING: i32 = 10;
-        let (width, height) = (bounds.width as f32, bounds.height as f32);
+        let width = bounds.width as f32;
         if self.draw_frequency_lines {
             // Lines at 1, 2, … 10, 20, … 100 Hz and so on.
             let cutoff = Host::info(self.low.cutoff);
@@ -387,7 +373,21 @@ impl EqualizerResponse {
                 increment *= LINE_SPACING as f32;
             }
         }
+    }
 
+    /// `render`: the response for each lane, then the handles.
+    #[allow(clippy::too_many_arguments)]
+    fn paint(
+        &self,
+        live: &Live,
+        pixels: &PixelPainter,
+        scope: &Scope,
+        bounds: Rect,
+        selected: usize,
+        positions: &Handles,
+        dragging: bool,
+    ) {
+        let (width, height) = (bounds.width as f32, bounds.height as f32);
         let uniforms = self.uniforms(live);
         let (min_db, max_db) = self.db_range();
         let mut line = LineRenderer::new(RESOLUTION, false);
