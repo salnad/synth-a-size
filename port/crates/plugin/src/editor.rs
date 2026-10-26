@@ -324,7 +324,11 @@ impl EditorModel for PluginModel {
         let Ok(bytes) = std::fs::read(path) else {
             return false;
         };
-        let Some(audio) = audio_file::read_wav(&bytes) else {
+        let extension = path
+            .extension()
+            .map(|extension| extension.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let Some(audio) = audio_file::read_audio(&bytes, &extension) else {
             return false;
         };
         let text = audio_file::wavetable_data_string(&bytes);
@@ -789,7 +793,7 @@ mod tests {
             Arc::new(MidiLearn::in_memory()),
             None,
         );
-        assert_eq!(model.audio_file_extensions(), ["wav"]);
+        assert!(model.audio_file_extensions().contains(&"wav"));
         let dir = std::env::temp_dir();
         let path = dir.join(format!("Sine Drop {}.wav", std::process::id()));
         std::fs::write(&path, sine_wav("<!>2048 10000000 wavetable [Someone]")).unwrap();
@@ -822,6 +826,21 @@ mod tests {
             AudioFileLoadStyle::Pitched
         ));
         assert!(!model.load_audio_as_wavetable(9, &path, AudioFileLoadStyle::Pitched));
+        // An empty or corrupt file of every offered type, lossy ones included.
+        let corrupt: Vec<u8> = (0..4096u32)
+            .map(|i| (i.wrapping_mul(2_654_435_761) >> 24) as u8)
+            .collect();
+        for extension in model.audio_file_extensions() {
+            for (what, bytes) in [("empty", &[][..]), ("corrupt", &corrupt[..])] {
+                let file = dir.join(format!("{what}-{}.{extension}", std::process::id()));
+                std::fs::write(&file, bytes).unwrap();
+                assert!(
+                    !model.load_audio_as_wavetable(1, &file, AudioFileLoadStyle::Pitched),
+                    "{what} .{extension}"
+                );
+                std::fs::remove_file(file).unwrap();
+            }
+        }
         assert_eq!(model.content_revision(), revision);
         std::fs::remove_file(path).unwrap();
         std::fs::remove_file(text).unwrap();

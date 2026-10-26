@@ -28,12 +28,13 @@ if [[ -n "${SAS_PLUGIN_FEATURES:-}" ]]; then
 fi
 
 # The GPLv3 licence and the notices for bundled third-party material
-# (the editor's fonts), in Contents/Resources.
+# (the editor's fonts, the audio decoders), in Contents/Resources.
 copy_notices() {
   local resources="$1/Contents/Resources"
   mkdir -p "$resources"
   cp "$repo/LICENSE" "$resources/LICENSE.txt"
-  cp "$here/../notices/THIRD_PARTY_NOTICES.md" "$here/../notices/OFL-1.1.txt" "$resources/"
+  cp "$here/../notices/THIRD_PARTY_NOTICES.md" "$here/../notices/OFL-1.1.txt" \
+    "$here/../notices/MPL-2.0.txt" "$resources/"
   cp "$repo/vital/fonts/LICENSE" "$resources/Apache-2.0.txt"
 }
 

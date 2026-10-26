@@ -125,8 +125,8 @@ repeat the check in FL Studio where the note says so.
      access to the app that asks, which is the host, so an "Always Allow"
      given to REAPER says nothing about FL Studio's prompt. Repeat it in FL
      Studio.
-5. **Dragging a file into the editor (G5).** Drag a WAV file from Finder
-   onto oscillator 1's wavetable view. While it hovers over the view, the
+5. **Dragging a file into the editor (G5).** Drag a WAV file, then an
+   MP3 or M4A, from Finder onto oscillator 1's wavetable view. While it hovers over the view, the
    view shows the import overlay (WAVETABLE, VOCODE, PITCH SPLICE) and the
    pointer shows a copy badge; elsewhere in the editor, and for two files
    or a format the view doesn't take, there's no badge. Dropping on the

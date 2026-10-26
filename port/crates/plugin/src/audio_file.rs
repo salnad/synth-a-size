@@ -1,8 +1,8 @@
 // Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Audio files dropped onto a wavetable view: the WAV reader and the
-//! wavetable data an audio file can carry.
+//! Audio files dropped onto a wavetable view: the readers and the wavetable
+//! data an audio file can carry.
 //!
 //! Ports `WavetableEditSection::getWavetableDataString`,
 //! `getFadeStyleFromWavetableString` and `getAuthorFromWavetableString`
@@ -10,14 +10,20 @@
 //! WAV reader is the port's own: PCM at 8, 16, 24 and 32 bits and IEEE
 //! float at 32 and 64 bits (plain or `WAVE_FORMAT_EXTENSIBLE`), giving the
 //! same samples as JUCE's WAV reader and `AudioData` float conversion.
-//! Only WAV is read for now (D23).
+//! The other formats decode with symphonia (D23 records what can differ
+//! from JUCE's and CoreAudio's readers).
 
 use sas_engine::sas_oscillators::sas_wavetable::creator::component::{
     FADE_FREQ_INTERPOLATE, FADE_NO_INTERPOLATE, FADE_TIME_INTERPOLATE,
 };
 
-/// The extensions the wavetable view takes (D23: WAV only for now).
-pub const AUDIO_EXTENSIONS: &[&str] = &["wav"];
+/// The extensions the wavetable view takes: the wildcards of JUCE's
+/// `registerBasicFormats()` on macOS (WAV, AIFF, FLAC, Ogg Vorbis, and
+/// CoreAudio's MP3 and AAC/M4A), without CAF and the rarer CoreAudio types
+/// (D23).
+pub const AUDIO_EXTENSIONS: &[&str] = &[
+    "wav", "bwf", "aif", "aiff", "flac", "ogg", "mp3", "m4a", "aac",
+];
 
 /// An audio file's first channel and its sample rate, as
 /// `WavetableEditSection::loadAudioFile` passes `getReadPointer(0)` on.
@@ -100,9 +106,102 @@ pub fn author_from_wavetable_string(data: &str) -> String {
     }
 }
 
+/// Reads the audio file `bytes`, whose name has extension `extension`:
+/// WAV with the port's reader, the other formats with symphonia.
+/// `None` when it can't be read.
+pub fn read_audio(bytes: &[u8], extension: &str) -> Option<Audio> {
+    let extension = extension.to_ascii_lowercase();
+    match extension.as_str() {
+        "wav" | "bwf" => read_wav(bytes),
+        _ if AUDIO_EXTENSIONS.contains(&extension.as_str()) => decode(bytes.to_vec(), &extension),
+        _ => None,
+    }
+}
+
+/// Decodes `bytes` with symphonia, the format guessed from `extension` and
+/// the contents, and keeps the first channel. Integer samples convert as
+/// JUCE's readers do (exact powers of two); see D23 for the lossy codecs.
+fn decode(bytes: Vec<u8>, extension: &str) -> Option<Audio> {
+    use symphonia::core::codecs::audio::AudioDecoderOptions;
+    use symphonia::core::errors::Error;
+    use symphonia::core::formats::probe::Hint;
+    use symphonia::core::formats::{FormatOptions, TrackType};
+    use symphonia::core::io::MediaSourceStream;
+    use symphonia::core::meta::MetadataOptions;
+
+    let source = MediaSourceStream::new(Box::new(std::io::Cursor::new(bytes)), Default::default());
+    let mut hint = Hint::new();
+    hint.with_extension(extension);
+    let mut format = symphonia::default::get_probe()
+        .probe(
+            &hint,
+            source,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
+        .ok()?;
+    let track = format.default_track(TrackType::Audio)?;
+    let track_id = track.id;
+    let parameters = track.codec_params.as_ref()?.audio()?.clone();
+    let mut decoder = symphonia::default::get_codecs()
+        .make_audio_decoder(&parameters, &AudioDecoderOptions::default())
+        .ok()?;
+
+    let mut first_channel = Vec::new();
+    let mut sample_rate = parameters.sample_rate;
+    let mut interleaved: Vec<f32> = Vec::new();
+    loop {
+        let packet = match format.next_packet() {
+            Ok(Some(packet)) => packet,
+            Ok(None) => break,
+            Err(_) => break,
+        };
+        if packet.track_id != track_id {
+            continue;
+        }
+        match decoder.decode(&packet) {
+            Ok(decoded) => {
+                let channels = decoded.spec().channels().count().max(1);
+                sample_rate = sample_rate.or(Some(decoded.spec().rate()));
+                interleaved.clear();
+                decoded.copy_to_vec_interleaved(&mut interleaved);
+                first_channel.extend(interleaved.iter().step_by(channels));
+            }
+            // A damaged packet is skipped, as symphonia's players do.
+            Err(Error::DecodeError(_)) => continue,
+            Err(_) => return None,
+        }
+    }
+    let sample_rate = sample_rate? as i32;
+    if first_channel.is_empty() || sample_rate <= 0 {
+        return None;
+    }
+    Some(Audio {
+        first_channel,
+        sample_rate,
+    })
+}
+
 const FORMAT_PCM: u16 = 1;
 const FORMAT_FLOAT: u16 = 3;
 const FORMAT_EXTENSIBLE: u16 = 0xfffe;
+
+/// `WAVE_FORMAT_EXTENSIBLE` sub-formats JUCE's WAV reader takes: PCM and
+/// IEEE float, and their ambisonic B-format forms.
+const EXTENSIBLE_SUB_FORMATS: [&[u8]; 4] = [
+    &[
+        1, 0, 0, 0, 0, 0, 0x10, 0, 0x80, 0, 0, 0xaa, 0, 0x38, 0x9b, 0x71,
+    ],
+    &[
+        3, 0, 0, 0, 0, 0, 0x10, 0, 0x80, 0, 0, 0xaa, 0, 0x38, 0x9b, 0x71,
+    ],
+    &[
+        1, 0, 0, 0, 0x21, 0x07, 0xd3, 0x11, 0x86, 0x44, 0xc8, 0xc1, 0xca, 0, 0, 0,
+    ],
+    &[
+        3, 0, 0, 0, 0x21, 0x07, 0xd3, 0x11, 0x86, 0x44, 0xc8, 0xc1, 0xca, 0, 0, 0,
+    ],
+];
 
 /// Reads a WAV file's first channel as JUCE's `WavAudioFormatReader` and
 /// `AudioData` conversions give it: integer samples scaled by
@@ -122,21 +221,28 @@ pub fn read_wav(bytes: &[u8]) -> Option<Audio> {
         let end = start.saturating_add(length).min(bytes.len());
         match label {
             b"fmt " => format = Some(&bytes[start..end]),
-            b"data" => data = Some(&bytes[start..end]),
+            // The declared length counts, even past the end of the file.
+            b"data" => data = Some((&bytes[start..end], length)),
             _ => {}
         }
         // JUCE's reader skips the pad byte after an odd-sized chunk.
         position = start.saturating_add(length).saturating_add(length & 1);
     }
     let format = format?;
-    let data = data?;
+    let (data, data_length) = data?;
 
     let mut tag = u16_at(format, 0)?;
     let channels = u16_at(format, 2)? as usize;
     let sample_rate = u32_at(format, 4)? as i32;
     let bits = u16_at(format, 14)?;
     if tag == FORMAT_EXTENSIBLE {
-        // The sub-format GUID starts with the plain format tag.
+        // JUCE takes an extensible format only with a whole extension and
+        // a PCM, float or ambisonic sub-format GUID; its first two bytes are
+        // the plain format tag.
+        let guid = format.get(24..40)?;
+        if !EXTENSIBLE_SUB_FORMATS.contains(&guid) {
+            return None;
+        }
         tag = u16_at(format, 24)?;
     }
     if channels == 0 || sample_rate <= 0 {
@@ -144,10 +250,14 @@ pub fn read_wav(bytes: &[u8]) -> Option<Audio> {
     }
     let bytes_per_sample = (bits as usize).div_ceil(8);
     let frame_size = bytes_per_sample * channels;
-    let frames = data.len() / frame_size;
+    // JUCE reads the declared number of frames and zero-fills what the
+    // file doesn't hold.
+    let frames = data_length / frame_size;
+    let zeros = [0u8; 8];
     let sample = |frame: usize| -> &[u8] {
         let at = frame * frame_size;
-        &data[at..at + bytes_per_sample]
+        data.get(at..at + bytes_per_sample)
+            .unwrap_or(&zeros[..bytes_per_sample])
     };
 
     let first_channel: Vec<f32> = match (tag, bits) {
@@ -259,13 +369,42 @@ mod tests {
         extensible.extend_from_slice(&22u16.to_le_bytes());
         extensible.extend_from_slice(&16u16.to_le_bytes());
         extensible.extend_from_slice(&0u32.to_le_bytes());
-        extensible.extend_from_slice(&FORMAT_PCM.to_le_bytes());
-        extensible.extend_from_slice(&[0; 14]);
+        extensible.extend_from_slice(EXTENSIBLE_SUB_FORMATS[0]);
         let file = riff(&[
-            (b"fmt ", extensible),
+            (b"fmt ", extensible.clone()),
             (b"data", 16_384i16.to_le_bytes().to_vec()),
         ]);
         assert_eq!(read_wav(&file).unwrap().first_channel, [0.5]);
+
+        // JUCE refuses an extension cut short, or a sub-format it doesn't
+        // know.
+        let short = riff(&[(b"fmt ", extensible[..30].to_vec()), (b"data", vec![0; 2])]);
+        assert!(read_wav(&short).is_none());
+        let mut unknown = extensible;
+        unknown[30] ^= 0xff;
+        let unknown = riff(&[(b"fmt ", unknown), (b"data", vec![0; 2])]);
+        assert!(read_wav(&unknown).is_none());
+    }
+
+    #[test]
+    fn a_data_chunk_longer_than_the_file_is_zero_filled() {
+        let mut file = riff(&[
+            (b"fmt ", fmt(FORMAT_PCM, 1, 44_100, 16)),
+            (
+                b"data",
+                [16_384i16, -16_384]
+                    .iter()
+                    .flat_map(|s| s.to_le_bytes())
+                    .collect(),
+            ),
+        ]);
+        // Declare four frames where the file holds two.
+        let length_at = file.len() - 4 - 4;
+        file[length_at..length_at + 4].copy_from_slice(&8u32.to_le_bytes());
+        assert_eq!(
+            read_wav(&file).unwrap().first_channel,
+            [0.5, -0.5, 0.0, 0.0]
+        );
     }
 
     #[test]
