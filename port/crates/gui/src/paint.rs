@@ -89,6 +89,23 @@ impl<'a> PixelPainter<'a> {
         self.painter
     }
 
+    /// Runs `paint` with a painter clipped to `clip` (pixels), as
+    /// `Graphics::reduceClipRegion` inside `saveState` / `restoreState`.
+    pub fn with_clip<R>(
+        &self,
+        clip: impl Into<RectF>,
+        paint: impl FnOnce(&PixelPainter) -> R,
+    ) -> R {
+        let painter = self.painter.with_clip_rect(self.rect(clip.into()));
+        let clipped = PixelPainter {
+            painter: &painter,
+            origin: self.origin,
+            area: self.area,
+            pixels_per_point: self.pixels_per_point,
+        };
+        paint(&clipped)
+    }
+
     /// The editor's area, in points.
     pub fn area(&self) -> egui::Rect {
         self.area
@@ -112,6 +129,38 @@ impl<'a> PixelPainter<'a> {
 
     fn corner(&self, radius: f32) -> CornerRadius {
         CornerRadius::same(self.points(radius).round().clamp(0.0, 255.0) as u8)
+    }
+
+    /// `Graphics::setGradientFill` then `fillRect`: `rect` (pixels) filled
+    /// with the gradient's colour at each point, on a grid fine enough for
+    /// the small shadows upstream draws this way.
+    pub fn fill_rect_gradient(&self, rect: impl Into<RectF>, gradient: &Gradient) {
+        let rect = rect.into();
+        if rect.width <= 0.0 || rect.height <= 0.0 {
+            return;
+        }
+        let steps = |length: f32| match gradient.kind {
+            GradientKind::Linear => 1,
+            GradientKind::Radial => (length.ceil() as usize).clamp(1, 64),
+        };
+        let (nx, ny) = (steps(rect.width), steps(rect.height));
+        let mut mesh = egui::Mesh::default();
+        for j in 0..=ny {
+            for i in 0..=nx {
+                let x = rect.x + rect.width * i as f32 / nx as f32;
+                let y = rect.y + rect.height * j as f32 / ny as f32;
+                mesh.colored_vertex(self.pos(x, y), gradient.colour_at(x, y).to_egui());
+            }
+        }
+        let row = (nx + 1) as u32;
+        for j in 0..ny as u32 {
+            for i in 0..nx as u32 {
+                let a = j * row + i;
+                mesh.add_triangle(a, a + 1, a + row);
+                mesh.add_triangle(a + 1, a + row + 1, a + row);
+            }
+        }
+        self.painter.add(egui::Shape::mesh(mesh));
     }
 
     /// `Graphics::fillAll` / `fillRect`.
@@ -371,5 +420,86 @@ impl<'a> PixelPainter<'a> {
 
     pub fn egui_color(colour: Colour) -> Color32 {
         colour.to_egui()
+    }
+}
+
+/// How a [`Gradient`] spreads (`ColourGradient::isRadial`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GradientKind {
+    Linear,
+    Radial,
+}
+
+/// `juce::ColourGradient`: colour stops from `start` (proportion 0) to
+/// `end` (proportion 1), in pixels.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Gradient {
+    pub kind: GradientKind,
+    pub start: (f32, f32),
+    pub end: (f32, f32),
+    /// (proportion, colour), ascending.
+    pub stops: Vec<(f32, Colour)>,
+}
+
+impl Gradient {
+    pub fn new(
+        kind: GradientKind,
+        start: (f32, f32),
+        c0: Colour,
+        end: (f32, f32),
+        c1: Colour,
+    ) -> Gradient {
+        Gradient {
+            kind,
+            start,
+            end,
+            stops: vec![(0.0, c0), (1.0, c1)],
+        }
+    }
+
+    /// `ColourGradient::addColour`.
+    pub fn with_stop(mut self, proportion: f32, colour: Colour) -> Gradient {
+        let at = self
+            .stops
+            .iter()
+            .position(|&(p, _)| p > proportion)
+            .unwrap_or(self.stops.len());
+        self.stops.insert(at, (proportion, colour));
+        self
+    }
+
+    /// The colour at pixel `(x, y)`: the proportion along the axis (linear)
+    /// or the distance over the radius (radial), clamped, between the
+    /// stops (`ColourGradient::getColourAtPosition`).
+    pub fn colour_at(&self, x: f32, y: f32) -> Colour {
+        let (sx, sy) = self.start;
+        let (ex, ey) = self.end;
+        let (dx, dy) = (ex - sx, ey - sy);
+        let length_squared = dx * dx + dy * dy;
+        let proportion = if length_squared <= 0.0 {
+            0.0
+        } else {
+            match self.kind {
+                GradientKind::Linear => ((x - sx) * dx + (y - sy) * dy) / length_squared,
+                GradientKind::Radial => {
+                    ((x - sx).powi(2) + (y - sy).powi(2)).sqrt() / length_squared.sqrt()
+                }
+            }
+        }
+        .clamp(0.0, 1.0);
+        let mut previous = self.stops[0];
+        for &stop in &self.stops[1..] {
+            if proportion <= stop.0 {
+                let span = stop.0 - previous.0;
+                let t = if span <= 0.0 {
+                    1.0
+                } else {
+                    (proportion - previous.0) / span
+                };
+                return previous.1.interpolated_with(stop.1, t);
+            }
+            previous = stop;
+        }
+        previous.1
     }
 }

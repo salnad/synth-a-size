@@ -19,8 +19,12 @@ use sas_gui::controls::tab_selector::TabSelector;
 use sas_gui::layout::{FullLayout, Rect};
 use sas_gui::paint::PixelPainter;
 use sas_gui::scope::Scope;
+use sas_gui::sections::envelope::{self, EnvelopeLayout};
+use sas_gui::sections::lfo::{self, LfoLayout};
+use sas_gui::sections::modulation::ModulationLayout;
 use sas_gui::sections::oscillator::{self, OscillatorLayout};
 use sas_gui::sections::portamento::{self, PortamentoLayout};
+use sas_gui::sections::random::{self, RandomLayout};
 use sas_gui::sections::sample::{self, SampleLayout};
 use sas_gui::sections::synthesis::SynthesisLayout;
 use sas_gui::sections::voice::{self, VoiceLayout};
@@ -52,6 +56,11 @@ const CONTROLS: &[&str] = &[
     "osc_1_view_2d",
     "osc_2_distortion_type",
     "sample_destination",
+    "env_2_attack",
+    "lfo_1_smooth_mode",
+    "lfo_1_sync",
+    "lfo_1_frequency",
+    "random_1_stereo",
 ];
 
 enum TestParam {
@@ -1665,4 +1674,128 @@ fn an_fm_loop_chosen_from_the_menu_is_broken() {
     choose_row(&mut harness, osc.distortion_selector, 9);
     assert_eq!(fixture.synth.value("osc_2_distortion_type"), 7.0);
     assert_eq!(fixture.synth.value("osc_1_distortion_type"), 0.0);
+}
+
+fn modulation_layout(fixture: &Fixture) -> ModulationLayout {
+    let interface = fixture.interface.borrow();
+    let layout = FullLayout::new(interface.skin(), 1400, 820);
+    let top = Scope::top(interface.skin(), layout.size_ratio);
+    ModulationLayout::new(&top, layout.modulation)
+}
+
+fn section_scope<'a>(
+    skin: &'a sas_gui::skin::Skin,
+    chain: &'a [sas_gui::skin::Section],
+) -> Scope<'a> {
+    Scope::top(skin, 1.0).within(chain)
+}
+
+#[test]
+fn a_modulation_tab_shows_its_source() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let m = modulation_layout(&fixture);
+    // ENV 2's tab, the second of three in the column.
+    let tab = Pos2::new(centre(m.envelope_tabs).x, m.envelope_tabs.y as f32 + 100.0);
+    click(&mut harness, tab);
+    let attack = {
+        let interface = fixture.interface.borrow();
+        EnvelopeLayout::new(&section_scope(interface.skin(), envelope::SKIN), m.envelope).knobs[1]
+    };
+    drag(
+        &mut harness,
+        centre(attack),
+        centre(attack) + egui::vec2(0.0, -20.0),
+        Modifiers::NONE,
+    );
+    assert!(
+        fixture.synth.value("env_2_attack") > registry().get("env_2_attack").unwrap().default_value
+    );
+    assert!(fixture
+        .take_log()
+        .iter()
+        .all(|entry| entry.ends_with("env_2_attack")));
+}
+
+#[test]
+fn the_lfo_smooth_mode_swaps_fade_for_smooth() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let m = modulation_layout(&fixture);
+    let lfo_layout = {
+        let interface = fixture.interface.borrow();
+        LfoLayout::new(&section_scope(interface.skin(), lfo::SKIN), m.lfo)
+    };
+    let start = fixture.synth.value("lfo_1_smooth_mode");
+    press(
+        &mut harness,
+        centre(lfo_layout.smooth_mode),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    release(
+        &mut harness,
+        centre(lfo_layout.smooth_mode),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    {
+        let interface = fixture.interface.borrow();
+        let names: Vec<_> = interface
+            .overlay()
+            .menu
+            .as_ref()
+            .unwrap()
+            .items
+            .iter()
+            .map(|i| i.name.clone())
+            .collect();
+        assert_eq!(names, lfo::SMOOTH_MODE_NAMES);
+    }
+    let other = 1 - start as usize;
+    choose_row(&mut harness, lfo_layout.smooth_mode, other);
+    assert_eq!(fixture.synth.value("lfo_1_smooth_mode"), other as f32);
+}
+
+#[test]
+fn a_free_running_lfo_shows_its_frequency() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    fixture.synth.set("lfo_1_sync", 0.0);
+    harness.step();
+    let m = modulation_layout(&fixture);
+    let rate = {
+        let interface = fixture.interface.borrow();
+        LfoLayout::new(&section_scope(interface.skin(), lfo::SKIN), m.lfo).rate
+    };
+    let before = fixture.synth.value("lfo_1_frequency");
+    drag(
+        &mut harness,
+        centre(rate),
+        centre(rate) + egui::vec2(0.0, -30.0),
+        Modifiers::NONE,
+    );
+    assert!(fixture.synth.value("lfo_1_frequency") > before);
+}
+
+#[test]
+fn the_random_stereo_switch_toggles() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let m = modulation_layout(&fixture);
+    let stereo = {
+        let interface = fixture.interface.borrow();
+        RandomLayout::new(&section_scope(interface.skin(), random::SKIN), m.random).stereo
+    };
+    let before = fixture.synth.value("random_1_stereo");
+    click(&mut harness, centre(stereo));
+    assert_eq!(fixture.synth.value("random_1_stereo"), 1.0 - before);
+    assert_eq!(
+        fixture.take_log(),
+        [
+            "begin random_1_stereo",
+            "set random_1_stereo",
+            "end random_1_stereo"
+        ]
+    );
 }

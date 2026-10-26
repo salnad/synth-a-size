@@ -30,6 +30,7 @@ use crate::paint::{PixelPainter, RectF};
 use crate::scope::Scope;
 use crate::sections::bend::{self, BendLayout, BendSection};
 use crate::sections::keyboard::{self, KeyboardLayout, PlayingNote};
+use crate::sections::modulation::ModulationInterface;
 use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
 use crate::sections::synthesis::SynthesisInterface;
 use crate::sections::voice::{self, VoiceLayout, VoiceSection};
@@ -210,6 +211,7 @@ pub struct Interface {
     volume: VolumeSection,
     bend: BendSection,
     synthesis: SynthesisInterface,
+    modulation: ModulationInterface,
     playing_note: PlayingNote,
     overlay: Overlay,
 }
@@ -230,6 +232,7 @@ impl Interface {
             volume: VolumeSection::default(),
             bend: BendSection::default(),
             synthesis: SynthesisInterface::default(),
+            modulation: ModulationInterface::default(),
             playing_note: PlayingNote::default(),
             overlay: Overlay::default(),
         }
@@ -343,7 +346,8 @@ impl Interface {
         }
     }
 
-    /// The Bend, Keyboard, Voice and Portamento sections.
+    /// The modulation column and the Bend, Keyboard, Voice and Portamento
+    /// sections.
     fn show_sections(
         &mut self,
         ui: &mut Ui,
@@ -352,6 +356,9 @@ impl Interface {
         layout: &FullLayout,
     ) {
         let top = Scope::top(&self.skin, layout.size_ratio);
+
+        self.modulation
+            .show(ui, host, pixels, &top, &mut self.overlay, layout.modulation);
 
         let scope = top.within(voice::SKIN);
         let voice_layout = VoiceLayout::new(&scope, layout.voice);

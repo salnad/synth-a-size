@@ -137,6 +137,74 @@ synthesis/SMP/sample_bounce
 synthesis/FILTER 1
 synthesis/FILTER 2
 
+
+# G3b: the modulation column (envelopes, LFOs, random LFOs, keyboard sources).
+modulation/env
+modulation/env/env_1
+modulation/env/env_2
+modulation/env/env_3
+modulation/ENVELOPE 1
+modulation/ENVELOPE 1/env_1_delay
+modulation/ENVELOPE 1/env_1_attack
+modulation/ENVELOPE 1/env_1_hold
+modulation/ENVELOPE 1/env_1_decay
+modulation/ENVELOPE 1/env_1_sustain
+modulation/ENVELOPE 1/env_1_release
+modulation/ENVELOPE 1/env_1
+modulation/ENVELOPE 1/Magnifying Glass
+modulation/lfo
+modulation/lfo/lfo_1
+modulation/lfo/lfo_2
+modulation/lfo/lfo_3
+modulation/lfo/lfo_4
+modulation/LFO 1
+modulation/LFO 1/lfo_1_tempo
+modulation/LFO 1/lfo_1_frequency
+modulation/LFO 1/lfo_1_keytrack_transpose
+modulation/LFO 1/lfo_1_keytrack_tune
+modulation/LFO 1/lfo_1_sync
+modulation/LFO 1/lfo_1_sync_type
+modulation/LFO 1/lfo_1_phase
+modulation/LFO 1/lfo_1_smooth_time
+modulation/LFO 1/lfo_1_fade_time
+modulation/LFO 1/Smooth Mode Text
+modulation/LFO 1/Smooth Mode
+modulation/LFO 1/lfo_1_delay_time
+modulation/LFO 1/lfo_1_stereo
+modulation/LFO 1/paint_pattern
+modulation/LFO 1/grid_size_x
+modulation/LFO 1/grid_size_y
+modulation/LFO 1/paint
+modulation/LFO 1/smooth
+modulation/LFO 1/lfo_1
+modulation/LFO 1/preset_selector
+modulation/LFO 1/preset_selector/Text
+modulation/LFO 1/preset_selector/Prev
+modulation/LFO 1/preset_selector/Next
+modulation/random
+modulation/random/random_1
+modulation/random/random_2
+modulation/RANDOM 1
+modulation/RANDOM 1/random_1_frequency
+modulation/RANDOM 1/random_1_tempo
+modulation/RANDOM 1/random_1_keytrack_transpose
+modulation/RANDOM 1/random_1_keytrack_tune
+modulation/RANDOM 1/random_1_sync
+modulation/RANDOM 1/random_1_style
+modulation/RANDOM 1/random_1
+modulation/RANDOM 1/random_1_stereo
+modulation/RANDOM 1/random_1_sync_type
+modulation/top
+modulation/top/note
+modulation/top/velocity
+modulation/top/lift
+modulation/top/note_in_octave
+modulation/bottom
+modulation/bottom/aftertouch
+modulation/bottom/slide
+modulation/bottom/stereo
+modulation/bottom/random
+
 # G3b: oscillator 3 with a wave morph that shows the distortion phase slider.
 @preset migration/corpus/gui/presets/osc_3_sync.vital
 synthesis/OSC 3
