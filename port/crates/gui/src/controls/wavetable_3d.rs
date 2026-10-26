@@ -62,6 +62,7 @@ pub const MENU_COPY: i32 = 1;
 pub const MENU_PASTE: i32 = 2;
 pub const MENU_INIT: i32 = 3;
 pub const MENU_SAVE: i32 = 4;
+pub const MENU_RESYNTHESIZE: i32 = 6;
 
 /// Whether `text` is wavetable JSON (`WavetableCreator::isValidJson`):
 /// what the menu offers to paste.
@@ -566,8 +567,8 @@ impl Wavetable3d {
     }
 
     /// `mouseDown`'s menu: save (once the editor can), copy, paste (when the
-    /// clipboard holds wavetable JSON), and initialize. Text to Wavetable
-    /// is parked (it needs sign-in), and Resynthesize comes separately.
+    /// clipboard holds wavetable JSON), initialize and resynthesize. Text to
+    /// Wavetable is absent (D20: it needs sign-in).
     fn menu_items(&self) -> Vec<MenuItem> {
         let mut items = Vec::new();
         if self.save_available {
@@ -579,6 +580,10 @@ impl Wavetable3d {
         }
         items.push(MenuItem::divider());
         items.push(MenuItem::new(MENU_INIT, "Initialize"));
+        items.push(MenuItem::new(
+            MENU_RESYNTHESIZE,
+            "Resynthesize Preset to Wavetable",
+        ));
         items
     }
 
@@ -594,6 +599,7 @@ impl Wavetable3d {
         let model = panel.host.model();
         match option {
             MENU_INIT => model.load_default_wavetable(self.index),
+            MENU_RESYNTHESIZE => model.resynthesize_to_wavetable(self.index),
             MENU_SAVE => self.save_request = true,
             MENU_COPY => {
                 if let Some(json) = model.wavetable_json(self.index) {

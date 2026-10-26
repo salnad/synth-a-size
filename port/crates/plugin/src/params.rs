@@ -278,6 +278,9 @@ pub struct SynthParams {
     /// one's close arrives, so this counts rather than flags.
     editor_windows: AtomicUsize,
     echo_guard: EchoGuard,
+    /// The sample rate the host activated the plugin at (`f32` bits), for
+    /// work off the audio thread that renders as the engine would.
+    sample_rate: AtomicU32,
 }
 
 impl SynthParams {
@@ -323,7 +326,19 @@ impl SynthParams {
             midi_moved: ChangeSet::new(names.len()),
             editor_windows: AtomicUsize::new(0),
             echo_guard: EchoGuard::new(names.len()),
+            sample_rate: AtomicU32::new(44_100.0f32.to_bits()),
         }
+    }
+
+    /// The sample rate the host activated the plugin at (44.1 kHz before
+    /// the first activation).
+    pub fn sample_rate(&self) -> f32 {
+        f32::from_bits(self.sample_rate.load(Ordering::Relaxed))
+    }
+
+    pub(crate) fn set_sample_rate(&self, sample_rate: f32) {
+        self.sample_rate
+            .store(sample_rate.to_bits(), Ordering::Relaxed);
     }
 
     /// The exposed controls in host (registry index) order.

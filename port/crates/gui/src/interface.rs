@@ -315,6 +315,13 @@ pub trait EditorModel: Send + Sync + 'static {
     /// (`FullInterface::loadDefaultWavetable`: `WavetableCreator::init`).
     fn load_default_wavetable(&self, _oscillator: usize) {}
 
+    /// "Resynthesize Preset to Wavetable"
+    /// (`FullInterface::resynthesizeToWavetable`): renders the current patch
+    /// playing a low note and loads the result as oscillator `oscillator`'s
+    /// wavetable. Returns at once; the wavetable changes when the render is
+    /// done (`content_revision` moves on).
+    fn resynthesize_to_wavetable(&self, _oscillator: usize) {}
+
     /// Calls `f` with the sample oscillator's audio, read in place: nothing
     /// is copied. `left` is the mono or left channel `SampleViewer` draws
     /// (`Sample::buffer`, `originalLength`). `f` is not called when there is

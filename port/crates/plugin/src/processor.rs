@@ -157,8 +157,9 @@ impl<E: Engine> BlockProcessor<E> {
     /// restored before activation loads first and is then prepared (as when
     /// a host opens a project, and as the reference's offline render does);
     /// one restored after activation is prepared first and then loads.
-    pub fn activate(&mut self, _params: &SynthParams, sample_rate: f32) {
+    pub fn activate(&mut self, params: &SynthParams, sample_rate: f32) {
         self.sample_rate = sample_rate;
+        params.set_sample_rate(sample_rate);
         self.pending_prepare = Some(self.edits.published_generation());
     }
 

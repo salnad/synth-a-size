@@ -51,6 +51,7 @@ pub mod midi_learn;
 pub mod params;
 pub mod processor;
 pub mod render;
+pub mod resynthesis;
 pub mod sound_engine;
 pub mod state;
 

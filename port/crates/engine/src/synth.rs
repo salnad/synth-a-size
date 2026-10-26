@@ -259,6 +259,12 @@ impl Synth {
             .with::<SoundEngine, _>(|engine, this| engine.check_oversampling(this));
     }
 
+    /// `SoundEngine::noteOn`, as `SynthBase::renderAudioForResynthesis`
+    /// plays its note: a velocity from 0 to 1, not a MIDI byte.
+    pub fn note_on(&mut self, note: i32, velocity: f32, sample: i32, channel: i32) {
+        self.with_engine(|engine| engine.note_on(note, velocity, sample, channel));
+    }
+
     /// `SoundEngine::allSoundsOff`.
     pub fn all_sounds_off(&mut self) {
         self.with_engine(|engine| engine.all_sounds_off());
