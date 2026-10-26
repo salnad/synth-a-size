@@ -1933,7 +1933,31 @@ fn a_double_click_straightens_a_power() {
     );
     harness.event(Event::PointerMoved(dot));
     harness.step();
+    fixture.take_log();
     click(&mut harness, dot);
     click(&mut harness, dot);
     assert_eq!(fixture.synth.value("env_1_attack_power"), 0.0);
+    // One gesture, from the double click; the clicks themselves open none.
+    assert_eq!(
+        fixture.take_log(),
+        [
+            "begin env_1_attack_power",
+            "set env_1_attack_power",
+            "end env_1_attack_power"
+        ]
+    );
+}
+
+/// A click that doesn't move sends no gesture.
+#[test]
+fn an_envelope_click_without_moving_sends_nothing() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let (editor, shape) = envelope_shape(&fixture);
+    let attack = editor_point(editor, &shape, shape.attack_x, 0.0);
+    harness.event(Event::PointerMoved(attack));
+    harness.step();
+    fixture.take_log();
+    click(&mut harness, attack);
+    assert!(fixture.take_log().is_empty());
 }

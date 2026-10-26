@@ -13,8 +13,11 @@
   times; the sustain point moves the decay time and the sustain level; a
   vertical drag on a power dot bends it, and a double click straightens
   it. Dragging the decay or release past the window's end widens the
-  window. Each drag is one gesture per parameter, and the editor draws its
-  own values until the host has them.
+  window. Each drag is one gesture per parameter, opened on its first move
+  (a click without moving sends none); a double click (JUCE's rules, as
+  `Slider` uses: 0.4 s and 8 points) straightens the power in a gesture of
+  its own, never nested in a drag's. The editor draws its own values until
+  the host has them.
 - `Colour::overlaid_with` (JUCE's `overlaidWith`, in its integer steps).
 - Still to come: the playing voices' positions and the animated curve
   (from the engine's telemetry), zooming with the wheel, and the
@@ -30,6 +33,8 @@
   labels, and `overlaid_with` against JUCE's arithmetic.
 - Interaction tests: dragging the attack point lengthens the attack in one
   gesture; dragging the sustain point sets decay and sustain; a double
-  click on the attack power dot straightens it.
+  click on the attack power dot straightens it in exactly one gesture
+  (begin, set, end; the test fails on the old nesting); a click without
+  moving sends no gesture.
 - `cargo clippy --workspace --all-targets -D warnings`, `cargo fmt` and the
   `sas-gui` tests pass.

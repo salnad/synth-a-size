@@ -39,8 +39,8 @@ const LINEAR_HANDLE_PERCENT: f32 = 1.2;
 /// JUCE's multiple-click rules (`MouseInputSource`): presses within 0.4 s
 /// (`MouseEvent::getDoubleClickTimeout`) and 8 points of each other, where
 /// the last moved less than 4 points and was held no more than 0.3 s.
-const DOUBLE_CLICK_TIMEOUT: f64 = 0.4;
-const MULTIPLE_CLICK_DISTANCE: f32 = 8.0;
+pub(crate) const DOUBLE_CLICK_TIMEOUT: f64 = 0.4;
+pub(crate) const MULTIPLE_CLICK_DISTANCE: f32 = 8.0;
 const MOVED_SIGNIFICANTLY: f32 = 4.0;
 const LONG_PRESS: f64 = 0.3;
 /// How many frames a released slider keeps drawing its own value while

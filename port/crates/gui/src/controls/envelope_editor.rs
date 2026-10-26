@@ -18,6 +18,7 @@ use sas_common::scalar::power_scale;
 use sas_preset::ParamInfo;
 
 use crate::controls::format::{self, Format};
+use crate::controls::slider::{DOUBLE_CLICK_TIMEOUT, MULTIPLE_CLICK_DISTANCE};
 use crate::fonts::Face;
 use crate::host::Host;
 use crate::layout::Rect;
@@ -348,7 +349,11 @@ struct EditorState {
     window_time: f32,
     hover: Hover,
     mouse_down: bool,
+    /// A drag's host gestures are open (from its first move).
+    gesture: bool,
     last: Pos2,
+    /// The last press's time and place, for JUCE's double-click rules.
+    last_press: Option<(f64, Pos2)>,
     values: Values,
     holding: u32,
 }
@@ -359,7 +364,9 @@ impl Default for EditorState {
             window_time: DEFAULT_WINDOW_TIME,
             hover: Hover::None,
             mouse_down: false,
+            gesture: false,
             last: Pos2::ZERO,
+            last_press: None,
             values: Values::default(),
             holding: 0,
         }
@@ -437,47 +444,65 @@ impl EnvelopeEditor {
                 _ => Hover::None,
             };
         }
-        if response.double_clicked() {
-            let power = match state.hover {
-                Hover::AttackPower => Some(names.attack_power),
-                Hover::DecayPower => Some(names.decay_power),
-                Hover::ReleasePower => Some(names.release_power),
-                _ => None,
-            };
-            if let Some(name) = power {
-                host.set_once(name, 0.0);
-                match state.hover {
-                    Hover::AttackPower => state.values.attack_power = 0.0,
-                    Hover::DecayPower => state.values.decay_power = 0.0,
-                    _ => state.values.release_power = 0.0,
-                }
-                state.holding = HOLD_FRAMES;
-            }
-        }
-
         if down && !state.mouse_down {
+            // mouseDown, and mouseDoubleClick on a second press within
+            // JUCE's limits.
+            let now = panel.ui.input(|input| input.time);
+            let pos = pointer.unwrap_or_default();
+            let double_click = state.last_press.is_some_and(|(time, at)| {
+                now - time < DOUBLE_CLICK_TIMEOUT
+                    && (pos.x - at.x).abs() < MULTIPLE_CLICK_DISTANCE
+                    && (pos.y - at.y).abs() < MULTIPLE_CLICK_DISTANCE
+            });
             state.mouse_down = true;
-            state.last = pointer.unwrap_or_default();
-            for target in self.targets(state.hover) {
-                host.begin(target(&names));
+            state.last = pos;
+            state.last_press = Some((now, pos));
+            if double_click {
+                self.straighten_power(host, &mut state);
             }
         } else if down {
             if let Some(pos) = pointer {
                 if pos != state.last {
+                    // The gestures open with the first move, so a click
+                    // sends none.
+                    if !state.gesture {
+                        state.gesture = true;
+                        for target in self.targets(state.hover) {
+                            host.begin(target(&names));
+                        }
+                    }
                     self.drag(host, &mut state, pos, local(pos), (width, height));
                 }
             }
         } else if state.mouse_down {
             state.mouse_down = false;
             state.holding = HOLD_FRAMES;
-            for target in self.targets(state.hover) {
-                host.end(target(&names));
+            if state.gesture {
+                state.gesture = false;
+                for target in self.targets(state.hover) {
+                    host.end(target(&names));
+                }
             }
         }
         panel.ui.data_mut(|data| data.insert_temp(id, state));
 
         let shape = Shape::new(&names, state.values, width, height, state.window_time);
         self.paint(panel, bounds, &shape, &state);
+    }
+
+    /// `mouseDoubleClick`: a power dot's power back to 0, as one gesture of
+    /// its own (no drag gesture is open on a second press).
+    fn straighten_power(&self, host: &Host, state: &mut EditorState) {
+        let names = self.names;
+        let (name, value) = match state.hover {
+            Hover::AttackPower => (names.attack_power, &mut state.values.attack_power),
+            Hover::DecayPower => (names.decay_power, &mut state.values.decay_power),
+            Hover::ReleasePower => (names.release_power, &mut state.values.release_power),
+            _ => return,
+        };
+        host.set_once(name, 0.0);
+        *value = 0.0;
+        state.holding = HOLD_FRAMES;
     }
 
     /// `mouseDrag`: positions are the pointer's, unpadded as upstream's.
