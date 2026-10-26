@@ -5,7 +5,9 @@
 
 pub mod button;
 pub mod format;
+pub mod icon;
 pub mod oscilloscope;
+pub mod path;
 pub mod slider;
 pub mod tab_selector;
 pub mod wheel;
