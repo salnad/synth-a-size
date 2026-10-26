@@ -7,6 +7,7 @@
 use std::sync::OnceLock;
 
 use egui::Ui;
+use sas_simd::utils;
 
 use super::equalizer_response::{EqBand, EqualizerResponse, DEFAULT_DB_BUFFER_RATIO};
 use super::viewers::Live;
@@ -16,6 +17,7 @@ use crate::controls::path::Path;
 use crate::controls::paths;
 use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
 use crate::controls::slider::{Slider, SliderStyle};
+use crate::controls::spectrogram::{Spectrogram, SpectrogramAnalysis};
 use crate::controls::tab_selector::TabSelector;
 use crate::host::Host;
 use crate::layout::Rect;
@@ -152,12 +154,14 @@ pub struct EqualizerSection {
     gains: [Slider; 3],
     selected_band: usize,
     response_band: Option<usize>,
+    /// The spectrogram of the EQ's output under the response.
+    spectrogram: SpectrogramAnalysis,
 }
 
 impl Default for EqualizerSection {
     fn default() -> EqualizerSection {
         EqualizerSection {
-            cutoffs: BANDS.map(|band| Slider::new(band.cutoff, SliderStyle::Rotary)),
+            cutoffs: BANDS.map(|band| Slider::new(band.cutoff, SliderStyle::Rotary).hz_alternate()),
             resonances: BANDS.map(|band| {
                 Slider::new(
                     band.resonance.expect("each EQ band has a resonance"),
@@ -167,11 +171,35 @@ impl Default for EqualizerSection {
             gains: BANDS.map(|band| Slider::new(band.gain, SliderStyle::Rotary).bipolar()),
             selected_band: 0,
             response_band: Some(0),
+            spectrogram: SpectrogramAnalysis::default(),
         }
     }
 }
 
 impl EqualizerSection {
+    /// The spectrogram's settings (`EqualizerSection`'s constructor and
+    /// `renderOpenGlComponents`), with its amplitudes moved towards the
+    /// equalizer's latest output.
+    fn update_spectrogram(&mut self, host: &Host) -> Spectrogram {
+        let cutoff = Host::info(BANDS[0].cutoff);
+        let mut spectrogram = Spectrogram {
+            min_frequency: utils::midi_note_to_frequency(cutoff.min),
+            max_frequency: utils::midi_note_to_frequency(cutoff.max),
+            ..Spectrogram::default()
+        };
+        if let Some(telemetry) = host.model().telemetry() {
+            let (sample_rate, oversampling) =
+                telemetry.read(|snapshot| (snapshot.sample_rate, snapshot.oversampling_amount));
+            spectrogram.sample_rate = sample_rate;
+            if oversampling >= 1 {
+                spectrogram.oversample_amount = oversampling;
+            }
+            self.spectrogram
+                .update(&spectrogram, telemetry.equalizer_memory());
+        }
+        spectrogram
+    }
+
     /// `EqualizerSection::paintBackground`, then its controls.
     #[allow(clippy::too_many_arguments)]
     pub fn show(
@@ -226,7 +254,21 @@ impl EqualizerSection {
             draw_frequency_lines: true,
             db_buffer_ratio: DEFAULT_DB_BUFFER_RATIO,
         };
-        let popup = Some((self.cutoffs[self.selected_band], l.cutoff));
+        let hz = host.model().hz_frequency_display();
+        let popup = Some((self.cutoffs[self.selected_band].displayed(hz), l.cutoff));
+        let spectrogram = self.update_spectrogram(host);
+        let analysis = &self.spectrogram;
+        // paintBackground and renderOpenGlComponents: a line in the lighten
+        // colour over the widget background lightened, fully opaque.
+        let fill = scope
+            .color(ColorId::WidgetBackground)
+            .overlaid_with(scope.color(ColorId::LightenScreen))
+            .with_alpha(255);
+        let colours = (scope.color(ColorId::LightenScreen), fill);
+        let body = scope.color(ColorId::Body);
+        let mut under = |pixels: &PixelPainter| {
+            spectrogram.paint(pixels, scope, l.response, analysis, colours, body);
+        };
         if let Some(band) = response.show(
             ui,
             &live,
@@ -236,6 +278,7 @@ impl EqualizerSection {
             l.response,
             &mut self.response_band,
             popup,
+            &mut under,
         ) {
             self.selected_band = band;
         }

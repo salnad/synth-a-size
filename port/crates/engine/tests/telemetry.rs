@@ -8,6 +8,8 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use sas_dsp_core::ProcessorRef;
+use sas_engine::sas_effects::reorderable_effect_chain::ReorderableEffectChain;
+use sas_engine::sound_engine::SoundEngine;
 use sas_engine::synth::Synth;
 use sas_engine::telemetry::{
     destination_id, destination_names, status_id, status_names, Telemetry, OSCILLOSCOPE_SAMPLES,
@@ -210,6 +212,7 @@ fn the_equalizer_memory_follows_the_eq() {
         44100,
     );
     let before = telemetry.equalizer_memory().written();
+    assert_eq!(before, 64 * 2, "the first block, at 2x oversampling");
     render_blocks(&mut synth, 10, &mut seconds);
     synth.write_telemetry(&mut writer);
     let oversampling = telemetry.read(|snapshot| {
@@ -219,12 +222,33 @@ fn the_equalizer_memory_follows_the_eq() {
     assert_eq!(oversampling, 2, "the init preset's oversampling");
     let written = telemetry.equalizer_memory().written() - before;
     assert_eq!(written, 10 * 64 * oversampling as usize);
-    let mut frames = vec![[0.0f32; 2]; 64];
+    let mut frames = vec![[0.0f32; 2]; 256];
     telemetry.equalizer_memory().read_latest(&mut frames);
     assert!(
         frames.iter().any(|frame| frame[0] != 0.0),
         "the note's sound"
     );
+    // The copy's latest frames are the equalizer memory's, oldest first.
+    let source = synth
+        .engine()
+        .with::<SoundEngine, _>(|engine, _| {
+            engine
+                .effect_chain()
+                .with::<ReorderableEffectChain, _>(|chain, _| chain.get_equalizer_memory())
+        })
+        .expect("the effect chain has an equalizer");
+    let source = source.borrow();
+    let mask = source.size() as u32 - 1;
+    let offset = source.offset();
+    for (i, frame) in frames.iter().enumerate() {
+        let age = (frames.len() - 1 - i) as u32;
+        let index = (offset.wrapping_sub(age) & mask) as usize;
+        assert_eq!(
+            *frame,
+            [source.buffer(0)[index], source.buffer(1)[index]],
+            "frame {i}"
+        );
+    }
 
     synth.set_control("eq_on", 0.0);
     render_blocks(&mut synth, 1, &mut seconds);

@@ -186,6 +186,16 @@ impl Synth {
                 .expect("the default wavetable renders");
             synth.wavetable_creators.push(creator);
         }
+        // getEqualizerMemory(): taken before the first block, so the editor's
+        // copy starts with it.
+        synth.equalizer_source = synth.with_engine(|engine| {
+            engine
+                .effect_chain()
+                .with::<ReorderableEffectChain, _>(|chain, _| chain.get_equalizer_memory())
+        });
+        if let Some(source) = &synth.equalizer_source {
+            synth.equalizer_offset = source.borrow().offset();
+        }
         synth
     }
 
@@ -751,17 +761,6 @@ impl Synth {
     /// its memory. A bypassed equalizer writes nothing, so its memory holds
     /// its last output, as upstream's does.
     fn copy_equalizer_memory(&mut self) {
-        if self.equalizer_source.is_none() {
-            self.equalizer_source = self.with_engine(|engine| {
-                engine
-                    .effect_chain()
-                    .with::<ReorderableEffectChain, _>(|chain, _| chain.get_equalizer_memory())
-            });
-            let Some(source) = &self.equalizer_source else {
-                return;
-            };
-            self.equalizer_offset = source.borrow().offset();
-        }
         let Some(source) = &self.equalizer_source else {
             return;
         };

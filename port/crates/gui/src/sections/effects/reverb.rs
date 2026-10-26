@@ -147,9 +147,9 @@ impl Default for ReverbSection {
     fn default() -> ReverbSection {
         let rotary = |name| Slider::new(name, SliderStyle::Rotary);
         ReverbSection {
-            low_pre_cutoff: rotary("reverb_pre_low_cutoff"),
-            high_pre_cutoff: rotary("reverb_pre_high_cutoff"),
-            cutoffs: SHELVES.map(|shelf| rotary(shelf.cutoff)),
+            low_pre_cutoff: rotary("reverb_pre_low_cutoff").hz_alternate(),
+            high_pre_cutoff: rotary("reverb_pre_high_cutoff").hz_alternate(),
+            cutoffs: SHELVES.map(|shelf| rotary(shelf.cutoff).hz_alternate()),
             gains: SHELVES.map(|shelf| rotary(shelf.gain)),
             chorus_amount: rotary("reverb_chorus_amount"),
             chorus_frequency: rotary("reverb_chorus_frequency"),
@@ -225,7 +225,8 @@ impl ReverbSection {
             draw_frequency_lines: false,
             db_buffer_ratio: FEEDBACK_FILTER_BUFFER,
         };
-        let popup = Some((self.cutoffs[shelf], l.cutoff));
+        let hz = host.model().hz_frequency_display();
+        let popup = Some((self.cutoffs[shelf].displayed(hz), l.cutoff));
         let chosen = response.show(
             ui,
             &live,
@@ -235,6 +236,7 @@ impl ReverbSection {
             l.response,
             &mut self.response_band,
             popup,
+            &mut |_| {},
         );
         if let Some(band) = chosen {
             self.selected_band = band;
