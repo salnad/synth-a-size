@@ -10,6 +10,7 @@ use sas_gui::layout::{FullLayout, Rect};
 use sas_gui::scope::Scope;
 use sas_gui::sections::bend::{self, BendLayout};
 use sas_gui::sections::envelope::{self, EnvelopeLayout};
+use sas_gui::sections::extra_mod::ExtraModLayout;
 use sas_gui::sections::filter::{self, FilterLayout, Kind};
 use sas_gui::sections::lfo::{self, LfoLayout};
 use sas_gui::sections::modulation::{ModulationInterface, ModulationLayout};
@@ -299,7 +300,36 @@ fn port_rect(skin: &Skin, layout: &FullLayout, path: &str, preset: Option<&str>)
         "BEND/pitch_wheel" => bend.pitch_wheel,
         "BEND/mod_wheel" => bend.mod_wheel,
         _ if path.starts_with("modulation/") => return modulation_rect(skin, layout, path),
+        _ if path.starts_with("extra_mod_section/") => return extra_mod_rect(skin, layout, path),
         _ => return synthesis_rect(skin, layout, path, phase_visible(preset)),
+    })
+}
+
+/// The macro and wheel source column.
+fn extra_mod_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> {
+    let top = Scope::top(skin, layout.size_ratio);
+    let e = ExtraModLayout::new(&top, layout.extra_mod);
+    let rest = path.strip_prefix("extra_mod_section/")?;
+    let wheels =
+        ModulationTabSelector::numbered(&["pitch_wheel", "mod_wheel"]).button_bounds(e.other, 2);
+    Some(match rest {
+        "OTHER" => e.other,
+        "OTHER/pitch_wheel" => wheels[0],
+        "OTHER/mod_wheel" => wheels[1],
+        "MACRO" => e.macros_area,
+        _ => {
+            let rest = rest.strip_prefix("MACRO/MACRO")?;
+            let (index, control) = rest.split_at(1);
+            let m = e.macros[index.parse::<usize>().ok()?];
+            let control = control.strip_prefix('/');
+            match control {
+                None => m.bounds,
+                Some(c) if c.starts_with("macro_control_") => m.knob,
+                Some(c) if c.starts_with("Macro Label ") => m.label,
+                Some(c) if c.starts_with("Edit ") => m.edit,
+                _ => return None,
+            }
+        }
     })
 }
 

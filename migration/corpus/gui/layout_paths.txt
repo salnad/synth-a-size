@@ -244,6 +244,28 @@ synthesis/FILTER 2/OSC2
 synthesis/FILTER 2/OSC3
 synthesis/FILTER 2/SMP
 
+# G4a: the macro and wheel source column.
+extra_mod_section/OTHER
+extra_mod_section/OTHER/pitch_wheel
+extra_mod_section/OTHER/mod_wheel
+extra_mod_section/MACRO
+extra_mod_section/MACRO/MACRO0
+extra_mod_section/MACRO/MACRO0/macro_control_1
+extra_mod_section/MACRO/MACRO0/Macro Label 1
+extra_mod_section/MACRO/MACRO0/Edit 1
+extra_mod_section/MACRO/MACRO1
+extra_mod_section/MACRO/MACRO1/macro_control_2
+extra_mod_section/MACRO/MACRO1/Macro Label 2
+extra_mod_section/MACRO/MACRO1/Edit 2
+extra_mod_section/MACRO/MACRO2
+extra_mod_section/MACRO/MACRO2/macro_control_3
+extra_mod_section/MACRO/MACRO2/Macro Label 3
+extra_mod_section/MACRO/MACRO2/Edit 3
+extra_mod_section/MACRO/MACRO3
+extra_mod_section/MACRO/MACRO3/macro_control_4
+extra_mod_section/MACRO/MACRO3/Macro Label 4
+extra_mod_section/MACRO/MACRO3/Edit 4
+
 # G3b: oscillator 3 with a wave morph that shows the distortion phase slider.
 @preset migration/corpus/gui/presets/osc_3_sync.vital
 synthesis/OSC 3
