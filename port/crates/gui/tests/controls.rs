@@ -21,6 +21,7 @@ use sas_gui::controls::slider::{Slider, SliderStyle};
 use sas_gui::controls::tab_selector::TabSelector;
 use sas_gui::controls::wavetable_3d::{self, Wavetable3d};
 use sas_gui::layout::{FullLayout, Rect};
+use sas_gui::modulation::{AmountKnob, KnobKind};
 use sas_gui::paint::PixelPainter;
 use sas_gui::scope::Scope;
 use sas_gui::sections::envelope::{self, EnvelopeLayout};
@@ -3156,4 +3157,225 @@ fn closing_mid_drag_writes_the_pending_connection() {
     );
     pending.commit(&host);
     assert_eq!(fixture.take_log(), SLOT_1_GESTURES);
+}
+
+/// The amount knobs shown last frame of `kind`.
+fn knobs_of(fixture: &Fixture, kind: KnobKind) -> Vec<AmountKnob> {
+    fixture
+        .interface
+        .borrow()
+        .overlay()
+        .modulation
+        .shown_knobs()
+        .iter()
+        .filter(|knob| knob.kind == kind)
+        .cloned()
+        .collect()
+}
+
+/// A routing of LFO 1 and envelope 1 onto macro 1, in slots 1 and 2.
+fn two_sources_on_macro_1(fixture: &Fixture) {
+    let mut routing = fixture.synth.routing.lock().unwrap();
+    routing.add_modulation("lfo_1", "macro_control_1").unwrap();
+    routing.add_modulation("env_1", "macro_control_1").unwrap();
+}
+
+/// A source's connections show as knobs in its button
+/// (`positionModulationAmountSlidersInside`); dragging one changes its
+/// slot's amount in one host gesture, like any slider.
+#[test]
+fn a_sources_amount_knob_sets_its_slot_in_one_gesture() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    let mut harness = fixture.harness();
+    harness.step();
+    let knobs = knobs_of(&fixture, KnobKind::Source);
+    let lfo = knobs
+        .iter()
+        .find(|knob| knob.route.source == "lfo_1")
+        .expect("LFO 1's button shows its knob");
+    assert_eq!(lfo.slider.name, "modulation_1_amount");
+    assert_eq!(lfo.slider.popup_prefix, Some("Macro 1: "));
+    let start = centre(lfo.bounds);
+    drag(
+        &mut harness,
+        start,
+        start + egui::vec2(0.0, -20.0),
+        Modifiers::NONE,
+    );
+    assert_eq!(
+        fixture.take_log(),
+        [
+            "begin modulation_1_amount",
+            "set modulation_1_amount",
+            "end modulation_1_amount"
+        ]
+    );
+    assert!(fixture.synth.value("modulation_1_amount") > 0.0);
+}
+
+/// Selecting a source shows its knobs beside their destinations, 24 pixels
+/// across at this size, below a control that doesn't ask otherwise
+/// (`makeCurrentModulatorAmountsVisible`).
+#[test]
+fn a_selected_sources_knobs_sit_beside_their_destinations() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    let mut harness = fixture.harness();
+    let (source, ..) = modulation_spots(&fixture);
+    click(&mut harness, source);
+    let macro_knob = {
+        let interface = fixture.interface.borrow();
+        let layout = FullLayout::new(interface.skin(), 1400, 820);
+        let top = Scope::top(interface.skin(), layout.size_ratio);
+        ExtraModLayout::new(&top, layout.extra_mod).macros[0].knob
+    };
+    let selected = knobs_of(&fixture, KnobKind::Selected);
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0].route.source, "lfo_1");
+    assert_eq!(selected[0].slider.popup_prefix, Some("Lfo 1: "));
+    let width = 24;
+    assert_eq!(
+        selected[0].bounds,
+        Rect::new(
+            macro_knob.x + macro_knob.width / 2 - width / 2,
+            macro_knob.bottom(),
+            width,
+            width
+        )
+    );
+}
+
+/// Going over a control shows its other sources' knobs beside it, centred,
+/// with a gap where the selected source's knob is (`makeModulationsVisible`);
+/// they stay after the pointer leaves.
+#[test]
+fn going_over_a_control_shows_its_other_sources_knobs() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    let mut harness = fixture.harness();
+    let (source, macro_1, _) = modulation_spots(&fixture);
+    click(&mut harness, source);
+    move_to(&mut harness, macro_1);
+    let hover = knobs_of(&fixture, KnobKind::Hover);
+    assert_eq!(hover.len(), 1);
+    assert_eq!(hover[0].route.source, "env_1");
+    // [env 1, gap, gap]: three knobs' width centred below the control.
+    let selected = knobs_of(&fixture, KnobKind::Selected)[0].bounds;
+    assert_eq!(hover[0].bounds.y, selected.y);
+    assert_eq!(
+        hover[0].bounds.x,
+        selected.x + selected.width / 2 - 3 * 24 / 2
+    );
+    move_to(&mut harness, Pos2::new(700.0, 5.0));
+    assert_eq!(knobs_of(&fixture, KnobKind::Hover).len(), 1);
+}
+
+/// An amount knob's menu: remove, bypass, polarity and stereo, and a value.
+/// The toggles set the slot's control in one gesture (D18); removing
+/// disconnects without the host.
+#[test]
+fn an_amount_knobs_menu_toggles_and_removes() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    let mut harness = fixture.harness();
+    harness.step();
+    let knob = knobs_of(&fixture, KnobKind::Source)
+        .into_iter()
+        .find(|knob| knob.route.slot == 0)
+        .unwrap();
+    press(
+        &mut harness,
+        centre(knob.bounds),
+        PointerButton::Secondary,
+        Modifiers::NONE,
+    );
+    release(
+        &mut harness,
+        centre(knob.bounds),
+        PointerButton::Secondary,
+        Modifiers::NONE,
+    );
+    let menu = {
+        let interface = fixture.interface.borrow();
+        let menu = interface.overlay().menu.as_ref().expect("the menu opened");
+        assert!(matches!(menu.owner, MenuOwner::ModulationAmount(_, _, 0)));
+        menu.items.clone()
+    };
+    let names: Vec<&str> = menu.iter().map(|item| item.name.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "Remove",
+            "Bypass",
+            "Make Bipolar",
+            "Make Stereo",
+            "",
+            "Enter Value"
+        ]
+    );
+    fixture.take_log();
+    let host = Host::tracking(
+        fixture.synth.as_ref(),
+        Some(&fixture.context),
+        &fixture.open,
+    );
+    assert!(sas_gui::modulation::amount_knob_choice(
+        &host, 0, menu[1].id
+    ));
+    assert_eq!(
+        fixture.take_log(),
+        [
+            "begin modulation_1_bypass",
+            "set modulation_1_bypass",
+            "end modulation_1_bypass"
+        ]
+    );
+    assert!(sas_gui::modulation::amount_knob_choice(
+        &host, 0, menu[0].id
+    ));
+    assert_eq!(
+        *fixture.synth.bus.lock().unwrap(),
+        ["disconnect lfo_1 macro_control_1"]
+    );
+    assert_eq!(fixture.take_log(), Vec::<String>::new());
+}
+
+/// A middle click on an amount knob toggles its bypass, in one gesture.
+#[test]
+fn a_middle_click_on_an_amount_knob_toggles_bypass() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    let mut harness = fixture.harness();
+    harness.step();
+    let knob = knobs_of(&fixture, KnobKind::Source)
+        .into_iter()
+        .find(|knob| knob.route.slot == 0)
+        .unwrap();
+    press(
+        &mut harness,
+        centre(knob.bounds),
+        PointerButton::Middle,
+        Modifiers::NONE,
+    );
+    release(
+        &mut harness,
+        centre(knob.bounds),
+        PointerButton::Middle,
+        Modifiers::NONE,
+    );
+    let log = fixture.take_log();
+    assert_eq!(
+        log.iter()
+            .filter(|line| line.contains("bypass"))
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        [
+            "begin modulation_1_bypass",
+            "set modulation_1_bypass",
+            "end modulation_1_bypass"
+        ]
+    );
+    harness.step();
+    assert_eq!(fixture.synth.value("modulation_1_bypass"), 1.0);
 }

@@ -620,7 +620,8 @@ impl OscillatorSection {
             phase: text(names.phase).display(3, 0),
             random_phase: text(names.random_phase).display(3, 0),
             distortion_phase: Slider::new(names.distortion_phase, SliderStyle::Horizontal)
-                .bipolar(),
+                .bipolar()
+                .modulation_placement(Placement::Above),
             level: Slider::new(names.level, SliderStyle::Rotary),
             pan: Slider::new(names.pan, SliderStyle::Rotary).bipolar(),
             distortion_amount: Slider::new(names.distortion_amount, SliderStyle::Rotary)
@@ -631,6 +632,7 @@ impl OscillatorSection {
                 .popup_prefix("Spectral Morph: "),
             wave_frame: Slider::new(names.wave_frame, SliderStyle::Vertical)
                 .popup_placement(Placement::Right)
+                .modulation_placement(Placement::Left)
                 .popup_prefix("Frame: "),
         }
     }

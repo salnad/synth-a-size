@@ -37,10 +37,13 @@ use crate::controls::slider::{Slider, SliderStyle};
 use crate::host::Host;
 use crate::layer::Layer;
 use crate::layout::Rect;
-use crate::modulation::{rotary_fill, Destination, DestinationShape, ModulationManager};
+use crate::modulation::{
+    rotary_fill, AmountKnob, Destination, DestinationShape, ModulationManager,
+};
 use crate::paint::{PixelPainter, RectF};
 use crate::popup::{DualMenu, Menu, MenuItem, MenuOutcome, ValuePopup};
 use crate::scope::Scope;
+use crate::skin::ColorId;
 
 /// `SynthSlider::MenuOptions` ids the port offers.
 pub const MENU_DEFAULT_VALUE: i32 = 1;
@@ -83,6 +86,9 @@ pub enum MenuOwner {
     Setting(fn(&Host, &egui::Context, i32)),
     /// A modulation source's disconnect menu.
     ModulationSource(&'static str),
+    /// A modulation amount knob's menu (`ModulationAmountKnob`): its
+    /// slider, where its text entry goes, and its slot.
+    ModulationAmount(Slider, Rect, usize),
 }
 
 /// Room for each filter model's styles in a [`MenuOwner::FilterType`] id.
@@ -177,6 +183,13 @@ impl Overlay {
                         MenuOwner::ModulationSource(source) => {
                             crate::modulation::disconnect_choice(host, source, id)
                         }
+                        MenuOwner::ModulationAmount(slider, entry_bounds, slot) => {
+                            if id == MENU_MANUAL_ENTRY {
+                                self.text_entry = Some(TextEntry::new(host, &slider, entry_bounds));
+                            } else {
+                                crate::modulation::amount_knob_choice(host, slot, id);
+                            }
+                        }
                     }
                 }
             }
@@ -269,12 +282,16 @@ impl<'a, 'b> Panel<'a, 'b> {
             }
             SliderStyle::Horizontal | SliderStyle::Arrow { .. } => DestinationShape::Horizontal,
             SliderStyle::Vertical | SliderStyle::Wheel { .. } => DestinationShape::Vertical,
+            // Amount knobs take a drag as an aux modulation instead.
+            SliderStyle::ModulationKnob { .. } => return,
         };
         self.overlay.modulation.register_destination(Destination {
             name: slider.name,
             bounds,
             clip: self.clip,
             shape,
+            placement: slider.modulation_placement,
+            arc: self.scope.color(ColorId::RotaryArc),
         });
     }
 
@@ -324,6 +341,57 @@ impl<'a, 'b> Panel<'a, 'b> {
     /// returns the value to draw (the held value while dragging, so the
     /// drawing doesn't lag the host) and whether the pointer is over it.
     pub fn slider_input(&mut self, slider: &Slider, bounds: Rect) -> (f32, bool) {
+        self.slider_input_with_menu(slider, bounds, |slider, entry_bounds| {
+            (
+                vec![
+                    MenuItem::new(MENU_DEFAULT_VALUE, "Set to Default Value"),
+                    MenuItem::new(MENU_MANUAL_ENTRY, "Enter Value"),
+                ],
+                MenuOwner::Slider(*slider, entry_bounds),
+            )
+        })
+    }
+
+    /// A modulation's amount knob (`ModulationAmountKnob`): a slider on its
+    /// slot's amount with the knob's own menu. A middle click toggles its
+    /// bypass (`toggleBypass`), in one gesture (D18).
+    pub fn amount_knob(&mut self, knob: &AmountKnob) {
+        let host = self.host;
+        let slot = knob.route.slot;
+        let (value, hover) =
+            self.slider_input_with_menu(&knob.slider, knob.bounds, |slider, entry_bounds| {
+                (
+                    crate::modulation::amount_knob_menu(host, slot, MENU_MANUAL_ENTRY),
+                    MenuOwner::ModulationAmount(*slider, entry_bounds, slot),
+                )
+            });
+        let middle = self
+            .ui
+            .input(|input| input.pointer.button_pressed(egui::PointerButton::Middle));
+        if middle && hover {
+            let bypass = crate::modulation::slot_control(slot, "bypass");
+            let on = host.value(bypass) != 0.0;
+            host.set_once(bypass, if on { 0.0 } else { 1.0 });
+        }
+        knob.slider.paint(
+            self.pixels,
+            &mut self.layer,
+            &self.scope,
+            knob.bounds,
+            value,
+            hover,
+        );
+    }
+
+    /// [`slider_input`](Self::slider_input) with `menu` making the
+    /// right-click menu's items and owner, from the slider and where its
+    /// text entry goes.
+    fn slider_input_with_menu(
+        &mut self,
+        slider: &Slider,
+        bounds: Rect,
+        menu: impl FnOnce(&Slider, Rect) -> (Vec<MenuItem>, MenuOwner),
+    ) -> (f32, bool) {
         let slider = &slider.displayed(self.host.model().hz_frequency_display());
         let event = slider.interact(self.ui, self.host, self.pixels, bounds);
         let value = event.value.unwrap_or_else(|| self.host.value(slider.name));
@@ -347,16 +415,14 @@ impl<'a, 'b> Panel<'a, 'b> {
         if let Some(position) = event.menu_at {
             let area = self.pixels.area();
             let ppp = self.pixels.pixels_per_point();
+            let (items, owner) = menu(slider, slider.text_entry_bounds(&self.scope, bounds));
             self.overlay.menu = Some(Menu::new(
-                vec![
-                    MenuItem::new(MENU_DEFAULT_VALUE, "Set to Default Value"),
-                    MenuItem::new(MENU_MANUAL_ENTRY, "Enter Value"),
-                ],
+                items,
                 egui::pos2(
                     (position.x - area.min.x) * ppp,
                     (position.y - area.min.y) * ppp,
                 ),
-                MenuOwner::Slider(*slider, slider.text_entry_bounds(&self.scope, bounds)),
+                owner,
             ));
         }
         if event.text_entry {
