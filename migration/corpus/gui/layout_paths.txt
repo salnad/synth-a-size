@@ -205,6 +205,45 @@ modulation/bottom/slide
 modulation/bottom/stereo
 modulation/bottom/random
 
+
+# G3b: the filter sections.
+synthesis/FILTER 1/filter_1_cutoff
+synthesis/FILTER 1/filter_1_resonance
+synthesis/FILTER 1/filter_1_drive
+synthesis/FILTER 1/filter_1_mix
+synthesis/FILTER 1/filter_1_blend
+synthesis/FILTER 1/filter_1_keytrack
+synthesis/FILTER 1/filter_1_on
+synthesis/FILTER 1/filter_1_filter_input
+synthesis/FILTER 1/label1
+synthesis/FILTER 1/label2
+synthesis/FILTER 1/preset_selector
+synthesis/FILTER 1/preset_selector/Text
+synthesis/FILTER 1/preset_selector/Prev
+synthesis/FILTER 1/preset_selector/Next
+synthesis/FILTER 1/OSC1
+synthesis/FILTER 1/OSC2
+synthesis/FILTER 1/OSC3
+synthesis/FILTER 1/SMP
+synthesis/FILTER 2/filter_2_cutoff
+synthesis/FILTER 2/filter_2_resonance
+synthesis/FILTER 2/filter_2_drive
+synthesis/FILTER 2/filter_2_mix
+synthesis/FILTER 2/filter_2_blend
+synthesis/FILTER 2/filter_2_keytrack
+synthesis/FILTER 2/filter_2_on
+synthesis/FILTER 2/filter_2_filter_input
+synthesis/FILTER 2/label1
+synthesis/FILTER 2/label2
+synthesis/FILTER 2/preset_selector
+synthesis/FILTER 2/preset_selector/Text
+synthesis/FILTER 2/preset_selector/Prev
+synthesis/FILTER 2/preset_selector/Next
+synthesis/FILTER 2/OSC1
+synthesis/FILTER 2/OSC2
+synthesis/FILTER 2/OSC3
+synthesis/FILTER 2/SMP
+
 # G3b: oscillator 3 with a wave morph that shows the distortion phase slider.
 @preset migration/corpus/gui/presets/osc_3_sync.vital
 synthesis/OSC 3

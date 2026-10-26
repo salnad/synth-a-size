@@ -605,7 +605,9 @@ impl OscillatorSection {
             unison_voices: text(names.unison_voices),
             unison_detune: text(names.unison_detune).display(3, 0),
             // InvisibleSlider: the unison viewer draws in its place.
-            detune_power: Slider::new(names.detune_power, SliderStyle::Curve).text_entry(1.0, None),
+            detune_power: Slider::new(names.detune_power, SliderStyle::Curve)
+                .text_entry(1.0, None)
+                .popup_prefix("Unison Detune Power: "),
             phase: text(names.phase).display(3, 0),
             random_phase: text(names.random_phase).display(3, 0),
             distortion_phase: Slider::new(names.distortion_phase, SliderStyle::Horizontal)
@@ -613,11 +615,14 @@ impl OscillatorSection {
             level: Slider::new(names.level, SliderStyle::Rotary),
             pan: Slider::new(names.pan, SliderStyle::Rotary).bipolar(),
             distortion_amount: Slider::new(names.distortion_amount, SliderStyle::Rotary)
-                .knob_size_scale(1.5),
+                .knob_size_scale(1.5)
+                .popup_prefix("Wave Morph: "),
             spectral_morph_amount: Slider::new(names.spectral_morph_amount, SliderStyle::Rotary)
-                .knob_size_scale(1.5),
+                .knob_size_scale(1.5)
+                .popup_prefix("Spectral Morph: "),
             wave_frame: Slider::new(names.wave_frame, SliderStyle::Vertical)
-                .popup_placement(Placement::Right),
+                .popup_placement(Placement::Right)
+                .popup_prefix("Frame: "),
         }
     }
 

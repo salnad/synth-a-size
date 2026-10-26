@@ -284,3 +284,234 @@ impl<T> Menu<T> {
         MenuOutcome::Open
     }
 }
+
+/// One left-hand row of a [`DualMenu`] and the right-hand rows it shows.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DualMenuGroup {
+    pub name: String,
+    pub items: Vec<MenuItem>,
+}
+
+/// An open `DualPopupSelector`: groups on the left, the selected group's
+/// items on the right. Choosing either side applies the right-hand
+/// selection and leaves the menu open; a press outside closes it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DualMenu<T> {
+    pub groups: Vec<DualMenuGroup>,
+    pub left_selected: usize,
+    pub right_selected: usize,
+    /// Where it was asked for, in pixels.
+    pub position: Pos2,
+    /// `getDualPopupWidth`, in pixels.
+    pub width: i32,
+    pub owner: T,
+    pub shown: bool,
+}
+
+impl<T> DualMenu<T> {
+    pub fn new(
+        groups: Vec<DualMenuGroup>,
+        left_selected: usize,
+        right_selected: usize,
+        position: Pos2,
+        width: i32,
+        owner: T,
+    ) -> DualMenu<T> {
+        DualMenu {
+            groups,
+            left_selected,
+            right_selected,
+            position,
+            width,
+            owner,
+            shown: false,
+        }
+    }
+
+    /// `DualPopupSelector::setPosition` inside the interface's `area`: tall
+    /// enough for the left list.
+    pub fn bounds(&self, scope: &Scope, area: Rect) -> Rect {
+        let rounding = scope.value(ValueId::BodyRounding) as i32;
+        let row_height = (scope.size_ratio() * ROW_HEIGHT) as i32;
+        let height = row_height * self.groups.len() as i32 + 2 * rounding;
+        let mut x = self.position.x as i32;
+        let mut y = self.position.y as i32;
+        if x + self.width > area.right() {
+            x -= self.width;
+        }
+        if y + height > area.bottom() {
+            y = area.bottom() - height;
+        }
+        Rect::new(x, y, self.width, height)
+    }
+
+    /// `DualPopupSelector::resized`: the two lists.
+    pub fn lists(&self, scope: &Scope, bounds: Rect) -> (Rect, Rect) {
+        let rounding = scope.value(ValueId::BodyRounding) as i32;
+        let height = bounds.height - 2 * rounding;
+        let left = Rect::new(
+            bounds.x + 1,
+            bounds.y + rounding,
+            bounds.width / 2 - 2,
+            height,
+        );
+        let right_x = left.right() + 1;
+        let right = Rect::new(
+            right_x,
+            bounds.y + rounding,
+            bounds.right() - right_x - 1,
+            height,
+        );
+        (left, right)
+    }
+
+    /// Draws the lists and handles the mouse. A release on a left row
+    /// selects that group and its item at the same place, if it has one of
+    /// the same name, else its first (`DualPopupSelector::newSelection`);
+    /// a release on a right row selects that item. Either returns the
+    /// item's id as `Selected`.
+    pub fn show(
+        &mut self,
+        ui: &mut Ui,
+        pixels: &PixelPainter,
+        top: &Scope,
+        area: Rect,
+    ) -> MenuOutcome {
+        let scope = top.within(POPUP_SECTIONS);
+        let bounds = self.bounds(&scope, area);
+        let (left, right) = self.lists(&scope, bounds);
+        let row_height = (top.size_ratio() * ROW_HEIGHT) as i32;
+        let rounding = scope.value(ValueId::BodyRounding);
+
+        let response = ui.interact(
+            pixels.rect(bounds.into()),
+            ui.scope_id().with("dual popup selector"),
+            Sense::click_and_drag(),
+        );
+        let pointer = ui.input(|input| input.pointer.interact_pos());
+        let pressed = ui.input(|input| input.pointer.any_pressed());
+        let to_pixels = |pos: Pos2| {
+            (
+                (pos.x - pixels.area().min.x) * pixels.pixels_per_point(),
+                (pos.y - pixels.area().min.y) * pixels.pixels_per_point(),
+            )
+        };
+        let row_in = |list: Rect, count: usize, pos: Pos2| -> Option<usize> {
+            let (px, py) = to_pixels(pos);
+            if px < list.x as f32 || px > list.right() as f32 {
+                return None;
+            }
+            let row = ((py - list.y as f32) / row_height as f32).floor() as i32;
+            (row >= 0 && (row as usize) < count).then_some(row as usize)
+        };
+        let right_items = self.groups[self.left_selected].items.clone();
+        let hover_left = pointer
+            .filter(|_| response.hovered())
+            .and_then(|p| row_in(left, self.groups.len(), p));
+        let hover_right = pointer
+            .filter(|_| response.hovered())
+            .and_then(|p| row_in(right, right_items.len(), p));
+
+        let mut quads = QuadBatch::new();
+        let mut body = Quad::new(
+            QuadKind::RoundedRectangle,
+            bounds.into(),
+            scope.color(ColorId::Body),
+        );
+        body.rounding = rounding;
+        quads.push(body);
+        let mut border = Quad::new(
+            QuadKind::RoundedRectangleBorder,
+            bounds.into(),
+            scope.color(ColorId::Border),
+        );
+        border.rounding = rounding;
+        border.thickness = 1.0;
+        quads.push(border);
+        let divider = Rect::new(
+            bounds.x + bounds.width / 2 - 1,
+            bounds.y + 1,
+            1,
+            bounds.height - 2,
+        );
+        quads.push(Quad::new(
+            QuadKind::Color,
+            divider.into(),
+            scope.color(ColorId::Border),
+        ));
+        quads.paint(pixels, RectF::from(bounds));
+
+        // PopupList::renderOpenGlComponents with showSelected: the hover in
+        // the lighten colour, then the selection.
+        let highlight = scope.color(ColorId::WidgetPrimary1).darker(0.8);
+        let lighten = scope.color(ColorId::LightenScreen);
+        let row_rect = |list: Rect, row: usize| {
+            RectF::new(
+                list.x as f32,
+                (list.y + row as i32 * row_height) as f32,
+                list.width as f32,
+                row_height as f32,
+            )
+        };
+        for (list, hovered, selected) in [
+            (left, hover_left, Some(self.left_selected)),
+            (
+                right,
+                hover_right,
+                Some(self.right_selected).filter(|&r| r < right_items.len()),
+            ),
+        ] {
+            let mut rows = QuadBatch::additive();
+            if let Some(row) = hovered {
+                rows.push(Quad::new(QuadKind::Color, row_rect(list, row), lighten));
+            }
+            if let Some(row) = selected {
+                rows.push(Quad::new(QuadKind::Color, row_rect(list, row), highlight));
+            }
+            rows.paint(pixels, RectF::from(list));
+        }
+
+        let padding = row_height / 4;
+        let text_colour = scope.color(ColorId::TextComponentText);
+        let font_size = row_height as f32 * 0.55;
+        let names_left: Vec<&str> = self.groups.iter().map(|g| g.name.as_str()).collect();
+        let names_right: Vec<&str> = right_items.iter().map(|i| i.name.as_str()).collect();
+        for (list, names) in [(left, names_left), (right, names_right)] {
+            for (index, name) in names.iter().enumerate() {
+                let row = Rect::new(
+                    list.x + padding,
+                    list.y + row_height * index as i32,
+                    list.width - 2 * padding,
+                    row_height,
+                );
+                pixels.text_left(name, row, Face::Light, font_size, text_colour);
+            }
+        }
+
+        if response.drag_stopped() || response.clicked() {
+            if let Some(pos) = pointer {
+                if let Some(row) = row_in(left, self.groups.len(), pos) {
+                    let items = &self.groups[row].items;
+                    let keep = self.right_selected < items.len()
+                        && self.right_selected < right_items.len()
+                        && items[self.right_selected].name == right_items[self.right_selected].name;
+                    self.left_selected = row;
+                    if !keep {
+                        self.right_selected = 0;
+                    }
+                    if let Some(item) = self.groups[row].items.get(self.right_selected) {
+                        return MenuOutcome::Selected(item.id);
+                    }
+                } else if let Some(row) = row_in(right, right_items.len(), pos) {
+                    self.right_selected = row;
+                    return MenuOutcome::Selected(right_items[row].id);
+                }
+            }
+        }
+        if pressed && self.shown && !response.hovered() {
+            return MenuOutcome::Closed;
+        }
+        self.shown = true;
+        MenuOutcome::Open
+    }
+}

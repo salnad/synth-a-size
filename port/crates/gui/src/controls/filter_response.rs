@@ -173,6 +173,185 @@ pub fn comb(u: &FilterResponseUniforms, x: f32, y: f32) -> f32 {
     get_y_for_response(response)
 }
 
+fn one_pole_invert_response(cutoff: f32) -> Complex {
+    Complex(1.0, cutoff)
+}
+
+/// `kAnalogFilterResponseVertexShader` at `x`.
+pub fn analog(u: &FilterResponseUniforms, x: f32) -> f32 {
+    let one_pole = one_pole_response(get_cutoff_ratio(x, u.midi_cutoff));
+    let low = complex_multiply(one_pole, one_pole);
+    let band = one_pole - low;
+    let high = ONE - one_pole - band;
+    let two_stage_pre = scale(u.stage3, low) + scale(u.stage1, band) + scale(u.stage4, high);
+    let two_stage = scale(u.stage0, low) + scale(u.stage1, band) + scale(u.stage2, high);
+    let feedback = complex_multiply(one_pole, ONE - one_pole);
+    let denominator_pre = ONE - feedback;
+    let denominator = ONE - scale(u.resonance, feedback);
+    let response_pre = complex_divide(two_stage_pre, denominator_pre);
+    let response_res = complex_divide(two_stage, denominator);
+    let mut response = scale(u.drive, response_res);
+    response = response + scale(u.db24, complex_multiply(response_pre, response) - response);
+    response = scale(u.mix, response) + Complex(1.0 - u.mix, 0.0);
+    get_y_for_response(response)
+}
+
+/// `kPositiveFlangeFilterResponseVertexShader` at the line position (`x`,
+/// `y`); `y` as for [`comb`].
+pub fn positive_flange(u: &FilterResponseUniforms, x: f32, y: f32) -> f32 {
+    const MAX_CYCLES: f32 = 8.0;
+    let ratio = get_cutoff_ratio(x, u.midi_cutoff);
+    let ratio_diff = get_cutoff_ratio(x + 0.02, u.midi_cutoff) - ratio;
+    let max_step = step(MAX_CYCLES, ratio);
+    let delay = Complex((2.0 * PI * ratio).cos(), -(2.0 * PI * ratio).sin());
+    let tick = scale(u.resonance, delay);
+    let low_pass = one_pole_response(get_cutoff_ratio(x, u.stage2));
+    let high_pass = ONE - low_pass;
+    let one_pole = scale(u.stage0, low_pass) + scale(u.stage1, high_pass);
+    let high_pass2 = ONE - one_pole_response(get_cutoff_ratio(x, u.stage3));
+    #[allow(clippy::approx_constant, clippy::excessive_precision)]
+    let filter_input = Complex(0.707_106_781_19, 0.0);
+    let delay_input = complex_multiply(complex_multiply(filter_input, one_pole), high_pass2);
+    let mut denominator = ONE - tick;
+    let round_value = scale(u.resonance, complex_multiply(one_pole, high_pass2));
+    let denominator_round = complex_multiply(delay, ONE - round_value);
+    let denominator_round_down = complex_multiply(-delay, ONE + round_value);
+    let max_step_mult = 1.0 - y;
+    let max_step_denominator = scale(max_step_mult, denominator_round)
+        + scale(1.0 - max_step_mult, denominator_round_down);
+    denominator = scale(max_step, max_step_denominator) + scale(1.0 - max_step, denominator);
+    let denominator_round_step = 1.0 - max_step.max(step(ratio_diff, length(denominator)));
+    denominator = scale(denominator_round_step, denominator_round)
+        + scale(1.0 - denominator_round_step, denominator);
+    let mut response = scale(u.drive, filter_input)
+        + complex_multiply(complex_divide(delay_input, denominator), delay);
+    response = scale(u.mix, response) + Complex(1.0 - u.mix, 0.0);
+    get_y_for_response(response)
+}
+
+/// `kNegativeFlangeFilterResponseVertexShader` at the line position (`x`,
+/// `y`); `y` as for [`comb`].
+pub fn negative_flange(u: &FilterResponseUniforms, x: f32, y: f32) -> f32 {
+    const MAX_CYCLES: f32 = 8.0;
+    let ratio = get_cutoff_ratio(x, u.midi_cutoff + 12.0);
+    let max_step = step(MAX_CYCLES, ratio);
+    let delay = Complex((2.0 * PI * ratio).cos(), -(2.0 * PI * ratio).sin());
+    let tick = scale(-u.resonance, delay);
+    let low_pass = one_pole_response(get_cutoff_ratio(x, u.stage2));
+    let high_pass = ONE - low_pass;
+    let one_pole = scale(u.stage0, low_pass) + scale(u.stage1, high_pass);
+    let high_pass2 = ONE - one_pole_response(get_cutoff_ratio(x, u.stage3));
+    #[allow(clippy::approx_constant, clippy::excessive_precision)]
+    let filter_input = Complex(0.707_106_781_19, 0.0);
+    let delay_input = complex_multiply(complex_multiply(filter_input, one_pole), high_pass2);
+    let mut denominator = ONE - complex_multiply(tick, complex_multiply(one_pole, high_pass2));
+    let round_value = scale(u.resonance, -complex_multiply(one_pole, high_pass2));
+    let denominator_round = complex_multiply(delay, ONE - round_value);
+    let denominator_round_down = complex_multiply(-delay, ONE + round_value);
+    let max_step_mult = 1.0 - y;
+    let max_step_denominator = scale(max_step_mult, denominator_round)
+        + scale(1.0 - max_step_mult, denominator_round_down);
+    denominator = scale(max_step, max_step_denominator) + scale(1.0 - max_step, denominator);
+    let mut response = scale(u.drive, filter_input)
+        - complex_multiply(complex_divide(delay_input, denominator), delay);
+    response = scale(u.mix, response) + Complex(1.0 - u.mix, 0.0);
+    get_y_for_response(response)
+}
+
+/// `kDiodeFilterResponseVertexShader` at `x`.
+pub fn diode(u: &FilterResponseUniforms, x: f32) -> f32 {
+    let ratio = get_cutoff_ratio(x, u.midi_cutoff);
+    let one_pole = one_pole_response(ratio);
+    let high_pass_one_pole = one_pole_response(ratio / u.stage0);
+    let high = ONE - scale(2.0, high_pass_one_pole)
+        + complex_multiply(high_pass_one_pole, high_pass_one_pole);
+    let high_feedback = complex_multiply(high_pass_one_pole, ONE - high_pass_one_pole);
+    let high_denominator = ONE - high_feedback;
+    let mut high_pass_response = complex_divide(high, high_denominator);
+    high_pass_response = ONE + scale(u.db24, high_pass_response + Complex(-1.0, 0.0));
+    let r#loop = complex_multiply(one_pole, one_pole);
+    let series = scale(0.125, complex_multiply(r#loop, r#loop));
+    let chain = complex_divide(series, ONE + series - r#loop);
+    let numerator = scale(u.drive, chain);
+    let denominator = ONE + scale(u.resonance, chain);
+    let mut response = complex_divide(numerator, denominator);
+    response = scale(u.mix, response) + Complex(1.0 - u.mix, 0.0);
+    response = complex_multiply(response, high_pass_response);
+    get_y_for_response(response)
+}
+
+/// `kDirtyFilterResponseVertexShader` at `x`.
+pub fn dirty(u: &FilterResponseUniforms, x: f32) -> f32 {
+    let one_pole = one_pole_response(get_cutoff_ratio(x, u.midi_cutoff));
+    let low = complex_multiply(one_pole, one_pole);
+    let band = one_pole - low;
+    let high = ONE - one_pole - band;
+    let two_stage_pre = scale(u.stage3, low) + scale(u.stage1, band) + scale(u.stage4, high);
+    let two_stage = scale(u.stage0, low) + scale(u.stage1, band) + scale(u.stage2, high);
+    let feedback = complex_multiply(one_pole, ONE - one_pole);
+    let denominator_pre = ONE - feedback;
+    let denominator = Complex(1.0 / u.resonance, 0.0) - feedback;
+    let resonance_loop = complex_divide(band, denominator);
+    let response_pre = complex_divide(two_stage_pre, denominator_pre);
+    let response_res = complex_multiply(two_stage, ONE + resonance_loop);
+    let mut response = scale(u.drive, response_res);
+    response = response + scale(u.db24, complex_multiply(response_pre, response) - response);
+    response = scale(u.mix, response) + Complex(1.0 - u.mix, 0.0);
+    get_y_for_response(response)
+}
+
+/// The formant shader's extra uniforms: each of the four formants' cutoff,
+/// resonance and low, band and high amounts (drive applied).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct FormantUniforms {
+    pub cutoff: [f32; 4],
+    pub resonance: [f32; 4],
+    pub low: [f32; 4],
+    pub band: [f32; 4],
+    pub high: [f32; 4],
+}
+
+/// `kFormantFilterResponseVertexShader` at `x`: four band filters summed.
+/// Of the shared uniforms it reads only `mix`.
+pub fn formant(u: &FilterResponseUniforms, f: &FormantUniforms, x: f32) -> f32 {
+    let mut response = Complex(0.0, 0.0);
+    for i in 0..4 {
+        let g = get_cutoff_ratio(x, f.cutoff[i]);
+        let g_sqr = Complex(g * g, 0.0);
+        let denominator = g_sqr + Complex(0.0, g * f.resonance[i]) + Complex(-1.0, 0.0);
+        let numerator =
+            scale(-f.low[i], ONE) + scale(f.band[i], Complex(0.0, g)) + scale(f.high[i], g_sqr);
+        let formant_response = complex_divide(numerator, denominator);
+        response = if i == 0 {
+            formant_response
+        } else {
+            response + formant_response
+        };
+    }
+    response = scale(u.mix, response) + Complex(1.0 - u.mix, 0.0);
+    get_y_for_response(response)
+}
+
+/// `kLadderFilterResponseVertexShader` at `x`.
+pub fn ladder(u: &FilterResponseUniforms, x: f32) -> f32 {
+    let one_pole_invert = one_pole_invert_response(get_cutoff_ratio(x, u.midi_cutoff));
+    let two_pole_invert = complex_multiply(one_pole_invert, one_pole_invert);
+    let three_pole_invert = complex_multiply(one_pole_invert, two_pole_invert);
+    let four_pole_invert = complex_multiply(one_pole_invert, three_pole_invert);
+    let numerator = scale(
+        u.drive,
+        scale(u.stage0, four_pole_invert)
+            + scale(u.stage1, three_pole_invert)
+            + scale(u.stage2, two_pole_invert)
+            + scale(u.stage3, one_pole_invert)
+            + Complex(u.stage4, 0.0),
+    );
+    let denominator = four_pole_invert + Complex(u.resonance, 0.0);
+    let mut response = complex_divide(numerator, denominator);
+    response = scale(u.mix, response) + Complex(1.0 - u.mix, 0.0);
+    get_y_for_response(response)
+}
+
 /// `kPhaserFilterResponseVertexShader` at `x`.
 pub fn phaser(u: &FilterResponseUniforms, x: f32) -> f32 {
     let g = get_cutoff_ratio(x, u.midi_cutoff);
@@ -286,5 +465,115 @@ mod tests {
         close(phaser(&u, x), y_at(0.0));
         let inverted = FilterResponseUniforms { db24: 1.0, ..u };
         assert!(phaser(&inverted, x) < -1.0);
+    }
+    /// A two-pole low pass (stage0 = 1) at its cutoff: one_pole = (1 − i)/2,
+    /// low = −i/2 and the feedback is ½, so |response| = ½ / (1 − ½·res):
+    /// −6.02 dB with no resonance and 0 dB at resonance 1.
+    #[test]
+    fn analog_low_pass_at_its_cutoff() {
+        let u = FilterResponseUniforms {
+            midi_cutoff: 60.0,
+            drive: 1.0,
+            mix: 1.0,
+            stage0: 1.0,
+            ..Default::default()
+        };
+        close(analog(&u, x_at(60.0)), y_at(20.0 * 0.5f32.log10()));
+        let resonant = FilterResponseUniforms {
+            resonance: 1.0,
+            ..u
+        };
+        close(analog(&resonant, x_at(60.0)), y_at(0.0));
+    }
+
+    /// The dirty filter's resonance loop at the cutoff: band = ½, so the
+    /// loop is ½ / (1/res − ½), 1 at resonance 1, which doubles the low
+    /// pass's −6.02 dB to 0 dB.
+    #[test]
+    fn dirty_resonance_loop_at_the_cutoff() {
+        let u = FilterResponseUniforms {
+            midi_cutoff: 60.0,
+            resonance: 1.0,
+            drive: 1.0,
+            mix: 1.0,
+            stage0: 1.0,
+            ..Default::default()
+        };
+        close(dirty(&u, x_at(60.0)), y_at(0.0));
+    }
+
+    /// The ladder at its cutoff: (1 + i)⁴ = −4, so with stage0 = 1 the
+    /// response is −4 / (−4 + res): 0 dB at no resonance, +6.02 dB at 2.
+    #[test]
+    fn ladder_at_its_cutoff() {
+        let u = FilterResponseUniforms {
+            midi_cutoff: 60.0,
+            drive: 1.0,
+            mix: 1.0,
+            stage0: 1.0,
+            ..Default::default()
+        };
+        close(ladder(&u, x_at(60.0)), y_at(0.0));
+        let resonant = FilterResponseUniforms {
+            resonance: 2.0,
+            ..u
+        };
+        close(ladder(&resonant, x_at(60.0)), y_at(20.0 * 2.0f32.log10()));
+    }
+
+    /// The diode's four-pole chain at the cutoff with its high pass far
+    /// below: loop = −i/2, series = −1/32, chain = series / (1 + series −
+    /// loop), |chain| = (1/32) / |31/32 + i/2|.
+    #[test]
+    fn diode_chain_at_the_cutoff() {
+        let u = FilterResponseUniforms {
+            midi_cutoff: 60.0,
+            drive: 1.0,
+            mix: 1.0,
+            stage0: 1.0e-6,
+            ..Default::default()
+        };
+        let magnitude = (1.0f32 / 32.0) / ((31.0f32 / 32.0).powi(2) + 0.25).sqrt();
+        close(diode(&u, x_at(60.0)), y_at(20.0 * magnitude.log10()));
+    }
+
+    /// One formant (a low pass at its cutoff) and three silent ones: the
+    /// response is −1 / (i·res), |1/res|: +6.02 dB at resonance ½.
+    #[test]
+    fn formant_sums_its_bands() {
+        let u = FilterResponseUniforms {
+            mix: 1.0,
+            ..Default::default()
+        };
+        let f = FormantUniforms {
+            cutoff: [60.0; 4],
+            resonance: [0.5; 4],
+            low: [1.0, 0.0, 0.0, 0.0],
+            ..Default::default()
+        };
+        close(formant(&u, &f, x_at(60.0)), y_at(20.0 * 2.0f32.log10()));
+    }
+
+    /// With no feedback and its filters open, a positive flange is
+    /// (1 + e^(−2πi·ratio)) / √2: +3.01 dB at the cutoff and a notch an
+    /// octave below; the negative flange's notch is at its cutoff.
+    #[test]
+    fn flanges_peak_and_notch() {
+        let u = FilterResponseUniforms {
+            midi_cutoff: 60.0,
+            drive: 1.0,
+            mix: 1.0,
+            stage0: 1.0,
+            stage2: 1000.0,
+            stage3: -1000.0,
+            ..Default::default()
+        };
+        close(
+            positive_flange(&u, x_at(60.0), 0.0),
+            y_at(20.0 * 2.0f32.sqrt().log10()),
+        );
+        assert!(positive_flange(&u, x_at(48.0), 0.0) < -1.0);
+        // The negative flange reads the cutoff an octave up (+12).
+        assert!(negative_flange(&u, x_at(72.0), 0.0) < -1.0);
     }
 }

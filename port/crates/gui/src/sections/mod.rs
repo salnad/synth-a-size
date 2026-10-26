@@ -12,6 +12,7 @@
 
 pub mod bend;
 pub mod envelope;
+pub mod filter;
 pub mod keyboard;
 pub mod lfo;
 pub mod modulation;
@@ -31,7 +32,7 @@ use crate::host::Host;
 use crate::layer::Layer;
 use crate::layout::Rect;
 use crate::paint::{PixelPainter, RectF};
-use crate::popup::{Menu, MenuItem, MenuOutcome, ValuePopup};
+use crate::popup::{DualMenu, Menu, MenuItem, MenuOutcome, ValuePopup};
 use crate::scope::Scope;
 
 /// `SynthSlider::MenuOptions` ids the port offers.
@@ -57,7 +58,16 @@ pub enum MenuOwner {
         name: &'static str,
         then: Option<fn(&Host, f32)>,
     },
+    /// A filter's model and style list (`FilterSection::setFilterSelected`):
+    /// the id is `model * FILTER_STYLE_IDS + style`.
+    FilterType {
+        model: &'static str,
+        style: &'static str,
+    },
 }
+
+/// Room for each filter model's styles in a [`MenuOwner::FilterType`] id.
+pub const FILTER_STYLE_IDS: i32 = 16;
 
 /// A slider's text entry (`SynthSlider::showTextEntry`).
 #[derive(Clone, Debug)]
@@ -90,6 +100,8 @@ pub struct Overlay {
     /// The value bubble and the slider showing it.
     pub value_popup: Option<(&'static str, ValuePopup)>,
     pub menu: Option<Menu<MenuOwner>>,
+    /// The two-column selector (`FullInterface::dualPopupSelector`).
+    pub dual_menu: Option<DualMenu<MenuOwner>>,
     pub text_entry: Option<TextEntry>,
 }
 
@@ -125,10 +137,31 @@ impl Overlay {
                                 then(host, id as f32);
                             }
                         }
+                        MenuOwner::FilterType { .. } => apply_choice(host, menu.owner, id),
                     }
                 }
             }
         }
+        if let Some(mut menu) = self.dual_menu.take() {
+            match menu.show(ui, pixels, top, area) {
+                MenuOutcome::Open => self.dual_menu = Some(menu),
+                MenuOutcome::Closed => {}
+                MenuOutcome::Selected(id) => {
+                    // The dual selector stays open after a choice.
+                    apply_choice(host, menu.owner, id);
+                    self.dual_menu = Some(menu);
+                }
+            }
+        }
+    }
+}
+
+/// What choosing `id` in a section's list does, for the owners both lists
+/// can have.
+fn apply_choice(host: &Host, owner: MenuOwner, id: i32) {
+    if let MenuOwner::FilterType { model, style } = owner {
+        host.set_once(model, (id / FILTER_STYLE_IDS) as f32);
+        host.set_once(style, (id % FILTER_STYLE_IDS) as f32);
     }
 }
 
@@ -179,6 +212,28 @@ impl<'a, 'b> Panel<'a, 'b> {
             value,
             hover,
         );
+    }
+
+    /// A text toggle whose state isn't a parameter, with id `salt`; true
+    /// when clicked.
+    pub fn text_toggle(
+        &mut self,
+        salt: impl std::hash::Hash + std::fmt::Debug,
+        text: &str,
+        on: bool,
+        bounds: Rect,
+    ) -> bool {
+        let id = self.ui.scope_id().with(salt);
+        crate::controls::button::text_toggle(
+            self.ui,
+            self.pixels,
+            &mut self.layer,
+            &self.scope,
+            id,
+            text,
+            on,
+            bounds,
+        )
     }
 
     /// A shape button with id `salt` in this section's scope.
@@ -265,7 +320,9 @@ impl<'a, 'b> Panel<'a, 'b> {
         self.overlay.text_entry = Some(entry);
     }
 
-    pub fn button(&mut self, button: &SynthButton, bounds: Rect) {
+    /// Returns true when the button was clicked (pressed and released on
+    /// it).
+    pub fn button(&mut self, button: &SynthButton, bounds: Rect) -> bool {
         button.show(
             self.ui,
             self.host,
@@ -273,7 +330,7 @@ impl<'a, 'b> Panel<'a, 'b> {
             &mut self.layer,
             &self.scope,
             bounds,
-        );
+        )
     }
 
     /// A quad drawn with the section's controls.

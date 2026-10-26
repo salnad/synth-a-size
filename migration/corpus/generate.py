@@ -1303,6 +1303,38 @@ GUI_PRESETS = {
         {"%s_on" % effect: 1.0 for effect in (
             "chorus", "compressor", "delay", "distortion", "eq", "filter_fx", "flanger", "phaser", "reverb")},
     ),
+    "filters_analog_comb": preset(
+        "filters analog comb",
+        "Both filters on: analog 24dB with resonance, and a Low High Flange+ comb.",
+        {"filter_1_on": 1.0, "filter_1_model": 0.0, "filter_1_style": 1.0, "filter_1_cutoff": 70.0,
+         "filter_1_resonance": 0.6,
+         "filter_2_on": 1.0, "filter_2_model": 6.0, "filter_2_style": 1.0, "filter_2_cutoff": 60.0,
+         "filter_2_resonance": 0.5},
+    ),
+    "filters_formant_ladder": preset(
+        "filters formant ladder",
+        "Both filters on: formant AOIE, and a resonant ladder 24dB.",
+        {"filter_1_on": 1.0, "filter_1_model": 5.0, "filter_1_style": 0.0, "filter_1_formant_x": 0.3,
+         "filter_1_formant_y": 0.7,
+         "filter_2_on": 1.0, "filter_2_model": 2.0, "filter_2_style": 1.0, "filter_2_cutoff": 80.0,
+         "filter_2_resonance": 0.7},
+    ),
+    "filters_digital_diode": preset(
+        "filters digital diode",
+        "Both filters on: digital band/peak/notch blended, and a diode low cut.",
+        {"filter_1_on": 1.0, "filter_1_model": 3.0, "filter_1_style": 4.0, "filter_1_blend": 0.6,
+         "filter_1_resonance": 0.4,
+         "filter_2_on": 1.0, "filter_2_model": 4.0, "filter_2_style": 1.0, "filter_2_cutoff": 75.0,
+         "filter_2_resonance": 0.5},
+    ),
+    "filters_dirty_phaser": preset(
+        "filters dirty phaser",
+        "Both filters on: dirty 12dB with resonance, and a negative phaser.",
+        {"filter_1_on": 1.0, "filter_1_model": 1.0, "filter_1_style": 0.0, "filter_1_cutoff": 65.0,
+         "filter_1_resonance": 0.8,
+         "filter_2_on": 1.0, "filter_2_model": 7.0, "filter_2_style": 1.0, "filter_2_cutoff": 70.0,
+         "filter_2_resonance": 0.6},
+    ),
     "osc_3_sync": preset(
         "osc 3 sync",
         "Oscillator 3 on with the Sync wave morph, so its section shows the distortion phase slider.",

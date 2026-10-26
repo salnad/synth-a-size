@@ -7,16 +7,85 @@
 //! Uses wgpu on whatever adapter the machine has (Mesa's lavapipe in CI).
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use egui_kittest::Harness;
-use sas_gui::{EditorModel, Host, Interface, Tab};
+use nice_plug::prelude::{FloatParam, FloatRange, IntParam, IntRange, Param};
+use sas_gui::{EditorModel, Host, HostParam, Interface, Tab};
+use sas_preset::registry::{registry, ValueScale};
+use sas_preset::{InitContent, PresetState};
 
-struct InitPreset;
+enum ViewParam {
+    Float(FloatParam),
+    Int(IntParam),
+}
 
-impl EditorModel for InitPreset {
+impl ViewParam {
+    fn ptr(&self) -> HostParam {
+        match self {
+            ViewParam::Float(param) => param.as_ptr(),
+            ViewParam::Int(param) => param.as_ptr(),
+        }
+    }
+}
+
+/// A preset's controls as host parameters (the init preset's without
+/// one), made the way the plugin makes them: indexed controls are
+/// integers, the rest linear over the registry range.
+struct ViewPreset {
+    name: String,
+    params: HashMap<String, Box<ViewParam>>,
+}
+
+impl ViewPreset {
+    fn new(preset: Option<&Path>) -> ViewPreset {
+        let mut state = PresetState::new(&InitContent { sample_seed: 0 });
+        let mut name = String::new();
+        if let Some(path) = preset {
+            state
+                .load_file(path)
+                .unwrap_or_else(|e| panic!("{}: {e:?}", path.display()));
+            name = path.file_stem().unwrap().to_string_lossy().to_string();
+        }
+        let params = state
+            .controls()
+            .iter()
+            .filter_map(|(control, &value)| {
+                let info = registry().get(control)?;
+                let param = if info.value_scale == ValueScale::Indexed {
+                    ViewParam::Int(IntParam::new(
+                        control.clone(),
+                        value.round() as i32,
+                        IntRange::Linear {
+                            min: info.min as i32,
+                            max: info.max as i32,
+                        },
+                    ))
+                } else {
+                    ViewParam::Float(FloatParam::new(
+                        control.clone(),
+                        value,
+                        FloatRange::Linear {
+                            min: info.min,
+                            max: info.max,
+                        },
+                    ))
+                };
+                Some((control.clone(), Box::new(param)))
+            })
+            .collect();
+        ViewPreset { name, params }
+    }
+}
+
+impl EditorModel for ViewPreset {
     fn preset_name(&self) -> String {
-        String::new()
+        self.name.clone()
+    }
+
+    fn param(&self, name: &str) -> Option<HostParam> {
+        self.params.get(name).map(|param| param.ptr())
     }
 }
 
@@ -53,9 +122,12 @@ fn main() {
         serde_json::from_str(&std::fs::read_to_string(&views_path).unwrap()).unwrap();
     for view in views["views"].as_array().unwrap() {
         let name = view["name"].as_str().unwrap();
-        if view.get("preset").is_some_and(|p| !p.is_null()) {
-            panic!("{name}: presets are not supported by the gallery yet");
-        }
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let preset_path = view
+            .get("preset")
+            .and_then(|p| p.as_str())
+            .map(|p| repo.join(p));
+        let model = ViewPreset::new(preset_path.as_deref());
         let width = view.get("width").and_then(|v| v.as_f64()).unwrap_or(1400.0) as f32;
         let height = view.get("height").and_then(|v| v.as_f64()).unwrap_or(820.0) as f32;
         let interface = RefCell::new(Interface::default());
@@ -78,7 +150,7 @@ fn main() {
             ))
             .build_ui(|ui| {
                 let screen = ui.ctx().content_rect();
-                let host = Host::new(&InitPreset, None);
+                let host = Host::new(&model, None);
                 interface.borrow_mut().show_in(ui, screen, &host)
             });
         harness.run_steps(2);
