@@ -37,4 +37,12 @@ this follow-up.
 - Clippy `-D warnings` and rustfmt are clean for the workspace and for
   `sas-plugin` on `aarch64-apple-darwin`. All `sas-plugin` tests pass.
 
+**Known limitation.** The editor's browser keeps `data_directory` in
+memory (`PluginModel`), while the chat re-reads the config file when a
+worker starts. They can disagree if saving the config fails (the browser
+keeps the new folder, the file the old one) or if another plugin instance
+rewrites the file (the chat follows it, this instance's browser doesn't).
+Both then use a valid Presets folder; only which one differs. Raised by
+Graph Reviewer on #156 as non-blocking.
+
 **Blocked:** nothing.
