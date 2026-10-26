@@ -18,7 +18,7 @@ use sas_gui::controls::button::SynthButton;
 use sas_gui::controls::envelope_editor::{EnvelopeNames, Shape, Values as EnvelopeValues};
 use sas_gui::controls::slider::{Slider, SliderStyle};
 use sas_gui::controls::tab_selector::TabSelector;
-use sas_gui::controls::wavetable_3d::Wavetable3d;
+use sas_gui::controls::wavetable_3d::{self, Wavetable3d};
 use sas_gui::layout::{FullLayout, Rect};
 use sas_gui::paint::PixelPainter;
 use sas_gui::scope::Scope;
@@ -116,6 +116,8 @@ struct Synth {
     midi_forwarded: Mutex<Vec<(String, f32)>>,
     /// The LFO shapes the editor set.
     lfos: Mutex<HashMap<usize, LineGenerator>>,
+    /// Wavetable loads and resets the editor asked for.
+    wavetable_edits: Mutex<Vec<String>>,
 }
 
 impl Synth {
@@ -152,6 +154,7 @@ impl Synth {
             midi_moved: Mutex::new(Vec::new()),
             midi_forwarded: Mutex::new(Vec::new()),
             lfos: Mutex::default(),
+            wavetable_edits: Mutex::new(Vec::new()),
         })
     }
 
@@ -216,6 +219,31 @@ impl EditorModel for Synth {
             .lock()
             .unwrap()
             .push((name.to_string(), normalized));
+    }
+
+    fn wavetable_json(&self, oscillator: usize) -> Option<String> {
+        self.wavetable_edits
+            .lock()
+            .unwrap()
+            .push(format!("json {oscillator}"));
+        Some(format!(
+            r#"{{"version":"1.0.0","name":"Osc {oscillator}","groups":[]}}"#
+        ))
+    }
+
+    fn load_wavetable_json(&self, oscillator: usize, json: &str) -> bool {
+        self.wavetable_edits
+            .lock()
+            .unwrap()
+            .push(format!("load {oscillator} {json}"));
+        true
+    }
+
+    fn load_default_wavetable(&self, oscillator: usize) {
+        self.wavetable_edits
+            .lock()
+            .unwrap()
+            .push(format!("init {oscillator}"));
     }
 }
 
@@ -2330,6 +2358,7 @@ fn wavetable_harness<'a>(
                 false,
             );
             panel.finish();
+            overlay.show_menu(ui, &host, &pixels, &top, Rect::new(0, 0, 400, 300));
         });
     harness.step();
     harness
@@ -2437,4 +2466,125 @@ fn a_macro_knob_drags_its_control() {
         Some("begin macro_control_1")
     );
     assert_eq!(log.last().map(String::as_str), Some("end macro_control_1"));
+}
+
+const PASTED: &str = r#"{"version":"1.0.0","name":"Pasted","groups":[]}"#;
+
+fn empty_clipboard() -> Option<String> {
+    None
+}
+
+fn clipboard_with_wavetable() -> Option<String> {
+    Some(PASTED.to_string())
+}
+
+fn clipboard_with_text() -> Option<String> {
+    Some("just words".to_string())
+}
+
+/// Opens the view's right-click menu and returns its item names.
+fn open_wavetable_menu(harness: &mut Harness, overlay: &RefCell<Overlay>) -> Vec<String> {
+    let at = centre(WAVETABLE);
+    press(harness, at, PointerButton::Secondary, Modifiers::NONE);
+    release(harness, at, PointerButton::Secondary, Modifiers::NONE);
+    let overlay = overlay.borrow();
+    let menu = overlay.menu.as_ref().unwrap();
+    assert!(matches!(menu.owner, MenuOwner::Wavetable(0)));
+    assert_eq!(menu.position, at);
+    menu.items.iter().map(|item| item.name.clone()).collect()
+}
+
+/// Chooses menu row `row` (rows are 24 pixels from the top of the list).
+fn choose_wavetable_row(harness: &mut Harness, row: usize) {
+    let at = centre(WAVETABLE) + egui::vec2(20.0, 12.0 + 24.0 * row as f32);
+    harness.event(Event::PointerMoved(at));
+    harness.step();
+    click(harness, at);
+    harness.step();
+}
+
+#[test]
+fn the_wavetable_menu_offers_paste_only_for_wavetable_json() {
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let view = RefCell::new(Wavetable3d::new(0));
+    view.borrow_mut().set_clipboard_reader(empty_clipboard);
+    let mut harness = wavetable_harness(&fixture, &overlay, &view);
+    assert_eq!(
+        open_wavetable_menu(&mut harness, &overlay),
+        ["Copy", "", "Initialize"]
+    );
+    // A right-click is no drag: nothing reaches the host.
+    assert!(fixture.take_log().is_empty());
+    overlay.borrow_mut().menu = None;
+
+    view.borrow_mut().set_clipboard_reader(clipboard_with_text);
+    harness.step();
+    assert_eq!(
+        open_wavetable_menu(&mut harness, &overlay),
+        ["Copy", "", "Initialize"]
+    );
+    overlay.borrow_mut().menu = None;
+
+    view.borrow_mut()
+        .set_clipboard_reader(clipboard_with_wavetable);
+    harness.step();
+    assert_eq!(
+        open_wavetable_menu(&mut harness, &overlay),
+        ["Copy", "Paste", "", "Initialize"]
+    );
+    assert!(wavetable_3d::is_wavetable_json(PASTED));
+}
+
+#[test]
+fn pasting_and_initializing_reach_the_model() {
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let view = RefCell::new(Wavetable3d::new(0));
+    view.borrow_mut()
+        .set_clipboard_reader(clipboard_with_wavetable);
+    let mut harness = wavetable_harness(&fixture, &overlay, &view);
+    open_wavetable_menu(&mut harness, &overlay);
+    choose_wavetable_row(&mut harness, 1);
+    for _ in 0..30 {
+        harness.step();
+    }
+    open_wavetable_menu(&mut harness, &overlay);
+    choose_wavetable_row(&mut harness, 3);
+    assert_eq!(
+        *fixture.synth.wavetable_edits.lock().unwrap(),
+        [format!("load 0 {PASTED}"), "init 0".to_string()]
+    );
+}
+
+#[test]
+fn copying_puts_the_wavetable_json_on_the_clipboard() {
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let view = RefCell::new(Wavetable3d::new(0));
+    view.borrow_mut().set_clipboard_reader(empty_clipboard);
+    let mut harness = wavetable_harness(&fixture, &overlay, &view);
+    open_wavetable_menu(&mut harness, &overlay);
+    fixture.take_log();
+    choose_wavetable_row(&mut harness, 0);
+    assert_eq!(*fixture.synth.wavetable_edits.lock().unwrap(), ["json 0"]);
+    // The press on the menu didn't reach the view under it.
+    assert!(fixture.take_log().is_empty());
+}
+
+#[test]
+fn save_appears_once_the_editor_can_save() {
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let view = RefCell::new(Wavetable3d::new(0));
+    view.borrow_mut().set_clipboard_reader(empty_clipboard);
+    view.borrow_mut().save_available = true;
+    let mut harness = wavetable_harness(&fixture, &overlay, &view);
+    assert_eq!(
+        open_wavetable_menu(&mut harness, &overlay),
+        ["Save to Wavetables", "Copy", "", "Initialize"]
+    );
+    choose_wavetable_row(&mut harness, 0);
+    assert!(view.borrow_mut().take_save_request());
+    assert!(!view.borrow_mut().take_save_request());
 }

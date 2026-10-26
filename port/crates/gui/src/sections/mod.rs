@@ -70,6 +70,9 @@ pub enum MenuOwner {
     /// An LFO editor's menu; the editor carries out the choice
     /// (`Overlay::line_action`).
     Line(LineAction),
+    /// An oscillator's wavetable view, by index (`Wavetable3d::mouseDown`):
+    /// the selection goes to [`Overlay::wavetable_action`] for the view.
+    Wavetable(usize),
 }
 
 /// Room for each filter model's styles in a [`MenuOwner::FilterType`] id.
@@ -111,6 +114,9 @@ pub struct Overlay {
     /// A choice from an LFO editor's menu, for that editor's next frame.
     pub line_action: Option<LineAction>,
     pub text_entry: Option<TextEntry>,
+    /// A wavetable view's menu choice, (oscillator, item), for the view to
+    /// carry out on its next frame (`Wavetable3d::respondToMenuCallback`).
+    pub wavetable_action: Option<(usize, i32)>,
 }
 
 impl Overlay {
@@ -139,6 +145,9 @@ impl Overlay {
                         MenuOwner::Slider(..) => {}
                         MenuOwner::StereoMode => host.set_once("stereo_mode", id as f32),
                         MenuOwner::Selector(slider) => host.set_once(slider.name, id as f32),
+                        MenuOwner::Wavetable(oscillator) => {
+                            self.wavetable_action = Some((oscillator, id));
+                        }
                         MenuOwner::Control { name, then } => {
                             host.set_once(name, id as f32);
                             if let Some(then) = then {

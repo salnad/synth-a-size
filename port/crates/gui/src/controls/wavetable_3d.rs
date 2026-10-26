@@ -14,6 +14,7 @@
 use std::sync::Arc;
 
 use egui::{PointerButton, Sense};
+use sas_engine::sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_engine::sas_oscillators::sas_wavetable::wave_frame::{
     WaveFrame, WAVEFORM_BITS, WAVEFORM_SIZE,
 };
@@ -33,11 +34,11 @@ use crate::colour::Colour;
 use crate::controls::slider::Slider;
 use crate::layout::Rect;
 use crate::paint::{PixelPainter, RectF};
-use crate::popup::ValuePopup;
+use crate::popup::{Menu, MenuItem, ValuePopup};
 use crate::primitives::line::LineRenderer;
 use crate::primitives::{Quad, QuadKind};
 use crate::scope::Scope;
-use crate::sections::Panel;
+use crate::sections::{MenuOwner, Panel};
 use crate::skin::{ColorId, ValueId};
 
 /// `vital::kNumOscillatorWaveFrames`.
@@ -55,6 +56,24 @@ const POSITION_LINE_WIDTH_RATIO: f32 = 1.8;
 /// `UINT_MAX` and `INT_MAX` as `float`.
 const UINT_MAX_F: f32 = u32::MAX as f32;
 const INT_MAX_F: f32 = i32::MAX as f32;
+
+/// `Wavetable3d::MenuOptions`: the right-click menu's items.
+pub const MENU_COPY: i32 = 1;
+pub const MENU_PASTE: i32 = 2;
+pub const MENU_INIT: i32 = 3;
+pub const MENU_SAVE: i32 = 4;
+
+/// Whether `text` is wavetable JSON (`WavetableCreator::isValidJson`):
+/// what the menu offers to paste.
+pub fn is_wavetable_json(text: &str) -> bool {
+    sas_common::json::parse(text).is_ok_and(|data| WavetableCreator::is_valid_json(&data))
+}
+
+/// `SystemClipboard::getTextFromClipboard`: the clipboard's text, if any.
+pub fn system_clipboard_text() -> Option<String> {
+    use copypasta::ClipboardProvider;
+    copypasta::ClipboardContext::new().ok()?.get_contents().ok()
+}
 
 /// `Wavetable3d::RenderType`, the values of `osc_N_view_2d`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -231,6 +250,13 @@ pub struct Wavetable3d {
     last_table: Option<(usize, i32)>,
     background: Option<Background>,
     drag: Option<Drag>,
+    /// Whether the menu offers "Save to Wavetables": on once the editor
+    /// can save (G7's save section takes [`take_save_request`]).
+    ///
+    /// [`take_save_request`]: Wavetable3d::take_save_request
+    pub save_available: bool,
+    save_request: bool,
+    read_clipboard: fn() -> Option<String>,
 }
 
 impl Wavetable3d {
@@ -258,7 +284,23 @@ impl Wavetable3d {
             last_table: None,
             background: None,
             drag: None,
+            save_available: false,
+            save_request: false,
+            read_clipboard: system_clipboard_text,
         }
+    }
+
+    /// Reads the clipboard with `read` instead of the system's (tests).
+    pub fn set_clipboard_reader(&mut self, read: fn() -> Option<String>) {
+        self.read_clipboard = read;
+    }
+
+    /// "Save to Wavetables" was chosen since the last call
+    /// (`Listener::saveWavetable`): the caller saves this oscillator's
+    /// wavetable (`EditorModel::wavetable_json`) as a `.vitaltable` in the
+    /// user's Wavetables folder, as `FullInterface::saveWavetable` does.
+    pub fn take_save_request(&mut self) -> bool {
+        std::mem::take(&mut self.save_request)
     }
 
     pub fn index(&self) -> usize {
@@ -350,6 +392,7 @@ impl Wavetable3d {
         telemetry: Option<&TelemetrySnapshot>,
         animate: bool,
     ) {
+        self.respond_to_menu(panel);
         self.interact(panel, bounds, frame_slider);
 
         let render_type = self.render_type(panel);
@@ -408,9 +451,35 @@ impl Wavetable3d {
             .ui
             .input(|input| input.pointer.button_down(PointerButton::Primary));
 
+        let secondary_down = panel
+            .ui
+            .input(|input| input.pointer.button_down(PointerButton::Secondary));
+        let ctrl = panel.ui.input(|input| input.modifiers.ctrl);
+        let popup_menu = secondary_down || (cfg!(target_os = "macos") && ctrl && primary_down);
+        let pressed_here = response.is_pointer_button_down_on();
+        let was_pressed = panel.ui.data_mut(|data| {
+            let key = id.with("pressed");
+            let was = data.get_temp::<bool>(key).unwrap_or(false);
+            data.insert_temp(key, pressed_here);
+            was
+        });
+        if popup_menu && pressed_here && !was_pressed && self.drag.is_none() {
+            // mouseDown with the popup-menu button: the menu at the pointer.
+            if let Some(pos) = panel.ui.input(|input| input.pointer.interact_pos()) {
+                let area = panel.pixels.area();
+                let position = egui::pos2((pos.x - area.min.x) * ppp, (pos.y - area.min.y) * ppp);
+                panel.overlay.menu = Some(Menu::new(
+                    self.menu_items(),
+                    position,
+                    MenuOwner::Wavetable(self.index),
+                ));
+            }
+            return;
+        }
+
         match (
             self.drag,
-            response.is_pointer_button_down_on() && primary_down,
+            pressed_here && primary_down && !popup_menu,
             pointer_y,
         ) {
             (None, true, Some(y)) => {
@@ -465,6 +534,50 @@ impl Wavetable3d {
         {
             // mouseExit hides the frame slider's popup.
             panel.overlay.value_popup = None;
+        }
+    }
+
+    /// `mouseDown`'s menu: save (once the editor can), copy, paste (when the
+    /// clipboard holds wavetable JSON), and initialize. Text to Wavetable
+    /// is parked (it needs sign-in), and Resynthesize comes separately.
+    fn menu_items(&self) -> Vec<MenuItem> {
+        let mut items = Vec::new();
+        if self.save_available {
+            items.push(MenuItem::new(MENU_SAVE, "Save to Wavetables"));
+        }
+        items.push(MenuItem::new(MENU_COPY, "Copy"));
+        if (self.read_clipboard)().is_some_and(|text| is_wavetable_json(&text)) {
+            items.push(MenuItem::new(MENU_PASTE, "Paste"));
+        }
+        items.push(MenuItem::divider());
+        items.push(MenuItem::new(MENU_INIT, "Initialize"));
+        items
+    }
+
+    /// `respondToMenuCallback`, for a choice made in this view's menu.
+    fn respond_to_menu(&mut self, panel: &mut Panel) {
+        let Some((oscillator, option)) = panel.overlay.wavetable_action else {
+            return;
+        };
+        if oscillator != self.index {
+            return;
+        }
+        panel.overlay.wavetable_action = None;
+        let model = panel.host.model();
+        match option {
+            MENU_INIT => model.load_default_wavetable(self.index),
+            MENU_SAVE => self.save_request = true,
+            MENU_COPY => {
+                if let Some(json) = model.wavetable_json(self.index) {
+                    panel.ui.ctx().copy_text(json);
+                }
+            }
+            MENU_PASTE => {
+                if let Some(text) = (self.read_clipboard)().filter(|text| is_wavetable_json(text)) {
+                    model.load_wavetable_json(self.index, &text);
+                }
+            }
+            _ => {}
         }
     }
 

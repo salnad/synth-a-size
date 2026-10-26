@@ -5,8 +5,10 @@
 use std::sync::{Arc, Mutex};
 
 use nice_plug::context::gui::GuiContext;
+use sas_common::json;
 use sas_common::line_generator::LineGenerator;
 use sas_engine::keyboard::KeyboardHandle;
+use sas_engine::sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::telemetry::Telemetry;
 use sas_engine::Tuning;
@@ -131,6 +133,47 @@ impl EditorModel for PluginModel {
                 .map(|creator| creator.name.clone())
                 .unwrap_or_default()
         })
+    }
+
+    fn wavetable_json(&self, oscillator: usize) -> Option<String> {
+        self.params.edit_handle().with_document(|document| {
+            document
+                .state
+                .wavetables
+                .get(oscillator)
+                .map(|creator| creator.to_json().dump())
+        })
+    }
+
+    fn load_wavetable_json(&self, oscillator: usize, json: &str) -> bool {
+        let Ok(data) = json::parse(json) else {
+            return false;
+        };
+        if !WavetableCreator::is_valid_json(&data) {
+            return false;
+        }
+        let edits = self.params.edit_handle();
+        let Some(mut creator) =
+            edits.with_document(|document| document.state.wavetables.get(oscillator).cloned())
+        else {
+            return false;
+        };
+        if creator.read_json(&data).is_err() {
+            return false;
+        }
+        edits.set_wavetable(oscillator, creator).is_ok()
+    }
+
+    fn load_default_wavetable(&self, oscillator: usize) {
+        let edits = self.params.edit_handle();
+        let Some(mut creator) =
+            edits.with_document(|document| document.state.wavetables.get(oscillator).cloned())
+        else {
+            return;
+        };
+        creator.init();
+        // A full queue drops the reset, like the other editor edits.
+        let _ = edits.set_wavetable(oscillator, creator);
     }
 
     fn with_sample(&self, f: &mut dyn FnMut(&SampleState)) {
@@ -355,5 +398,45 @@ mod tests {
         model.with_sample(&mut |sample| left.extend_from_slice(&sample.left));
         assert_eq!(left, [0.0, 0.5, -0.25, 1.0]);
         assert!(model.content_revision() > revision);
+    }
+
+    #[test]
+    fn wavetables_copy_paste_and_initialize() {
+        let (edits, _consumer) =
+            EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+        let params = Arc::new(SynthParams::new(edits));
+        let (_writer, telemetry) = Telemetry::new(Arc::default());
+        let model = PluginModel::new(
+            params.clone(),
+            telemetry,
+            keyboard().0,
+            Arc::new(MidiLearn::in_memory()),
+            None,
+        );
+        let edits = params.edit_handle();
+        let mut creator = edits.with_document(|document| document.state.wavetables[0].clone());
+        creator.name = "Copied".to_string();
+        edits.set_wavetable(0, creator).unwrap();
+
+        // Copy oscillator 1, paste into oscillator 2.
+        let json = model.wavetable_json(0).unwrap();
+        assert!(model.wavetable_json(3).is_none());
+        let revision = model.content_revision();
+        assert!(model.load_wavetable_json(1, &json));
+        assert_eq!(model.wavetable_name(1), "Copied");
+        assert_eq!(model.wavetable_json(1).unwrap(), json);
+        assert!(model.content_revision() > revision);
+
+        // Text that isn't wavetable JSON changes nothing.
+        let revision = model.content_revision();
+        assert!(!model.load_wavetable_json(1, "not json"));
+        assert!(!model.load_wavetable_json(1, r#"{"name": "No groups"}"#));
+        assert!(!model.load_wavetable_json(7, &json));
+        assert_eq!(model.content_revision(), revision);
+
+        // Initialize: the default table again.
+        model.load_default_wavetable(1);
+        assert_eq!(model.wavetable_name(1), "Init");
+        assert_eq!(model.wavetable_name(0), "Copied");
     }
 }
