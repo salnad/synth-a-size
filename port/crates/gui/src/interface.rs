@@ -225,6 +225,12 @@ pub trait EditorModel: Send + Sync + 'static {
     /// `SynthBase::loadInitPreset`.
     fn init_preset(&self) {}
 
+    /// Moves on every preset load, init and host state restore (the edit
+    /// bus's generation).
+    fn preset_generation(&self) -> u64 {
+        0
+    }
+
     /// `SynthBase::armMidiLearn(name)`: the next MIDI controller the engine
     /// receives learns parameter `name`.
     fn arm_midi_learn(&self, _name: &str) {}
@@ -414,6 +420,7 @@ pub struct Interface {
     locals: Arc<LocalValues>,
     effects: EffectsTab,
     advanced: AdvancedTab,
+    preset_modified: preset_selector::Modified,
 }
 
 impl Default for Interface {
@@ -439,6 +446,7 @@ impl Interface {
             locals: Arc::default(),
             effects: EffectsTab::default(),
             advanced: AdvancedTab::default(),
+            preset_modified: preset_selector::Modified::default(),
         }
     }
 
@@ -480,6 +488,11 @@ impl Interface {
         self.overlay.modulation.pending_connection()
     }
 
+    /// Whether the header marks the preset modified (`*`).
+    pub fn preset_modified(&self) -> bool {
+        self.preset_modified.is_modified()
+    }
+
     /// The note the on-screen keyboard is playing, for releasing it when the
     /// window closes.
     pub fn playing_note(&self) -> PlayingNote {
@@ -496,6 +509,7 @@ impl Interface {
     pub fn show_in(&mut self, ui: &mut Ui, area: egui::Rect, host: &Host) {
         let locals = self.locals.clone();
         let host = &host.with_locals(&locals);
+        self.preset_modified.update(host);
         let pixels_per_point = ui.ctx().pixels_per_point();
         let width = (area.width() * pixels_per_point).round() as i32;
         let height = (area.height() * pixels_per_point).round() as i32;
@@ -567,7 +581,7 @@ impl Interface {
             &mut self.overlay,
             layout.header.bounds,
         );
-        preset_selector::show(&mut panel, &layout.header);
+        preset_selector::show(&mut panel, &layout.header, &mut self.preset_modified);
         panel.finish();
         advanced::poll_tuning_file(host, ui.ctx());
     }
@@ -800,6 +814,9 @@ impl Interface {
         let mut name = model.preset_name();
         if name.is_empty() {
             name = "Init Preset".to_string();
+        }
+        if self.preset_modified.is_modified() {
+            name.insert(0, '*');
         }
         pixels.text_line(
             &name,
