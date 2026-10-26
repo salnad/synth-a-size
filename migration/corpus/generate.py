@@ -1335,6 +1335,11 @@ GUI_PRESETS = {
          "filter_2_on": 1.0, "filter_2_model": 7.0, "filter_2_style": 1.0, "filter_2_cutoff": 70.0,
          "filter_2_resonance": 0.6},
     ),
+    "sample_on": preset(
+        "sample on",
+        "The sample oscillator on, so its waveform viewer draws in its active colours.",
+        {"sample_on": 1.0},
+    ),
     "osc_3_sync": preset(
         "osc 3 sync",
         "Oscillator 3 on with the Sync wave morph, so its section shows the distortion phase slider.",

@@ -8,6 +8,7 @@
     { "name": "filters_analog_comb", "tab": "voice", "preset": "migration/corpus/gui/presets/filters_analog_comb.vital" },
     { "name": "filters_formant_ladder", "tab": "voice", "preset": "migration/corpus/gui/presets/filters_formant_ladder.vital" },
     { "name": "filters_digital_diode", "tab": "voice", "preset": "migration/corpus/gui/presets/filters_digital_diode.vital" },
-    { "name": "filters_dirty_phaser", "tab": "voice", "preset": "migration/corpus/gui/presets/filters_dirty_phaser.vital" }
+    { "name": "filters_dirty_phaser", "tab": "voice", "preset": "migration/corpus/gui/presets/filters_dirty_phaser.vital" },
+    { "name": "sample_on", "tab": "voice", "preset": "migration/corpus/gui/presets/sample_on.vital" }
   ]
 }

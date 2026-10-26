@@ -4,8 +4,11 @@
 //! The sample section: pitch, level and pan, and the destination. Ports
 //! `SampleSection` (`vital/src/interface/editor_sections/sample_section.cpp`).
 //!
-//! The sample's waveform and name, the browser, and the keytrack, loop,
-//! random phase and bounce icon buttons come later.
+//! The sample's waveform (`SampleViewer`) and name are drawn here; the
+//! browser, dropping a file, and the keytrack, loop, random phase and
+//! bounce icon buttons come later.
+
+use std::cell::RefCell;
 
 use super::{MenuOwner, Panel};
 use crate::controls::button::SynthButton;
@@ -15,7 +18,10 @@ use crate::controls::transpose_quantize::{self, QuantizeColours};
 use crate::fonts::Face;
 use crate::layout::{PresetSelectorLayout, Rect};
 use crate::paint::PixelPainter;
+use crate::paint::RectF;
 use crate::popup::{Menu, MenuItem};
+use crate::primitives::line::LineRenderer;
+use crate::primitives::{Quad, QuadBatch};
 use crate::scope::Scope;
 use crate::section::{
     draw_label, label_font, paint_border, paint_container, paint_joint_control,
@@ -173,6 +179,8 @@ pub struct SampleSection {
     tune: Slider,
     level: Slider,
     pan: Slider,
+    /// The viewer's peaks and the content revision they were read at.
+    peaks: RefCell<Option<(u64, Vec<f32>)>>,
 }
 
 impl Default for SampleSection {
@@ -184,6 +192,7 @@ impl Default for SampleSection {
             tune: text("sample_tune").display(3, 0),
             level: Slider::new("sample_level", SliderStyle::Rotary),
             pan: Slider::new("sample_pan", SliderStyle::Rotary).bipolar(),
+            peaks: RefCell::new(None),
         }
     }
 }
@@ -267,8 +276,18 @@ impl SampleSection {
             transpose_quantize::paint(pixels, colours, bounds, quantize, false)
         });
 
+        self.show_viewer(panel, layout, active);
+
         let ui_colours = ShapeColours::ui(&panel.scope);
         let preset = layout.preset_selector;
+        let name = host.model().sample_name();
+        panel.text_centred(
+            &name,
+            preset.text,
+            Face::Title,
+            preset.text_size,
+            panel.scope.color(ColorId::PresetText),
+        );
         panel.shape_button(
             "sample prev",
             ShapeButton {
@@ -347,5 +366,117 @@ impl SampleSection {
         }
 
         panel.activator(&self.on, layout.bounds);
+    }
+}
+
+/// `SampleViewer::kResolution`.
+const VIEWER_RESOLUTION: usize = 256;
+
+/// `SampleViewer::setLinePositions`' peaks: each column's largest sample
+/// (signed, as upstream takes it) over the original length.
+pub fn sample_peaks(buffer: &[f32]) -> Vec<f32> {
+    let length = buffer.len();
+    if length == 0 {
+        return Vec::new();
+    }
+    (0..VIEWER_RESOLUTION)
+        .map(|i| {
+            let start = (length * i / VIEWER_RESOLUTION).min(length - 1);
+            let end = (length * (i + 1)).div_ceil(VIEWER_RESOLUTION).min(length);
+            buffer[start + 1..end.max(start + 1)]
+                .iter()
+                .fold(buffer[start], |max, &value| max.max(value))
+        })
+        .collect()
+}
+
+impl SampleSection {
+    /// `SampleViewer::render` at rest: the waveform's peaks as two filled
+    /// lines mirrored about the centre, the right channel's colours then
+    /// the left's, with rounded bottom corners. Nothing without a sample.
+    fn show_viewer(&self, panel: &mut Panel, layout: &SampleLayout, active: bool) {
+        let model = panel.host.model();
+        let revision = model.content_revision();
+        let peaks = {
+            let mut cache = self.peaks.borrow_mut();
+            if cache.as_ref().is_none_or(|(cached, _)| *cached != revision) {
+                let mut peaks = Vec::new();
+                model.with_sample(&mut |sample| peaks = sample_peaks(&sample.left));
+                *cache = Some((revision, peaks));
+            }
+            cache
+                .as_ref()
+                .map(|(_, peaks)| peaks.clone())
+                .unwrap_or_default()
+        };
+        if peaks.is_empty() {
+            return;
+        }
+        let scope = panel.scope;
+        let (line_right, fill_right, line_left, fill_left) = if active {
+            (
+                scope.color(ColorId::WidgetPrimary2),
+                scope.color(ColorId::WidgetSecondary2),
+                scope.color(ColorId::WidgetPrimary1),
+                scope.color(ColorId::WidgetSecondary1),
+            )
+        } else {
+            let line = scope.color(ColorId::WidgetPrimaryDisabled);
+            let fill = scope.color(ColorId::WidgetSecondaryDisabled);
+            (line, fill, line, fill)
+        };
+        let fill_fade = scope.value(ValueId::WidgetFillFade);
+        let rounding = scope.value(ValueId::WidgetRoundedCorner);
+        let body = scope.color(ColorId::Body);
+        let bounds = layout.sample_viewer;
+        panel.layer().custom(move |pixels| {
+            let width = bounds.width as f32;
+            let center = bounds.height as f32 / 2.0;
+            let mut top = LineRenderer::new(VIEWER_RESOLUTION, false);
+            let mut bottom = LineRenderer::new(VIEWER_RESOLUTION, false);
+            for (i, &max) in peaks.iter().enumerate() {
+                let x = width * i as f32 / (VIEWER_RESOLUTION as f32 - 1.0);
+                top.set_x_at(i, x);
+                top.set_y_at(i, center - max * center);
+                bottom.set_x_at(i, x);
+                bottom.set_y_at(i, center + max * center);
+            }
+            let clip = RectF::from(bounds);
+            for (line, fill) in [(line_right, fill_right), (line_left, fill_left)] {
+                for renderer in [&mut top, &mut bottom] {
+                    renderer.fill = true;
+                    renderer.line_width = 2.0;
+                    renderer.color = line;
+                    renderer.set_fill_colors(fill.with_multiplied_alpha(1.0 - fill_fade), fill);
+                    renderer.paint(pixels, clip, true);
+                }
+            }
+            // addBottomRoundedCorners.
+            let corners = Quad::corners(clip, rounding, body);
+            let mut quads = QuadBatch::new();
+            quads.push(corners[0]);
+            quads.push(corners[3]);
+            quads.paint(pixels, clip);
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Each column takes its largest sample, signed: a column of only
+    /// negative samples peaks below zero, as upstream's does.
+    #[test]
+    fn peaks_take_each_columns_largest_sample() {
+        let mut buffer = vec![-0.5; VIEWER_RESOLUTION * 2];
+        buffer[3] = 0.25;
+        let peaks = sample_peaks(&buffer);
+        assert_eq!(peaks.len(), VIEWER_RESOLUTION);
+        assert_eq!(peaks[1], 0.25);
+        assert_eq!(peaks[0], -0.5);
+        assert!(sample_peaks(&[]).is_empty());
+        // Shorter than the resolution: columns repeat the samples.
+        assert_eq!(sample_peaks(&[0.1, 0.2]).len(), VIEWER_RESOLUTION);
     }
 }

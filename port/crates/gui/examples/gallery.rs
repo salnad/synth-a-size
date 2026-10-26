@@ -14,7 +14,7 @@ use egui_kittest::Harness;
 use nice_plug::prelude::{FloatParam, FloatRange, IntParam, IntRange, Param};
 use sas_gui::{EditorModel, Host, HostParam, Interface, Tab};
 use sas_preset::registry::{registry, ValueScale};
-use sas_preset::{InitContent, PresetState};
+use sas_preset::{InitContent, PresetState, SampleState};
 
 enum ViewParam {
     Float(FloatParam),
@@ -36,6 +36,7 @@ impl ViewParam {
 struct ViewPreset {
     name: String,
     params: HashMap<String, Box<ViewParam>>,
+    state: PresetState,
 }
 
 impl ViewPreset {
@@ -75,7 +76,11 @@ impl ViewPreset {
                 Some((control.clone(), Box::new(param)))
             })
             .collect();
-        ViewPreset { name, params }
+        ViewPreset {
+            name,
+            params,
+            state,
+        }
     }
 }
 
@@ -86,6 +91,22 @@ impl EditorModel for ViewPreset {
 
     fn param(&self, name: &str) -> Option<HostParam> {
         self.params.get(name).map(|param| param.ptr())
+    }
+
+    fn wavetable_name(&self, oscillator: usize) -> String {
+        self.state
+            .wavetables
+            .get(oscillator)
+            .map(|creator| creator.name.clone())
+            .unwrap_or_default()
+    }
+
+    fn with_sample(&self, f: &mut dyn FnMut(&SampleState)) {
+        f(&self.state.sample);
+    }
+
+    fn sample_name(&self) -> String {
+        self.state.sample.name.clone()
     }
 }
 
