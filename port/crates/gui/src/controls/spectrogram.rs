@@ -172,7 +172,8 @@ fn apply_window(samples: &mut [f32]) {
     let (mut real, mut imag) = (-1.0f64, 0.0f64);
     let (real_mult, imag_mult) = (increment.cos(), increment.sin());
     for sample in samples {
-        *sample *= (0.5 * (real + 1.0)) as f32;
+        // `float *= double`: the product is taken in double, then rounded.
+        *sample = (f64::from(*sample) * 0.5 * (real + 1.0)) as f32;
         let next_real = real * real_mult - imag * imag_mult;
         let next_imag = imag * real_mult + real * imag_mult;
         real = next_real;
