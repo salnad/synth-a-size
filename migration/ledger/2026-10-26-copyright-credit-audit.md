@@ -86,6 +86,26 @@ line. `preset/src/user_folders.rs` (#148) ports JUCE's `String::compareNatural`
 (`juce_core`), so it gets the ISC line. `gui/src/text.rs` (#145) arrived
 with its own JUCE line.
 
+**Audit cutoff: `63f07fd`.** This audit covers every port file on `main` as
+of `63f07fd`, including files added and code newly translated by the PRs
+merged while it was in review. The last pass found two more:
+
+- `controls/shape_button.rs` (#153) now repeats the slider's JUCE
+  multiple-click rules, so it gets `juce_gui_basics, GPL-3.0-only` and the
+  compound SPDX line;
+- `controls/file_dialog.rs` only splits a wildcard-list string, which isn't
+  a JUCE translation.
+
+Files that land after `63f07fd` are the job of the PR that brings them,
+under rule 1.
+
+**Merge-rule waiver (coordinator, 2026-10-26).** While this PR was in
+review, GUI PRs kept merging into files it changes, so rule (b) ("no commit
+on `main` since the base touches the PR's files") failed after every
+rebase. For this PR only, rule (b) is waived where every overlap is
+code-only and away from the header lines it changes. Rules (a), no
+conflicts, and (c), full local checks on the merged tree, still apply.
+
 **The plugin as a whole is GPLv3 only.** With GPL-3.0-only portions, the
 combined plugin can be distributed under GPL version 3 only. Statements
 that said "or later" for the whole now say so:
