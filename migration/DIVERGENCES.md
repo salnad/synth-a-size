@@ -682,9 +682,10 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
     and zero-fills what the file lacks, sizing its buffer from the header.
     The port does the same only within bounds. A declared length of
     `0xFFFFFFFF` or 0, the "unknown length" markers streamed WAVs (ffmpeg
-    or sox writing to a pipe) carry, reads the rest of the file; so a
-    genuinely empty `data` chunk followed by other chunks (`LIST`, say)
-    reads those bytes as samples, where JUCE reads no frames. A
+    or sox writing to a pipe) carry, reads the rest of the file, unless
+    a 0 is followed by what looks like a chunk header (a printable label
+    and a length the file can hold): that is an empty chunk, read as JUCE
+    reads it. A
     declared length more than double the bytes present, or past 2^24
     frames, reads only the bytes present. Buffers are reserved fallibly,
     so no file can make the plugin abort the host, where JUCE would try to

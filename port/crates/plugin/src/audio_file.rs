@@ -216,6 +216,18 @@ const MAX_ZERO_FILLED_FRAMES: usize = 1 << 24;
 /// `AudioData` conversions give it: integer samples scaled by
 /// `1 / (1 + max)` (8-bit unsigned centred on 128), floats as they are.
 /// `None` when it isn't a WAV file this reader handles.
+/// Whether the bytes at `position` look like a RIFF chunk header: a
+/// printable four-character label and a length the file can hold.
+fn chunk_header_at(bytes: &[u8], position: usize) -> bool {
+    let Some(label) = bytes.get(position..position + 4) else {
+        return false;
+    };
+    let printable = label.iter().all(|&byte| (b' '..=b'~').contains(&byte)) && label[0] != b' ';
+    printable
+        && u32_at(bytes, position + 4)
+            .is_some_and(|length| (position + 8).saturating_add(length as usize) <= bytes.len())
+}
+
 pub fn read_wav(bytes: &[u8]) -> Option<Audio> {
     if bytes.get(0..4) != Some(b"RIFF") || bytes.get(8..12) != Some(b"WAVE") {
         return None;
@@ -230,8 +242,11 @@ pub fn read_wav(bytes: &[u8]) -> Option<Audio> {
         let end = start.saturating_add(length).min(bytes.len());
         match label {
             b"fmt " => format = Some(&bytes[start..end]),
-            // An unknown length: the samples are the rest of the file.
-            b"data" if length == UNKNOWN_LENGTH || length == 0 => {
+            // An unknown length: the samples are the rest of the file. A 0
+            // followed by a chunk header is an empty chunk, as JUCE reads it.
+            b"data"
+                if length == UNKNOWN_LENGTH || (length == 0 && !chunk_header_at(bytes, start)) =>
+            {
                 data = Some((&bytes[start..], length));
                 break;
             }
@@ -440,6 +455,13 @@ mod tests {
             expected
         );
         // A format with no sample size is refused rather than divided by.
+        // A genuinely empty chunk followed by another reads no frames.
+        let empty = riff(&[
+            (b"fmt ", fmt(FORMAT_PCM, 1, 44_100, 16)),
+            (b"data", Vec::new()),
+            (b"LIST", b"INFOabcd".to_vec()),
+        ]);
+        assert!(read_wav(&empty).unwrap().first_channel.is_empty());
         let no_bits = riff(&[
             (b"fmt ", fmt(FORMAT_PCM, 1, 44_100, 0)),
             (b"data", vec![0; 4]),

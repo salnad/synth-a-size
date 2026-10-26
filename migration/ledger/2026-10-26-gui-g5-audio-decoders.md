@@ -16,7 +16,8 @@ lossy-decoder note.
     three JUCE takes), is refused, and a `data` chunk longer than the file
     reads its declared frames with zeros past the end, within bounds: a declared length of
     `0xFFFFFFFF` or 0 (the streamed "unknown length" markers) reads the
-    rest of the file, and one more than double the bytes present or past
+    rest of the file (a 0 followed by a valid-looking chunk header is a
+    genuinely empty chunk, as in JUCE), and one more than double the bytes present or past
     2^24 frames reads only the bytes present (D23). Graph Reviewer
     reproduced an 8.6 GB allocation and abort from a `0xFFFFFFFF` header
     in the first version.
@@ -67,7 +68,8 @@ lossy-decoder note.
 - `audio_file` unit tests: the new extensible and truncated-data cases,
   and `unknown_and_absurd_data_lengths_read_the_bytes_present`
   (`0xFFFFFFFF`, 0, `0x7FFFFFF0` and a million declared frames over three
-  present read the three; 0 bits per sample is refused).
+  present read the three; an empty chunk followed by `LIST` reads none;
+  0 bits per sample is refused).
 - sas-plugin, `a_dropped_wav_becomes_the_oscillators_wavetable`: an empty
   and a corrupt file of every offered type, lossy ones included, are
   refused with the revision unchanged.
