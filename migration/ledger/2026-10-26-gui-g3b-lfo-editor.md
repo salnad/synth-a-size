@@ -26,6 +26,14 @@ controls around it.
   pattern selector (`PaintPatternSelector`, drawn as its pattern, choosing
   from the pattern names), the paint and smooth buttons, and the shape's
   name in the strip.
+- Double clicks follow JUCE's rules, as `Slider`'s do (0.4 s and 8 points),
+  and act on the second press after `mouseDown`, as upstream's
+  `mouseDoubleClick` does.
+- `Slider::snap_to_value` (`snapToValue`, `SynthSlider::snapValue`): a drag
+  within 5% of the range of the value lands on it, unless Command is held.
+  The LFO stereo slider snaps to 0; the filters' blend to 1 and formant
+  transpose, formant spread and key track to 0 (Voice Reviewer's follow-up
+  on #123 and #125).
 - `local`: controls the editor keeps itself (upstream's sliders without a
   synth parameter: each LFO's grid sizes, paint pattern and paint button),
   behaving as sliders through `Host` but stored per editor, so they aren't
@@ -35,6 +43,12 @@ controls around it.
   pasting, saving, importing and exporting shapes (with the browsers), the
   wheel over the editor, and the playing voices' positions and the
   animated line.
+
+- Tracked from Voice Reviewer's reviews of #123 and #125: resetting the
+  modulation tabs to the first sources on preset load (with the preset
+  work); a test of the slider hold after release; skipping a tab's click
+  once a drag has left it (with G4's drag-out); the cutoff and resonance
+  popups while dragging the filter response; the filter blend icons.
 
 **Verified.**
 

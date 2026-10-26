@@ -24,6 +24,7 @@ use egui::{Modifiers, Pos2, Sense};
 use sas_common::line_generator::LineGenerator;
 use sas_common::scalar::power_scale;
 
+use crate::controls::slider::{DOUBLE_CLICK_TIMEOUT, MULTIPLE_CLICK_DISTANCE};
 use crate::layout::Rect;
 use crate::paint::{PixelPainter, RectF};
 use crate::popup::{Menu, MenuItem};
@@ -114,6 +115,9 @@ struct LineState {
     painting_down: bool,
     temporary_paint: bool,
     last: (f32, f32),
+    mouse_down: bool,
+    /// The last press's time and place, for JUCE's double-click rules.
+    last_press: Option<(f64, Pos2)>,
 }
 
 impl Default for LineState {
@@ -129,6 +133,8 @@ impl Default for LineState {
             painting_down: false,
             temporary_paint: false,
             last: (0.0, 0.0),
+            mouse_down: false,
+            last_press: None,
         }
     }
 }
@@ -467,6 +473,45 @@ fn paint_line(
     section
 }
 
+/// `mouseDoubleClick` at `p`: removes the point there (not an end),
+/// straightens the power there (Shift: all), or adds a point. Returns
+/// whether the shape changed.
+fn double_click_at(
+    line: &mut LineGenerator,
+    p: (f32, f32),
+    size: (f32, f32),
+    size_ratio: f32,
+    shift: bool,
+) -> bool {
+    let g = geometry(line, size, size_ratio);
+    let hover_point = g.hover_point(p);
+    let hover_power = g.hover_power(p);
+    let num_points = line.num_points() as i32;
+    if hover_point >= 0 {
+        if hover_point == 0 || hover_point == num_points - 1 || num_points <= 1 {
+            return false;
+        }
+        line.remove_point(hover_point as usize);
+        line.render();
+        true
+    } else if hover_power >= 0 {
+        if shift {
+            for i in 0..line.num_points() - 1 {
+                line.set_power(i, 0.0);
+            }
+        } else {
+            line.set_power(hover_power as usize, 0.0);
+        }
+        line.render();
+        true
+    } else if line.num_points() < LineGenerator::MAX_POINTS {
+        add_point_at(line, (p.0 / size.0, p.1 / size.1));
+        true
+    } else {
+        false
+    }
+}
+
 /// An LFO's editor.
 #[derive(Clone, Copy, Debug)]
 pub struct LineEditor {
@@ -624,40 +669,22 @@ impl LineEditor {
 
         if response.secondary_clicked() {
             self.open_menu(panel, &line, &state, pointer.unwrap_or_default());
-        } else if response.double_clicked() && !painting {
-            if let Some(pos) = pointer {
-                let p = local(pos);
-                let g = geometry(&line, size, size_ratio);
-                let hover_point = g.hover_point(p);
-                let hover_power = g.hover_power(p);
-                let num_points = line.num_points() as i32;
-                if hover_point >= 0 {
-                    if hover_point != 0 && hover_point != num_points - 1 && num_points > 1 {
-                        line.remove_point(hover_point as usize);
-                        line.render();
-                        changed = true;
-                    }
-                } else if hover_power >= 0 {
-                    if modifiers.shift {
-                        for i in 0..line.num_points() - 1 {
-                            line.set_power(i, 0.0);
-                        }
-                    } else {
-                        line.set_power(hover_power as usize, 0.0);
-                    }
-                    line.render();
-                    changed = true;
-                } else if line.num_points() < LineGenerator::MAX_POINTS {
-                    add_point_at(&mut line, (p.0 / size.0, p.1 / size.1));
-                    changed = true;
-                }
-                state.active_point = geometry(&line, size, size_ratio).hover_point(p);
-                state.active_power = -1;
-            }
         } else if response.is_pointer_button_down_on() && primary_down {
             if let Some(pos) = pointer {
                 let p = local(pos);
-                let starting = !state.dragging && !state.painting_down;
+                let starting = !state.mouse_down;
+                state.mouse_down = true;
+                // JUCE's multiple-click rules, as Slider uses them.
+                let now = panel.ui.input(|input| input.time);
+                let double_click = starting
+                    && state.last_press.is_some_and(|(time, at)| {
+                        now - time < DOUBLE_CLICK_TIMEOUT
+                            && (pos.x - at.x).abs() < MULTIPLE_CLICK_DISTANCE
+                            && (pos.y - at.y).abs() < MULTIPLE_CLICK_DISTANCE
+                    });
+                if starting {
+                    state.last_press = Some((now, pos));
+                }
                 if painting {
                     if starting || p != state.last {
                         state.active_grid_section = paint_line(
@@ -686,6 +713,12 @@ impl LineEditor {
                             state.active_point = -1;
                             state.dragging = true;
                         }
+                    }
+                    // mouseDoubleClick, after mouseDown on the second press.
+                    if double_click {
+                        changed |= double_click_at(&mut line, p, size, size_ratio, modifiers.shift);
+                        state.active_point = geometry(&line, size, size_ratio).hover_point(p);
+                        state.active_power = -1;
                     }
                 } else if state.dragging && p != state.last {
                     // drawDrag.
@@ -716,6 +749,7 @@ impl LineEditor {
         } else {
             state.dragging = false;
             state.painting_down = false;
+            state.mouse_down = false;
         }
 
         if changed {
