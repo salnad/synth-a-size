@@ -300,6 +300,11 @@ impl Interface {
         self.effects.set_scroll(y);
     }
 
+    /// How far the Effects tab's column is scrolled, in pixels.
+    pub fn effects_scroll(&self) -> f32 {
+        self.effects.scroll()
+    }
+
     /// The open popups.
     pub fn overlay(&self) -> &Overlay {
         &self.overlay

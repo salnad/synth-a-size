@@ -5,9 +5,18 @@
 - `sections::effects::EffectsTab` (`EffectsInterface`):
   - The effect order list (`DragDropEffectOrder`, `DraggableEffect`):
     one tile per effect, with its icon and power button. Dragging a tile
-    reorders `effect_chain_order`.
+    reorders `effect_chain_order`. The drag starts on the press, with the
+    tile where the press began (`mouseDown`). It keeps its working order,
+    which the tab draws and sends rather than reading it back from the
+    host. The whole drag is one host gesture: begin at the first move, a
+    set for each new order, end on release.
   - The column of enabled sections, scrolled by the wheel or the scroll
-    bar (`EffectsViewport`, `OpenGlScrollBar`).
+    bar (`EffectsViewport`, `OpenGlScrollBar`). The bar is upstream's
+    `OpenGlScrollQuad` with `setShrinkLeft`: the left half of its track
+    at rest, widening by 0.2 a frame while hovered, and drawn in its
+    colour overlaid on itself while pressed. Dragging the thumb scrolls
+    with it, and a press on the track beside it pages
+    (`ScrollBar::mouseDown`, without the repeat timer).
   - `EffectsLayout` and `OrderLayout` hold the bounds; the layout
     fixtures check them.
 - The Chorus, Delay, Distortion, Flanger and Phaser sections, using
@@ -41,8 +50,10 @@
     a host that applies sets a frame late can't skew them (#118).
 - `controls::bars::BarRenderer` (`BarRenderer`), drawn with #108's
   `QuadKind::Bar`; bars at non-finite positions are skipped.
-- `Colour::float_alpha` and `Colour::with_alpha` (JUCE's `getFloatAlpha`
-  and `withAlpha(float)`).
+- `Colour::float_alpha`, `Colour::with_alpha` and `Colour::overlaid_with`
+  (JUCE's `getFloatAlpha`, `withAlpha(float)` and `overlaidWith`).
+  `colour.rs` gets rule 1's JUCE line (`juce_graphics`, GPL-3.0-only),
+  as #120 gives it.
 - Side-by-side views: the gallery loads a view's preset, and a view can
   scroll the effects column (`effects_scroll`, `ref-gui --effects-scroll`,
   `Interface::set_effects_scroll`). New views `all_effects` and
@@ -75,6 +86,23 @@ harness work for later. In the plugin, telemetry carries the live values.
     `phaser_uniforms_follow_the_filter_setup`,
     `flanger_uniforms_clamp_the_comb_feedback` and
     `distortion_uniforms_keep_the_cutoff_above_the_minimum`.
+- `sas-gui` interaction tests (`tests/effects.rs`, a host that applies
+  sets at the next frame or only when asked):
+  - `a_slow_order_drag_moves_the_pressed_tile_in_one_gesture` and
+    `a_fast_order_drag_moves_the_pressed_tile` (one move past egui's drag
+    threshold before the drag starts);
+  - `an_order_drag_works_with_a_host_that_applies_at_release`;
+  - `an_order_power_button_toggles_its_effect_in_one_gesture`;
+  - `a_display_drag_is_one_gesture_per_control` (the delay's filter
+    display, cutoff and spread);
+  - `scrolling_stays_within_the_column`.
+  Sending each order change as its own gesture fails the slow and
+  release-only order tests.
+- Review (UI, #124): the order drag re-read the order from the host each
+  frame (with deferred sets the wrong tile moved), was built after egui's
+  drag threshold (a quick drag grabbed the tile under the pointer then)
+  and sent a gesture per change; the scroll bar lacked upstream's hover
+  and press states. All fixed above.
 - Side by side with `ref-gui` (local): the Chorus and Delay filter
   responses, the Delay bars, the Distortion curve and the Phaser response
   match. Text and knob edges show the known anti-aliasing difference.

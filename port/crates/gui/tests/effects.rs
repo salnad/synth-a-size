@@ -1,0 +1,409 @@
+//! The Effects tab against real host parameters, driven through
+//! egui_kittest (no GPU needed): the effect order's drag and power
+//! buttons, a display drag and the column's scrolling. A recording
+//! `GuiContextInner` stands in for the host, applying sets at once, at the
+//! next frame, or only when the test says (a host that waits for the
+//! gesture to end).
+
+use std::cell::RefCell;
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
+
+use egui::{Event, Modifiers, PointerButton, Pos2};
+use egui_kittest::Harness;
+use nice_plug::context::gui::{GuiContext, GuiContextInner};
+use nice_plug::context::PluginApi;
+use nice_plug::prelude::{FloatParam, FloatRange, Param, ParamPtr, PluginState};
+use sas_gui::layout::{FullLayout, Rect};
+use sas_gui::scope::Scope;
+use sas_gui::sections::effects::delay::DelayLayout;
+use sas_gui::sections::effects::order::OrderLayout;
+use sas_gui::sections::effects::{
+    self, decode_order, encode_order, move_effect, Effect, EffectsLayout, ORDER_CONTROL,
+};
+use sas_gui::skin::Skin;
+use sas_gui::{EditorModel, Host, HostParam, Interface, OpenGestures, Tab};
+use sas_preset::registry::registry;
+
+/// Every control, linear over its registry range.
+struct Synth {
+    params: BTreeMap<&'static str, FloatParam>,
+}
+
+impl Synth {
+    fn new() -> Arc<Synth> {
+        let names: Vec<&'static str> = Effect::ALL
+            .iter()
+            .map(|effect| effect.enable_control())
+            .chain([
+                ORDER_CONTROL,
+                "delay_filter_cutoff",
+                "delay_filter_spread",
+                "delay_style",
+            ])
+            .collect();
+        let params = names
+            .into_iter()
+            .map(|name| {
+                let info = registry().get(name).unwrap();
+                let range = FloatRange::Linear {
+                    min: info.min,
+                    max: info.max,
+                };
+                (name, FloatParam::new(name, info.default_value, range))
+            })
+            .collect();
+        Arc::new(Synth { params })
+    }
+
+    fn name_of(&self, ptr: ParamPtr) -> &'static str {
+        self.params
+            .iter()
+            .find(|(_, param)| param.as_ptr() == ptr)
+            .map(|(name, _)| *name)
+            .unwrap()
+    }
+
+    fn value(&self, name: &str) -> f32 {
+        unsafe { self.params[name].as_ptr().unmodulated_plain_value() }
+    }
+
+    /// Sets a parameter as a preset load would, without a gesture.
+    fn set(&self, name: &str, plain: f32) {
+        unsafe {
+            let ptr = self.params[name].as_ptr();
+            ptr._internal_set_normalized_value(ptr.preview_normalized(plain));
+        }
+    }
+}
+
+impl EditorModel for Synth {
+    fn preset_name(&self) -> String {
+        String::new()
+    }
+
+    fn param(&self, name: &str) -> Option<HostParam> {
+        self.params.get(name).map(|param| param.as_ptr())
+    }
+}
+
+/// When the host applies the editor's sets.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Apply {
+    /// At the start of the next frame, as if a block ran in between.
+    NextFrame,
+    /// Only when the test calls `apply_pending`.
+    OnRequest,
+}
+
+/// The host: logs gestures and applies values.
+struct Recorder {
+    synth: Arc<Synth>,
+    log: Mutex<Vec<String>>,
+    pending: Mutex<Vec<(ParamPtr, f32)>>,
+    apply: Apply,
+}
+
+impl Recorder {
+    fn apply_pending(&self) {
+        for (param, normalized) in self.pending.lock().unwrap().drain(..) {
+            unsafe { param._internal_set_normalized_value(normalized) };
+        }
+    }
+}
+
+impl GuiContextInner for Recorder {
+    fn plugin_api(&self) -> PluginApi {
+        PluginApi::Clap
+    }
+
+    unsafe fn raw_begin_set_parameter(&self, param: ParamPtr) {
+        let name = self.synth.name_of(param);
+        self.log.lock().unwrap().push(format!("begin {name}"));
+    }
+
+    unsafe fn raw_set_parameter_normalized(&self, param: ParamPtr, normalized: f32) {
+        self.pending.lock().unwrap().push((param, normalized));
+        let name = self.synth.name_of(param);
+        self.log.lock().unwrap().push(format!("set {name}"));
+    }
+
+    unsafe fn raw_end_set_parameter(&self, param: ParamPtr) {
+        let name = self.synth.name_of(param);
+        self.log.lock().unwrap().push(format!("end {name}"));
+    }
+
+    fn get_state(&self) -> PluginState {
+        unimplemented!("the editor does not read the plugin state")
+    }
+
+    fn set_state(&self, _state: PluginState) {}
+
+    fn request_restart(&self) {}
+}
+
+struct Fixture {
+    synth: Arc<Synth>,
+    recorder: Arc<Recorder>,
+    context: GuiContext,
+    open: OpenGestures,
+    interface: RefCell<Interface>,
+    /// The interface's skin, for laying out where to point.
+    skin: Skin,
+}
+
+impl Fixture {
+    /// The Effects tab with the effects in `enabled` on.
+    fn new(apply: Apply, enabled: &[Effect]) -> Fixture {
+        let synth = Synth::new();
+        for effect in enabled {
+            synth.set(effect.enable_control(), 1.0);
+        }
+        let recorder = Arc::new(Recorder {
+            synth: synth.clone(),
+            log: Mutex::new(Vec::new()),
+            pending: Mutex::new(Vec::new()),
+            apply,
+        });
+        let context = GuiContext::new(recorder.clone());
+        let mut interface = Interface::default();
+        interface.set_tab(Tab::Effects);
+        Fixture {
+            synth,
+            recorder,
+            context,
+            open: OpenGestures::default(),
+            interface: RefCell::new(interface),
+            skin: Skin::default(),
+        }
+    }
+
+    fn harness(&self) -> Harness<'_> {
+        let mut harness = Harness::builder()
+            .with_size((1400.0, 820.0))
+            .with_step_dt(1.0 / 60.0)
+            .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
+            .build_ui(|ui| {
+                let screen = ui.ctx().content_rect();
+                if self.recorder.apply == Apply::NextFrame {
+                    self.recorder.apply_pending();
+                }
+                let host = Host::tracking(self.synth.as_ref(), Some(&self.context), &self.open);
+                self.interface.borrow_mut().show_in(ui, screen, &host)
+            });
+        harness.step();
+        harness
+    }
+
+    /// The gestures logged since the last call, with repeated sets of the
+    /// same control collapsed.
+    fn take_log(&self) -> Vec<String> {
+        let mut log = std::mem::take(&mut *self.recorder.log.lock().unwrap());
+        log.dedup();
+        log
+    }
+
+    fn order(&self) -> [usize; effects::NUM_EFFECTS] {
+        decode_order(self.synth.value(ORDER_CONTROL))
+    }
+
+    fn effects_layout(&self) -> (EffectsLayout, Scope<'_>) {
+        let layout = FullLayout::new(&self.skin, 1400, 820);
+        let top = Scope::top(&self.skin, layout.size_ratio);
+        let enabled = Effect::ALL.map(|effect| self.synth.value(effect.enable_control()) != 0.0);
+        let fx = EffectsLayout::new(
+            &top.within(effects::SKIN),
+            layout.effects,
+            self.order(),
+            enabled,
+        );
+        (fx, top)
+    }
+
+    fn order_layout(&self) -> OrderLayout {
+        let (fx, top) = self.effects_layout();
+        OrderLayout::new(&top.within(effects::SKIN), fx.order, self.order())
+    }
+}
+
+fn centre(rect: Rect) -> Pos2 {
+    Pos2::new(
+        rect.x as f32 + rect.width as f32 / 2.0,
+        rect.y as f32 + rect.height as f32 / 2.0,
+    )
+}
+
+fn press(harness: &mut Harness, pos: Pos2) {
+    harness.event(Event::PointerMoved(pos));
+    harness.event(Event::PointerButton {
+        pos,
+        button: PointerButton::Primary,
+        pressed: true,
+        modifiers: Modifiers::NONE,
+    });
+    harness.step();
+}
+
+fn release(harness: &mut Harness, pos: Pos2) {
+    harness.event(Event::PointerButton {
+        pos,
+        button: PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    });
+    harness.step();
+    harness.step();
+}
+
+/// Drags from `from` to `to` in `steps` pointer moves, a frame each.
+fn drag(harness: &mut Harness, from: Pos2, to: Pos2, steps: usize) {
+    press(harness, from);
+    for step in 1..=steps {
+        let t = step as f32 / steps as f32;
+        harness.event(Event::PointerMoved(from + (to - from) * t));
+        harness.step();
+    }
+    release(harness, to);
+}
+
+/// Where a tile's centre would be after the drag: the middle of the tile at
+/// place `place` in the order now.
+fn place_centre(fixture: &Fixture, place: usize) -> Pos2 {
+    let layout = fixture.order_layout();
+    centre(layout.tiles[fixture.order()[place]])
+}
+
+/// The tile pressed is the one that moves, the order changes as the
+/// pointer crosses each tile, and the whole drag is one host gesture.
+fn check_order_drag(apply: Apply, steps: usize) {
+    let fixture = Fixture::new(apply, &[]);
+    let mut harness = fixture.harness();
+    let start = fixture.order();
+    let from = place_centre(&fixture, 0);
+    let to = place_centre(&fixture, 3);
+    drag(&mut harness, from, to, steps);
+    if apply == Apply::OnRequest {
+        assert_eq!(fixture.order(), start, "nothing applied before the request");
+        fixture.recorder.apply_pending();
+    }
+    let mut expected = start;
+    move_effect(&mut expected, 0, 3);
+    assert_eq!(fixture.order(), expected);
+    assert_eq!(
+        fixture.take_log(),
+        [
+            format!("begin {ORDER_CONTROL}"),
+            format!("set {ORDER_CONTROL}"),
+            format!("end {ORDER_CONTROL}"),
+        ]
+    );
+    assert_eq!(fixture.synth.value(ORDER_CONTROL), encode_order(expected));
+}
+
+#[test]
+fn a_slow_order_drag_moves_the_pressed_tile_in_one_gesture() {
+    check_order_drag(Apply::NextFrame, 24);
+}
+
+#[test]
+fn a_fast_order_drag_moves_the_pressed_tile() {
+    // One move, far past egui's drag threshold, before the drag starts.
+    check_order_drag(Apply::NextFrame, 1);
+}
+
+#[test]
+fn an_order_drag_works_with_a_host_that_applies_at_release() {
+    check_order_drag(Apply::OnRequest, 24);
+    check_order_drag(Apply::OnRequest, 1);
+}
+
+#[test]
+fn an_order_power_button_toggles_its_effect_in_one_gesture() {
+    let fixture = Fixture::new(Apply::NextFrame, &[]);
+    let mut harness = fixture.harness();
+    let button = fixture.order_layout().power_buttons[Effect::Reverb as usize];
+    press(&mut harness, centre(button));
+    release(&mut harness, centre(button));
+    assert_eq!(fixture.synth.value("reverb_on"), 1.0);
+    assert_eq!(
+        fixture.take_log(),
+        ["begin reverb_on", "set reverb_on", "end reverb_on"]
+    );
+    assert_eq!(
+        fixture.order(),
+        decode_order(registry().get(ORDER_CONTROL).unwrap().default_value)
+    );
+}
+
+/// Dragging the delay's filter display moves its cutoff across and its
+/// spread up and down, each in one gesture.
+#[test]
+fn a_display_drag_is_one_gesture_per_control() {
+    let fixture = Fixture::new(Apply::NextFrame, &[Effect::Delay]);
+    let mut harness = fixture.harness();
+    let (fx, top) = fixture.effects_layout();
+    let bounds = fx.effects[Effect::Delay as usize].unwrap();
+    let delay = DelayLayout::new(&top.within(Effect::Delay.skin()), bounds, 0);
+    let cutoff = fixture.synth.value("delay_filter_cutoff");
+    let spread = fixture.synth.value("delay_filter_spread");
+    let from = centre(delay.filter_viewer);
+    // Right and down: the spread starts at its maximum.
+    drag(&mut harness, from, from + egui::vec2(20.0, 10.0), 8);
+    assert!(fixture.synth.value("delay_filter_cutoff") > cutoff);
+    assert!(fixture.synth.value("delay_filter_spread") < spread);
+    let log = fixture.take_log();
+    for name in ["delay_filter_cutoff", "delay_filter_spread"] {
+        let count = |what: &str| {
+            log.iter()
+                .filter(|line| **line == format!("{what} {name}"))
+                .count()
+        };
+        assert_eq!((count("begin"), count("end")), (1, 1), "{name}: {log:?}");
+        let begin = log.iter().position(|line| *line == format!("begin {name}"));
+        let end = log.iter().position(|line| *line == format!("end {name}"));
+        assert!(begin < end);
+    }
+}
+
+/// The wheel scrolls the column only as far as its contents go, and not
+/// at all when they fit.
+#[test]
+fn scrolling_stays_within_the_column() {
+    let fixture = Fixture::new(Apply::NextFrame, &Effect::ALL);
+    let mut harness = fixture.harness();
+    let (fx, _) = fixture.effects_layout();
+    let max_scroll = (fx.container.height - fx.viewport.height) as f32;
+    assert!(max_scroll > 0.0);
+    let inside = centre(fx.viewport);
+    harness.event(Event::PointerMoved(inside));
+    for _ in 0..40 {
+        harness.event(Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, -200.0),
+            modifiers: Modifiers::NONE,
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Wheel,
+        });
+        harness.step();
+    }
+    harness.run_steps(30);
+    assert_eq!(fixture.interface.borrow().effects_scroll(), max_scroll);
+    for _ in 0..40 {
+        harness.event(Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, 200.0),
+            modifiers: Modifiers::NONE,
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Wheel,
+        });
+        harness.step();
+    }
+    harness.run_steps(30);
+    assert_eq!(fixture.interface.borrow().effects_scroll(), 0.0);
+
+    let few = Fixture::new(Apply::NextFrame, &[Effect::Chorus]);
+    few.interface.borrow_mut().set_effects_scroll(500.0);
+    let mut harness = few.harness();
+    harness.step();
+    assert_eq!(few.interface.borrow().effects_scroll(), 0.0);
+}

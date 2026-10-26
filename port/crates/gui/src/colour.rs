@@ -1,5 +1,6 @@
 // Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
-// SPDX-License-Identifier: GPL-3.0-or-later
+// Portions Copyright (c) 2020 Raw Material Software Limited (JUCE 6: juce_graphics, GPL-3.0-only).
+// SPDX-License-Identifier: GPL-3.0-or-later AND GPL-3.0-only
 
 //! JUCE's `Colour` as the skin stores it: 0xAARRGGBB, not premultiplied.
 
@@ -52,6 +53,30 @@ impl Colour {
     pub fn with_float_alpha(self, alpha: f32) -> Colour {
         let alpha = (255.0 * alpha).round().clamp(0.0, 255.0) as u32;
         Colour((alpha << 24) | (self.0 & 0x00ff_ffff))
+    }
+
+    /// `Colour::overlaidWith`: `src` drawn over this colour.
+    pub fn overlaid_with(self, src: Colour) -> Colour {
+        let dest_alpha = self.alpha() as i32;
+        if dest_alpha <= 0 {
+            return src;
+        }
+        let inv_a = 0xff - src.alpha() as i32;
+        let res_a = 0xff - (((0xff - dest_alpha) * inv_a) >> 8);
+        if res_a <= 0 {
+            return self;
+        }
+        let da = (inv_a * dest_alpha) / res_a;
+        let channel = |dest: u8, src: u8| {
+            let (dest, src) = (dest as i32, src as i32);
+            (src + (((dest - src) * da) >> 8)) as u8 as u32
+        };
+        Colour(
+            ((res_a as u32) << 24)
+                | (channel(self.red(), src.red()) << 16)
+                | (channel(self.green(), src.green()) << 8)
+                | channel(self.blue(), src.blue()),
+        )
     }
 
     /// `Colour::withMultipliedAlpha` (`withAlpha` rounds to a byte).

@@ -308,12 +308,26 @@ struct Drag {
     starting_y: i32,
     /// The tile's top now, relative to the order's top.
     y: i32,
+    /// The order as the drag has left it (`effect_order_`), drawn and sent
+    /// to the host rather than read back from it, which may apply a set a
+    /// frame later.
+    order: [usize; NUM_EFFECTS],
+    /// Whether the drag has moved the effect, and so holds the order's host
+    /// gesture.
+    moved: bool,
 }
 
 /// The Effects tab (`EffectsInterface` and its sections).
 pub struct EffectsTab {
     /// `viewport_.getViewPositionY()`, in pixels.
     scroll: f32,
+    /// The scroll bar's `OpenGlScrollQuad::hover_amount_`.
+    scroll_hover: f32,
+    /// Whether the scroll bar is pressed (`OpenGlScrollBar::mouseDown`).
+    scroll_pressed: bool,
+    /// Whether that press began on the thumb, so a drag moves it
+    /// (`ScrollBar::isDraggingThumb`).
+    scroll_thumb_drag: bool,
     drag: Option<Drag>,
     /// `currently_hovered_`: the tile under the pointer.
     hovered: Option<usize>,
@@ -329,6 +343,9 @@ impl Default for EffectsTab {
     fn default() -> EffectsTab {
         EffectsTab {
             scroll: 0.0,
+            scroll_hover: -1.0,
+            scroll_pressed: false,
+            scroll_thumb_drag: false,
             drag: None,
             hovered: None,
             power_buttons: Effect::ALL.map(|effect| SynthButton::power(effect.enable_control())),
@@ -348,6 +365,11 @@ impl EffectsTab {
         self.scroll = y;
     }
 
+    /// `viewport_.getViewPositionY()`.
+    pub fn scroll(&self) -> f32 {
+        self.scroll
+    }
+
     /// Draws the tab in `layout.effects` and handles its input.
     pub fn show(
         &mut self,
@@ -359,7 +381,10 @@ impl EffectsTab {
         overlay: &mut Overlay,
     ) {
         let scope = top.within(SKIN);
-        let mut order = decode_order(host.value(ORDER_CONTROL));
+        let mut order = match self.drag {
+            Some(drag) => drag.order,
+            None => decode_order(host.value(ORDER_CONTROL)),
+        };
         let enabled = Effect::ALL.map(|effect| host.value(effect.enable_control()) != 0.0);
         let fx = EffectsLayout::new(&scope, layout.effects, order, enabled);
         let order_layout = OrderLayout::new(&scope, fx.order, order);
@@ -384,7 +409,14 @@ impl EffectsTab {
         let max_scroll = (fx.container.height - fx.viewport.height).max(0) as f32;
         self.handle_scrolling(ui, pixels, &fx, max_scroll);
         self.show_container(ui, host, pixels, top, overlay, &fx, enabled);
-        paint_scroll_bar(pixels, &scope, &fx, self.scroll);
+        paint_scroll_bar(
+            pixels,
+            &scope,
+            &fx,
+            self.scroll,
+            self.scroll_hover,
+            self.scroll_pressed,
+        );
     }
 
     /// `DragDropEffectOrder`'s mouse handling: hover, press, drag, release.
@@ -418,14 +450,20 @@ impl EffectsTab {
             .hover_pos()
             .map(|pos| order[effect_index_from_y(scope, bounds.height, local_y(pos))]);
 
-        if response.drag_started() || (response.is_pointer_button_down_on() && self.drag.is_none())
-        {
-            if let Some(pos) = response
-                .interact_pointer_pos()
-                .filter(|&pos| !over_power(pos))
+        let (pressed, press_origin, primary_down, pointer) = ui.input(|input| {
+            (
+                input.pointer.primary_pressed(),
+                input.pointer.press_origin(),
+                input.pointer.primary_down(),
+                input.pointer.latest_pos(),
+            )
+        });
+        if pressed && self.drag.is_none() {
+            // mouseDown, where the press began: the tile under it, unless the
+            // press is on its power button.
+            if let Some(origin) = press_origin.filter(|&pos| rect.contains(pos) && !over_power(pos))
             {
-                // mouseDown.
-                let y = local_y(pos);
+                let y = local_y(origin);
                 let place = effect_index_from_y(scope, bounds.height, y);
                 let starting_y = effect_y(scope, bounds.height, place);
                 self.drag = Some(Drag {
@@ -434,30 +472,42 @@ impl EffectsTab {
                     mouse_down_y: y,
                     starting_y,
                     y: starting_y,
+                    order: *order,
+                    moved: false,
                 });
             }
         }
         let Some(mut drag) = self.drag else {
             return;
         };
-        if !response.is_pointer_button_down_on() && !response.dragged() {
-            // mouseUp: the tile settles into its place.
+        if !primary_down {
+            // mouseUp: the tile settles into its place, and the order's
+            // gesture ends.
+            if drag.moved {
+                host.end(ORDER_CONTROL);
+            }
             self.drag = None;
             return;
         }
-        if let Some(pos) = response.interact_pointer_pos() {
+        if let Some(pos) = pointer {
             // mouseDrag.
             let y = local_y(pos);
-            let tile_height = OrderLayout::new(scope, bounds, *order).tiles[drag.effect].height;
+            let tile_height = OrderLayout::new(scope, bounds, drag.order).tiles[drag.effect].height;
             let delta = (y - drag.mouse_down_y) as i32;
             drag.y = (drag.starting_y + delta).clamp(0, bounds.height - tile_height);
             let next = effect_index_from_y(scope, bounds.height, y);
             if next != drag.place {
-                move_effect(order, drag.place, next);
+                // moveEffect, sending the new order inside one gesture.
+                move_effect(&mut drag.order, drag.place, next);
                 drag.place = next;
-                host.set_once(ORDER_CONTROL, encode_order(*order));
+                if !drag.moved {
+                    host.begin(ORDER_CONTROL);
+                    drag.moved = true;
+                }
+                host.set(ORDER_CONTROL, encode_order(drag.order));
             }
         }
+        *order = drag.order;
         self.drag = Some(drag);
     }
 
@@ -505,7 +555,9 @@ impl EffectsTab {
     }
 
     /// Wheel scrolling over the column (`Viewport`), when its contents are
-    /// taller than it, and the scroll bar.
+    /// taller than it, and the scroll bar (`OpenGlScrollBar`): dragging its
+    /// thumb scrolls with it, and a press on the track beside the thumb
+    /// pages towards the press (`ScrollBar::mouseDown`).
     fn handle_scrolling(
         &mut self,
         ui: &mut Ui,
@@ -513,20 +565,55 @@ impl EffectsTab {
         fx: &EffectsLayout,
         max_scroll: f32,
     ) {
+        /// `OpenGlScrollQuad::kHoverChange`.
+        const HOVER_CHANGE: f32 = 0.2;
         let viewport = pixels.rect(fx.viewport.into());
         if max_scroll > 0.0 && ui.rect_contains_pointer(viewport) {
             let wheel = ui.input(|input| input.smooth_scroll_delta.y);
             self.scroll -= wheel * pixels.pixels_per_point();
         }
+        let mut hover = false;
+        self.scroll_pressed = false;
         if max_scroll > 0.0 {
             let bar = pixels.rect(fx.scroll_bar.into());
-            let response =
-                ui.interact(bar, ui.scope_id().with("effects scroll bar"), Sense::drag());
-            if response.dragged() {
-                let total = fx.container.height as f32;
-                let scale = total / fx.viewport.height as f32;
-                self.scroll += response.drag_delta().y * pixels.pixels_per_point() * scale;
+            let response = ui.interact(
+                bar,
+                ui.scope_id().with("effects scroll bar"),
+                Sense::click_and_drag(),
+            );
+            hover = response.hovered() || response.dragged();
+            self.scroll_pressed = response.is_pointer_button_down_on();
+            let ppp = pixels.pixels_per_point();
+            let total = fx.container.height as f32;
+            let scale = total / fx.scroll_bar.height as f32;
+            let pressed = ui.input(|input| input.pointer.primary_pressed());
+            if pressed && response.is_pointer_button_down_on() {
+                self.scroll_thumb_drag = false;
+                if let Some(pos) = response.interact_pointer_pos() {
+                    let y = (pos.y - bar.min.y) * ppp * scale;
+                    let page = fx.viewport.height as f32;
+                    if y < self.scroll {
+                        self.scroll -= page;
+                    } else if y > self.scroll + page {
+                        self.scroll += page;
+                    } else {
+                        self.scroll_thumb_drag = true;
+                    }
+                }
             }
+            if response.dragged() && self.scroll_thumb_drag {
+                self.scroll += response.drag_delta().y * ppp * scale;
+            }
+        }
+        // OpenGlScrollQuad::render: the bar widens while hovered.
+        let last_hover = self.scroll_hover;
+        self.scroll_hover = if hover {
+            (self.scroll_hover + HOVER_CHANGE).min(1.0)
+        } else {
+            (self.scroll_hover - HOVER_CHANGE).max(0.0)
+        };
+        if self.scroll_hover != last_hover {
+            ui.ctx().request_repaint();
         }
         self.scroll = self.scroll.clamp(0.0, max_scroll);
     }
@@ -754,7 +841,15 @@ fn tile_icon(effect: Effect) -> UpstreamIcon {
 
 /// `OpenGlScrollBar`: a rounded bar over the visible part of the column,
 /// shown while the column is taller than the viewport (JUCE's auto-hide).
-fn paint_scroll_bar(pixels: &PixelPainter, scope: &Scope, fx: &EffectsLayout, scroll: f32) {
+#[allow(clippy::too_many_arguments)]
+fn paint_scroll_bar(
+    pixels: &PixelPainter,
+    scope: &Scope,
+    fx: &EffectsLayout,
+    scroll: f32,
+    hover: f32,
+    pressed: bool,
+) {
     let total = fx.container.height as f32;
     let visible = fx.viewport.height as f32;
     if total <= visible || total <= 0.0 {
@@ -763,17 +858,21 @@ fn paint_scroll_bar(pixels: &PixelPainter, scope: &Scope, fx: &EffectsLayout, sc
     let bar = fx.scroll_bar;
     let start = scroll / total;
     let end = (scroll + visible) / total;
+    // setShrinkLeft: the left half of the track at rest, all of it hovered.
+    let width = bar.width as f32 * (1.0 + hover.max(0.0)) / 2.0;
     let rect = RectF::new(
         bar.x as f32,
         bar.y as f32 + start * bar.height as f32,
-        bar.width as f32,
+        width,
         (end - start) * bar.height as f32,
     );
-    let mut quad = Quad::new(
-        QuadKind::RoundedRectangle,
-        rect,
-        scope.color(ColorId::LightenScreen),
-    );
+    let color = scope.color(ColorId::LightenScreen);
+    let color = if pressed {
+        color.overlaid_with(color)
+    } else {
+        color
+    };
+    let mut quad = Quad::new(QuadKind::RoundedRectangle, rect, color);
     quad.rounding = bar.width as f32 * 0.25;
     let mut batch = QuadBatch::new();
     batch.push(quad);
