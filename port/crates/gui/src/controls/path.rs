@@ -80,20 +80,33 @@ impl Path {
         self.extend(x, y);
     }
 
+    /// Before drawing on: `Path::lineTo` and `cubicTo` on an empty path
+    /// start at (0, 0); after `closeSubPath` they go on from the closed
+    /// sub-path's start, as JUCE's flattening does.
+    fn continue_from_close(&mut self) {
+        match self.subpaths.last() {
+            None => self.move_to(0.0, 0.0),
+            Some(subpath) if subpath.closed => {
+                let start = subpath.points[0];
+                self.subpaths.push(SubPath {
+                    points: vec![start],
+                    closed: false,
+                });
+            }
+            Some(_) => {}
+        }
+    }
+
     /// `Path::lineTo`.
     pub fn line_to(&mut self, x: f32, y: f32) {
-        if self.subpaths.last().is_none_or(|subpath| subpath.closed) {
-            self.move_to(0.0, 0.0);
-        }
+        self.continue_from_close();
         self.current().points.push((x, y));
         self.extend(x, y);
     }
 
     /// `Path::cubicTo`, flattened.
     pub fn cubic_to(&mut self, c1: (f32, f32), c2: (f32, f32), end: (f32, f32)) {
-        if self.subpaths.last().is_none_or(|subpath| subpath.closed) {
-            self.move_to(0.0, 0.0);
-        }
+        self.continue_from_close();
         let start = *self.current().points.last().expect("a subpath has a point");
         for i in 1..=CURVE_SEGMENTS {
             let t = i as f32 / CURVE_SEGMENTS as f32;
@@ -147,6 +160,9 @@ impl Path {
     /// `Path::addCentredArc` (no rotation), continuing the current subpath:
     /// angles are clockwise from twelve o'clock.
     fn add_centred_arc(&mut self, centre: (f32, f32), radius: (f32, f32), from: f32, to: f32) {
+        if radius.0 <= 0.0 || radius.1 <= 0.0 {
+            return;
+        }
         let point = |angle: f32| {
             (
                 centre.0 + radius.0 * angle.sin(),
@@ -243,10 +259,18 @@ impl Path {
         }
     }
 
-    /// `PathStrokeType(thickness, mitered, butt).createStrokedPath`: the
+    /// `PathStrokeType(thickness, joints, ends).createStrokedPath`: the
     /// outline of a stroke `thickness` wide, as pieces that are each wound
     /// the same way, so their non-zero fill is the stroke.
-    pub fn stroked(&self, thickness: f32) -> Path {
+    ///
+    /// # Panics
+    /// For the styles not ported yet: only mitred joints with butt ends
+    /// are (`PathStrokeType(thickness)`'s defaults, and the SVG parser's).
+    pub fn stroked(&self, thickness: f32, joints: JointStyle, ends: EndCapStyle) -> Path {
+        assert!(
+            joints == JointStyle::Mitered && ends == EndCapStyle::Butt,
+            "PathStrokeType {joints:?} joints with {ends:?} ends are not ported yet"
+        );
         let half = thickness / 2.0;
         // PathStrokeType's maxMiterExtensionSquared (9 × thickness²).
         let max_miter_squared = 9.0 * thickness * thickness;
@@ -378,17 +402,40 @@ impl Path {
                 .map(|w| w.parse().map_err(|_| format!("bad stroke width {w}")))
                 .transpose()?
                 .unwrap_or(1.0);
-            let stroke_opacity: f32 = attribute(style, "stroke-opacity")
-                .and_then(|o| o.parse().ok())
-                .unwrap_or(1.0);
-            if stroke.is_some() && width > 0.0 && stroke_opacity > 0.0 {
-                path.add_path(&outline.stroked(width));
+            let opacity = |name: &str| -> f32 {
+                attribute(style, name)
+                    .and_then(|o| o.parse().ok())
+                    .unwrap_or(1.0)
+            };
+            // The stroke's colour carries stroke-opacity times the element's
+            // opacity; an invisible one leaves the path itself.
+            let stroke_alpha = opacity("stroke-opacity") * opacity("opacity");
+            if stroke.is_some() && width > 0.0 && stroke_alpha > 0.0 {
+                // SVG's default joints and ends; upstream's icons set no
+                // others.
+                path.add_path(&outline.stroked(width, JointStyle::Mitered, EndCapStyle::Butt));
             } else {
                 path.add_path(&outline);
             }
         }
         Ok(path)
     }
+}
+
+/// `PathStrokeType::JointStyle`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum JointStyle {
+    Mitered,
+    Curved,
+    Beveled,
+}
+
+/// `PathStrokeType::EndCapStyle`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EndCapStyle {
+    Butt,
+    Square,
+    Rounded,
 }
 
 /// A uniform scale then an offset, path coordinates to pixels.
@@ -568,7 +615,7 @@ mod tests {
         line.move_to(0.0, 0.0);
         line.line_to(10.0, 0.0);
         line.line_to(10.0, 10.0);
-        let stroke = line.stroked(2.0);
+        let stroke = line.stroked(2.0, JointStyle::Mitered, EndCapStyle::Butt);
         for subpath in stroke.subpaths() {
             let points = &subpath.points;
             let area: f32 = points
@@ -580,5 +627,53 @@ mod tests {
         }
         // The outer corner is mitred out to (11, -1).
         assert_eq!(stroke.bounds(), Some((0.0, -1.0, 11.0, 10.0)));
+    }
+
+    #[test]
+    #[should_panic(expected = "not ported yet")]
+    fn unported_stroke_styles_refuse() {
+        let mut line = Path::new();
+        line.move_to(0.0, 0.0);
+        line.line_to(10.0, 0.0);
+        let _ = line.stroked(2.0, JointStyle::Curved, EndCapStyle::Rounded);
+    }
+
+    /// JUCE's flattening goes on from a closed sub-path's start, so a line
+    /// after `closeSubPath` neither starts at nor bounds (0, 0).
+    #[test]
+    fn lines_after_close_go_on_from_the_subpath_start() {
+        let mut path = Path::new();
+        path.move_to(5.0, 5.0);
+        path.line_to(8.0, 5.0);
+        path.line_to(8.0, 8.0);
+        path.close();
+        path.line_to(5.0, 9.0);
+        assert_eq!(path.bounds(), Some((5.0, 5.0, 8.0, 9.0)));
+        assert_eq!(path.subpaths()[1].points, vec![(5.0, 5.0), (5.0, 9.0)]);
+    }
+
+    /// `Path::addCentredArc` adds nothing without a positive radius.
+    #[test]
+    fn arcs_need_a_radius() {
+        let mut path = Path::new();
+        path.move_to(1.0, 1.0);
+        path.add_centred_arc((1.0, 1.0), (0.0, 2.0), 0.0, PI);
+        assert_eq!(path.subpaths()[0].points, vec![(1.0, 1.0)]);
+    }
+
+    /// A stroke that its element's opacity hides leaves the path itself
+    /// (`DrawableShape::getOutlineAsPath` on an invisible stroke).
+    #[test]
+    fn hidden_strokes_leave_the_path() {
+        let svg = |opacity: &str| {
+            format!(
+                r##"<svg><defs><path id="a" d="M 0 0 L 10 0"></path></defs>
+                <use xlink:href="#a" stroke="#000000" stroke-width="2" opacity="{opacity}"></use></svg>"##
+            )
+        };
+        let shown = Path::from_svg(&svg("1")).unwrap();
+        assert_eq!(shown.bounds(), Some((0.0, -1.0, 10.0, 1.0)));
+        let hidden = Path::from_svg(&svg("0")).unwrap();
+        assert_eq!(hidden.bounds(), Some((0.0, 0.0, 10.0, 0.0)));
     }
 }
