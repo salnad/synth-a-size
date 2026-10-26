@@ -26,8 +26,8 @@ note and turns the audio into the oscillator's wavetable.
 - `Synth::note_on` wraps `SoundEngine::noteOn`, so the note's velocity is
   upstream's 0.7, not a MIDI byte.
 - D22 records what differs from upstream's live-engine render: a fresh
-  synth from rest, its own seeds, and 120 BPM. Randomness and tempo sync can
-  sound different; other patches render the same.
+  synth from rest with its own seeds. Randomness can sound different;
+  tempo-synced and other patches render the same.
 
 **Verified.**
 
@@ -40,6 +40,8 @@ note and turns the audio into the oscillator's wavetable.
   and 3, leave oscillator 1 alone, move the revision, give both the same
   table, and leave the process's seed counter where it was. Taking the
   worker's own counter out fails the test.
+- `tests/processor.rs`: the processor keeps the host's tempo (140 BPM
+  after a block reporting it, and still after a block without one).
 - `tests/controls.rs`: the menu lists Resynthesize last, and choosing it
   reaches the model with no host edit.
 - `cargo clippy --workspace --all-targets -D warnings`, `cargo fmt`, and the

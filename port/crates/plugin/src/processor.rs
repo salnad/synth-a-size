@@ -233,6 +233,7 @@ impl<E: Engine> BlockProcessor<E> {
 
         if let Some(bpm) = transport.tempo.filter(|bpm| *bpm > 0.0) {
             self.engine.set_bpm(bpm);
+            params.set_host_tempo(bpm);
             if transport.playing {
                 if let Some(beats) = transport.pos_beats {
                     let bps = bpm / SECONDS_PER_MINUTE;

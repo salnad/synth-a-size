@@ -290,7 +290,9 @@ impl EditorModel for PluginModel {
             return;
         }
         let sample_rate = self.params.sample_rate().round() as i32;
-        self.resynthesizer.start(oscillator, state, sample_rate);
+        let bpm = self.params.host_tempo();
+        self.resynthesizer
+            .start(oscillator, state, sample_rate, bpm);
     }
 
     fn with_sample(&self, f: &mut dyn FnMut(&SampleState)) {

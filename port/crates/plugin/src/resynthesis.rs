@@ -39,17 +39,15 @@ const VELOCITY: f32 = 0.7;
 const PRE_PROCESS_SAMPLES: usize = 44_100;
 /// `kBufferSize`.
 const BUFFER_SIZE: usize = 64;
-/// The tempo the fresh synth runs at (the host's isn't known here).
-const BPM: f64 = 120.0;
 
 /// `renderAudioForResynthesis(data, samples, note)` on a fresh synth playing
-/// `state`: a second of running in, then the note for
+/// `state` at `bpm`: a second of running in, then the note for
 /// `RESYNTHESIZE_SECONDS`, the left channel normalized to its peak.
-pub fn render(state: &PresetState, sample_rate: i32) -> Vec<f32> {
+pub fn render(state: &PresetState, sample_rate: i32, bpm: f64) -> Vec<f32> {
     let samples = (sample_rate as f32 * RESYNTHESIZE_SECONDS) as usize;
     let mut synth = Synth::new();
     synth.load_preset(state);
-    synth.prepare(sample_rate, BPM);
+    synth.prepare(sample_rate, bpm);
 
     let sample_time = 1.0 / sample_rate as f64;
     let mut current_time = -(PRE_PROCESS_SAMPLES as f64) * sample_time;
@@ -116,6 +114,7 @@ struct Job {
     oscillator: usize,
     state: PresetState,
     sample_rate: i32,
+    bpm: f64,
 }
 
 /// The thread resyntheses run on, started by the first one.
@@ -135,10 +134,11 @@ impl Resynthesizer {
         }
     }
 
-    /// Renders `state` and loads the result into `oscillator`, on the
-    /// worker thread. Returns at once; the oscillator changes when the
-    /// render is done (about a second of work), through the edit bus.
-    pub fn start(&self, oscillator: usize, state: PresetState, sample_rate: i32) {
+    /// Renders `state` at `sample_rate` and `bpm` (the host's) and loads
+    /// the result into `oscillator`, on the worker thread. Returns at once;
+    /// the oscillator changes when the render is done (about a second of
+    /// work), through the edit bus.
+    pub fn start(&self, oscillator: usize, state: PresetState, sample_rate: i32, bpm: f64) {
         let mut worker = self.worker.lock().unwrap();
         let (jobs, _) = worker.get_or_insert_with(|| {
             let (jobs, receiver) = mpsc::channel::<Job>();
@@ -162,6 +162,7 @@ impl Resynthesizer {
             oscillator,
             state,
             sample_rate,
+            bpm,
         };
         if jobs.send(job).is_err() {
             *self.busy.0.lock().unwrap() -= 1;
@@ -197,7 +198,7 @@ fn resynthesize(edits: &EditHandle, job: Job) {
     RandomValues::instance();
     use_thread_seed_counter(0);
 
-    let audio = render(&job.state, job.sample_rate);
+    let audio = render(&job.state, job.sample_rate, job.bpm);
     let Some(base) = job.state.wavetables.get(job.oscillator).cloned() else {
         return;
     };
@@ -215,8 +216,11 @@ mod tests {
     #[test]
     fn the_render_is_four_seconds_normalized_to_its_peak() {
         let state = PresetState::new(&InitContent { sample_seed: 0 });
+        // As the worker does: the shared table first, then the counter from
+        // 0, so the render doesn't depend on which test built a synth first.
+        RandomValues::instance();
         use_thread_seed_counter(0);
-        let audio = render(&state, 44_100);
+        let audio = render(&state, 44_100, 120.0);
         assert_eq!(audio.len(), 176_400);
         let peak = audio
             .iter()
@@ -227,13 +231,15 @@ mod tests {
         // The same patch from the same seeds renders the same, as each job
         // on the worker does.
         use_thread_seed_counter(0);
-        assert_eq!(render(&state, 44_100), audio);
+        assert_eq!(render(&state, 44_100, 120.0), audio);
     }
 
     #[test]
     fn the_creator_is_one_pitched_file_source_named_resynthesize() {
         let state = PresetState::new(&InitContent { sample_seed: 0 });
-        let audio = render(&state, 44_100);
+        RandomValues::instance();
+        use_thread_seed_counter(0);
+        let audio = render(&state, 44_100, 120.0);
         let creator = creator_from_audio(state.wavetables[0].clone(), &audio, 44_100).unwrap();
         assert_eq!(creator.name, "Resynthesize");
         assert_eq!(creator.groups.len(), 1);

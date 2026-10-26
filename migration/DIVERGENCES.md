@@ -634,7 +634,9 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
 - **Port:** the same render, step for step
   (`port/crates/plugin/src/resynthesis.rs`), on a fresh synth built from
   the current patch and its live controls, on a thread of its own with its
-  own seed counter restarted at 0. Its tempo is 120 BPM. The result loads
+  own seed counter restarted at 0. It runs at the host's tempo from the
+  last block that reported one (120 BPM before any did), so tempo-synced
+  patches render as upstream's would. The result loads
   through the edit bus like any wavetable edit, so the editor and the
   audio keep running and the table changes when the render is done (about
   half a second). The creator step is upstream's: pitched audio with wave
@@ -645,9 +647,9 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
   only on the patch.
 - **Audible differences:** patches with randomness (random LFOs, random
   unison phases, the noise sample's position) get the fresh synth's draws
-  rather than the session's, and tempo-synced patches render at 120 BPM
-  where the host's tempo differs. Patches without either render as
-  upstream's do.
+  rather than the session's. Other patches render as upstream's do. Before
+  the host has reported a tempo, the render uses 120 BPM, upstream's
+  default.
 - **Approved:** coordinator (render off the GUI thread, seed isolation,
   record the differences); Graph Reviewer reviews on the resynthesis PR.
 

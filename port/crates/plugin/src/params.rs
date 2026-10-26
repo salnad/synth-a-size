@@ -255,6 +255,9 @@ impl EchoGuard {
 
 /// The plugin's parameters plus the preset state that is not a parameter
 /// (modulation routing, wavetables, sample, LFO shapes, save info, tuning).
+/// The engine's tempo until a host reports one (`kDefaultBpm`).
+const DEFAULT_TEMPO: f64 = 120.0;
+
 pub struct SynthParams {
     controls: Vec<Control>,
     by_name: HashMap<&'static str, usize>,
@@ -281,6 +284,9 @@ pub struct SynthParams {
     /// The sample rate the host activated the plugin at (`f32` bits), for
     /// work off the audio thread that renders as the engine would.
     sample_rate: AtomicU32,
+    /// The host's tempo at the last block that reported one (`f64` bits),
+    /// for the same.
+    host_tempo: AtomicU64,
 }
 
 impl SynthParams {
@@ -327,6 +333,7 @@ impl SynthParams {
             editor_windows: AtomicUsize::new(0),
             echo_guard: EchoGuard::new(names.len()),
             sample_rate: AtomicU32::new(44_100.0f32.to_bits()),
+            host_tempo: AtomicU64::new(DEFAULT_TEMPO.to_bits()),
         }
     }
 
@@ -339,6 +346,17 @@ impl SynthParams {
     pub(crate) fn set_sample_rate(&self, sample_rate: f32) {
         self.sample_rate
             .store(sample_rate.to_bits(), Ordering::Relaxed);
+    }
+
+    /// The host's tempo in BPM at the last block that reported one (the
+    /// engine's default, 120, before any did).
+    pub fn host_tempo(&self) -> f64 {
+        f64::from_bits(self.host_tempo.load(Ordering::Relaxed))
+    }
+
+    /// Called from the audio thread: one relaxed store, no allocation.
+    pub(crate) fn set_host_tempo(&self, bpm: f64) {
+        self.host_tempo.store(bpm.to_bits(), Ordering::Relaxed);
     }
 
     /// The exposed controls in host (registry index) order.
