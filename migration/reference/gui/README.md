@@ -30,7 +30,30 @@ itself:
 ```
 ref-gui [--out frame.png] [--layout layout.jsonl] [--preset file.vital]
         [--tab voice|effects|matrix|advanced] [--width 1400] [--height 820] [--frames 30]
+        [--midi file.mid] [--seconds S] [--block-size 64] [--animate on|off]
 ```
+
+## A running engine
+
+By default the engine never processes audio, and the interface is drawn
+with animation off, so the views that read engine outputs show the
+controls at rest. With `--midi` or `--seconds`, `ref-gui` first runs the
+engine the way `ref-render` does: the same `prepare` and block loop
+(`RenderLoop` in `../src/render_synth.h`), the same MIDI reader, 44.1 kHz
+and 120 BPM. It renders `S` seconds of audio (default: up to the last MIDI
+event) before the interface is on screen, then hands the interface the
+oscilloscope and audio memory, as the plugin's editor does. Displays that
+read status outputs or that memory then show that state: chorus and
+flanger taps, compressor meters, the EQ spectrum, the oscilloscope, the
+level meter and held keys.
+
+`--animate on` draws the animated views (filter responses, envelope and LFO
+positions and the like) from the engine's outputs, as the plugin's editor
+does by default. It needs a running engine, because a silent engine's
+outputs are idle (a filter response at cutoff 0).
+
+In `views.json`, a view sets these with `"midi"` (an authored file in
+`migration/corpus/midi/`), `"seconds"` and `"animate": true`.
 
 ## Rules
 

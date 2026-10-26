@@ -69,5 +69,36 @@ class LayoutForTest(unittest.TestCase):
         })
 
 
+class LiveArgsTest(unittest.TestCase):
+    MIDI = "migration/corpus/midi/held_pad.mid"
+
+    def test_a_view_without_an_engine_adds_nothing(self):
+        self.assertEqual(gui_reference.live_args({"name": "v", "tab": "voice"}), [])
+
+    def test_midi_seconds_and_animate(self):
+        self.assertEqual(
+            gui_reference.live_args({"name": "v", "midi": self.MIDI, "seconds": 1.5, "animate": True}),
+            ["--midi", str(gui_reference.REPO / self.MIDI), "--seconds", "1.5", "--animate", "on"],
+        )
+        self.assertEqual(gui_reference.live_args({"name": "v", "seconds": 0, "animate": False}),
+                         ["--seconds", "0.0"])
+
+    def test_animate_needs_a_running_engine(self):
+        with self.assertRaises(SystemExit):
+            gui_reference.live_args({"name": "v", "animate": True})
+
+    def test_midi_comes_from_the_corpus_midi_folder(self):
+        for midi in ("migration/corpus/gui/presets/all_effects.vital",
+                     "migration/corpus/midi/../gui/presets/all_effects.vital",
+                     "migration/corpus/midi/missing.mid"):
+            with self.assertRaises(SystemExit):
+                gui_reference.live_args({"name": "v", "midi": midi})
+
+    def test_seconds_must_be_a_non_negative_number(self):
+        for seconds in (-1, "2", True):
+            with self.assertRaises(SystemExit):
+                gui_reference.live_args({"name": "v", "seconds": seconds})
+
+
 if __name__ == "__main__":
     unittest.main()

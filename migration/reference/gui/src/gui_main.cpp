@@ -17,6 +17,17 @@
 // interface, so the port's layout can be checked exactly. Without --out
 // the tool exits after writing it.
 //
+// [--midi file.mid] [--seconds S] [--block-size 64] run the engine before
+// the interface is shown, as ref-render does (render_synth.h): S seconds of
+// audio (default: up to the last MIDI event) in blocks of --block-size
+// samples, with the MIDI file's events. The interface then gets the engine's
+// oscilloscope and audio memory, as the plugin's editor does, so displays
+// that read engine outputs show that live state.
+//
+// [--animate on|off] (default off) draws the animated views (filter
+// responses, envelope and LFO positions, meters, the oscilloscope) from the
+// engine's outputs, as the plugin's editor does. It needs --midi or --seconds.
+//
 // Runs on any X display; CI uses Xvfb with Mesa's software OpenGL.
 
 #include "JuceHeader.h"
@@ -28,12 +39,18 @@
 #include "synth_gui_interface.h"
 #include "tab_selector.h"
 
+#include "render_synth.h"
+
 #include <cstdio>
 #include <string>
 
 namespace {
 
 struct Options {
+  std::string midi;
+  double seconds = -1.0;
+  int block_size = 64;
+  bool animate = false;
   std::string out;
   std::string preset;
   std::string tab = "voice";
@@ -103,7 +120,7 @@ class CaptureInterface : public FullInterface {
       if (done_)
         return;
       if (++frame_ < options_.frames) {
-        // Animation is off (see initialise), so nothing repaints by itself.
+        // With animation off (see initialise), nothing repaints by itself.
         if (OpenGLContext* context = OpenGLContext::getCurrentContext())
           context->triggerRepaint();
         return;
@@ -151,7 +168,7 @@ class CaptureInterface : public FullInterface {
 
 // The window itself, as upstream's standalone SynthEditor: the interface finds
 // its synth with findParentComponentOfClass<SynthGuiInterface>().
-class RefGuiSynth : public Component, public SynthBase, public SynthGuiInterface {
+class RefGuiSynth : public Component, public harness::RenderLoop<SynthBase>, public SynthGuiInterface {
   public:
     explicit RefGuiSynth(const Options& options) : Component("ref-gui"), SynthGuiInterface(this, false) {
       engine_->setSampleRate(vital::kDefaultSampleRate);
@@ -186,7 +203,15 @@ class RefGuiApplication : public JUCEApplication {
       for (int i = 0; i + 1 < args.size(); i += 2) {
         std::string key = args[i].unquoted().toStdString();
         std::string value = args[i + 1].unquoted().toStdString();
-        if (key == "--out")
+        if (key == "--midi")
+          options.midi = value;
+        else if (key == "--seconds")
+          options.seconds = std::stod(value);
+        else if (key == "--block-size")
+          options.block_size = std::stoi(value);
+        else if (key == "--animate" && (value == "on" || value == "off"))
+          options.animate = value == "on";
+        else if (key == "--out")
           options.out = value;
         else if (key == "--preset")
           options.preset = value;
@@ -222,11 +247,26 @@ class RefGuiApplication : public JUCEApplication {
           return fail("cannot load preset " + options.preset + ": " + error);
       }
 
+      bool live = !options.midi.empty() || options.seconds >= 0.0;
+      if (options.animate && !live)
+        return fail("--animate on needs a running engine (--midi or --seconds)");
+      if (live) {
+        std::string error = renderLive(options);
+        if (!error.empty())
+          return fail(error);
+      }
+
       FullInterface* gui = synth_->getGui();
-      // The reference engine processes no audio, so animated views would show
-      // its idle outputs (a filter response at cutoff 0) instead of the
-      // controls. Draw everything at rest, as with animation switched off.
-      gui->animate(false);
+      if (live) {
+        gui->setOscilloscopeMemory(synth_->getOscilloscopeMemory());
+        gui->setAudioMemory(synth_->getAudioMemory());
+      }
+      // Animated views read the engine's outputs. Without --midi or --seconds
+      // the engine processes no audio, so they would show its idle outputs (a
+      // filter response at cutoff 0) instead of the controls. By default
+      // everything is drawn at rest, as with animation switched off; --animate
+      // on draws the views as the plugin's editor does by default.
+      gui->animate(options.animate);
       synth_->setOpaque(true);
       synth_->addAndMakeVisible(gui);
       synth_->setSize(options.width, options.height);
@@ -267,6 +307,44 @@ class RefGuiApplication : public JUCEApplication {
     }
 
   private:
+    // ref-render's block loop (render_main.cpp) at its default sample rate
+    // and tempo, without writing the audio. Runs before the interface is on
+    // screen, so no frame is drawn while the engine is processing.
+    std::string renderLive(const Options& options) {
+      const int sample_rate = vital::kDefaultSampleRate;
+      if (options.block_size <= 0 || options.block_size > 65536)
+        return "--block-size out of range";
+
+      std::vector<harness::TimedMessage> events;
+      double last_event_seconds = 0.0;
+      if (!options.midi.empty()) {
+        std::string error;
+        if (!harness::loadMidi(options.midi, sample_rate, events, last_event_seconds, error))
+          return error;
+      }
+      double seconds = options.seconds >= 0.0 ? options.seconds : last_event_seconds;
+      const long long total_samples = static_cast<long long>(std::ceil(seconds * sample_rate));
+
+      synth_->prepare(sample_rate, 120.0);
+      double seconds_time = 0.0;
+      AudioSampleBuffer buffer(vital::kNumChannels, options.block_size);
+      size_t event_index = 0;
+      for (long long block_start = 0; block_start < total_samples; block_start += options.block_size) {
+        int n = static_cast<int>(std::min<long long>(options.block_size, total_samples - block_start));
+        buffer.setSize(vital::kNumChannels, n, false, false, true);
+        buffer.clear();
+
+        MidiBuffer midi;
+        while (event_index < events.size() && events[event_index].sample < block_start + n) {
+          long long offset = events[event_index].sample - block_start;
+          midi.addEvent(events[event_index].message, static_cast<int>(std::max(0LL, offset)));
+          ++event_index;
+        }
+        synth_->renderBlock(buffer, midi, seconds_time, sample_rate);
+      }
+      return "";
+    }
+
     void fail(const std::string& message) {
       std::fprintf(stderr, "ref-gui: %s\n", message.c_str());
       setApplicationReturnValue(2);
