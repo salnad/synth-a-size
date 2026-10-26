@@ -222,6 +222,44 @@ impl<'a> PixelPainter<'a> {
         );
     }
 
+    /// An open polyline (pixels) stroked `thickness` wide with a linear
+    /// colour gradient: `from` at `start` to `to` at `end` (pixels),
+    /// constant beyond each end, like a non-radial `ColourGradient`.
+    /// Returned rather than drawn so a caller can keep it for later frames.
+    pub fn gradient_polyline(
+        &self,
+        points: &[(f32, f32)],
+        thickness: f32,
+        (from, start): (Colour, (f32, f32)),
+        (to, end): (Colour, (f32, f32)),
+    ) -> egui::Shape {
+        let points: Vec<Pos2> = points.iter().map(|&(x, y)| self.pos(x, y)).collect();
+        let start = self.pos(start.0, start.1);
+        let direction = self.pos(end.0, end.1) - start;
+        let length_squared = direction.length_sq();
+        let colour = move |_: egui::Rect, position: Pos2| {
+            let t = if length_squared > 0.0 {
+                ((position - start).dot(direction) / length_squared).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            from.interpolated_with(to, t).to_egui()
+        };
+        egui::Shape::line(
+            points,
+            egui::epaint::PathStroke {
+                width: self.points(thickness),
+                color: egui::epaint::ColorMode::UV(std::sync::Arc::new(colour)),
+                kind: egui::StrokeKind::Middle,
+            },
+        )
+    }
+
+    /// Draws shapes made by this painter (`gradient_polyline`).
+    pub fn add_shapes(&self, shapes: impl IntoIterator<Item = egui::Shape>) {
+        self.painter.extend(shapes);
+    }
+
     /// `Graphics::drawText(text, rect, Justification::centred)` with `face`
     /// at JUCE point height `point_height` (pixels).
     pub fn text_centred(

@@ -19,4 +19,5 @@ pub mod slider;
 pub mod tab_selector;
 pub mod tempo;
 pub mod transpose_quantize;
+pub mod wavetable_3d;
 pub mod wheel;
