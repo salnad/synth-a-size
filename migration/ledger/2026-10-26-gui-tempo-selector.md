@@ -23,8 +23,9 @@ G3b/G4 (the LFO and random rates), so there is one copy.
   `triplet_notes`, `keyboard` (the sample section's keytrack button) and
   `keyboard_bordered` (the keytrack mode). G3b's loop, bounce, shuffle and
   pencil belong here too.
-- `controls::path` gets its JUCE credit line (`juce_graphics`, GPL-3.0
-  option), following #120's rule 1.
+- `controls::path` gets its JUCE credit line (`juce_graphics`,
+  GPL-3.0-only) and the compound SPDX expression `GPL-3.0-or-later AND
+  GPL-3.0-only`, following #120's rule 1.
 - `Panel::slider_input`: `Panel::slider` without the drawing, for controls
   that draw themselves.
 
