@@ -118,5 +118,21 @@ class OverlayArgsTest(unittest.TestCase):
             gui_reference.overlay_args({"name": "v", "overlay": "save_section"})
 
 
+class RunRefGuiTest(unittest.TestCase):
+    def test_every_run_reads_the_corpus_data_folder(self):
+        calls = []
+        original = (gui_reference.subprocess.run, gui_reference.REF_GUI)
+        gui_reference.subprocess.run = lambda command, **kwargs: calls.append((command, kwargs))
+        gui_reference.REF_GUI = Path(__file__)
+        try:
+            gui_reference.run_ref_gui(["--layout", "out.jsonl"])
+        finally:
+            gui_reference.subprocess.run, gui_reference.REF_GUI = original
+        (command, kwargs), = calls
+        self.assertEqual(command[1:], ["--layout", "out.jsonl", "--data-dir", str(gui_reference.GUI_DATA)])
+        self.assertEqual(kwargs["env"]["LIBGL_ALWAYS_SOFTWARE"], "1")
+        self.assertTrue(gui_reference.GUI_DATA.is_dir())
+
+
 if __name__ == "__main__":
     unittest.main()

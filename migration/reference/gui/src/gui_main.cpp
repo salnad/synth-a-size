@@ -20,6 +20,11 @@
 // the config under HOME) before the interface is built, so its browsers
 // read the presets there.
 //
+// ref-gui always runs with HOME in a fresh temporary folder and the XDG
+// folders unset (as the other reference tools' isolateUserEnvironment), so
+// upstream reads no config, favourites or presets from the machine, and
+// --data-dir never writes the user's own config.
+//
 // --layout writes the bounds of every named component, relative to the
 // interface, so the port's layout can be checked exactly. Without --out
 // the tool exits after writing it.
@@ -63,6 +68,27 @@ bool parseNumber(const std::string& text, double& value) {
   char* end = nullptr;
   value = std::strtod(text.c_str(), &end);
   return !text.empty() && end == text.c_str() + text.size() && std::isfinite(value);
+}
+
+// harness::isolateUserEnvironment for ref-gui, keeping X's authority file,
+// which X finds through HOME when XAUTHORITY isn't set. Returns the new
+// HOME, removed at shutdown.
+std::string isolateUserEnvironment() {
+  const char* home = getenv("HOME");
+  if (getenv("XAUTHORITY") == nullptr && home != nullptr) {
+    std::string authority = std::string(home) + "/.Xauthority";
+    if (File(authority).existsAsFile())
+      setenv("XAUTHORITY", authority.c_str(), 1);
+  }
+  char templ[] = "/tmp/ref-gui-home-XXXXXX";
+  const char* dir = mkdtemp(templ);
+  if (dir == nullptr)
+    return "";
+  setenv("HOME", dir, 1);
+  unsetenv("XDG_CONFIG_HOME");
+  unsetenv("XDG_DATA_HOME");
+  unsetenv("XDG_CACHE_HOME");
+  return dir;
 }
 
 struct Options {
@@ -222,6 +248,7 @@ class RefGuiApplication : public JUCEApplication {
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise(const String& command_line) override {
+      home_ = isolateUserEnvironment();
       Options options;
       StringArray args = StringArray::fromTokens(command_line, true);
       for (int i = 0; i + 1 < args.size(); i += 2) {
@@ -357,6 +384,8 @@ class RefGuiApplication : public JUCEApplication {
       if (synth_)
         synth_->removeAllChildren();
       synth_.reset();
+      if (!home_.empty())
+        File(home_).deleteRecursively();
     }
 
   private:
@@ -404,6 +433,7 @@ class RefGuiApplication : public JUCEApplication {
     }
 
     std::unique_ptr<RefGuiSynth> synth_;
+    std::string home_;
 };
 
 } // namespace

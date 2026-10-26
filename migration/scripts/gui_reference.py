@@ -18,10 +18,10 @@ Commands:
            ("animate"); see live_args. A view may open an overlay over its
            tab ("overlay": "preset_browser"); see overlay_args.
 
-ref-gui runs with HOME and XDG_DATA_HOME in a fresh temporary folder, so
-upstream reads no config, favourites or presets from the machine running it,
-and with migration/corpus/gui/data (written by migration/corpus/generate.py)
-as its data folder, which the port's gallery uses too.
+ref-gui runs with migration/corpus/gui/data (written by
+migration/corpus/generate.py) as its data folder, which the port's gallery
+uses too. ref-gui itself moves HOME to a fresh temporary folder, so no
+config, favourites or presets on the machine change a frame.
 
 Without a DISPLAY the script re-runs itself under xvfb-run. Mesa's software
 OpenGL (LIBGL_ALWAYS_SOFTWARE=1) is used either way.
@@ -82,17 +82,9 @@ def build():
 def run_ref_gui(args):
     if not REF_GUI.exists():
         sys.exit(f"gui_reference.py: {REF_GUI} missing; run '{sys.argv[0]} build' first")
-    with tempfile.TemporaryDirectory() as home:
-        data = Path(home) / "data"
-        data.mkdir()
-        env = dict(os.environ, LIBGL_ALWAYS_SOFTWARE="1", HOME=home, XDG_DATA_HOME=str(data))
-        # X clients find ~/.Xauthority through HOME when XAUTHORITY isn't set
-        # (an existing desktop display, not xvfb-run's).
-        authority = Path.home() / ".Xauthority"
-        if "XAUTHORITY" not in env and authority.exists():
-            env["XAUTHORITY"] = str(authority)
-        args = [*args, "--data-dir", str(GUI_DATA)]
-        subprocess.run([str(REF_GUI), *args], check=True, env=env, timeout=300)
+    env = dict(os.environ, LIBGL_ALWAYS_SOFTWARE="1")
+    args = [*args, "--data-dir", str(GUI_DATA)]
+    subprocess.run([str(REF_GUI), *args], check=True, env=env, timeout=300)
 
 
 def check_preset(preset, where):
