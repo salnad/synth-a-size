@@ -130,6 +130,45 @@ impl SynthButton {
     }
 }
 
+/// An `OpenGlToggleButton` drawn as a text button whose state isn't a
+/// parameter (`on` comes from elsewhere): handles the mouse at `bounds` and
+/// draws it. Returns true when a release over it clicks it.
+#[allow(clippy::too_many_arguments)]
+pub fn text_toggle(
+    ui: &mut Ui,
+    pixels: &PixelPainter,
+    layer: &mut Layer,
+    scope: &Scope,
+    id: egui::Id,
+    text: &str,
+    on: bool,
+    bounds: Rect,
+) -> bool {
+    let response = ui.interact(pixels.rect(bounds.into()), id, Sense::click());
+    let mut state: ButtonState = ui.data(|data| data.get_temp(id)).unwrap_or_default();
+    let primary_down = ui.input(|input| input.pointer.button_down(PointerButton::Primary));
+    let down = (state.down || response.is_pointer_button_down_on()) && primary_down;
+    let mut clicked = false;
+    if state.down && !down {
+        let pointer = ui.input(|input| input.pointer.interact_pos());
+        clicked = pointer.is_some_and(|pos| response.rect.contains(pos));
+    }
+    state.down = down;
+    let hover = response.hovered();
+    let target = if hover { 1.0 } else { 0.0 };
+    if state.hover_amount != target {
+        state.hover_amount = if hover {
+            (state.hover_amount + HOVER_INC).min(1.0)
+        } else {
+            (state.hover_amount - HOVER_INC).max(0.0)
+        };
+        ui.ctx().request_repaint();
+    }
+    ui.data_mut(|data| data.insert_temp(id, state));
+    paint_text_button(layer, scope, bounds, text, on, down, state.hover_amount);
+    clicked
+}
+
 /// `OpenGlButtonComponent::renderTextButton` with the text style's colours.
 fn paint_text_button(
     layer: &mut Layer,

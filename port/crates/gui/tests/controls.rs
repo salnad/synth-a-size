@@ -20,6 +20,7 @@ use sas_gui::layout::{FullLayout, Rect};
 use sas_gui::paint::PixelPainter;
 use sas_gui::scope::Scope;
 use sas_gui::sections::envelope::{self, EnvelopeLayout};
+use sas_gui::sections::filter::{self, FilterLayout, Kind};
 use sas_gui::sections::lfo::{self, LfoLayout};
 use sas_gui::sections::modulation::ModulationLayout;
 use sas_gui::sections::oscillator::{self, OscillatorLayout};
@@ -61,6 +62,14 @@ const CONTROLS: &[&str] = &[
     "lfo_1_sync",
     "lfo_1_frequency",
     "random_1_stereo",
+    "filter_1_on",
+    "filter_1_model",
+    "filter_1_style",
+    "filter_1_cutoff",
+    "filter_1_resonance",
+    "filter_1_filter_input",
+    "filter_2_filter_input",
+    "osc_2_destination",
 ];
 
 enum TestParam {
@@ -1809,5 +1818,138 @@ fn the_random_stereo_switch_toggles() {
             "set random_1_stereo",
             "end random_1_stereo"
         ]
+    );
+}
+
+fn filter_layout(fixture: &Fixture, index: usize) -> FilterLayout {
+    let interface = fixture.interface.borrow();
+    let layout = FullLayout::new(interface.skin(), 1400, 820);
+    let top = Scope::top(interface.skin(), layout.size_ratio);
+    let synthesis = SynthesisLayout::new(&top, layout.main);
+    let bounds = [synthesis.filter_1, synthesis.filter_2][index - 1];
+    FilterLayout::new(&top.within(filter::SKIN), bounds, Kind::Voice(index))
+}
+
+#[test]
+fn a_filter_input_routes_its_oscillator() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let f = filter_layout(&fixture, 1);
+    // Oscillator 2 starts on filter 2; adding filter 1 makes it both.
+    assert_eq!(fixture.synth.value("osc_2_destination"), 1.0);
+    click(&mut harness, centre(f.inputs.unwrap()[1]));
+    assert_eq!(fixture.synth.value("osc_2_destination"), 2.0);
+    for _ in 0..30 {
+        harness.step();
+    }
+    click(&mut harness, centre(f.inputs.unwrap()[1]));
+    assert_eq!(fixture.synth.value("osc_2_destination"), 1.0);
+}
+
+#[test]
+fn one_filter_feeds_the_other_at_a_time() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    fixture.synth.set("filter_2_filter_input", 1.0);
+    harness.step();
+    let f = filter_layout(&fixture, 1);
+    click(&mut harness, centre(f.inputs.unwrap()[4]));
+    assert_eq!(fixture.synth.value("filter_1_filter_input"), 1.0);
+    assert_eq!(fixture.synth.value("filter_2_filter_input"), 0.0);
+}
+
+#[test]
+fn filter_arrows_step_through_models_and_styles() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let f = filter_layout(&fixture, 1);
+    // Analog 12dB, one back: the last style of the last model.
+    click(&mut harness, centre(f.preset_selector.previous));
+    assert_eq!(fixture.synth.value("filter_1_model"), 7.0);
+    assert_eq!(fixture.synth.value("filter_1_style"), 1.0);
+    for _ in 0..30 {
+        harness.step();
+    }
+    click(&mut harness, centre(f.preset_selector.next));
+    assert_eq!(fixture.synth.value("filter_1_model"), 0.0);
+    assert_eq!(fixture.synth.value("filter_1_style"), 0.0);
+}
+
+#[test]
+fn the_filter_menu_picks_a_model_then_a_style() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let f = filter_layout(&fixture, 1);
+    press(
+        &mut harness,
+        centre(f.preset_selector.text),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    release(
+        &mut harness,
+        centre(f.preset_selector.text),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    let (left, right) = {
+        let interface = fixture.interface.borrow();
+        let menu = interface
+            .overlay()
+            .dual_menu
+            .as_ref()
+            .expect("the model list");
+        assert_eq!(menu.groups.len(), 8);
+        assert_eq!(menu.groups[6].items.len(), 6);
+        let top = Scope::top(interface.skin(), 1.0);
+        let scope = top.within(&[sas_gui::skin::Section::PopupBrowser]);
+        let bounds = menu.bounds(&scope, Rect::new(0, 0, 1400, 820));
+        menu.lists(&scope, bounds)
+    };
+    let row = |list: Rect, row: usize| {
+        Pos2::new(
+            list.x as f32 + 20.0,
+            list.y as f32 + 12.0 + 24.0 * row as f32,
+        )
+    };
+    // Comb, the seventh model: its first style.
+    harness.event(Event::PointerMoved(row(left, 6)));
+    harness.step();
+    click(&mut harness, row(left, 6));
+    assert_eq!(fixture.synth.value("filter_1_model"), 6.0);
+    assert_eq!(fixture.synth.value("filter_1_style"), 0.0);
+    // Then Low High Flange-; the list stays open.
+    harness.event(Event::PointerMoved(row(right, 2)));
+    harness.step();
+    click(&mut harness, row(right, 2));
+    assert_eq!(fixture.synth.value("filter_1_style"), 2.0);
+    assert!(fixture.interface.borrow().overlay().dual_menu.is_some());
+}
+
+#[test]
+fn dragging_the_response_moves_cutoff_and_resonance() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let f = filter_layout(&fixture, 1);
+    let cutoff = fixture.synth.value("filter_1_cutoff");
+    let resonance = fixture.synth.value("filter_1_resonance");
+    fixture.take_log();
+    let start = centre(f.response);
+    drag(
+        &mut harness,
+        start,
+        start + egui::vec2(30.0, -20.0),
+        Modifiers::NONE,
+    );
+    assert!(fixture.synth.value("filter_1_cutoff") > cutoff);
+    assert!(fixture.synth.value("filter_1_resonance") > resonance);
+    let log = fixture.take_log();
+    assert_eq!(
+        log.first().map(String::as_str),
+        Some("begin filter_1_cutoff")
+    );
+    assert_eq!(
+        log.last().map(String::as_str),
+        Some("end filter_1_resonance")
     );
 }

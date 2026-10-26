@@ -121,6 +121,8 @@ pub struct Slider {
     /// `setDoubleClickReturnValue`: the value a double click sets, when it
     /// isn't the parameter's default.
     pub double_click_value: Option<f32>,
+    /// `setPopupPrefix`.
+    pub popup_prefix: Option<&'static str>,
 }
 
 impl Slider {
@@ -142,7 +144,15 @@ impl Slider {
             text_entry_width_percent: TEXT_ENTRY_WIDTH_PERCENT,
             text_component_offset: None,
             double_click_value: None,
+            popup_prefix: None,
         }
+    }
+
+    /// `setPopupPrefix`: the popup reads "prefix value" (a text slider's
+    /// reads only the prefix).
+    pub fn popup_prefix(mut self, prefix: &'static str) -> Slider {
+        self.popup_prefix = Some(prefix);
+        self
     }
 
     /// `setMaxDisplayCharacters` and `setMaxDecimalPlaces`.
@@ -255,12 +265,20 @@ impl Slider {
     /// slider already shows its value, so its popup names the parameter.
     pub fn popup_text(&self, value: f32) -> String {
         if self.style == SliderStyle::Text {
+            if let Some(prefix) = self.popup_prefix {
+                return prefix.to_string();
+            }
             if self.info.local_description.is_empty() {
                 return self.info.display_name.clone();
             }
             return self.info.local_description.clone();
         }
-        format::slider_text(self.info, &self.format, value)
+        // getSliderTextFromValue: a string lookup shows no prefix.
+        let text = format::slider_text(self.info, &self.format, value);
+        match self.popup_prefix {
+            Some(prefix) if self.info.options().is_none() => format!("{prefix}{text}"),
+            _ => text,
+        }
     }
 
     fn selected_color(&self, scope: &Scope) -> Colour {

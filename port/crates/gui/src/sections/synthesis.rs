@@ -5,10 +5,10 @@
 //! filters. Ports `SynthesisInterface`
 //! (`vital/src/interface/editor_sections/synthesis_interface.cpp`).
 //!
-//! The filter sections come later; their places are laid out already.
 
 use egui::Ui;
 
+use super::filter::FilterSection;
 use super::oscillator::{self, OscillatorLayout, OscillatorSection, NUM_OSCILLATORS};
 use super::sample::{self, SampleLayout, SampleSection};
 use super::{Overlay, Panel};
@@ -75,6 +75,7 @@ impl SynthesisLayout {
 pub struct SynthesisInterface {
     oscillators: [OscillatorSection; NUM_OSCILLATORS],
     sample: SampleSection,
+    filters: [FilterSection; 2],
 }
 
 impl Default for SynthesisInterface {
@@ -82,6 +83,7 @@ impl Default for SynthesisInterface {
         SynthesisInterface {
             oscillators: std::array::from_fn(OscillatorSection::new),
             sample: SampleSection::default(),
+            filters: [FilterSection::voice(1), FilterSection::voice(2)],
         }
     }
 }
@@ -124,5 +126,20 @@ impl SynthesisInterface {
         let mut panel = Panel::new(ui, host, pixels, scope, overlay, layout.sample);
         self.sample.show(&mut panel, &sample_layout);
         panel.finish();
+
+        // Filter 2 is added first upstream, then filter 1.
+        for (filter, bounds) in self
+            .filters
+            .iter()
+            .zip([layout.filter_1, layout.filter_2])
+            .rev()
+        {
+            let scope = top.within(filter.skin());
+            let filter_layout = filter.layout(&scope, bounds);
+            filter.paint_background(pixels, &scope, &filter_layout);
+            let mut panel = Panel::new(ui, host, pixels, scope, overlay, bounds);
+            filter.show(&mut panel, &filter_layout);
+            panel.finish();
+        }
     }
 }

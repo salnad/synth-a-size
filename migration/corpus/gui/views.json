@@ -4,6 +4,10 @@
     { "name": "init_voice", "tab": "voice" },
     { "name": "init_effects", "tab": "effects" },
     { "name": "init_matrix", "tab": "matrix" },
-    { "name": "init_advanced", "tab": "advanced" }
+    { "name": "init_advanced", "tab": "advanced" },
+    { "name": "filters_analog_comb", "tab": "voice", "preset": "migration/corpus/gui/presets/filters_analog_comb.vital" },
+    { "name": "filters_formant_ladder", "tab": "voice", "preset": "migration/corpus/gui/presets/filters_formant_ladder.vital" },
+    { "name": "filters_digital_diode", "tab": "voice", "preset": "migration/corpus/gui/presets/filters_digital_diode.vital" },
+    { "name": "filters_dirty_phaser", "tab": "voice", "preset": "migration/corpus/gui/presets/filters_dirty_phaser.vital" }
   ]
 }

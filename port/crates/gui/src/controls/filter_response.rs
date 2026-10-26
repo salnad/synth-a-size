@@ -209,7 +209,7 @@ pub fn positive_flange(u: &FilterResponseUniforms, x: f32, y: f32) -> f32 {
     let high_pass = ONE - low_pass;
     let one_pole = scale(u.stage0, low_pass) + scale(u.stage1, high_pass);
     let high_pass2 = ONE - one_pole_response(get_cutoff_ratio(x, u.stage3));
-    #[allow(clippy::excessive_precision)]
+    #[allow(clippy::approx_constant, clippy::excessive_precision)]
     let filter_input = Complex(0.707_106_781_19, 0.0);
     let delay_input = complex_multiply(complex_multiply(filter_input, one_pole), high_pass2);
     let mut denominator = ONE - tick;
@@ -241,7 +241,7 @@ pub fn negative_flange(u: &FilterResponseUniforms, x: f32, y: f32) -> f32 {
     let high_pass = ONE - low_pass;
     let one_pole = scale(u.stage0, low_pass) + scale(u.stage1, high_pass);
     let high_pass2 = ONE - one_pole_response(get_cutoff_ratio(x, u.stage3));
-    #[allow(clippy::excessive_precision)]
+    #[allow(clippy::approx_constant, clippy::excessive_precision)]
     let filter_input = Complex(0.707_106_781_19, 0.0);
     let delay_input = complex_multiply(complex_multiply(filter_input, one_pole), high_pass2);
     let mut denominator = ONE - complex_multiply(tick, complex_multiply(one_pole, high_pass2));

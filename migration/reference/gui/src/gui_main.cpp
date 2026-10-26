@@ -84,8 +84,14 @@ class CaptureInterface : public FullInterface {
 
     void renderOpenGL() override {
       FullInterface::renderOpenGL();
-      if (done_ || ++frame_ < options_.frames)
+      if (done_)
         return;
+      if (++frame_ < options_.frames) {
+        // Animation is off (see initialise), so nothing repaints by itself.
+        if (OpenGLContext* context = OpenGLContext::getCurrentContext())
+          context->triggerRepaint();
+        return;
+      }
 
       done_ = true;
       OpenGLContext* context = OpenGLContext::getCurrentContext();
@@ -198,6 +204,10 @@ class RefGuiApplication : public JUCEApplication {
       }
 
       FullInterface* gui = synth_->getGui();
+      // The reference engine processes no audio, so animated views would show
+      // its idle outputs (a filter response at cutoff 0) instead of the
+      // controls. Draw everything at rest, as with animation switched off.
+      gui->animate(false);
       synth_->setOpaque(true);
       synth_->addAndMakeVisible(gui);
       synth_->setSize(options.width, options.height);

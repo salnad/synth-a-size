@@ -10,6 +10,7 @@ use sas_gui::layout::{FullLayout, Rect};
 use sas_gui::scope::Scope;
 use sas_gui::sections::bend::{self, BendLayout};
 use sas_gui::sections::envelope::{self, EnvelopeLayout};
+use sas_gui::sections::filter::{self, FilterLayout, Kind};
 use sas_gui::sections::lfo::{self, LfoLayout};
 use sas_gui::sections::modulation::{ModulationInterface, ModulationLayout};
 use sas_gui::sections::oscillator::{self, OscillatorLayout};
@@ -240,6 +241,36 @@ fn synthesis_rect(
         "FILTER 1" => return Some(synthesis.filter_1),
         "FILTER 2" => return Some(synthesis.filter_2),
         _ => {}
+    }
+    if let Some(rest) = rest.strip_prefix("FILTER ") {
+        let (number, control) = rest.split_at(1);
+        let n: usize = number.parse().ok()?;
+        let control = control.strip_prefix('/')?;
+        let bounds = [synthesis.filter_1, synthesis.filter_2][n - 1];
+        let f = FilterLayout::new(&top.within(filter::SKIN), bounds, Kind::Voice(n));
+        let inputs = f.inputs?;
+        let prefix = format!("filter_{n}_");
+        return Some(match control.strip_prefix(&prefix).unwrap_or(control) {
+            "cutoff" => f.cutoff,
+            "resonance" => f.resonance,
+            "drive" => f.drive,
+            "mix" => f.mix,
+            "blend" => f.blend,
+            "keytrack" => f.keytrack,
+            "on" => sas_gui::section::power_button_bounds(&top.within(filter::SKIN), bounds),
+            "filter_input" => inputs[4],
+            "label1" => f.drive_label,
+            "label2" => f.keytrack_label,
+            "preset_selector" => f.preset_selector.bounds,
+            "preset_selector/Text" => f.preset_selector.text,
+            "preset_selector/Prev" => f.preset_selector.previous,
+            "preset_selector/Next" => f.preset_selector.next,
+            "OSC1" => inputs[0],
+            "OSC2" => inputs[1],
+            "OSC3" => inputs[2],
+            "SMP" => inputs[3],
+            _ => return None,
+        });
     }
     let rest = rest.strip_prefix("OSC ")?;
     let (number, rest) = rest.split_at(1);

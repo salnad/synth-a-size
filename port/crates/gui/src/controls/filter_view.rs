@@ -250,7 +250,10 @@ pub fn response(inputs: &FilterInputs) -> Response {
                 });
             }
             out.formant = values;
-            out.uniforms = [FilterResponseUniforms { mix, ..Default::default() }; 2];
+            out.uniforms = [FilterResponseUniforms {
+                mix,
+                ..Default::default()
+            }; 2];
         }
         model::LADDER => {
             let filter = at_visual_rate(LadderFilter::create());
@@ -348,7 +351,11 @@ mod tests {
         let r = response(&inputs);
         assert_eq!(r.shader, Shader::Analog);
         assert_eq!(r.uniforms[0], r.uniforms[1]);
-        assert!((r.height_at(0, 0) - ZERO_DB).abs() < 0.02, "{}", r.height_at(0, 0));
+        assert!(
+            (r.height_at(0, 0) - ZERO_DB).abs() < 0.02,
+            "{}",
+            r.height_at(0, 0)
+        );
         assert!(r.height_at(0, RESOLUTION - 1) < ZERO_DB - 0.5);
     }
 
@@ -377,7 +384,10 @@ mod tests {
             let r = response(&inputs);
             let line = r.line(0, 300.0, 100.0);
             assert_eq!(line.len(), RESOLUTION);
-            assert!(line.iter().all(|(x, y)| x.is_finite() && y.is_finite()), "model {model}");
+            assert!(
+                line.iter().all(|(x, y)| x.is_finite() && y.is_finite()),
+                "model {model}"
+            );
         }
     }
 }
