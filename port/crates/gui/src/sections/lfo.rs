@@ -25,7 +25,7 @@ use crate::controls::line_editor::{
 use crate::controls::path::{Path, Transform};
 use crate::controls::paths::Icon;
 use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
-use crate::controls::slider::{Placement, Slider, SliderStyle};
+use crate::controls::slider::{Placement, Slider, SliderStyle, Wheel};
 use crate::controls::tempo::{self, TempoSelector};
 use crate::fonts::Face;
 use crate::interface::{self, EditorModel};
@@ -645,6 +645,23 @@ pub(crate) fn show_line_controls(
         active: controls.active,
     };
     let event = editor.show(panel, layout.editor, settings, None);
+    // lineEditorScrolled: the wheel over the editor moves the paint pattern
+    // while painting, else the X grid.
+    let editor_rect = panel.pixels.rect(layout.editor.into());
+    if panel.ui.rect_contains_pointer(editor_rect) {
+        let target = if event.painting {
+            Slider::new(controls.paint_pattern, SliderStyle::Text)
+        } else {
+            *controls.grid_size_x
+        };
+        let mut value = host.value(target.name);
+        for wheel in panel.ui.input(Wheel::events) {
+            if let Some(moved) = target.wheel_value(value, wheel) {
+                host.set_once(target.name, moved);
+                value = moved;
+            }
+        }
+    }
     panel.slider(controls.grid_size_x, layout.grid_size_x);
     panel.slider(controls.grid_size_y, layout.grid_size_y);
 
