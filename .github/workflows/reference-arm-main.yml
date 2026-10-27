@@ -34,8 +34,11 @@ on:
         type: boolean
         default: false
 
+# A queued run is cancelled when a newer one joins its group, so push runs
+# (most of which skip the suite) get their own group and cannot cancel a
+# queued nightly or dispatched run.
 concurrency:
-  group: reference-arm-main
+  group: reference-arm-main-${{ github.event_name == 'push' && 'push' || 'full' }}
   cancel-in-progress: false
 
 permissions:
@@ -440,6 +443,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NEEDS: ${{ toJSON(needs) }}
+          MISSING_ONLY: ${{ needs.macos-15.outputs.missing_only }}
           MISSING_ONLY_REASON: ${{ needs.macos-15.outputs.reason }}
           BACKFILL_PR: ${{ needs.backfill.outputs.pr }}
         run: python3 migration/scripts/mac_full_suite_report.py

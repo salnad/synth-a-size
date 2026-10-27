@@ -273,7 +273,9 @@ waiting for hosted macOS runners. There is no self-hosted Apple Silicon.
 - **Main (`reference-arm-main.yml`, the full suite):**
   - runs nightly, on manual dispatch, on a push to main once 6 merges
     have landed since the last full run, and on a push that changes the
-    workflow or its scripts (`scripts/mac_full_suite_gate.py`);
+    workflow or its scripts (`scripts/mac_full_suite_gate.py`). Push runs
+    have their own concurrency group, so a queued push run cannot cancel a
+    queued nightly or dispatched run;
   - jobs: the macOS 15 suite (guard, repeat render, attribution, the vDSP,
     contraction and no-fast-math variants, the macOS justification gate with
     `--parked`, arm64 parity on the whole workspace), the macOS 14

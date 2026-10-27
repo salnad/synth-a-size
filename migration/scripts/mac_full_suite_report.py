@@ -70,6 +70,12 @@ def body_for_failure(repo, run_id, url, sha, results, steps, artifacts):
         lines += ["Missing macOS hash keys only (%s). The backfill PR applies this run's patch, new keys only: "
                   "%s. Merge it on Linux CI. This issue closes on the next green full suite." % (reason, backfill)]
         return "\n".join(lines) + "\n"
+    if os.environ.get("MISSING_ONLY") == "true":
+        lines += ["Missing macOS hash keys only (%s), but the backfill job reported no PR (backfill: %s). Check "
+                  "for an open PR from ci/macos-hashes-backfill, or apply this run's patch by hand and merge it "
+                  "on Linux CI:" % (reason, results.get("backfill", "not run")), "",
+                  "```bash", "migration/scripts/macos_hashes.sh %s" % run_id, "```"]
+        return "\n".join(lines) + "\n"
     if infrastructure_only(steps):
         lines.append("Infrastructure — re-run: only artifact upload/download steps failed, so those jobs compared "
                      "nothing and this says nothing about the reference. Re-run the failed jobs (or dispatch the "
