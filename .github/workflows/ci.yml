@@ -226,6 +226,13 @@ jobs:
         run: cargo run --locked --release -p sas-gui --example gallery --manifest-path port/Cargo.toml -- build/gui/port
       - name: sas-gui tests, including those that render through wgpu (gpu-tests)
         run: cargo test --locked --release -p sas-gui --features gpu-tests --manifest-path port/Cargo.toml
+      # Git keeps no empty folders, so any empty folder under the corpus was
+      # made by the run (upstream's LoadSave makes User/Presets that way).
+      - name: The views and tests write nothing into the corpus
+        run: |
+          git diff --exit-code -- migration/corpus
+          test -z "$(git status --porcelain migration/corpus)"
+          test -z "$(find migration/corpus -type d -empty)"
       - name: Side-by-side images (upstream on top)
         run: |
           mkdir -p build/gui/side-by-side

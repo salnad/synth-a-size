@@ -49,6 +49,8 @@ pub enum SelectionEvent {
     Favourites,
     /// `newSelection`: a folder or file.
     Path(PathBuf),
+    /// `doubleClickedSelected`: the selected file, clicked again.
+    DoubleClicked(PathBuf),
 }
 
 /// `SelectionList`'s state.
@@ -63,6 +65,8 @@ pub struct SelectionList {
     open_folders: BTreeMap<PathBuf, usize>,
     /// `filtered_selections_`.
     filtered: Vec<Selection>,
+    /// `filter_string_`'s words, lower-cased.
+    filter_words: Vec<String>,
     favourites: BTreeSet<PathBuf>,
     /// `selected_`.
     selected: Option<Selection>,
@@ -71,21 +75,91 @@ pub struct SelectionList {
     scroll: ScrollBar,
 }
 
+impl Default for SelectionList {
+    /// A plain list, nothing selected (`SelectionList()`).
+    fn default() -> SelectionList {
+        SelectionList {
+            favourites_option: false,
+            passthrough_name: None,
+            selections: Vec::new(),
+            open_folders: BTreeMap::new(),
+            filtered: Vec::new(),
+            filter_words: Vec::new(),
+            favourites: BTreeSet::new(),
+            selected: None,
+            hovered: None,
+            scroll: ScrollBar::default(),
+        }
+    }
+}
+
 impl SelectionList {
     /// A list with All and Favorites first (`addFavoritesOption`), All
     /// selected.
     pub fn with_favourites_option() -> SelectionList {
         SelectionList {
             favourites_option: true,
-            passthrough_name: None,
-            selections: Vec::new(),
-            open_folders: BTreeMap::new(),
-            filtered: Vec::new(),
-            favourites: BTreeSet::new(),
             selected: Some(Selection::All),
-            hovered: None,
-            scroll: ScrollBar::default(),
+            ..SelectionList::default()
         }
+    }
+
+    /// `getPassthroughFolderName`.
+    pub fn passthrough_folder_name(&self) -> Option<&'static str> {
+        self.passthrough_name
+    }
+
+    /// The selections as set (`getSelections`), sorted.
+    pub fn selections(&self) -> &[PathBuf] {
+        &self.selections
+    }
+
+    /// `setSelected`.
+    pub fn set_selected(&mut self, selected: Option<Selection>) {
+        self.selected = selected;
+    }
+
+    /// `resetScrollPosition`.
+    pub fn reset_scroll_position(&mut self) {
+        self.scroll.position = 0.0;
+    }
+
+    /// `filter`: the selections whose names hold every word of `search`,
+    /// ignoring case. A selection no longer listed is cleared.
+    pub fn set_filter(&mut self, search: &str) {
+        self.filter_words = search
+            .to_lowercase()
+            .split(' ')
+            .filter(|word| !word.is_empty())
+            .map(str::to_string)
+            .collect();
+        self.filter();
+    }
+
+    /// `selectNext`: the row after the selected one, wrapping round.
+    pub fn select_next(&mut self) -> Option<SelectionEvent> {
+        if self.filtered.is_empty() {
+            return None;
+        }
+        let index = self.selected_index().map_or(0, |index| index + 1) % self.filtered.len();
+        self.select(self.filtered[index].clone())
+    }
+
+    /// `selectPrev`: the row before the selected one (the last for none),
+    /// wrapping round.
+    pub fn select_previous(&mut self) -> Option<SelectionEvent> {
+        if self.filtered.is_empty() {
+            return None;
+        }
+        let count = self.filtered.len();
+        let index = (self.selected_index().unwrap_or(0) + count - 1) % count;
+        self.select(self.filtered[index].clone())
+    }
+
+    /// `getSelectedIndex`.
+    fn selected_index(&self) -> Option<usize> {
+        let selected = self.selected.as_ref()?;
+        self.filtered.iter().position(|row| row == selected)
     }
 
     /// `setPassthroughFolderName`.
@@ -133,9 +207,9 @@ impl SelectionList {
         }
     }
 
-    /// `filter` with no search: All and Favorites, then each selection and,
-    /// under open folders, their folders. A selection no longer listed is
-    /// cleared.
+    /// `filter`: All and Favorites, then each selection whose name holds
+    /// every search word and, under open folders, their folders. A
+    /// selection no longer listed is cleared.
     fn filter(&mut self) {
         let mut rows = Vec::new();
         if self.favourites_option {
@@ -143,6 +217,14 @@ impl SelectionList {
             rows.push(Selection::Favourites);
         }
         for selection in &self.selections {
+            let name = file_stem(selection).to_lowercase();
+            if !self
+                .filter_words
+                .iter()
+                .all(|word| name.contains(word.as_str()))
+            {
+                continue;
+            }
             rows.push(Selection::Path(selection.clone()));
             if self.open_folders.contains_key(selection) {
                 self.add_subfolders(selection, &mut rows);
@@ -250,7 +332,14 @@ impl SelectionList {
 
         let response = panel
             .ui
-            .interact(rect, panel.ui.scope_id().with(salt), Sense::click());
+            // Drags too, so none reaches a control beneath the list (the
+            // popup browser's lists cover their owner's section): egui gives
+            // a press to the top drag-sensing widget separately.
+            .interact(
+                rect,
+                panel.ui.scope_id().with(salt),
+                Sense::click_and_drag(),
+            );
         let mut event = None;
         // getSelection and leftClick.
         let clicked = |button| {
@@ -260,7 +349,23 @@ impl SelectionList {
                 .flatten()
                 .map(to_pixels)
         };
-        if let Some((x, y)) = clicked(PointerButton::Primary) {
+        // mouseDoubleClick: the selected file, clicked again off its star.
+        let double_clicked = response
+            .double_clicked()
+            .then(|| response.interact_pointer_pos())
+            .flatten()
+            .map(to_pixels);
+        if let Some((x, y)) = double_clicked {
+            let star_right = row_height + icon_padding(row_height);
+            let row = usize::try_from(row_at(y)).ok();
+            if let Some(Selection::Path(path)) = row.and_then(|row| self.filtered.get(row)) {
+                let selected = self.selected.as_ref() == Some(&Selection::Path(path.clone()));
+                if path.is_file() && selected && x - bounds.x as f32 >= star_right as f32 {
+                    event = Some(SelectionEvent::DoubleClicked(path.clone()));
+                }
+            }
+        }
+        if let Some((x, y)) = clicked(PointerButton::Primary).filter(|_| event.is_none()) {
             let row = row_at(y);
             if row >= 0 && (row as usize) < self.filtered.len() {
                 let selection = self.filtered[row as usize].clone();
