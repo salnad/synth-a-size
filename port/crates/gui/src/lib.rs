@@ -23,6 +23,7 @@ pub mod layer;
 pub mod layout;
 pub mod local;
 pub mod modulation;
+pub mod modulation_meter;
 pub mod paint;
 pub mod popup;
 pub mod primitives;

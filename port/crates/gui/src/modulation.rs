@@ -33,6 +33,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use egui::{Id, PointerButton, Pos2, Sense, Ui};
+use sas_engine::telemetry::{destination_id, status_id, Telemetry};
 use sas_preset::constants::MAX_MODULATION_CONNECTIONS;
 use sas_preset::{GuiConnection, SlotValues};
 
@@ -440,6 +441,10 @@ pub struct ModulationManager {
     expanded: Option<&'static str>,
     /// The editor's bounds, which the callout stays in.
     editor: Rect,
+    /// Each modulated control's value as the engine has moved it this frame
+    /// (`ModulationMeter::current_value_`, left and right). Empty without
+    /// an engine.
+    meter_values: Vec<(String, [f32; 2])>,
 }
 
 impl ModulationManager {
@@ -468,6 +473,45 @@ impl ModulationManager {
         self.destinations.clear();
         self.sources.clear();
         self.current_bounds = None;
+    }
+
+    /// Reads each modulated control's value from `telemetry` for its meter
+    /// (`ModulationManager::renderMeters`): the mono total, plus the poly
+    /// total while any voice plays.
+    pub fn read_meters(&mut self, telemetry: Option<Telemetry>) {
+        self.meter_values.clear();
+        let (Some(telemetry), Some(routes)) = (telemetry, self.routes.clone()) else {
+            return;
+        };
+        let voices = status_id("num_voices");
+        let values = &mut self.meter_values;
+        telemetry.read(|snapshot| {
+            let num_voices = voices.map_or(1, |id| snapshot.status(id)[0].max(0.0) as i32);
+            for route in routes.iter() {
+                if values.iter().any(|(name, _)| *name == route.destination) {
+                    continue;
+                }
+                let Some(id) = destination_id(&route.destination) else {
+                    continue;
+                };
+                let total = snapshot.modulation_total(id);
+                let mut value = [total.mono[0], total.mono[1]];
+                if let (Some(poly), true) = (total.poly, num_voices != 0) {
+                    value[0] += poly[0];
+                    value[1] += poly[1];
+                }
+                values.push((route.destination.clone(), value));
+            }
+        });
+    }
+
+    /// `destination`'s value as the engine has moved it, if it is modulated
+    /// and an engine is running.
+    pub fn meter_value(&self, destination: &str) -> Option<[f32; 2]> {
+        self.meter_values
+            .iter()
+            .find(|(name, _)| name == destination)
+            .map(|&(_, value)| value)
     }
 
     /// The connected slots, as of this frame.
@@ -1352,4 +1396,50 @@ pub fn rotary_fill(scope: &Scope, bounds: Rect, knob_size_scale: f32) -> RectF {
         width,
         width,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use sas_engine::telemetry::{destination_id, status_id, AudioMemory, Telemetry};
+
+    use super::ModulationManager;
+    use crate::interface::Route;
+
+    /// `renderMeters`' value for each modulated control: the mono total,
+    /// plus the poly total while a voice plays (`updateDrawing(num_voices)`).
+    #[test]
+    fn meters_read_the_engines_totals_adding_poly_while_voices_play() {
+        let destination = "osc_1_level";
+        let id = destination_id(destination).unwrap();
+        let voices = status_id("num_voices").unwrap();
+        let (mut writer, telemetry) = Telemetry::new(Arc::new(AudioMemory::default()));
+        let mut publish = |num_voices: f32| {
+            let (status, totals, _) = writer.snapshot_mut().parts_mut();
+            status[voices.0] = [num_voices; 4];
+            totals[id.0].mono = [0.25, 0.5, 0.0, 0.0];
+            totals[id.0].poly = Some([0.125, 0.25, 0.0, 0.0]);
+            writer.publish();
+        };
+        let routes: Arc<[Route]> = Arc::new([Route {
+            slot: 0,
+            source: "lfo_1".into(),
+            destination: destination.into(),
+        }]);
+        let mut manager = ModulationManager::default();
+        manager.begin_frame(Arc::clone(&routes), 0);
+
+        manager.read_meters(None);
+        assert_eq!(manager.meter_value(destination), None);
+
+        publish(0.0);
+        manager.read_meters(Some(telemetry.clone()));
+        assert_eq!(manager.meter_value(destination), Some([0.25, 0.5]));
+        assert_eq!(manager.meter_value("osc_2_level"), None);
+
+        publish(2.0);
+        manager.read_meters(Some(telemetry.clone()));
+        assert_eq!(manager.meter_value(destination), Some([0.375, 0.75]));
+    }
 }

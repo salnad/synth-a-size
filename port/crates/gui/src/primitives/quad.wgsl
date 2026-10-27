@@ -20,7 +20,7 @@ struct Instance {
     @location(7) background_color: vec4<f32>,
     // thickness, rounding, thumb_amount, start_pos
     @location(8) params: vec4<f32>,
-    // max_arc, alpha_mult, kind, unused
+    // max_arc, alpha_mult, kind, rotated (1: `setRotatedCoordinates`)
     @location(9) params2: vec4<f32>,
     // `setCoordinates`: the bottom left corner's coordinates and their
     // extent across the quad.
@@ -87,7 +87,13 @@ fn vs_main(@builtin(vertex_index) vertex: u32, instance: Instance) -> Varyings {
         1.0,
     );
     out.dimensions = instance.dimensions;
-    out.coordinates = instance.coordinates.xy + unit * instance.coordinates.zw;
+    // `setRotatedCoordinates` turns the coordinates a quarter turn: x runs
+    // up the quad and y from its right edge to its left.
+    var along = unit;
+    if instance.params2.w > 0.5 {
+        along = vec2<f32>(unit.y, 1.0 - unit.x);
+    }
+    out.coordinates = instance.coordinates.xy + along * instance.coordinates.zw;
     out.rect = instance.rect;
     out.frame = instance.coordinates;
     out.offset = unit * instance.rect.zw;
@@ -356,7 +362,10 @@ fn exact_coordinates(v: Varyings) -> vec2<f32> {
     let size = v.rect.zw;
     let x = floor(v.offset.x + left) + 0.5 - left;
     let y = bottom - floor(bottom - v.offset.y) - 0.5;
-    let from_centre = (vec2<f32>(x, y) - 0.5 * size) / size;
+    var from_centre = (vec2<f32>(x, y) - 0.5 * size) / size;
+    if v.params2.w > 0.5 {
+        from_centre = vec2<f32>(from_centre.y, -from_centre.x);
+    }
     return (v.frame.xy + 0.5 * v.frame.zw) + from_centre * v.frame.zw;
 }
 

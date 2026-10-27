@@ -117,3 +117,30 @@ fn a_knobs_centre_column_is_on_the_right_wherever_it_sits() {
     }
     assert!(misses.is_empty(), "{misses:?}");
 }
+
+/// `setRotatedCoordinates`: a linear modulation meter on a vertical bar or
+/// text slider fills from the bottom up, not from the left.
+#[test]
+fn rotated_coordinates_run_a_linear_meter_upwards() {
+    let image = render(20, 60, || {
+        let mut quad = Quad::new(
+            QuadKind::LinearModulation,
+            RectF::new(5.0, 10.0, 10.0, 40.0),
+            Colour(0xffff0000),
+        );
+        quad.alt_color = Colour(0xff0000ff);
+        quad.mod_color = Colour(0xff00ff00);
+        quad.shader_values = [0.5, 1.0, 0.5, 1.0];
+        quad.rotated = true;
+        let mut batch = QuadBatch::new();
+        batch.push(quad);
+        batch
+    });
+    let green = |x: usize, y: usize| image[4 * (20 * y + x) + 1];
+    // The top half, from its left edge to its right, is the meter.
+    assert_eq!(green(5, 15), 255);
+    assert_eq!(green(14, 15), 255);
+    // The bottom half is empty, its right edge too.
+    assert_eq!(green(5, 45), 0);
+    assert_eq!(green(14, 45), 0);
+}
