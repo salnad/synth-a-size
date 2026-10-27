@@ -523,3 +523,121 @@ fn dropping_the_plugin_ends_a_request_the_provider_never_answers() {
         started.elapsed()
     );
 }
+
+/// A transport factory giving each new worker the next script.
+fn scripts(scripts: Vec<Vec<Value>>) -> TransportFactory {
+    let scripts = Mutex::new(std::collections::VecDeque::from(scripts));
+    Box::new(move |_config, _stop| {
+        let responses = scripts.lock().unwrap().pop_front().unwrap_or_default();
+        Ok(Box::new(ScriptedTransport::new(responses)) as Box<dyn Transport>)
+    })
+}
+
+fn save_as(name: &str) -> Vec<Value> {
+    vec![
+        anthropic(
+            json!([{"type": "tool_use", "id": "t1", "name": "save_preset", "input": {"name": name}}]),
+            "tool_use",
+        ),
+        anthropic(json!([{"type": "text", "text": "Saved."}]), "end_turn"),
+    ]
+}
+
+/// A chat whose plugin config is `config`, on `settings`.
+fn chat_with_config(
+    name: &str,
+    settings: ChatSettings,
+    config: &std::path::Path,
+    responses: Vec<Vec<Value>>,
+) -> PluginChat {
+    let (edits, _consumer) = EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+    let params = Arc::new(SynthParams::new(edits));
+    let keys = MemoryKeys(Mutex::new(Some("key".into())), Arc::default());
+    let chat = PluginChat::with(
+        params.clone(),
+        Some(settings_path(name, Some(settings))),
+        Box::new(keys),
+        scripts(responses),
+    )
+    .with_config_file(Some(config.to_path_buf()));
+    chat.attach(
+        GuiContext::new(Arc::new(TestGui { params })),
+        Arc::new(|| {}),
+    );
+    chat
+}
+
+fn settle(chat: &PluginChat) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while {
+        chat.run_frame();
+        chat.view().busy
+    } {
+        assert!(Instant::now() < deadline, "the chat did not finish");
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
+fn temp_folder(name: &str) -> PathBuf {
+    let folder =
+        std::env::temp_dir().join(format!("sas-chat-folders-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).unwrap();
+    folder
+}
+
+#[test]
+fn the_preset_tools_follow_the_configured_data_directory() {
+    let base = temp_folder("data");
+    let (first, second) = (base.join("first"), base.join("second"));
+    std::fs::create_dir_all(&first).unwrap();
+    std::fs::create_dir_all(&second).unwrap();
+    let config = base.join("plugin.config");
+    sas_plugin::config::save_data_directory(&config, &first).unwrap();
+
+    let chat = chat_with_config("data", on(), &config, vec![save_as("One"), save_as("Two")]);
+    assert_eq!(chat.preset_folder(), Some(first.join("Presets")));
+    chat.send("save it".into());
+    settle(&chat);
+    assert!(
+        first.join("Presets/One.vital").is_file(),
+        "{:?}",
+        chat.view().lines
+    );
+
+    // A new data directory applies from the next worker (a settings change
+    // starts one).
+    sas_plugin::config::save_data_directory(&config, &second).unwrap();
+    assert_eq!(chat.preset_folder(), Some(second.join("Presets")));
+    chat.save_settings(chat.settings(), None).unwrap();
+    chat.send("save another".into());
+    settle(&chat);
+    assert!(
+        second.join("Presets/Two.vital").is_file(),
+        "{:?}",
+        chat.view().lines
+    );
+    assert!(!first.join("Presets/Two.vital").exists());
+}
+
+#[test]
+fn the_chats_own_preset_folder_wins_and_a_missing_data_directory_falls_back() {
+    let base = temp_folder("own");
+    let config = base.join("plugin.config");
+    sas_plugin::config::save_data_directory(&config, &base).unwrap();
+    let own = ChatSettings {
+        preset_dir: Some(base.join("mine")),
+        ..on()
+    };
+    let chat = chat_with_config("own", own, &config, Vec::new());
+    assert_eq!(chat.preset_folder(), Some(base.join("mine")));
+
+    // A configured folder that no longer exists means the default root, as
+    // the editor's browser reads it.
+    sas_plugin::config::save_data_directory(&config, &base.join("gone")).unwrap();
+    let chat = chat_with_config("fallback", on(), &config, Vec::new());
+    let default = sas_preset::user_folders::default_root().map(|root| {
+        sas_preset::user_folders::folder(&root, sas_preset::user_folders::Kind::Presets)
+    });
+    assert_eq!(chat.preset_folder(), default);
+}
