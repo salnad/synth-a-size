@@ -1387,7 +1387,7 @@ GUI_PRESETS = {
 }
 
 
-# Presets in a data folder for the preset browser's views (ref-gui
+# Presets and wavetables in a data folder for the browsers' views (ref-gui
 # --data-dir, the port's data_directory): presets with styles and authors,
 # one in a folder inside Presets, and one in a bank's folder. Paths are
 # relative to migration/corpus/gui/data.
@@ -1398,6 +1398,10 @@ def styled(name, style, author):
     return data
 
 
+def wavetable(name):
+    return {"version": "1.0.0", "name": name, "author": "corpus author", "groups": []}
+
+
 GUI_DATA = {
     "Presets/Bass One.vital": styled("Bass One", "Bass", "corpus author"),
     "Presets/bass 10.vital": styled("bass 10", "Bass", "Corpus Author Two"),
@@ -1405,6 +1409,13 @@ GUI_DATA = {
     "Presets/Pad.vital": styled("Pad", "Pad", ""),
     "Presets/Keys/Keys Soft.vital": styled("Keys Soft", "Keys", "corpus author"),
     "Bank/Presets/Sequence Run.vital": styled("Sequence Run", "Sequence", "bank author"),
+    # Wavetables for the popup browser's view: two in Wavetables, one in a
+    # folder inside it and one in the bank. Empty creators, as the browser
+    # only lists them.
+    "Wavetables/Glass 2.vitaltable": wavetable("Glass 2"),
+    "Wavetables/glass 10.vitaltable": wavetable("glass 10"),
+    "Wavetables/Vocal/Vox A.vitaltable": wavetable("Vox A"),
+    "Bank/Wavetables/Bank Table.vitaltable": wavetable("Bank Table"),
 }
 
 

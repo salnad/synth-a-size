@@ -5,7 +5,9 @@
 # adds the components it ports, each path once. Paths after an
 # "@preset <file>" line (a file in migration/corpus/gui/presets/, authored by
 # migration/corpus/generate.py) are laid out with that preset loaded, and
-# their fixture entries name it; the rest use the init preset.
+# their fixture entries name it; the rest use the init preset. Paths after
+# an "@overlay <name>" line (an overlay gui_reference.py knows) are laid out
+# with it open, until "@overlay none"; their entries name it too.
 
 # G1: the shell.
 header_section
@@ -391,6 +393,20 @@ save_section/Sequence
 save_section/Experiment
 save_section/SFX
 save_section/Template
+
+# G7d-1: the popup browser, open for oscillator 1's wavetables. Login is the
+# download button, where the port's search box goes (D26).
+@overlay popup_browser
+Popup Browser/Ignore Area
+Popup Browser/Ignore Area#2
+Popup Browser/Ignore Area#3
+Popup Browser/Ignore Area#4
+Popup Browser/Exit
+Popup Browser/Login
+Popup Browser/Selection List
+Popup Browser/Selection List#2
+@overlay none
+
 @preset migration/corpus/gui/presets/osc_3_sync.vital
 synthesis/OSC 3
 synthesis/OSC 3/osc_3_on

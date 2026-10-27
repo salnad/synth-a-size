@@ -762,6 +762,25 @@ MCP server) extends this entry when it lands.*
 - **Approved:** coordinator, relaying Voice Reviewer's review of #159,
   2026-10-26.
 
+### D26. The popup browser always has its search box, and no store button
+
+- **Differs:** the top of the popup browser that sections open to choose a
+  wavetable, sample or LFO file.
+- **Upstream:** `PopupBrowser::checkNoContent` shows a "Download content"
+  button in place of the search box until the factory content is installed
+  (`LoadSave::hasDataDirectory` needs the installer's `packs.json` in the
+  data folder); it starts the factory download (`startDownload`).
+  `checkStoreButton` shows a "Get more … by <author>" button, opening
+  upstream's store, for the loaded file's author when that author has packs
+  on sale (`getAvailablePacks`).
+- **Port:** the search box always shows, where the download button would
+  be, and there is no store button
+  (`port/crates/gui/src/sections/popup_browser.rs`).
+- **Why:** the port ships no factory content or installer (rule 3), and the
+  store needs upstream's accounts and servers (rule 4). Without them, the
+  search box is what upstream shows once content is installed.
+- **Approved:** pending.
+
 ### D27. A cycle of modulation amounts reads at a share instead of hanging
 
 - **Differs:** amount knobs whose connections modulate each other's amounts

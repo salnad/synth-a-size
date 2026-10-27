@@ -224,6 +224,8 @@ jobs:
         run: python3 migration/scripts/gui_reference.py frames --out build/gui/upstream
       - name: Render the port's views
         run: cargo run --locked --release -p sas-gui --example gallery --manifest-path port/Cargo.toml -- build/gui/port
+      - name: The views write nothing into the corpus
+        run: git diff --exit-code -- migration/corpus && test -z "$(git status --porcelain migration/corpus)"
       - name: sas-gui tests, including those that render through wgpu (gpu-tests)
         run: cargo test --locked --release -p sas-gui --features gpu-tests --manifest-path port/Cargo.toml
       - name: Side-by-side images (upstream on top)

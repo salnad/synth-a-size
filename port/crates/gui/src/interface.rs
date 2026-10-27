@@ -49,10 +49,12 @@ use crate::sections::keyboard::{self, KeyboardLayout, PlayingNote};
 use crate::sections::matrix::MatrixTab;
 use crate::sections::modulation::ModulationInterface;
 use crate::sections::oscillator::NUM_OSCILLATORS;
+use crate::sections::popup_browser::{self, BrowserEvent, BrowserOwner, PopupBrowser};
 use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
 use crate::sections::preset_browser::{self, PresetBrowser, PresetBrowserLayout};
 use crate::sections::preset_selector;
 use crate::sections::save_section::{self, SaveOutcome, SaveSection, SaveTarget};
+use crate::sections::selection_list::Selection;
 use crate::sections::synthesis::SynthesisInterface;
 use crate::sections::voice::{self, VoiceLayout, VoiceSection};
 use crate::sections::volume::{PeakLevels, VolumeLayout, VolumeSection};
@@ -515,6 +517,8 @@ pub struct Interface {
     preset_browser_was_visible: bool,
     /// `delete_section_`, while it asks before deleting a preset.
     delete_section: Option<DeleteSection>,
+    /// `popup_browser_`, while a section browses its files.
+    popup_browser: PopupBrowser,
     /// `save_section_`, while it names a preset or a wavetable to save.
     save_section: SaveSection,
     /// The save section opens for the preset next frame.
@@ -560,6 +564,7 @@ impl Interface {
             wavetable_edits: std::array::from_fn(WavetableEditSection::new),
             wavetable_editor: None,
             delete_section: None,
+            popup_browser: PopupBrowser::default(),
             save_section: SaveSection::default(),
             save_requested: false,
             preset_modified: preset_selector::Modified::default(),
@@ -758,6 +763,7 @@ impl Interface {
         self.show_amount_knobs(ui, host, &pixels, &layout, width, height);
         let top = Scope::top(&self.skin, layout.size_ratio);
         self.overlay.modulation.paint_drag(host, &pixels, &top);
+        self.show_popup_browser(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
         self.show_overlay(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
         self.show_save_section(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
         if let Some(index) = self.overlay.open_wavetable_editor.take() {
@@ -779,6 +785,55 @@ impl Interface {
                 }
             }
         }
+    }
+
+    /// The popup browser, opened by an oscillator's wavetable name
+    /// (`showPopupBrowser`); a file chosen in it loads into its owner.
+    fn show_popup_browser(
+        &mut self,
+        ui: &mut Ui,
+        host: &Host,
+        pixels: &PixelPainter,
+        layout: &FullLayout,
+        bounds: Rect,
+    ) {
+        if let Some((index, browser, section)) = self.synthesis.take_browse_request() {
+            let current = self.synthesis.wavetable_file(index);
+            self.popup_browser.open(
+                host.model(),
+                BrowserOwner::Oscillator(index),
+                browser,
+                section,
+                current.as_deref(),
+            );
+        }
+        if !self.popup_browser.is_open() {
+            return;
+        }
+        let top = Scope::top(&self.skin, layout.size_ratio).within(popup_browser::SKIN);
+        let mut panel = Panel::new(ui, host, pixels, top, &mut self.overlay, bounds);
+        let event = self.popup_browser.show(&mut panel, bounds);
+        panel.finish();
+        if let Some(BrowserEvent::Load(BrowserOwner::Oscillator(index), file)) = event {
+            self.synthesis
+                .load_wavetable_file(host.model(), index, &file);
+        }
+    }
+
+    /// Opens the popup browser for oscillator `index`'s wavetables, as a
+    /// press on its wavetable's name does (the gallery's view).
+    pub fn request_wavetable_browser(&mut self, index: usize) {
+        self.synthesis.request_wavetable_browser(index);
+    }
+
+    /// The popup browser's rows: (folders, files).
+    pub fn popup_browser_rows(&self) -> Option<(Vec<Selection>, Vec<Selection>)> {
+        self.popup_browser.is_open().then(|| {
+            (
+                self.popup_browser.folder_rows().to_vec(),
+                self.popup_browser.file_rows().to_vec(),
+            )
+        })
     }
 
     /// The save section, opened by the header (`savePreset`) or an

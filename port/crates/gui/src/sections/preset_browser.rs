@@ -518,6 +518,8 @@ impl PresetBrowser {
                     self.reload_presets(model);
                 }
             }
+            // The folder list holds folders only.
+            SelectionEvent::DoubleClicked(_) => {}
             SelectionEvent::All => self.set_presets(PresetBrowser::all_presets(model)),
             SelectionEvent::Favourites => {
                 let favourites = model.favourites().into_iter().collect::<BTreeSet<_>>();
