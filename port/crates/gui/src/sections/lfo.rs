@@ -649,17 +649,25 @@ pub(crate) fn show_line_controls(
     // while painting, else the X grid.
     let editor_rect = panel.pixels.rect(layout.editor.into());
     if panel.ui.rect_contains_pointer(editor_rect) {
-        let target = if event.painting {
-            Slider::new(controls.paint_pattern, SliderStyle::Text)
+        let (target, bounds) = if event.painting {
+            (
+                Slider::new(controls.paint_pattern, SliderStyle::Text),
+                layout.paint_pattern,
+            )
         } else {
-            *controls.grid_size_x
+            (*controls.grid_size_x, layout.grid_size_x)
         };
         let mut value = host.value(target.name);
-        for wheel in panel.ui.input(Wheel::events) {
-            if let Some(moved) = target.wheel_value(value, wheel) {
+        let wheels = panel.ui.input(Wheel::events);
+        for wheel in &wheels {
+            if let Some(moved) = target.wheel_value(value, *wheel) {
                 host.set_once(target.name, moved);
                 value = moved;
             }
+        }
+        // SynthSlider::mouseWheelMove's showPopup(true).
+        if !wheels.is_empty() {
+            panel.show_value_popup(&target, bounds, value);
         }
     }
     panel.slider(controls.grid_size_x, layout.grid_size_x);
