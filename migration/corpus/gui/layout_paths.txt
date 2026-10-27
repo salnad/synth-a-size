@@ -623,12 +623,27 @@ oscillator 1/component list/Add Modifier#3
 oscillator 1/component list/plus#2
 oscillator 1/component list/plus#3
 
-# G5e-4: oscillator 1's Phase Shift and Wave Window overlays, each with its
-# modifier's keyframe selected: the overlay, its controls background with
-# the three title texts, and the controls (the phase style is upstream's
-# "Harmonic Phase"; the phase editor among them isn't a named component).
+# G5e-4: oscillator 1's Line Source, Phase Shift and Wave Window overlays,
+# each with its component's keyframe selected: the overlay, its controls
+# background with the three title texts, and the controls (the phase style
+# is upstream's "Harmonic Phase"; the line, phase and window editors aren't
+# named components). The Line Source's grid sizes have incrementer halves,
+# as the Wave Source's do.
 @preset migration/corpus/gui/presets/wavetable_modifiers.vital
 @overlay wavetable_editor
+@wavetable-select 0:0
+oscillator 1/LINE SOURCE
+oscillator 1/LINE SOURCE/background
+oscillator 1/LINE SOURCE/background/text
+oscillator 1/LINE SOURCE/background/text#2
+oscillator 1/LINE SOURCE/background/text#3
+oscillator 1/LINE SOURCE/wave_line_source_pull_power
+oscillator 1/LINE SOURCE/wave_line_source_horizontal_grid
+oscillator 1/LINE SOURCE/wave_line_source_vertical_grid
+oscillator 1/LINE SOURCE/Increment
+oscillator 1/LINE SOURCE/Increment#2
+oscillator 1/LINE SOURCE/Increment#3
+oscillator 1/LINE SOURCE/Increment#4
 @wavetable-select 0:1
 oscillator 1/PHASE SHIFTER
 oscillator 1/PHASE SHIFTER/background

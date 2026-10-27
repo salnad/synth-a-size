@@ -29,6 +29,11 @@ pub struct Format {
     /// `string_lookup_` (`setStringLookup`): option names for a slider whose
     /// control has none of its own.
     pub string_lookup: Option<&'static [&'static str]>,
+    /// For a slider with no parameter behind it (`has_parameter_assignment_`
+    /// false), JUCE's `Slider::getTextFromValue` with this `numDecimalPlaces`
+    /// (7 for a range without an interval) in place of the synth's
+    /// formatting.
+    pub juce_decimal_places: Option<usize>,
 }
 
 impl Default for Format {
@@ -40,6 +45,7 @@ impl Default for Format {
             display_multiply: None,
             exponential_base: 2.0,
             string_lookup: None,
+            juce_decimal_places: None,
         }
     }
 }
@@ -122,6 +128,13 @@ pub fn slider_text(info: &ParamInfo, format: &Format, value: f32) -> String {
         if let Some(option) = options.get(index) {
             return option.to_string();
         }
+    }
+    if let Some(places) = format.juce_decimal_places {
+        return if places > 0 {
+            format!("{value:.places$}")
+        } else {
+            (value.round() as i32).to_string()
+        };
     }
     format_value(
         info,
@@ -253,6 +266,12 @@ mod tests {
         assert_eq!(slider_text(info("polyphony"), &polyphony, 8.0), "8");
         // Option names: stereo mode.
         assert_eq!(slider_text(info("stereo_mode"), &format, 1.0), "ROTATE");
+        // No parameter behind it: JUCE's own text.
+        let juce = Format {
+            juce_decimal_places: Some(7),
+            ..Format::default()
+        };
+        assert_eq!(slider_text(info("polyphony"), &juce, 2.5), "2.5000000");
     }
 
     #[test]

@@ -42,6 +42,7 @@ use sas_engine::sas_oscillators::sas_wavetable::{
 };
 use sas_preset::user_folders::{self, Kind, WAVETABLE_EXTENSION};
 
+use super::line_source_overlay::{LineSourceLayout, LineSourceOverlay};
 use super::phase_window_overlays::{PhaseLayout, PhaseOverlay, WindowLayout, WindowOverlay};
 use super::wave_source_overlay::{
     paint_wave_source_overlay, show_wave_source_overlay, FrameEdit, OverlayLayout,
@@ -354,6 +355,8 @@ pub enum OverlayKind {
     Phase,
     /// A Wave Window's `WaveWindowOverlay`.
     Window,
+    /// A Line Source's `WaveLineSourceOverlay`.
+    LineSource,
 }
 
 impl OverlayKind {
@@ -364,6 +367,7 @@ impl OverlayKind {
             WavetableComponent::ShepardToneSource(_) => Some(OverlayKind::WaveSource(1)),
             WavetableComponent::PhaseModifier(_) => Some(OverlayKind::Phase),
             WavetableComponent::WaveWindow(_) => Some(OverlayKind::Window),
+            WavetableComponent::LineSource(_) => Some(OverlayKind::LineSource),
             _ => None,
         }
     }
@@ -381,7 +385,7 @@ impl OverlayKind {
             // Its phase editor draws over the waveform, but
             // `setTimeDomainBounds` returns false.
             OverlayKind::Phase => Obscured::default(),
-            OverlayKind::Window => Obscured {
+            OverlayKind::Window | OverlayKind::LineSource => Obscured {
                 time_domain: true,
                 ..Obscured::default()
             },
@@ -542,6 +546,7 @@ pub struct WavetableEditSection {
     /// The Phase Shift and Wave Window overlays.
     phase: PhaseOverlay,
     window: WindowOverlay,
+    line_source: LineSourceOverlay,
 }
 
 impl WavetableEditSection {
@@ -569,6 +574,10 @@ impl WavetableEditSection {
             requested_selection: None,
             phase: PhaseOverlay::new(local::MODIFIER_CONTROLS[oscillator.min(2)]),
             window: WindowOverlay::new(local::MODIFIER_CONTROLS[oscillator.min(2)]),
+            line_source: LineSourceOverlay::new(
+                local::LINE_SOURCE_CONTROLS[oscillator.min(2)],
+                oscillator,
+            ),
         }
     }
 
@@ -639,7 +648,8 @@ impl WavetableEditSection {
         }
         let overlay_pressed = self.wave_source.iter().any(WaveSourceOverlay::pressed)
             || self.phase.pressed()
-            || self.window.pressed();
+            || self.window.pressed()
+            || self.line_source.pressed();
         if !loaded && (self.organizer.is_some() || overlay_pressed) {
             // A keyframe drag, or drawing on an overlay, edits the copy
             // until it's committed.
@@ -1609,6 +1619,20 @@ impl WavetableEditSection {
                     .handle(panel, layout, modifier, keyframe.keyframe, salt);
                 self.frame_edited(panel.host.model(), edit);
             }
+            OverlayKind::LineSource => {
+                let selections = self.frame_selections;
+                let Some(WavetableComponent::LineSource(source)) =
+                    component_mut(&mut self.creator, keyframe)
+                else {
+                    return;
+                };
+                self.line_source
+                    .sync(panel.host, selections, keyframe, source);
+                let edit = self
+                    .line_source
+                    .handle(panel, layout, source, keyframe.keyframe);
+                self.frame_edited(panel.host.model(), edit);
+            }
         }
     }
 
@@ -1632,6 +1656,9 @@ impl WavetableEditSection {
             OverlayKind::Phase | OverlayKind::Window => {
                 self.paint_modifier_overlay(panel, layout, kind, keyframe, false)
             }
+            OverlayKind::LineSource => self
+                .line_source
+                .paint(panel, &LineSourceLayout::new(&panel.scope, layout)),
         }
     }
 
@@ -1656,7 +1683,30 @@ impl WavetableEditSection {
             OverlayKind::Phase | OverlayKind::Window => {
                 self.paint_modifier_overlay(panel, layout, kind, keyframe, true)
             }
+            OverlayKind::LineSource => {
+                let line = self
+                    .component(keyframe)
+                    .and_then(|component| match component {
+                        WavetableComponent::LineSource(source) => source
+                            .keyframes
+                            .keyframes
+                            .get(keyframe.keyframe)
+                            .map(|data| &data.data.line_generator),
+                        _ => None,
+                    });
+                let line_layout = LineSourceLayout::new(&panel.scope, layout);
+                self.line_source.show(panel, layout, &line_layout, line);
+            }
         }
+    }
+
+    /// The component `keyframe` belongs to.
+    fn component(&self, keyframe: KeyframeRef) -> Option<&WavetableComponent> {
+        self.creator()?
+            .groups
+            .get(keyframe.group)?
+            .components
+            .get(keyframe.component)
     }
 
     /// The Phase Shift or Wave Window overlay's drawing; the second also
@@ -1669,14 +1719,7 @@ impl WavetableEditSection {
         keyframe: KeyframeRef,
         handle_controls: bool,
     ) {
-        let component = self.creator().and_then(|creator| {
-            creator
-                .groups
-                .get(keyframe.group)?
-                .components
-                .get(keyframe.component)
-        });
-        match (kind, component) {
+        match (kind, self.component(keyframe)) {
             (OverlayKind::Phase, Some(WavetableComponent::PhaseModifier(modifier))) => {
                 let phase = modifier
                     .keyframes
@@ -2692,8 +2735,10 @@ mod tests {
     }
 
     /// Wave Sources and Shepard Tone sources get the two Wave Source
-    /// overlays, covering every display; other components have no overlay
-    /// yet.
+    /// overlays, covering every display; a Line Source, a Phase Shift and a
+    /// Wave Window get theirs, the Line Source's and the Wave Window's
+    /// covering the waveform and the Phase Shift's nothing; other
+    /// components have no overlay yet.
     #[test]
     fn components_map_to_their_overlays() {
         let overlay = |kind| OverlayKind::of(&WavetableComponent::new(kind));
@@ -2705,13 +2750,32 @@ mod tests {
             overlay(ComponentType::ShepardToneSource),
             Some(OverlayKind::WaveSource(1))
         );
-        assert_eq!(overlay(ComponentType::LineSource), None);
+        assert_eq!(
+            overlay(ComponentType::LineSource),
+            Some(OverlayKind::LineSource)
+        );
+        assert_eq!(
+            overlay(ComponentType::PhaseModifier),
+            Some(OverlayKind::Phase)
+        );
+        assert_eq!(
+            overlay(ComponentType::WaveWindow),
+            Some(OverlayKind::Window)
+        );
+        assert_eq!(overlay(ComponentType::FileSource), None);
         let all = Obscured {
             time_domain: true,
             amplitudes: true,
             phases: true,
         };
         assert_eq!(OverlayKind::WaveSource(0).obscures(), all);
+        let waveform = Obscured {
+            time_domain: true,
+            ..Obscured::default()
+        };
+        assert_eq!(OverlayKind::LineSource.obscures(), waveform);
+        assert_eq!(OverlayKind::Window.obscures(), waveform);
+        assert_eq!(OverlayKind::Phase.obscures(), Obscured::default());
     }
 
     #[test]

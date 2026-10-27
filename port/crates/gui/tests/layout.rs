@@ -14,6 +14,7 @@ use sas_gui::sections::envelope::{self, EnvelopeLayout};
 use sas_gui::sections::extra_mod::ExtraModLayout;
 use sas_gui::sections::filter::{self, FilterLayout, Kind};
 use sas_gui::sections::lfo::{self, LfoLayout};
+use sas_gui::sections::line_source_overlay::LineSourceLayout;
 use sas_gui::sections::modulation::{ModulationInterface, ModulationLayout};
 use sas_gui::sections::oscillator::{self, OscillatorLayout};
 use sas_gui::sections::phase_window_overlays::{PhaseLayout, WindowLayout};
@@ -445,6 +446,7 @@ fn wavetable_editor_rect(
     let overlay = OverlayLayout::wave_source(&top, &edit);
     let phase = PhaseLayout::new(&top, &edit);
     let window = WindowLayout::new(&top, &edit);
+    let line = LineSourceLayout::new(&top, &edit);
     let mut state = PresetState::new(&InitContent { sample_seed: 0 });
     if let Some(preset) = preset {
         state
@@ -499,7 +501,21 @@ fn wavetable_editor_rect(
         "oscillator 1/WAVE SOURCE/wave_source_vertical_grid" => overlay.grid_y,
         // The horizontal grid's increment and decrement, then the
         // vertical's.
-        "oscillator 1/PHASE SHIFTER" | "oscillator 1/WAVE WINDOW" => overlay.overlay,
+        "oscillator 1/PHASE SHIFTER" | "oscillator 1/WAVE WINDOW" | "oscillator 1/LINE SOURCE" => {
+            overlay.overlay
+        }
+        "oscillator 1/LINE SOURCE/background" => line.controls,
+        "oscillator 1/LINE SOURCE/background/text" => *line.titles.get(instance - 1)?,
+        "oscillator 1/LINE SOURCE/wave_line_source_pull_power" => line.pull_power,
+        "oscillator 1/LINE SOURCE/wave_line_source_horizontal_grid" => line.grid_x,
+        "oscillator 1/LINE SOURCE/wave_line_source_vertical_grid" => line.grid_y,
+        "oscillator 1/LINE SOURCE/Increment" => *[
+            line.grid_x_buttons[0],
+            line.grid_x_buttons[1],
+            line.grid_y_buttons[0],
+            line.grid_y_buttons[1],
+        ]
+        .get(instance - 1)?,
         "oscillator 1/PHASE SHIFTER/background" => phase.controls,
         "oscillator 1/PHASE SHIFTER/background/text" => *phase.titles.get(instance - 1)?,
         "oscillator 1/PHASE SHIFTER/Harmonic Phase" => phase.style,

@@ -19,6 +19,7 @@ pub mod extra_mod;
 pub mod filter;
 pub mod keyboard;
 pub mod lfo;
+pub mod line_source_overlay;
 pub mod matrix;
 pub mod modulation;
 pub mod oscillator;
