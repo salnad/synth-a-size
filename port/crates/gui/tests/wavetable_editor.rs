@@ -22,9 +22,11 @@ use sas_engine::sas_oscillators::sas_wavetable::creator::component::{
 use sas_engine::sas_oscillators::sas_wavetable::creator::group::WavetableGroup;
 use sas_engine::sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_gui::layout::{FullLayout, Rect};
+use sas_gui::local::WAVE_SOURCE_CONTROLS;
 use sas_gui::scope::Scope;
 use sas_gui::sections::oscillator::{self, OscillatorLayout};
 use sas_gui::sections::synthesis::SynthesisLayout;
+use sas_gui::sections::wave_source_overlay::OverlayLayout;
 use sas_gui::sections::wavetable_edit::{KeyframeRef, WavetableEditLayout};
 use sas_gui::skin::Skin;
 use sas_gui::{EditorModel, Host, HostParam, Interface, OpenGestures, Tab};
@@ -222,6 +224,23 @@ impl Fixture {
 
     fn editor(&self) -> Option<usize> {
         self.interface.borrow().wavetable_editor()
+    }
+
+    fn overlay_layout(&self) -> OverlayLayout {
+        let layout = self.layout();
+        let top = Scope::top(&self.skin, layout.size_ratio);
+        OverlayLayout::wave_source(&top, &self.editor_layout())
+    }
+
+    fn overlay_frame(&self, oscillator: usize) -> Option<KeyframeRef> {
+        self.interface
+            .borrow()
+            .wavetable_edit_section(oscillator)
+            .overlay_frame()
+    }
+
+    fn local(&self, name: &str) -> f32 {
+        self.interface.borrow().local_value(name).unwrap()
     }
 
     fn selected(&self, oscillator: usize) -> Vec<KeyframeRef> {
@@ -722,5 +741,102 @@ fn the_component_list_adds_moves_and_removes() {
         [vec!["Line Source"], vec!["Wave Source"]]
     );
     assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 4);
+    assert!(log_is_empty(&fixture));
+}
+
+/// `frameSelected`: showing the editor selects the first keyframe, so the
+/// Wave Source overlay shows it; a click on empty space deselects and hides
+/// it; a press on the keyframe selects it again; a selection box that takes
+/// it hides the overlay, as `selectFrames` deselects first.
+#[test]
+fn the_overlay_follows_the_frame_selection() {
+    let fixture = Fixture::new();
+    let mut harness = opened(&fixture);
+    let layout = fixture.editor_layout();
+    assert_eq!(fixture.overlay_frame(0), Some(FIRST));
+
+    click(&mut harness, organizer_point(&layout, 0, 128));
+    assert_eq!(fixture.overlay_frame(0), None);
+    for _ in 0..30 {
+        harness.step();
+    }
+    click(&mut harness, organizer_point(&layout, 0, 0));
+    assert_eq!(fixture.overlay_frame(0), Some(FIRST));
+    for _ in 0..30 {
+        harness.step();
+    }
+
+    let from = organizer_point(&layout, 0, 60);
+    let to = Pos2::new(
+        organizer_point(&layout, 0, 0).x - layout.handle_width as f32,
+        from.y,
+    );
+    drag(&mut harness, from, to);
+    assert_eq!(fixture.selected(0), [FIRST]);
+    assert_eq!(fixture.overlay_frame(0), None);
+}
+
+/// `WaveSourceOverlay::sliderValueChanged`: choosing "Spectral Blend" in the
+/// interpolation selector gives the source linear interpolation in the
+/// frequency domain and commits once; nothing reaches the host.
+#[test]
+fn the_interpolation_selector_sets_the_sources_interpolation() {
+    let fixture = Fixture::new();
+    // The init source interpolates in frequency; start it in time so the
+    // choice shows.
+    let mut creator = fixture.synth.wavetable_creator(0).unwrap();
+    if let WavetableComponent::WaveSource(source) = &mut creator.groups[0].components[0] {
+        source.interpolation_mode = 0;
+        source.keyframes.interpolation_style = 0;
+    }
+    fixture.synth.set_creator(0, creator);
+    let mut harness = opened(&fixture);
+    let overlay = fixture.overlay_layout();
+    click(&mut harness, centre(overlay.interpolation));
+    let top_left = Pos2::new(
+        overlay.interpolation.x as f32,
+        overlay.interpolation.bottom() as f32,
+    );
+    choose_row(&mut harness, top_left, 2);
+    for _ in 0..3 {
+        harness.step();
+    }
+
+    let controls = WAVE_SOURCE_CONTROLS[0][0];
+    assert_eq!(fixture.local(controls.interpolation), 2.0);
+    let creator = fixture.synth.wavetable_creator(0).unwrap();
+    let WavetableComponent::WaveSource(source) = &creator.groups[0].components[0] else {
+        panic!("the init preset starts with a wave source");
+    };
+    assert_eq!(source.keyframes.interpolation_style, 1);
+    assert_eq!(source.interpolation_mode, 1);
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+    assert!(log_is_empty(&fixture));
+}
+
+/// `IncrementerButtons::buttonClicked`: the unpainted top half of each grid
+/// size's right end steps it up and the bottom half down, within 0 to 16.
+#[test]
+fn the_grid_incrementers_step_the_grid_sizes() {
+    let fixture = Fixture::new();
+    let mut harness = opened(&fixture);
+    let overlay = fixture.overlay_layout();
+    let controls = WAVE_SOURCE_CONTROLS[0][0];
+    assert_eq!(fixture.local(controls.grid_x), 6.0);
+    assert_eq!(fixture.local(controls.grid_y), 4.0);
+
+    click(&mut harness, centre(overlay.grid_x_buttons[0]));
+    assert_eq!(fixture.local(controls.grid_x), 7.0);
+    for _ in 0..30 {
+        harness.step();
+    }
+    for _ in 0..6 {
+        click(&mut harness, centre(overlay.grid_y_buttons[1]));
+        for _ in 0..30 {
+            harness.step();
+        }
+    }
+    assert_eq!(fixture.local(controls.grid_y), 0.0);
+    assert_eq!(fixture.local(controls.grid_x), 7.0);
     assert!(log_is_empty(&fixture));
 }

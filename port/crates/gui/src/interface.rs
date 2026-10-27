@@ -681,6 +681,11 @@ impl Interface {
         &self.wavetable_edits[oscillator]
     }
 
+    /// Local control `name`'s value ([`crate::local`]), if it is one.
+    pub fn local_value(&self, name: &str) -> Option<f32> {
+        self.locals.get(name)
+    }
+
     pub fn preset_browser_visible(&self) -> bool {
         self.preset_browser_visible
     }

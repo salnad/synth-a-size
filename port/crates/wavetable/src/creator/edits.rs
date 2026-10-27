@@ -11,8 +11,9 @@
 //! `wavetable_organizer.cpp`. Indices out of range change nothing, as the
 //! menus never offer them.
 
-use super::component::{ComponentType, WavetableComponent};
+use super::component::{ComponentType, WavetableComponent, INTERPOLATION_NONE};
 use super::group::WavetableGroup;
+use super::keyframes::WAVE_SOURCE_TIME;
 use super::WavetableCreator;
 use crate::NUM_OSCILLATOR_WAVE_FRAMES;
 
@@ -124,6 +125,31 @@ pub fn create_keyframe(
 ) -> Option<usize> {
     let component = component_mut(creator, group, component)?;
     Some(component.insert_new_keyframe(position))
+}
+
+/// `WaveSourceOverlay::sliderValueChanged` for the interpolation selector:
+/// selector value `value` (0 for none, then waveform and spectral blends,
+/// then their smooth forms) as the Wave Source or Shepard Tone source's
+/// interpolation style and mode. Other components are left alone.
+pub fn set_wave_source_interpolation(
+    creator: &mut WavetableCreator,
+    group: usize,
+    component: usize,
+    value: i32,
+) {
+    let (style, mode) = if value != 0 {
+        ((value + 1) / 2, (value + 1) % 2)
+    } else {
+        (INTERPOLATION_NONE, WAVE_SOURCE_TIME)
+    };
+    if let Some(
+        WavetableComponent::WaveSource(source) | WavetableComponent::ShepardToneSource(source),
+    ) = component_mut(creator, group, component)
+    {
+        source.keyframes.interpolation_style = style;
+        source.interpolation_mode = mode;
+        source.compute_frame.interpolation_mode = mode;
+    }
 }
 
 /// `deleteKeyframe`.

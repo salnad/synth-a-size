@@ -30,6 +30,7 @@ use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
 use egui::{PointerButton, Pos2, Sense};
+use sas_engine::sas_oscillators::sas_wavetable::creator::component::WavetableComponent;
 use sas_engine::sas_oscillators::sas_wavetable::creator::edits::{
     self, KeyframeIndex, MODIFIER_TYPES, SOURCE_TYPES,
 };
@@ -39,6 +40,10 @@ use sas_engine::sas_oscillators::sas_wavetable::{
     WaveFrame, Wavetable, NUM_OSCILLATOR_WAVE_FRAMES,
 };
 
+use super::wave_source_overlay::{
+    paint_wave_source_overlay, show_wave_source_overlay, OverlayLayout, WaveSourceSliders,
+    WaveSourceView,
+};
 use super::{MenuOwner, Panel};
 use crate::controls::bars::BarRenderer;
 use crate::controls::clicks::Clicks;
@@ -52,6 +57,7 @@ use crate::fonts::Face;
 use crate::host::Host;
 use crate::interface::EditorModel;
 use crate::layout::{PresetSelectorLayout, Rect};
+use crate::local;
 use crate::paint::{PixelPainter, RectF};
 use crate::popup::{Menu, MenuItem};
 use crate::primitives::line::LineRenderer;
@@ -94,6 +100,9 @@ pub const MENU_MOVE_DOWN: i32 = 4;
 /// The organizer's menu (`WavetableOrganizer::OrganizerMenu`).
 pub const MENU_CREATE_KEYFRAME: i32 = 1;
 pub const MENU_REMOVE_KEYFRAMES: i32 = 2;
+/// `WavetableEditSection::kObscureAmount`: how far a display an overlay
+/// covers fades out.
+const OBSCURE_AMOUNT: f32 = 0.4;
 /// `updateFrequencyDomain`'s epsilons.
 const AMPLITUDE_EPSILON: f32 = 0.000_000_1;
 const PHASE_EPSILON: f32 = 0.0001;
@@ -422,6 +431,14 @@ pub struct WavetableEditSection {
     wave_frame_begun: bool,
     /// The component list's scroll position and bar.
     scroll: ScrollBar,
+    /// The keyframe the overlays last heard of (`frameSelected`): set when
+    /// the organizer selects one keyframe, cleared when it deselects or
+    /// selects several.
+    overlay_frame: Option<KeyframeRef>,
+    /// The Wave Source overlays' sliders (Wave Sources, then Shepard Tone
+    /// sources), and their interpolation selectors' values as last applied.
+    wave_source_sliders: [WaveSourceSliders; 2],
+    interpolation_seen: [f32; 2],
 }
 
 impl WavetableEditSection {
@@ -440,6 +457,10 @@ impl WavetableEditSection {
             playhead_held: false,
             wave_frame_begun: false,
             scroll: ScrollBar::default(),
+            overlay_frame: None,
+            wave_source_sliders: local::WAVE_SOURCE_CONTROLS[oscillator.min(2)]
+                .map(WaveSourceSliders::new),
+            interpolation_seen: [0.0; 2],
         }
     }
 
@@ -453,6 +474,11 @@ impl WavetableEditSection {
 
     pub fn selected(&self) -> &[KeyframeRef] {
         &self.selected
+    }
+
+    /// The keyframe the overlays show, if any (`frameSelected`'s last).
+    pub fn overlay_frame(&self) -> Option<KeyframeRef> {
+        self.overlay_frame
     }
 
     /// The creator as last read from the model.
@@ -484,13 +510,15 @@ impl WavetableEditSection {
             .wavetable_creator(self.oscillator)
             .map(|creator| (revision, creator));
         let rows = self.creator().map(component_rows).unwrap_or_default();
-        self.selected.retain(|selected| {
+        let exists = |selected: &KeyframeRef| {
             rows.iter().any(|row| {
                 row.group == selected.group
                     && row.component == selected.component
                     && selected.keyframe < row.positions.len()
             })
-        });
+        };
+        self.selected.retain(exists);
+        self.overlay_frame = self.overlay_frame.filter(exists);
         loaded
     }
 
@@ -507,8 +535,22 @@ impl WavetableEditSection {
             })
         });
         if let Some(keyframe) = first {
-            self.selected = vec![keyframe];
+            self.select_frame(keyframe);
         }
+    }
+
+    /// `WavetableOrganizer::selectFrame`: `keyframe` alone is selected, and
+    /// the overlays hear of it.
+    fn select_frame(&mut self, keyframe: KeyframeRef) {
+        self.selected = vec![keyframe];
+        self.overlay_frame = Some(keyframe);
+    }
+
+    /// `WavetableOrganizer::deselect`: nothing is selected, and the overlays
+    /// hear of no keyframe.
+    fn deselect(&mut self) {
+        self.selected.clear();
+        self.overlay_frame = None;
     }
 
     /// `visibilityChanged` and the content checks before a frame: called
@@ -517,7 +559,7 @@ impl WavetableEditSection {
         if self.refresh(model) {
             // reset: the organizer's selection clears, and the default
             // frame is selected again if the section shows.
-            self.selected.clear();
+            self.deselect();
             if self.visible {
                 self.select_default_frame();
             }
@@ -570,11 +612,49 @@ impl WavetableEditSection {
         self.handle_organizer(panel, layout, scroll);
 
         let model = panel.host.model();
-        let wavetable = model.wavetable(self.oscillator);
-        let frame = wavetable
+        let frame = model
+            .wavetable(self.oscillator)
             .as_deref()
             .map(|wavetable| frame_samples(wavetable, self.playhead));
-        self.show_displays(panel, layout, frame.as_ref());
+        let overlay = self.wave_source_overlay();
+        if let Some((kind, keyframe)) = overlay {
+            self.apply_interpolation(panel, kind, keyframe);
+        }
+        let overlay_layout = OverlayLayout::wave_source(&panel.scope, layout);
+        if let Some((kind, keyframe)) = overlay {
+            let view = self.wave_frame(keyframe).map(|frame| WaveSourceView {
+                frame,
+                power_scale: self.power_scale,
+                zoom: self.zoom,
+            });
+            paint_wave_source_overlay(
+                panel,
+                layout,
+                &overlay_layout,
+                &self.wave_source_sliders[kind],
+                view.as_ref(),
+            );
+        }
+        self.show_displays(panel, layout, frame.as_ref(), overlay.is_some());
+        if let Some((kind, keyframe)) = overlay {
+            let view = self.wave_frame(keyframe).map(|frame| WaveSourceView {
+                frame,
+                power_scale: self.power_scale,
+                zoom: self.zoom,
+            });
+            show_wave_source_overlay(
+                panel,
+                layout,
+                &overlay_layout,
+                &self.wave_source_sliders[kind],
+                view.as_ref(),
+                self.oscillator,
+            );
+        }
+        // renderCorners, after the overlay.
+        for display in [layout.waveform, layout.amplitudes, layout.phases] {
+            panel.widget_corners(display);
+        }
 
         let colours = ShapeColours::icon(&panel.scope);
         let shape = |shape| ShapeButton { shape, colours };
@@ -841,7 +921,7 @@ impl WavetableEditSection {
                 start_x,
             };
             if !self.selected.contains(&keyframe) {
-                self.selected = vec![keyframe];
+                self.select_frame(keyframe);
             }
         }
         self.organizer = Some(press);
@@ -894,15 +974,23 @@ impl WavetableEditSection {
         };
         let model = panel.host.model();
         match press.mode {
-            OrganizerMode::Waiting => self.selected.clear(),
+            OrganizerMode::Waiting => self.deselect(),
             OrganizerMode::Selecting => {
                 let rows = self.creator().map(component_rows).unwrap_or_default();
+                // selectFrames deselects first, so the overlays hear of no
+                // keyframe.
+                self.deselect();
                 self.selected = box_selection(layout, offset, &rows, press.down, at);
             }
             OrganizerMode::Dragging { .. } => {
                 if press.moved {
                     if let Some((_, creator)) = &mut self.creator {
                         self.selected = edits::finish_keyframe_drag(creator, &self.selected);
+                        // An overlay's keyframe is the one selected, which
+                        // moved with the rest.
+                        if self.overlay_frame.is_some() {
+                            self.overlay_frame = self.selected.first().copied();
+                        }
                     }
                     self.commit(model);
                 }
@@ -958,7 +1046,9 @@ impl WavetableEditSection {
             return;
         }
         if let Some((keyframe, _)) = self.frame_at(layout, offset, at) {
-            self.selected.clear();
+            // Upstream keeps the selection and the overlay's frame pointing
+            // at the deleted keyframe; the port lets both go.
+            self.deselect();
             if let Some((_, creator)) = &mut self.creator {
                 edits::delete_keyframe(creator, keyframe);
             }
@@ -989,11 +1079,11 @@ impl WavetableEditSection {
             return;
         };
         if let Some(keyframe) = edits::create_keyframe(creator, group, index, position) {
-            self.selected = vec![KeyframeRef {
+            self.select_frame(KeyframeRef {
                 group,
                 component: index,
                 keyframe,
-            }];
+            });
             self.commit(model);
         }
     }
@@ -1053,6 +1143,7 @@ impl WavetableEditSection {
             return;
         };
         let selected = &mut self.selected;
+        let overlay_frame = &mut self.overlay_frame;
         match (menu, id) {
             (EditMenu::AddSource, index) => {
                 let Some(&source_type) = SOURCE_TYPES.get(index as usize) else {
@@ -1060,11 +1151,13 @@ impl WavetableEditSection {
                 };
                 edits::add_source(creator, source_type);
                 // componentAdded selects the new source's keyframe.
-                *selected = vec![KeyframeRef {
+                let keyframe = KeyframeRef {
                     group: creator.groups.len() - 1,
                     component: 0,
                     keyframe: 0,
-                }];
+                };
+                *selected = vec![keyframe];
+                *overlay_frame = Some(keyframe);
             }
             (EditMenu::AddModifier(group), index) => {
                 let Some(&modifier_type) = MODIFIER_TYPES.get(index as usize) else {
@@ -1079,14 +1172,19 @@ impl WavetableEditSection {
                 };
                 edits::reset_component(creator, group, component);
                 // componentRemoved, then componentAdded selects its keyframe.
-                *selected = vec![KeyframeRef {
+                let keyframe = KeyframeRef {
                     group,
                     component,
                     keyframe: 0,
-                }];
+                };
+                *selected = vec![keyframe];
+                *overlay_frame = Some(keyframe);
             }
             (EditMenu::Group(group), MENU_REMOVE) => {
                 edits::remove_group(creator, group);
+                // componentRemoved selects the rest or deselects: either way
+                // the overlays hear of no keyframe.
+                *overlay_frame = None;
                 selected.retain(|keyframe| keyframe.group != group);
                 for keyframe in selected.iter_mut() {
                     if keyframe.group > group {
@@ -1097,13 +1195,16 @@ impl WavetableEditSection {
             (EditMenu::Group(group), MENU_MOVE_UP) if group > 0 => {
                 edits::move_group_up(creator, group);
                 swap_groups(selected, group, group - 1);
+                swap_groups(overlay_frame.as_mut_slice(), group, group - 1);
             }
             (EditMenu::Group(group), MENU_MOVE_DOWN) => {
                 edits::move_group_down(creator, group);
                 swap_groups(selected, group, group + 1);
+                swap_groups(overlay_frame.as_mut_slice(), group, group + 1);
             }
             (EditMenu::Modifier(group, component), MENU_REMOVE) => {
                 edits::remove_component(creator, group, component);
+                *overlay_frame = None;
                 selected
                     .retain(|keyframe| keyframe.group != group || keyframe.component != component);
                 for keyframe in selected.iter_mut() {
@@ -1115,14 +1216,27 @@ impl WavetableEditSection {
             (EditMenu::Modifier(group, component), MENU_MOVE_UP) if component > 0 => {
                 edits::move_modifier_up(creator, group, component);
                 swap_components(selected, group, component, component - 1);
+                swap_components(
+                    overlay_frame.as_mut_slice(),
+                    group,
+                    component,
+                    component - 1,
+                );
             }
             (EditMenu::Modifier(group, component), MENU_MOVE_DOWN) => {
                 edits::move_modifier_down(creator, group, component);
                 swap_components(selected, group, component, component + 1);
+                swap_components(
+                    overlay_frame.as_mut_slice(),
+                    group,
+                    component,
+                    component + 1,
+                );
             }
             (EditMenu::Organizer(_, _), MENU_REMOVE_KEYFRAMES) => {
                 // deleteSelectedKeyframes, highest index first so the rest
                 // stay put.
+                *overlay_frame = None;
                 let mut doomed = std::mem::take(selected);
                 doomed.sort_by_key(|keyframe| std::cmp::Reverse(keyframe.keyframe));
                 for keyframe in doomed {
@@ -1134,18 +1248,84 @@ impl WavetableEditSection {
         self.commit(model);
     }
 
+    /// The Wave Source overlay to show, if the overlays' keyframe is a
+    /// Wave Source's (0) or a Shepard Tone source's (1), with that keyframe
+    /// (`frameSelected`, `WavetableOverlayFactory::setOverlayOwner`).
+    fn wave_source_overlay(&self) -> Option<(usize, KeyframeRef)> {
+        let keyframe = self.overlay_frame?;
+        let component = self
+            .creator()?
+            .groups
+            .get(keyframe.group)?
+            .components
+            .get(keyframe.component)?;
+        match component {
+            WavetableComponent::WaveSource(_) => Some((0, keyframe)),
+            WavetableComponent::ShepardToneSource(_) => Some((1, keyframe)),
+            _ => None,
+        }
+    }
+
+    /// The wave frame of a Wave Source or Shepard Tone source keyframe
+    /// (`WaveSource::getWaveFrame`).
+    fn wave_frame(&self, keyframe: KeyframeRef) -> Option<&WaveFrame> {
+        let component = self
+            .creator()?
+            .groups
+            .get(keyframe.group)?
+            .components
+            .get(keyframe.component)?;
+        match component {
+            WavetableComponent::WaveSource(source)
+            | WavetableComponent::ShepardToneSource(source) => source
+                .keyframes
+                .keyframes
+                .get(keyframe.keyframe)
+                .map(|keyframe| &*keyframe.data.wave_frame),
+            _ => None,
+        }
+    }
+
+    /// `WaveSourceOverlay::sliderValueChanged` for the interpolation
+    /// selector: a new value sets the source's interpolation and commits.
+    /// The selector never reads the source's own setting (upstream never
+    /// calls `setInterpolationType`), so it starts at "None".
+    fn apply_interpolation(&mut self, panel: &mut Panel, kind: usize, keyframe: KeyframeRef) {
+        let value = panel
+            .host
+            .value(self.wave_source_sliders[kind].interpolation.name);
+        if value == self.interpolation_seen[kind] {
+            return;
+        }
+        self.interpolation_seen[kind] = value;
+        if let Some((_, creator)) = &mut self.creator {
+            edits::set_wave_source_interpolation(
+                creator,
+                keyframe.group,
+                keyframe.component,
+                value as i32,
+            );
+        }
+        self.commit(panel.host.model());
+    }
+
     /// The three displays of the frame under the playhead
-    /// (`updateTimeDomain`, `updateFrequencyDomain`, `setColors`), with
-    /// their rounded corners.
+    /// (`updateTimeDomain`, `updateFrequencyDomain`, `setColors`), faded
+    /// when an overlay covers them (`kObscureAmount`).
     fn show_displays(
         &self,
         panel: &mut Panel,
         layout: &WavetableEditLayout,
         frame: Option<&[f32; WAVEFORM_SIZE]>,
+        obscured: bool,
     ) {
         let scope = &panel.scope;
-        let primary = scope.color(ColorId::WidgetPrimaryDisabled);
-        let secondary = scope.color(ColorId::WidgetSecondaryDisabled);
+        let mut primary = scope.color(ColorId::WidgetPrimaryDisabled);
+        let mut secondary = scope.color(ColorId::WidgetSecondaryDisabled);
+        if obscured {
+            primary = primary.interpolated_with(primary.with_alpha(0), OBSCURE_AMOUNT);
+            secondary = secondary.interpolated_with(secondary.with_alpha(0), OBSCURE_AMOUNT);
+        }
         let fade_alpha = 1.0 - scope.value(ValueId::WidgetFillFade);
 
         let mut waveform = LineRenderer::new(WAVEFORM_SIZE, false);
@@ -1182,9 +1362,6 @@ impl WavetableEditSection {
         waveform.paint(panel.pixels, layout.waveform.into(), true);
         amplitudes.paint(panel.pixels, layout.amplitudes.into());
         phases.paint(panel.pixels, layout.phases.into());
-        for display in [layout.waveform, layout.amplitudes, layout.phases] {
-            panel.widget_corners(display);
-        }
     }
 
     /// The organizer's rows, keyframes, selection box and playhead line
