@@ -686,9 +686,9 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
     a 0 is followed by what looks like a chunk header (a printable label
     and a length the file can hold): that is an empty chunk, read as JUCE
     reads it. A declared length more than double the bytes present, or
-    past 2^24 frames, reads only the bytes present. Buffers are reserved fallibly,
-    so no file can make the plugin abort the host, where JUCE would try to
-    allocate gigabytes for such a header.
+    past 2^24 frames, reads only the bytes present. Buffers are reserved
+    fallibly, so no file can make the plugin abort the host, where JUCE
+    would try to allocate gigabytes for such a header.
 - **Why:** parity first. The port matches upstream's macOS formats with an
   open-source decoder, since CoreAudio isn't available to it everywhere
   and JUCE's readers aren't part of the port. CAF and the rarer types are
