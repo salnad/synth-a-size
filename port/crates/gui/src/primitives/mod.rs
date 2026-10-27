@@ -278,7 +278,7 @@ impl Instance {
 }
 
 /// Quads drawn together at one point in egui's paint order.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct QuadBatch {
     quads: Vec<Quad>,
     additive: bool,

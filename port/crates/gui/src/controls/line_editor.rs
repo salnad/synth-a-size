@@ -24,6 +24,7 @@
 use egui::{Modifiers, Pos2, Sense};
 use sas_common::line_generator::LineGenerator;
 use sas_common::scalar::power_scale;
+use sas_simd::PolyFloat;
 
 use crate::controls::clicks::Clicks;
 use crate::controls::format::{juce_double, juce_double_value};
@@ -32,7 +33,7 @@ use crate::interface::EditorModel;
 use crate::layout::Rect;
 use crate::paint::{PixelPainter, RectF};
 use crate::popup::{Menu, MenuItem};
-use crate::primitives::line::LineRenderer;
+use crate::primitives::line::{Boosts, LineRenderer};
 use crate::primitives::{Quad, QuadBatch, QuadKind};
 use crate::scope::Scope;
 use crate::sections::{MenuOwner, Panel};
@@ -48,6 +49,20 @@ const NUM_WRAP_POINTS: usize = 8;
 const DRAW_POINTS: usize = RESOLUTION + LineGenerator::MAX_POINTS;
 const TOTAL_POINTS: usize = DRAW_POINTS + 2 * NUM_WRAP_POINTS;
 const PADDING_Y: f32 = 6.0;
+/// `LineMapEditor::kTailDecay`: a remap curve's boosts' decay each frame.
+const TAIL_DECAY: f32 = 0.93;
+/// `LfoEditor::kBoostDecay` and `kSpeedDecayMult`: an LFO's boosts decay by
+/// 1 less 5 times the phase moved since the last frame, at least to 0.9.
+const BOOST_DECAY: f32 = 0.9;
+const SPEED_DECAY_MULT: f32 = 5.0;
+/// `LfoEditor::render`'s `kBackupTime`: after a voice switch, the boost
+/// starts a fiftieth of a second of the LFO's travel back.
+const BACKUP_TIME: f32 = 1.0 / 50.0;
+/// `drawPosition`'s `kCenterFade`: the position ring's centre, faded
+/// towards the background.
+const CENTER_FADE: f32 = 0.2;
+/// `StatusOutput::kClearValue`.
+const CLEAR_VALUE: f32 = i32::MIN as f32;
 const POWER_MOUSE_MULTIPLIER: f32 = 9.0;
 const MIN_POINT_DISTANCE_FOR_POWER: f32 = 3.0;
 /// `SynthLfo::kMaxPower`.
@@ -119,6 +134,78 @@ pub enum LineTarget {
     /// the base `LineEditor` (`WaveLineSourceOverlay`). It always edits a
     /// keyframe's shape its section owns.
     LineSource(usize),
+}
+
+/// What animates a line editor (`LineTarget::animation`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Animation {
+    /// LFO `n`'s `lfo_{n+1}_phase` and `_frequency`, while it modulates
+    /// something (`isModSourceEnabled`).
+    Lfo(usize),
+    /// Slot `n`'s `modulation_source_{n+1}`, while its row is connected
+    /// (`setAnimate(rows_[selected_index_]->isActive())`).
+    Remap(usize),
+}
+
+/// One frame of an animated line, for the painter.
+#[derive(Clone, Debug)]
+struct Frame {
+    boosts: Boosts,
+    /// The positions to ring (`drawPosition`), left and right.
+    positions: Option<[f32; 2]>,
+    /// `LineMapEditor::render`'s animated branch draws the grid, points and
+    /// corners again over its line (`LineEditor::render(open_gl, false)`).
+    repeat: bool,
+    /// The left channel's line takes the left boosts (`drawLines(left)`):
+    /// always for a remap curve, only with a boost for an LFO
+    /// (`anyBoostValue()`).
+    left_boosts: bool,
+}
+
+/// What rebuilds the wave path: the shape's render count and the editor's
+/// size in pixels.
+type WrapKey = (u32, (i32, i32));
+
+/// `resetWavePath`'s boosts: when the path is rebuilt (the first time, after
+/// the shape renders again or the editor resizes), the wrap points take the
+/// boosts of the points they repeat, around the loop or at the ends.
+/// Between rebuilds they keep what they had, decaying with the rest
+/// (`setGlPositions` returns early unless `reset_positions_`).
+fn update_wrap_boosts(
+    renderer: &mut LineRenderer,
+    looping: bool,
+    key: WrapKey,
+    last: &mut Option<WrapKey>,
+) {
+    if *last == Some(key) {
+        return;
+    }
+    *last = Some(key);
+    for left in [true, false] {
+        for i in 0..NUM_WRAP_POINTS {
+            let (before, after) = if looping {
+                (DRAW_POINTS + i, NUM_WRAP_POINTS + i)
+            } else {
+                (NUM_WRAP_POINTS, NUM_WRAP_POINTS + DRAW_POINTS - 1)
+            };
+            renderer.set_boost_at(left, i, renderer.boost_at(left, before));
+            renderer.set_boost_at(
+                left,
+                i + DRAW_POINTS + NUM_WRAP_POINTS,
+                renderer.boost_at(left, after),
+            );
+        }
+    }
+}
+
+/// `adjustBoostPhase`: `phase` as a fraction along the drawn line, whose
+/// points are the resolution's and the shape's own.
+fn adjust_boost_phase(line: &LineGenerator, phase: f32) -> f32 {
+    let num_points = line.num_points();
+    let points_to_left = (0..num_points)
+        .find(|&i| line.point(i).0 >= phase)
+        .unwrap_or(num_points);
+    (phase * DRAW_POINTS as f32 + points_to_left as f32) / (DRAW_POINTS + num_points) as f32
 }
 
 /// The editor's menu (`mouseDown` with the popup menu).
@@ -199,6 +286,17 @@ impl LineTarget {
             LineTarget::Lfo(_) => scope.value(ValueId::WidgetFillCenter),
             LineTarget::Remap(_) => -1.0,
             LineTarget::LineSource(_) => 0.0,
+        }
+    }
+
+    /// What animates the target's line from the synth's status outputs:
+    /// an LFO's phase (`LfoEditor`), a remap curve's input
+    /// (`LineMapEditor`). A Line Source's line is still.
+    pub fn animation(self) -> Option<Animation> {
+        match self {
+            LineTarget::Lfo(lfo) => Some(Animation::Lfo(lfo)),
+            LineTarget::Remap(slot) => Some(Animation::Remap(slot)),
+            LineTarget::LineSource(_) => None,
         }
     }
 
@@ -297,6 +395,14 @@ struct LineState {
     entry: Option<PointEntry>,
     entry_text: String,
     entry_focus: bool,
+    /// The animated line's boosts, kept from frame to frame.
+    boosts: Boosts,
+    /// `last_phase_` and `last_voice_` (`LfoEditor`, `LineMapEditor`).
+    last_phase: [f32; 4],
+    last_voice: [f32; 4],
+    /// The shape's render count and the editor's size when the wave path
+    /// was last rebuilt (`reset_positions_`).
+    wrap_key: Option<WrapKey>,
 }
 
 impl Default for LineState {
@@ -318,6 +424,10 @@ impl Default for LineState {
             entry: None,
             entry_text: String::new(),
             entry_focus: false,
+            boosts: Boosts::default(),
+            last_phase: [0.0; 4],
+            last_voice: [-1.0; 4],
+            wrap_key: None,
         }
     }
 }
@@ -931,6 +1041,131 @@ impl LineEditor {
         panel.ui.data_mut(|data| data.insert_temp(id, state));
     }
 
+    /// One frame of the line's animation from the synth's status outputs,
+    /// or None to draw it still. Ports the state updates of
+    /// `LineMapEditor::render` and `LfoEditor::render`: the boosts decay,
+    /// the stretch the input or phase moved over since the last frame is
+    /// boosted, and the positions to ring are kept. Boosts decay per frame,
+    /// as upstream's do at its display's rate.
+    fn animate(
+        &self,
+        panel: &Panel,
+        line: &LineGenerator,
+        state: &mut LineState,
+        active: bool,
+        size: (i32, i32),
+    ) -> Option<Frame> {
+        let animation = self.target.animation()?;
+        let model = panel.host.model();
+        let telemetry = model.telemetry();
+        let read = |name: &str| {
+            telemetry
+                .as_ref()
+                .and_then(|telemetry| telemetry.read(|snapshot| snapshot.status_by_name(name)))
+        };
+        let clear = |value: &[f32; 4]| value.contains(&CLEAR_VALUE);
+        let mut renderer = LineRenderer::new(TOTAL_POINTS, false);
+        renderer.set_boosts(&state.boosts);
+        let frame = match animation {
+            Animation::Remap(slot) => {
+                if telemetry.is_none() || !active {
+                    renderer.decay_boosts(0.0, 0.0);
+                    None
+                } else {
+                    renderer.decay_boosts(TAIL_DECAY, TAIL_DECAY);
+                    let input = read(&format!("modulation_source_{}", slot + 1))
+                        .unwrap_or([CLEAR_VALUE; 4]);
+                    let shown = !clear(&input);
+                    if shown {
+                        for (channel, left) in [(0, true), (1, false)] {
+                            let adjusted = adjust_boost_phase(line, input[channel]);
+                            renderer.boost_range(
+                                left,
+                                state.last_phase[channel],
+                                adjusted,
+                                NUM_WRAP_POINTS,
+                                TAIL_DECAY,
+                            );
+                            state.last_phase[channel] = adjusted;
+                        }
+                    }
+                    Some(Frame {
+                        boosts: Boosts::default(),
+                        positions: shown.then_some([input[0], input[1]]),
+                        repeat: true,
+                        left_boosts: true,
+                    })
+                }
+            }
+            Animation::Lfo(lfo) => {
+                let name = format!("lfo_{}", lfo + 1);
+                let mut encoded = read(&format!("{name}_phase")).unwrap_or([CLEAR_VALUE; 4]);
+                let inactive = clear(&encoded);
+                if inactive {
+                    encoded = [0.0; 4];
+                }
+                let mut frequency = read(&format!("{name}_frequency")).unwrap_or([0.0; 4]);
+                if clear(&frequency) {
+                    frequency = [0.0; 4];
+                }
+                let (phase, voice) =
+                    sas_simd::poly_utils::decode_phase_and_voice(PolyFloat::from_array(encoded));
+                let (phase, voice) = (phase.to_array(), voice.to_array());
+                let decay: [f32; 4] = std::array::from_fn(|lane| {
+                    if inactive {
+                        BOOST_DECAY
+                    } else {
+                        let delta = (phase[lane] - state.last_phase[lane]).abs();
+                        (1.0 - delta * SPEED_DECAY_MULT).clamp(BOOST_DECAY, 1.0)
+                    }
+                });
+                renderer.decay_boosts(decay[0], decay[1]);
+                let switched: [bool; 4] =
+                    std::array::from_fn(|lane| voice[lane] != state.last_voice[lane] || inactive);
+                for lane in 0..4 {
+                    if switched[lane] {
+                        state.last_phase[lane] =
+                            (phase[lane] - frequency[lane] * BACKUP_TIME).max(0.0);
+                    }
+                }
+                let enabled = model.modulations().iter().any(|route| route.source == name);
+                let animating = telemetry.is_some() && enabled;
+                if animating {
+                    for (channel, left) in [(0, true), (1, false)] {
+                        renderer.boost_range(
+                            left,
+                            adjust_boost_phase(line, state.last_phase[channel]),
+                            adjust_boost_phase(line, phase[channel]),
+                            NUM_WRAP_POINTS,
+                            decay[channel],
+                        );
+                    }
+                } else {
+                    renderer.decay_boosts(0.0, 0.0);
+                }
+                state.last_phase = phase;
+                state.last_voice = voice;
+                animating.then(|| Frame {
+                    boosts: Boosts::default(),
+                    positions: (!switched.iter().any(|&s| s)).then_some([phase[0], phase[1]]),
+                    repeat: false,
+                    left_boosts: renderer.any_boost_value(),
+                })
+            }
+        };
+        update_wrap_boosts(
+            &mut renderer,
+            self.looping(),
+            (line.render_count(), size),
+            &mut state.wrap_key,
+        );
+        state.boosts = renderer.boosts();
+        frame.map(|frame| Frame {
+            boosts: state.boosts.clone(),
+            ..frame
+        })
+    }
+
     /// Sends the editor's copy to the synth if it changed.
     fn push(&self, panel: &Panel, state: &mut LineState) {
         if !state.pending {
@@ -1227,11 +1462,18 @@ impl LineEditor {
             self.push(panel, &mut state);
             state.line.clone().expect("set above")
         };
+        let frame = self.animate(
+            panel,
+            &line,
+            &mut state,
+            settings.active,
+            (bounds.width, bounds.height),
+        );
         panel
             .ui
             .data_mut(|data| data.insert_temp(id, state.clone()));
 
-        self.paint(panel, bounds, line, &state, settings, painting);
+        self.paint(panel, bounds, line, &state, settings, painting, frame);
         LineEditorEvent {
             painting,
             smooth,
@@ -1254,7 +1496,15 @@ impl LineEditor {
     ) {
         let state = self.state(panel);
         let painting = settings.paint != state.temporary_paint;
-        self.paint(panel, bounds, shape.clone(), &state, settings, painting);
+        self.paint(
+            panel,
+            bounds,
+            shape.clone(),
+            &state,
+            settings,
+            painting,
+            None,
+        );
     }
 
     /// `LfoEditor::mouseDown` with the popup menu, or a remap curve's
@@ -1500,6 +1750,7 @@ impl LineEditor {
     }
 
     /// `LfoEditor::render` at rest.
+    #[allow(clippy::too_many_arguments)]
     fn paint(
         &self,
         panel: &mut Panel,
@@ -1508,6 +1759,7 @@ impl LineEditor {
         state: &LineState,
         settings: LineSettings,
         painting: bool,
+        frame: Option<Frame>,
     ) {
         let scope: Scope = panel.scope;
         let size_ratio = scope.size_ratio();
@@ -1541,6 +1793,8 @@ impl LineEditor {
         let stereo = self.target.stereo();
         let rounding = scope.value(ValueId::WidgetRoundedCorner);
         let body = scope.color(ColorId::Body);
+        let line_boost = scope.value(ValueId::WidgetLineBoost);
+        let fill_boost = scope.value(ValueId::WidgetFillBoost);
         let state = state.clone();
         let (grid_x, grid_y) = (settings.grid_size_x, settings.grid_size_y);
 
@@ -1590,9 +1844,11 @@ impl LineEditor {
                     lighten,
                 ));
             }
-            grid.paint(pixels, clip);
+            grid.clone().paint(pixels, clip);
 
             // The line: the right channel's fill, the left's, the centre.
+            // Animated, the fills take the boosts (`setBoostAmount`,
+            // `setFillBoostAmount`) and the centre doesn't.
             let mut renderer = LineRenderer::new(TOTAL_POINTS, false);
             renderer.line_width = line_width;
             renderer.fill_center = fill_center;
@@ -1600,11 +1856,20 @@ impl LineEditor {
                 renderer.set_x_at(i, x);
                 renderer.set_y_at(i, y);
             }
+            let left_boosts = frame.as_ref().is_none_or(|frame| frame.left_boosts);
+            if let Some(frame) = &frame {
+                renderer.set_boosts(&frame.boosts);
+                renderer.boost_amount = line_boost;
+                renderer.fill_boost_amount = fill_boost;
+            }
             renderer.fill = true;
             let channels: &[_] = if stereo {
-                &[(line_right, fill_right), (line_left, fill_left)]
+                &[
+                    (line_right, fill_right, frame.is_none()),
+                    (line_left, fill_left, left_boosts),
+                ]
             } else {
-                &[(line_left, fill_left)]
+                &[(line_left, fill_left, left_boosts)]
             };
             // The base editor's fill meets its centre on a row boundary at
             // odd heights; nudged down a hundredth of a pixel, as the
@@ -1614,15 +1879,44 @@ impl LineEditor {
             if !stereo {
                 nudged.y += 0.01;
             }
-            for &(colour, fill) in channels {
+            for &(colour, fill, left) in channels {
                 renderer.color = colour;
                 renderer.set_fill_colors(fill.with_multiplied_alpha(1.0 - fill_fade), fill);
-                renderer.paint(pixels, nudged, true);
+                renderer.paint(pixels, nudged, left);
             }
+            let repeat = frame.as_ref().is_some_and(|frame| frame.repeat);
             if stereo {
                 renderer.fill = false;
+                renderer.boost_amount = 0.0;
+                renderer.fill_boost_amount = 0.0;
+                if repeat {
+                    grid.paint(pixels, clip);
+                }
                 renderer.color = center;
-                renderer.paint(pixels, clip, true);
+                renderer.paint(pixels, clip, left_boosts);
+            }
+
+            // drawPosition: a ring where the input or phase is, right then
+            // left, its centre faded towards the background.
+            let mut positions = QuadBatch::new();
+            if let Some([left, right]) = frame.as_ref().and_then(|frame| frame.positions) {
+                for (colour, x) in [(line_right, right), (line_left, left)] {
+                    if x == 0.0 {
+                        continue;
+                    }
+                    let value = line.value_at_phase(x);
+                    let mut ring = Quad::new(
+                        QuadKind::Ring,
+                        centred(
+                            (width * x, g.pad_y(height * (1.0 - value))),
+                            size_ratio * POSITION_WIDTH,
+                        ),
+                        colour,
+                    );
+                    ring.alt_color = colour.interpolated_with(background, CENTER_FADE);
+                    ring.thickness = size_ratio * POSITION_WIDTH * RING_THICKNESS * 0.5;
+                    positions.push(ring);
+                }
             }
 
             // renderPoints.
@@ -1683,6 +1977,13 @@ impl LineEditor {
             for corner in Quad::corners(clip, rounding, body) {
                 markers.push(corner);
             }
+            // LfoEditor draws the positions under its points;
+            // LineMapEditor's animated branch draws its points and corners,
+            // then the positions, then the points and corners again.
+            if repeat {
+                markers.clone().paint(pixels, clip);
+            }
+            positions.paint(pixels, clip);
             markers.paint(pixels, clip);
         });
     }
@@ -1858,5 +2159,63 @@ mod tests {
                 .any(|edit| matches!(edit, PointEdit::ManyAdded { .. })),
             "{edits:?}"
         );
+    }
+
+    /// `adjustBoostPhase`: a phase as a fraction along the drawn line, the
+    /// shape's points counted among the resolution's.
+    #[test]
+    fn boost_phases_count_the_shapes_points() {
+        let line = triangle();
+        let n = line.num_points() as f32;
+        let d = DRAW_POINTS as f32;
+        assert_eq!(adjust_boost_phase(&line, 0.0), 0.0);
+        // Past the first point, at the second (0.5).
+        assert_eq!(adjust_boost_phase(&line, 0.25), (0.25 * d + 1.0) / (d + n));
+        assert_eq!(adjust_boost_phase(&line, 0.5), (0.5 * d + 1.0) / (d + n));
+        assert_eq!(adjust_boost_phase(&line, 1.0), (d + 2.0) / (d + n));
+    }
+
+    /// The boosts carry to the next frame's renderer, and a renderer of
+    /// another size starts with none.
+    #[test]
+    fn boosts_carry_from_frame_to_frame() {
+        let mut first = LineRenderer::new(TOTAL_POINTS, false);
+        first.boost_range(true, 0.0, 0.5, NUM_WRAP_POINTS, TAIL_DECAY);
+        assert!(first.any_boost_value());
+        let boosts = first.boosts();
+        let mut next = LineRenderer::new(TOTAL_POINTS, false);
+        next.set_boosts(&boosts);
+        assert_eq!(next.boosts(), boosts);
+        assert!(next.any_boost_value());
+        let mut other = LineRenderer::new(TOTAL_POINTS + 1, false);
+        other.set_boosts(&boosts);
+        assert!(!other.any_boost_value());
+    }
+
+    /// The wrap points take the edge's boosts only when the wave path is
+    /// rebuilt (`resetWavePath` under `reset_positions_`); between rebuilds
+    /// a boost at the loop's edge leaves them unboosted, and they decay.
+    #[test]
+    fn wrap_points_take_boosts_only_when_the_path_is_rebuilt() {
+        let mut renderer = LineRenderer::new(TOTAL_POINTS, false);
+        let mut last = None;
+        // The first frame rebuilds the path; nothing is boosted yet.
+        update_wrap_boosts(&mut renderer, true, (1, (100, 50)), &mut last);
+        // Boost the start of the loop, which the end's wrap points repeat.
+        renderer.boost_range(true, 0.0, 0.05, NUM_WRAP_POINTS, TAIL_DECAY);
+        let edge = NUM_WRAP_POINTS;
+        let wrap = edge + DRAW_POINTS;
+        assert!(renderer.boost_at(true, edge) > 0.0);
+        update_wrap_boosts(&mut renderer, true, (1, (100, 50)), &mut last);
+        assert_eq!(renderer.boost_at(true, wrap), 0.0);
+        // The shape renders again: the path is rebuilt and the wrap copies.
+        update_wrap_boosts(&mut renderer, true, (2, (100, 50)), &mut last);
+        assert_eq!(renderer.boost_at(true, wrap), renderer.boost_at(true, edge));
+        // A curve that doesn't loop repeats its ends instead.
+        let mut ends = LineRenderer::new(TOTAL_POINTS, false);
+        let mut last = None;
+        ends.boost_range(true, 0.0, 0.05, NUM_WRAP_POINTS, TAIL_DECAY);
+        update_wrap_boosts(&mut ends, false, (1, (100, 50)), &mut last);
+        assert_eq!(ends.boost_at(true, 0), ends.boost_at(true, NUM_WRAP_POINTS));
     }
 }
