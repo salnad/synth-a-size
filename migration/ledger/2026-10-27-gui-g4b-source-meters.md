@@ -18,9 +18,9 @@
     shader sizes.
   - Readouts come from the telemetry snapshot's status outputs. Without an
     engine nothing draws.
-  - Upstream smooths every source each frame. The port smooths only the
-    buttons drawn that frame, so a hidden source's copy waits until it shows
-    again.
+  - As upstream, every source's readout is read, snapped and smoothed
+    each frame, whether or not its button is drawn, so a button that
+    appears after a tab switch starts from the caught-up copy.
 - **Editing amount overlay** (`showModulationAmountOverlay`,
   `setAmountQuadVertices`, `setModulationAmountQuad`). The range a
   connection sweeps, drawn on its destination's meter in `kModulationMeter`.
@@ -61,6 +61,9 @@
     snapped first frame, lane order and colours, no bar for an unconnected
     source, the smoothing step and the span it draws, and a clear value
     hiding it.
+  - `a_source_not_drawn_is_still_smoothed`: a hidden LFO 1 snaps, then
+    follows its value for three frames; when its button shows, the bar
+    spans the value and the caught-up copy.
 - **Checks.** `cargo clippy --workspace --all-targets -D warnings` passes,
   as do the `sas-gui` and `sas-plugin` tests, `gui_reference.py layout
   --check` and `ledger.py --check`.

@@ -65,6 +65,17 @@ const TIME_DECAY_SCALE: f32 = 60.0;
 /// `Processor::kClearValue`: a status output with nothing to show.
 const CLEAR_VALUE: f32 = i32::MIN as f32;
 
+/// Every modulation source's name (`modulation_buttons_`' keys).
+fn source_names() -> &'static [&'static str] {
+    static NAMES: OnceLock<Vec<&'static str>> = OnceLock::new();
+    NAMES.get_or_init(|| {
+        sas_preset::engine::modulation_sources()
+            .into_iter()
+            .map(|name| &*Box::leak(name.into_boxed_str()))
+            .collect()
+    })
+}
+
 /// `Colour::getBrightness`: the largest component.
 fn brightness(colour: Colour) -> f32 {
     colour.red().max(colour.green()).max(colour.blue()) as f32 / 255.0
@@ -806,12 +817,18 @@ impl ModulationManager {
         let Some(telemetry) = host.model().telemetry() else {
             return;
         };
-        let readouts: Vec<(&'static str, Rect, [f32; 4])> = telemetry.read(|snapshot| {
-            self.sources
+        // Every source's readout, drawn or not (`modulation_source_readouts_`).
+        let readouts: Vec<(&'static str, Option<Rect>, [f32; 4])> = telemetry.read(|snapshot| {
+            source_names()
                 .iter()
-                .filter_map(|button| {
-                    let value = snapshot.status_by_name(button.name)?;
-                    Some((button.name, button.bounds, value))
+                .filter_map(|&name| {
+                    let value = snapshot.status_by_name(name)?;
+                    let bounds = self
+                        .sources
+                        .iter()
+                        .find(|button| button.name == name)
+                        .map(|button| button.bounds);
+                    Some((name, bounds, value))
                 })
                 .collect()
         });
@@ -832,12 +849,13 @@ impl ModulationManager {
         }
     }
 
-    /// The source meters' bars for `readouts` (each drawn source's name,
-    /// button bounds and status value) in an editor `full` big, right lane
-    /// first, then the smoothing step at time `now` (seconds).
+    /// The source meters' bars for `readouts` (each source's name, its
+    /// button's bounds if drawn this frame, and its status value) in an
+    /// editor `full` big, right lane first, then the smoothing step at time
+    /// `now` (seconds). Every source is smoothed, drawn or not.
     fn source_meter_bars(
         &mut self,
-        readouts: &[(&'static str, Rect, [f32; 4])],
+        readouts: &[(&'static str, Option<Rect>, [f32; 4])],
         full: RectF,
         colours: [Colour; 2],
         now: f64,
@@ -856,6 +874,10 @@ impl ModulationManager {
                     smooth[lane] = clamped;
                 }
                 let smooth_value = smooth[lane];
+                // showingInParents(button).
+                let Some(bounds) = bounds else {
+                    continue;
+                };
 
                 let meter =
                     crate::controls::modulation_button::meter_bounds(bounds.width, bounds.height);
@@ -1636,7 +1658,12 @@ mod tests {
         }
         let full = RectF::new(0.0, 0.0, 1000.0, 800.0);
         let colours = [Colour(0xff112233), Colour(0xff445566)];
-        let readouts = |lfo_1: [f32; 4]| [("lfo_1", bounds, lfo_1), ("lfo_2", bounds, [0.5; 4])];
+        let readouts = |lfo_1: [f32; 4]| {
+            [
+                ("lfo_1", Some(bounds), lfo_1),
+                ("lfo_2", Some(bounds), [0.5; 4]),
+            ]
+        };
 
         // The first frame snaps the smoothed copy: one bar around the value.
         let lanes =
@@ -1671,6 +1698,55 @@ mod tests {
         let lanes =
             manager.source_meter_bars(&readouts([CLEAR_VALUE; 4]), full, colours, 2.0 / 60.0);
         assert!(lanes.iter().all(|(_, bars)| bars.is_empty()));
+    }
+
+    /// Upstream smooths every source each frame, shown or not, so a button
+    /// that appears (after a tab switch) starts from the caught-up copy
+    /// instead of a stale one.
+    #[test]
+    fn a_source_not_drawn_is_still_smoothed() {
+        use super::{SourceButton, SOURCE_METER_BUFFER, SOURCE_METER_MIN_RADIUS};
+        use crate::colour::Colour;
+        use crate::layout::Rect;
+        use crate::paint::RectF;
+
+        let routes: Arc<[Route]> = Arc::new([Route {
+            slot: 0,
+            source: "lfo_1".into(),
+            destination: "osc_1_level".into(),
+        }]);
+        let mut manager = ModulationManager::default();
+        manager.begin_frame(routes, 0);
+        let bounds = Rect::new(100, 200, 80, 50);
+        let full = RectF::new(0.0, 0.0, 1000.0, 800.0);
+        let colours = [Colour(0xff112233), Colour(0xff445566)];
+        let frame = 1.0 / 60.0;
+
+        // Hidden: the copy snaps to 0.75, then follows 0.25 for three frames.
+        let hidden = [("lfo_1", None, [0.75, 0.75, 0.0, 0.0])];
+        let lanes = manager.source_meter_bars(&hidden, full, colours, 0.0);
+        assert!(lanes.iter().all(|(_, bars)| bars.is_empty()));
+        let hidden = [("lfo_1", None, [0.25, 0.25, 0.0, 0.0])];
+        let mut expected = 0.75;
+        for step in 1..=3 {
+            manager.source_meter_bars(&hidden, full, colours, step as f64 * frame);
+            expected += 0.25 * (0.25 - expected);
+            assert!((manager.smooth["lfo_1"][0] - expected).abs() < 1e-5);
+        }
+
+        // Shown: the bar spans the value and the caught-up copy.
+        manager.sources.push(SourceButton {
+            name: "lfo_1",
+            bounds,
+            area: bounds,
+        });
+        let shown = [("lfo_1", Some(bounds), [0.25, 0.25, 0.0, 0.0])];
+        let lanes = manager.source_meter_bars(&shown, full, colours, 4.0 * frame);
+        let meter = crate::controls::modulation_button::meter_bounds(80, 50);
+        let h = 2.0 * meter.height as f32 / 800.0 - 2.0 * SOURCE_METER_BUFFER;
+        let span = h * (expected - 0.25) + 2.0 * SOURCE_METER_MIN_RADIUS;
+        let bar = lanes[1].1[0].rect;
+        assert!((bar.height - span * 0.5 * 800.0).abs() < 1e-2, "{bar:?}");
     }
 
     /// `renderMeters`' value for each modulated control: the mono total,
