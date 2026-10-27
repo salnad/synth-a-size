@@ -892,6 +892,22 @@ MCP server) extends this entry when it lands.*
   audio, spliced, as the oscillator does
   (`popup_browser::editor_load_wavetable_file`).
 - **Why:** a file the browser offers should load, as in D1 and D19.
+
+### D37. The remap strip names the selected row's curve
+
+- **Differs:** the name in the Matrix tab's LFO file strip, above the remap
+  editor, after selecting another row.
+- **Upstream:** `preset_selector_` is set only when a file loads
+  (`loadFile`, `exportLfo`, `fileLoaded`). `rowSelected` changes the
+  editor shown but not the strip, so after a load the strip keeps that
+  file's name on every row, whatever curve the row has. It starts as
+  "Linear".
+- **Port:** the strip shows the name of the curve the editor shows: the
+  selected row's (`lfo::show_line_controls`, the same as the LFO
+  sections).
+- **Why:** the strip then describes the curve below it, as D34 does for the
+  same kind of name. Upstream's stale name can label a row with a file
+  that was loaded into another row.
 - **Approved:** coordinator, 2026-10-27.
 
 ## Verification exceptions
