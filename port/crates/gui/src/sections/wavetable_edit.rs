@@ -337,6 +337,52 @@ impl WavetableEditLayout {
     }
 }
 
+/// The component overlays (`WavetableOverlayFactory::createOverlay`), by
+/// the type of the component whose keyframe they edit. An overlay is added
+/// as a variant here, with its arms in [`OverlayKind::of`] and
+/// [`OverlayKind::obscures`] and in the section's `overlay_input`,
+/// `paint_overlay` and `show_overlay`; the section draws the current one
+/// twice around its displays, as upstream does, and fades the displays it
+/// covers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OverlayKind {
+    /// A `WaveSourceOverlay`, for a Wave Source (0) or a Shepard Tone
+    /// source (1): the index of the section's overlay state.
+    WaveSource(usize),
+}
+
+impl OverlayKind {
+    /// The overlay for `component`'s keyframes, if it has one yet.
+    pub fn of(component: &WavetableComponent) -> Option<OverlayKind> {
+        match component {
+            WavetableComponent::WaveSource(_) => Some(OverlayKind::WaveSource(0)),
+            WavetableComponent::ShepardToneSource(_) => Some(OverlayKind::WaveSource(1)),
+            _ => None,
+        }
+    }
+
+    /// The displays the overlay covers (`setTimeDomainBounds`,
+    /// `setFrequencyAmplitudeBounds` and `setPhaseBounds` returning true),
+    /// which fade (`obscure_time_domain_` and the rest).
+    pub fn obscures(self) -> Obscured {
+        match self {
+            OverlayKind::WaveSource(_) => Obscured {
+                time_domain: true,
+                amplitudes: true,
+                phases: true,
+            },
+        }
+    }
+}
+
+/// Which of the editor's displays an overlay covers.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Obscured {
+    pub time_domain: bool,
+    pub amplitudes: bool,
+    pub phases: bool,
+}
+
 /// Where a keyframe is in the creator (upstream's `WavetableKeyframe*`).
 pub type KeyframeRef = KeyframeIndex;
 
@@ -687,10 +733,9 @@ impl WavetableEditSection {
             .wavetable(self.oscillator)
             .as_deref()
             .map(|wavetable| frame_samples(wavetable, self.playhead));
-        let overlay = self.wave_source_overlay();
+        let overlay = self.current_overlay();
         if let Some((kind, keyframe)) = overlay {
-            self.apply_interpolation(panel, kind, keyframe);
-            self.edit_wave_source(panel, layout, kind, keyframe);
+            self.overlay_input(panel, layout, kind, keyframe);
         }
         // The displays show the frame under the playhead as drawn.
         let frame = model
@@ -698,25 +743,15 @@ impl WavetableEditSection {
             .as_deref()
             .map(|wavetable| frame_samples(wavetable, self.playhead))
             .or(frame);
-        let overlay_layout = OverlayLayout::wave_source(&panel.scope, layout);
+        // The current overlay draws twice, before and after the displays
+        // (see `wave_source_overlay`'s module docs).
         if let Some((kind, keyframe)) = overlay {
-            paint_wave_source_overlay(
-                panel,
-                layout,
-                &overlay_layout,
-                &self.wave_source[kind],
-                self.wave_frame(keyframe),
-            );
+            self.paint_overlay(panel, layout, kind, keyframe);
         }
-        self.show_displays(panel, layout, frame.as_ref(), overlay.is_some());
+        let obscured = overlay.map_or(Obscured::default(), |(kind, _)| kind.obscures());
+        self.show_displays(panel, layout, frame.as_ref(), obscured);
         if let Some((kind, keyframe)) = overlay {
-            show_wave_source_overlay(
-                panel,
-                layout,
-                &overlay_layout,
-                &self.wave_source[kind],
-                self.wave_frame(keyframe),
-            );
+            self.show_overlay(panel, layout, kind, keyframe);
         }
         // renderCorners, after the overlay.
         for display in [layout.waveform, layout.amplitudes, layout.phases] {
@@ -1475,10 +1510,10 @@ impl WavetableEditSection {
         }
     }
 
-    /// The Wave Source overlay to show, if the overlays' keyframe is a
-    /// Wave Source's (0) or a Shepard Tone source's (1), with that keyframe
-    /// (`frameSelected`, `WavetableOverlayFactory::setOverlayOwner`).
-    fn wave_source_overlay(&self) -> Option<(usize, KeyframeRef)> {
+    /// The overlay to show, if any, with the keyframe it edits: the
+    /// overlay for the type of the component whose keyframe the overlays
+    /// last heard of (`frameSelected`, `WavetableOverlayFactory`).
+    fn current_overlay(&self) -> Option<(OverlayKind, KeyframeRef)> {
         let keyframe = self.overlay_frame?;
         let component = self
             .creator()?
@@ -1486,10 +1521,63 @@ impl WavetableEditSection {
             .get(keyframe.group)?
             .components
             .get(keyframe.component)?;
-        match component {
-            WavetableComponent::WaveSource(_) => Some((0, keyframe)),
-            WavetableComponent::ShepardToneSource(_) => Some((1, keyframe)),
-            _ => None,
+        Some((OverlayKind::of(component)?, keyframe))
+    }
+
+    /// The current overlay's controls and editors, before anything draws.
+    fn overlay_input(
+        &mut self,
+        panel: &mut Panel,
+        layout: &WavetableEditLayout,
+        kind: OverlayKind,
+        keyframe: KeyframeRef,
+    ) {
+        match kind {
+            OverlayKind::WaveSource(index) => {
+                self.apply_interpolation(panel, index, keyframe);
+                self.edit_wave_source(panel, layout, index, keyframe);
+            }
+        }
+    }
+
+    /// The current overlay's first drawing, before the displays (upstream's
+    /// sub-section render).
+    fn paint_overlay(
+        &self,
+        panel: &mut Panel,
+        layout: &WavetableEditLayout,
+        kind: OverlayKind,
+        keyframe: KeyframeRef,
+    ) {
+        match kind {
+            OverlayKind::WaveSource(index) => paint_wave_source_overlay(
+                panel,
+                layout,
+                &OverlayLayout::wave_source(&panel.scope, layout),
+                &self.wave_source[index],
+                self.wave_frame(keyframe),
+            ),
+        }
+    }
+
+    /// The current overlay's second drawing, after the displays
+    /// (`renderOpenGlComponents`' render of `current_overlay_`), which also
+    /// handles its controls.
+    fn show_overlay(
+        &self,
+        panel: &mut Panel,
+        layout: &WavetableEditLayout,
+        kind: OverlayKind,
+        keyframe: KeyframeRef,
+    ) {
+        match kind {
+            OverlayKind::WaveSource(index) => show_wave_source_overlay(
+                panel,
+                layout,
+                &OverlayLayout::wave_source(&panel.scope, layout),
+                &self.wave_source[index],
+                self.wave_frame(keyframe),
+            ),
         }
     }
 
@@ -1562,7 +1650,7 @@ impl WavetableEditSection {
         part: WaveSourcePart,
         choice: i32,
     ) {
-        let Some((current, keyframe)) = self.wave_source_overlay() else {
+        let Some((OverlayKind::WaveSource(current), keyframe)) = self.current_overlay() else {
             return;
         };
         if current != kind {
@@ -1631,38 +1719,42 @@ impl WavetableEditSection {
     }
 
     /// The three displays of the frame under the playhead
-    /// (`updateTimeDomain`, `updateFrequencyDomain`, `setColors`), faded
-    /// when an overlay covers them (`kObscureAmount`).
+    /// (`updateTimeDomain`, `updateFrequencyDomain`, `setColors`), each
+    /// faded while an overlay covers it (`kObscureAmount`).
     fn show_displays(
         &self,
         panel: &mut Panel,
         layout: &WavetableEditLayout,
         frame: Option<&[f32; WAVEFORM_SIZE]>,
-        obscured: bool,
+        obscured: Obscured,
     ) {
         let scope = &panel.scope;
-        let mut primary = scope.color(ColorId::WidgetPrimaryDisabled);
-        let mut secondary = scope.color(ColorId::WidgetSecondaryDisabled);
-        if obscured {
-            primary = primary.interpolated_with(primary.with_alpha(0), OBSCURE_AMOUNT);
-            secondary = secondary.interpolated_with(secondary.with_alpha(0), OBSCURE_AMOUNT);
-        }
+        let primary = scope.color(ColorId::WidgetPrimaryDisabled);
+        let secondary = scope.color(ColorId::WidgetSecondaryDisabled);
+        let fade = |colour: crate::colour::Colour, obscure: bool| {
+            if obscure {
+                colour.interpolated_with(colour.with_alpha(0), OBSCURE_AMOUNT)
+            } else {
+                colour
+            }
+        };
         let fade_alpha = 1.0 - scope.value(ValueId::WidgetFillFade);
 
         let mut waveform = LineRenderer::new(WAVEFORM_SIZE, false);
         waveform.fill = true;
         waveform.fit = true;
         waveform.line_width = scope.value(ValueId::WidgetLineWidth);
-        waveform.color = primary;
-        waveform.set_fill_colors(secondary.with_multiplied_alpha(fade_alpha), secondary);
+        waveform.color = fade(primary, obscured.time_domain);
+        let fill = fade(secondary, obscured.time_domain);
+        waveform.set_fill_colors(fill.with_multiplied_alpha(fade_alpha), fill);
         let mut amplitudes = BarRenderer::new(NUM_REAL_COMPLEX, true);
         amplitudes.square_scale = true;
         amplitudes.power_scale = self.power_scale;
         amplitudes.scale = self.zoom;
-        amplitudes.color = secondary;
+        amplitudes.color = fade(secondary, obscured.amplitudes);
         let mut phases = BarRenderer::new(NUM_REAL_COMPLEX, true);
         phases.scale = self.zoom;
-        phases.color = secondary;
+        phases.color = fade(secondary, obscured.phases);
 
         // `resized` and `setLineValues`: the points in the display's pixels.
         let width = layout.waveform.width as f32;
@@ -2456,6 +2548,29 @@ mod tests {
                 ("Line Source", 3, vec![64]),
             ]
         );
+    }
+
+    /// Wave Sources and Shepard Tone sources get the two Wave Source
+    /// overlays, covering every display; other components have no overlay
+    /// yet.
+    #[test]
+    fn components_map_to_their_overlays() {
+        let overlay = |kind| OverlayKind::of(&WavetableComponent::new(kind));
+        assert_eq!(
+            overlay(ComponentType::WaveSource),
+            Some(OverlayKind::WaveSource(0))
+        );
+        assert_eq!(
+            overlay(ComponentType::ShepardToneSource),
+            Some(OverlayKind::WaveSource(1))
+        );
+        assert_eq!(overlay(ComponentType::LineSource), None);
+        let all = Obscured {
+            time_domain: true,
+            amplitudes: true,
+            phases: true,
+        };
+        assert_eq!(OverlayKind::WaveSource(0).obscures(), all);
     }
 
     #[test]
