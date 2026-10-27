@@ -863,6 +863,22 @@ MCP server) extends this entry when it lands.*
   still shrink the window.
 - **Approved:** coordinator, 2026-10-26.
 
+### D31. No factory wavetables
+
+- **Differs:** the wavetables the oscillator's and the wavetable editor's
+  browsers and arrows offer.
+- **Upstream:** the factory content installer puts upstream's wavetables in
+  a factory folder inside the data folder, beside the user's; the browsers
+  list every bank's Wavetables folder (`LoadSave::getWavetableDirectories`),
+  so the factory tables are listed and stepped through with the user's.
+- **Port:** no factory wavetables ship, and there is no installer. The
+  browsers and arrows list the user's wavetables, any bank folders in the
+  data folder (an upstream data folder with its factory content included),
+  and added folders.
+- **Why:** the port ships no factory content (migration/AGENTS.md rule 3),
+  and the downloader isn't ported (D26).
+- **Approved:** pending.
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change

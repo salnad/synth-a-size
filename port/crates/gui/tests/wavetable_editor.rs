@@ -8,6 +8,7 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -25,12 +26,15 @@ use sas_gui::layout::{FullLayout, Rect};
 use sas_gui::local::WAVE_SOURCE_CONTROLS;
 use sas_gui::scope::Scope;
 use sas_gui::sections::oscillator::{self, OscillatorLayout};
+use sas_gui::sections::popup_browser::{self, PopupBrowserLayout};
+use sas_gui::sections::selection_list::Selection;
 use sas_gui::sections::synthesis::SynthesisLayout;
 use sas_gui::sections::wave_source_overlay::OverlayLayout;
 use sas_gui::sections::wavetable_edit::{KeyframeRef, WavetableEditLayout};
-use sas_gui::skin::Skin;
+use sas_gui::skin::{Skin, ValueId};
 use sas_gui::{EditorModel, Host, HostParam, Interface, OpenGestures, Tab};
 use sas_preset::registry::registry;
+use sas_preset::user_folders::Kind;
 
 /// Every registry control, and a wavetable creator per oscillator.
 struct Synth {
@@ -40,6 +44,12 @@ struct Synth {
     generation: AtomicU64,
     /// How many edits the editor committed.
     commits: AtomicU64,
+    data_directory: Mutex<Option<PathBuf>>,
+    added_folders: Mutex<Vec<PathBuf>>,
+    /// Each oscillator's last file loaded (`getLastFileLoaded`).
+    last_files: Mutex<[Option<PathBuf>; 3]>,
+    /// The wavetables loaded, by file name.
+    loads: Mutex<Vec<String>>,
 }
 
 impl Synth {
@@ -69,6 +79,10 @@ impl Synth {
             revision: AtomicU64::new(0),
             generation: AtomicU64::new(0),
             commits: AtomicU64::new(0),
+            data_directory: Mutex::new(None),
+            added_folders: Mutex::new(Vec::new()),
+            last_files: Mutex::default(),
+            loads: Mutex::new(Vec::new()),
         })
     }
 
@@ -116,6 +130,35 @@ impl EditorModel for Synth {
 
     fn preset_generation(&self) -> u64 {
         self.generation.load(Ordering::Relaxed)
+    }
+
+    fn data_directory(&self) -> Option<PathBuf> {
+        self.data_directory.lock().unwrap().clone()
+    }
+
+    fn additional_folders(&self, kind: Kind) -> Vec<PathBuf> {
+        match kind {
+            Kind::Wavetables => self.added_folders.lock().unwrap().clone(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn load_wavetable_json(&self, oscillator: usize, json: &str) -> bool {
+        let data = sas_common::json::parse(json).unwrap();
+        let name = data.get("name").unwrap().to_str().unwrap().to_string();
+        self.loads
+            .lock()
+            .unwrap()
+            .push(format!("{oscillator} {name}"));
+        true
+    }
+
+    fn last_wavetable_file(&self, oscillator: usize) -> Option<PathBuf> {
+        self.last_files.lock().unwrap()[oscillator].clone()
+    }
+
+    fn set_last_wavetable_file(&self, oscillator: usize, file: PathBuf) {
+        self.last_files.lock().unwrap()[oscillator] = Some(file);
     }
 }
 
@@ -860,4 +903,120 @@ fn a_list_edit_reselects_a_boxed_keyframe() {
     );
     assert_eq!(fixture.selected(0), [FIRST]);
     assert_eq!(fixture.overlay_frame(0), Some(FIRST));
+}
+
+/// The gear over the amplitudes opens upstream's bar editor menu, which
+/// sets the amplitudes' scale and the frequency displays' zoom
+/// (`barViewerCallback`).
+#[test]
+fn the_gear_menu_sets_the_scale_and_the_zoom() {
+    let fixture = Fixture::new();
+    let mut harness = opened(&fixture);
+    let settings = fixture.editor_layout().settings;
+    let below = Pos2::new(settings.x as f32, settings.bottom() as f32);
+    let state = |fixture: &Fixture| {
+        let interface = fixture.interface.borrow();
+        let section = interface.wavetable_edit_section(0);
+        (section.power_scale(), section.zoom())
+    };
+    // The section starts on the power scale at 8x (`zoom_(8)`).
+    assert_eq!(state(&fixture), (true, 8.0));
+    click(&mut harness, centre(settings));
+    choose_row(&mut harness, below, 1);
+    assert_eq!(state(&fixture), (false, 8.0));
+    click(&mut harness, centre(settings));
+    // Power Scale, Amplitude Scale, a divider, then Zoom 1x to 16x.
+    choose_row(&mut harness, below, 4);
+    assert_eq!(state(&fixture), (false, 2.0));
+    click(&mut harness, centre(settings));
+    choose_row(&mut harness, below, 7);
+    assert_eq!(state(&fixture), (false, 16.0));
+    click(&mut harness, centre(settings));
+    choose_row(&mut harness, below, 0);
+    assert_eq!(state(&fixture), (true, 16.0));
+    assert!(fixture.recorder.log.lock().unwrap().is_empty());
+}
+
+/// A data folder with two wavetables, and an added folder with a third.
+fn wavetable_folders(fixture: &Fixture, tag: &str) -> PathBuf {
+    let root = std::env::temp_dir().join(format!("sas-editor-tables-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    for file in [
+        "Data/Wavetables/Alpha.vitaltable",
+        "Data/Wavetables/Beta.vitaltable",
+        "Added/Gamma.vitaltable",
+    ] {
+        let path = root.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, r#"{"version":"1.0.0","name":"Inside","groups":[]}"#).unwrap();
+    }
+    *fixture.synth.data_directory.lock().unwrap() = Some(root.join("Data"));
+    *fixture.synth.added_folders.lock().unwrap() = vec![root.join("Added")];
+    root
+}
+
+fn loads(fixture: &Fixture) -> Vec<String> {
+    std::mem::take(&mut *fixture.synth.loads.lock().unwrap())
+}
+
+/// The name's arrows load the wavetable before or after the creator's last
+/// file among the user's and the added folders' (`prevClicked`,
+/// `nextClicked`, `getShiftedFile`), the first with none.
+#[test]
+fn the_editor_arrows_step_from_the_last_file() {
+    let fixture = Fixture::new();
+    let root = wavetable_folders(&fixture, "arrows");
+    let mut harness = opened(&fixture);
+    let preset = fixture.editor_layout().preset;
+    click(&mut harness, centre(preset.next));
+    assert_eq!(loads(&fixture), ["0 Gamma"]);
+    click(&mut harness, centre(preset.next));
+    assert_eq!(loads(&fixture), ["0 Alpha"]);
+    click(&mut harness, centre(preset.previous));
+    assert_eq!(loads(&fixture), ["0 Gamma"]);
+    assert_eq!(
+        fixture.synth.last_wavetable_file(0),
+        Some(root.join("Added/Gamma.vitaltable"))
+    );
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+/// A press on the name opens the popup browser for the oscillator's
+/// wavetables below it (`textMouseDown`), listing the user's and the added
+/// folders' with the last file selected; a file chosen in it loads.
+#[test]
+fn the_editor_name_opens_the_browser() {
+    let fixture = Fixture::new();
+    let root = wavetable_folders(&fixture, "browser");
+    fixture
+        .synth
+        .set_last_wavetable_file(0, root.join("Data/Wavetables/Beta.vitaltable"));
+    let mut harness = opened(&fixture);
+    let preset = fixture.editor_layout().preset;
+    click(&mut harness, centre(preset.text));
+    let (folders, files) = fixture.interface.borrow().popup_browser_rows().unwrap();
+    assert!(folders.contains(&Selection::Path(root.join("Added"))));
+    assert_eq!(
+        files,
+        [
+            Selection::Path(root.join("Added/Gamma.vitaltable")),
+            Selection::Path(root.join("Data/Wavetables/Alpha.vitaltable")),
+            Selection::Path(root.join("Data/Wavetables/Beta.vitaltable")),
+        ]
+    );
+
+    let layout = fixture.layout();
+    let top = Scope::top(&fixture.skin, layout.size_ratio);
+    let padding = top.within(popup_browser::SKIN).value(ValueId::Padding);
+    let browser = Rect::new(preset.bounds.x, preset.bounds.bottom(), 600, 400);
+    let files = PopupBrowserLayout::new(1.0, padding, browser).files;
+    click(
+        &mut harness,
+        Pos2::new(
+            files.x as f32 + files.width as f32 / 2.0,
+            (files.y + 24 + 12) as f32,
+        ),
+    );
+    assert_eq!(loads(&fixture), ["0 Alpha"]);
+    std::fs::remove_dir_all(&root).unwrap();
 }

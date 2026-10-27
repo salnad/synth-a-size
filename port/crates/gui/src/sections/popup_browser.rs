@@ -98,13 +98,16 @@ pub enum BrowserOwner {
     Lfo(usize),
     /// The sample (`SampleSection::textMouseDown`).
     Sample,
+    /// An oscillator's wavetable, from its wavetable editor's name
+    /// (`WavetableEditSection::textMouseDown`).
+    WavetableEditor(usize),
 }
 
 impl BrowserOwner {
     /// The user folder kind it browses (`LoadSave::getWavetableDirectories`).
     pub fn kind(self) -> Kind {
         match self {
-            BrowserOwner::Oscillator(_) => Kind::Wavetables,
+            BrowserOwner::Oscillator(_) | BrowserOwner::WavetableEditor(_) => Kind::Wavetables,
             BrowserOwner::Lfo(_) => Kind::Lfos,
             BrowserOwner::Sample => Kind::Samples,
         }
@@ -119,7 +122,7 @@ impl BrowserOwner {
     /// The file extensions it lists (`vital::kWavetableExtensionsList`).
     pub fn extensions(self) -> &'static [&'static str] {
         match self {
-            BrowserOwner::Oscillator(_) => WAVETABLE_EXTENSIONS,
+            BrowserOwner::Oscillator(_) | BrowserOwner::WavetableEditor(_) => WAVETABLE_EXTENSIONS,
             BrowserOwner::Lfo(_) => LFO_EXTENSIONS,
             BrowserOwner::Sample => SAMPLE_EXTENSIONS,
         }
@@ -518,11 +521,21 @@ pub fn closing_areas(interface: Rect, passthrough: Rect) -> [Rect; 4] {
     ]
 }
 
-/// `OscillatorSection::loadFile`: a `.vitaltable` loads named after its
-/// file (`WavetableEditSection::loadFile`: `jsonToState`, then `setName`);
-/// any other file loads as audio, spliced. Returns false, changing nothing,
-/// when the file can't be read.
+/// `WavetableEditSection::loadFile`, which the oscillator's and the
+/// wavetable editor's browsers and arrows load through: a `.vitaltable`
+/// loads named after its file (`jsonToState`, then `setName`); any other
+/// file loads as audio, spliced. A file that loads becomes the creator's
+/// last file (`setFileLoaded`). Returns false, changing nothing, when the
+/// file can't be read.
 pub fn load_wavetable_file(model: &dyn EditorModel, oscillator: usize, path: &Path) -> bool {
+    let loaded = load_wavetable_contents(model, oscillator, path);
+    if loaded {
+        model.set_last_wavetable_file(oscillator, path.to_path_buf());
+    }
+    loaded
+}
+
+fn load_wavetable_contents(model: &dyn EditorModel, oscillator: usize, path: &Path) -> bool {
     let table = path
         .extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case(WAVETABLE_EXTENSION));
