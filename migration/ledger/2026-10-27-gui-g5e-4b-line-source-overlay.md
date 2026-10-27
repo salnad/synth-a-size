@@ -6,7 +6,7 @@ editor shows the Line Source overlay
 upstream draws it: the base `LineEditor` over the waveform, editing the
 keyframe's own shape, with the pull power and grid sizes below it. It is
 built on #195's generalised line editor (merged into this branch at
-a0143c9 until #195 lands on main).
+55bdc0e until #195 lands on main).
 
 **Port** (`sections/line_source_overlay.rs`, `sections/wavetable_edit.rs`,
 `controls/line_editor.rs`, `local.rs`)
@@ -36,8 +36,7 @@ a0143c9 until #195 lands on main).
   - A point or power drag auditions the playhead's frame while it moves
     (`pointChanged` and `powersChanged` with `mouse_up` false) and commits
     on release. A right-click's release over a point or power commits too,
-    as the base `mouseUp` calls `drawUp` after a popup press (#195 at
-    a0143c9).
+    as the base `mouseUp` calls `drawUp` after a popup press (#195).
   - An added or removed point (a double click, the menu) commits at once.
   - A paint stroke (Command held) auditions as it paints and commits once,
     when the stroke ends. Upstream commits each painted cell
