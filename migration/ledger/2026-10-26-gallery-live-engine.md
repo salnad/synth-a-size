@@ -43,6 +43,14 @@ New views with text editors or popups should wait for #157, which gives
 `ref-gui` upstream's `DefaultLookAndFeel`. `all_effects_live` uses only the
 existing effects components.
 
+**Merge-rule waiver (coordinator, 2026-10-27).** While this PR waited for
+CI, other GUI PRs kept merging into `gallery.rs`, the `ref-gui` README and
+`views.json`, so rule (b) ("no commit on `main` since the base touches the
+PR's files") failed after each rebase. For this PR only, rule (b) is waived
+for overlaps that are code-only and merge without conflict. Rule (a), no
+conflicts, and rule (c), full local checks on the merged tree including a
+gallery render, still apply.
+
 Checks:
 
 - The gallery renders all 13 views locally (Mesa lavapipe).
