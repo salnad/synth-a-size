@@ -25,7 +25,8 @@ G5e-7b.
   menu, Power Scale and Amplitude Scale, a divider, and Zoom 1x to 16x,
   setting the section's `power_scale` and `zoom` (`barViewerCallback`),
   which the frequency displays and the overlays read.
-- **D31**: upstream's factory wavetables aren't there (approval pending).
+- **D31**: upstream's factory wavetables aren't there (approved by the
+  coordinator, 2026-10-27).
 
 **Tests** (`tests/wavetable_editor.rs`)
 

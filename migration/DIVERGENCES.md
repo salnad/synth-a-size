@@ -877,7 +877,7 @@ MCP server) extends this entry when it lands.*
   and added folders.
 - **Why:** the port ships no factory content (migration/AGENTS.md rule 3),
   and the downloader isn't ported (D26).
-- **Approved:** pending.
+- **Approved:** coordinator, 2026-10-27.
 
 ## Verification exceptions
 
