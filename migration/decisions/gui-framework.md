@@ -237,8 +237,9 @@ repeat the check in FL Studio where the note says so.
 11. **The saved window size.** Resize the plugin window by its corner,
     wait a second, close it, then insert a second instance and open it.
     - The new instance should open at the size the first was left at,
-      with upstream's 1400:820 ratio; so should every instance after the
-      project is closed and reopened.
+      with upstream's 1400:820 ratio; so should the first instance's window
+      when reopened, and every instance after the project is closed and
+      reopened.
     - Open the chat's drawer, then close it: the size saved is the
       editor's without the drawer, so a new instance opens no wider.
 
@@ -258,6 +259,17 @@ unwinds into the host). It is excluded from the workspace, so its
 code is not held to the port's lints, and patch 3's tests live in
 `port/crates/gui/tests/file_drop.rs`. Proposing the patches upstream needs
 a human.
+
+## Vendored nice-plug-egui
+
+Upstream's editor reads the saved window size each time its window opens
+(`SynthEditor`'s constructor, `LoadSave::loadWindowSize`). nice-plug builds
+a plugin's editor once, and nice-plug-egui opens each window at a size only
+the window itself could change. `port/vendor/nice-plug-egui` is
+nice-plug-egui 0.6.0, used through `[patch.crates-io]`, with one patch
+listed in its `PATCHES.md`: `EguiEditorState::set_size`, which the editor
+calls with the saved size before each window opens (and when the host asks
+the size beforehand). Like egui-baseview it is excluded from the workspace.
 
 ## Known limits
 

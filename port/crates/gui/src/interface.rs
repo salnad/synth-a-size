@@ -238,6 +238,13 @@ pub trait EditorModel: Send + Sync + 'static {
         None
     }
 
+    /// `LoadSave::loadWindowSize`: the size saved for the next window to
+    /// open at, the editor's width as a share of upstream's 1400; `None`
+    /// without a config to read it from.
+    fn window_size(&self) -> Option<f32> {
+        None
+    }
+
     /// `LoadSave::saveWindowSize`: keep `window_size`, the editor's width as
     /// a share of upstream's 1400, for the next editor to open at.
     fn save_window_size(&self, window_size: f32) {

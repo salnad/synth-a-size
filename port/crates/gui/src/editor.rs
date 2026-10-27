@@ -6,11 +6,12 @@
 //!
 //! Window behaviour follows upstream's plugin editor
 //! (`vital/src/plugin/synth_editor.cpp`, `common/border_bounds_constrainer.cpp`):
-//! it opens at 1400 × 820 scaled by the size last saved in the config
-//! (`LoadSave::loadWindowSize`), and the host may resize it down to
+//! each window opens at 1400 × 820 scaled by the size last saved in the
+//! config (`LoadSave::loadWindowSize`), and the host may resize it down to
 //! 350 × 205, keeping the 1400:820 aspect ratio. Once a new size has held,
 //! the editor saves it (`BorderBoundsConstrainer::resizeEnd`), for the next
-//! instance to open at (D30).
+//! window to open at. Upstream also keeps the first size within the screen,
+//! which baseview can't report (D30).
 //!
 //! The chat's drawer (D13) widens the window beside that layout while it is
 //! open ([`crate::drawer`]): the editor asks the host for the wider window,
@@ -62,18 +63,30 @@ pub fn default_state() -> EditorState {
     state_for_window_size(1.0)
 }
 
-/// The editor's state at upstream's size scaled by `window_size`
-/// (`SynthEditor`'s constructor: `kDefaultWindowWidth` and
-/// `kDefaultWindowHeight` times it, rounded), with the drawer closed.
+/// The editor's state at upstream's size scaled by `window_size`, with the
+/// drawer closed.
 pub fn state_for_window_size(window_size: f32) -> EditorState {
+    let size = window_logical_size(window_size, false);
+    EditorState {
+        window: EguiEditorState::from_size(size, 1.0),
+        drawer: DrawerState::default(),
+    }
+}
+
+/// `SynthEditor`'s constructor: `kDefaultWindowWidth` and
+/// `kDefaultWindowHeight` times `window_size`, rounded, no smaller than the
+/// minimum window, widened by the drawer when it is `drawer_open`.
+pub fn window_logical_size(window_size: f32, drawer_open: bool) -> LogicalSize<f64> {
     let width = (window_size * DEFAULT_WIDTH as f32).round().max(MIN_WIDTH);
     let height = (window_size * DEFAULT_HEIGHT as f32)
         .round()
         .max(MIN_HEIGHT);
-    EditorState {
-        window: EguiEditorState::from_size(LogicalSize::new(width as f64, height as f64), 1.0),
-        drawer: DrawerState::default(),
-    }
+    let drawer = if drawer_open {
+        drawer::width_pixels(height, 1.0)
+    } else {
+        0.0
+    };
+    LogicalSize::new((width + drawer) as f64, height as f64)
 }
 
 /// How long a new editor size must hold before it is saved: a drag's
@@ -135,10 +148,14 @@ pub fn create(state: EditorState, model: Arc<dyn EditorModel>) -> Option<Editor>
     let settings = EguiNiceSettings::default()
         .with_tile(PRODUCT_NAME)
         .with_resize_hint(resize_hint);
-    let app = App::new(model, state.drawer.clone());
-    create_egui_editor(state.window, Default::default(), settings, app).map(|editor| Editor {
-        inner: editor,
-        drawer: state.drawer,
+    let app = App::new(model.clone(), state.drawer.clone());
+    create_egui_editor(state.window.clone(), Default::default(), settings, app).map(|editor| {
+        Editor {
+            inner: editor,
+            drawer: state.drawer,
+            window: state.window,
+            model,
+        }
     })
 }
 
@@ -454,6 +471,25 @@ impl OpenWindow {
 pub struct Editor {
     inner: EguiEditor<App>,
     drawer: DrawerState,
+    window: Arc<EguiEditorState>,
+    model: Arc<dyn EditorModel>,
+}
+
+impl Editor {
+    /// `SynthEditor`'s constructor, run each time upstream's window opens:
+    /// while no window is open, the next one is to open at the size saved
+    /// in the config, wider by the drawer when it is open. Nothing changes
+    /// without a saved size (a model with no config), or while a window is
+    /// open.
+    pub fn reload_window_size(&self) {
+        if self.window.is_open() {
+            return;
+        }
+        if let Some(window_size) = self.model.window_size() {
+            let size = window_logical_size(window_size, self.drawer.is_open());
+            self.window.set_size(size);
+        }
+    }
 }
 
 /// [`Editor`]'s handle, its calls guarded the same way.
@@ -528,6 +564,7 @@ impl nice_plug::editor::Editor for Editor {
             "opening the window",
             || Err("opening the editor window panicked".into()),
             || {
+                self.reload_window_size();
                 let spawned = self.inner.spawn(
                     parent,
                     wait_for_parent,
@@ -553,7 +590,12 @@ impl nice_plug::editor::Editor for Editor {
                 let size = LogicalSize::new(DEFAULT_WIDTH as f64, DEFAULT_HEIGHT as f64);
                 NativeSize::from_size(size.into(), 1.0)
             },
-            || self.inner.size(),
+            || {
+                // The host asks before it opens a window, for the frame to
+                // give it.
+                self.reload_window_size();
+                self.inner.size()
+            },
         )
     }
 
@@ -796,6 +838,43 @@ mod tests {
         assert_eq!(size(1.5), (2100.0, 1230.0));
         assert_eq!(size(0.6005), (841.0, 492.0));
         assert_eq!(size(0.1), (350.0, 205.0));
+    }
+
+    /// A model with a saved window size.
+    struct Saved(Option<f32>);
+
+    impl EditorModel for Saved {
+        fn preset_name(&self) -> String {
+            String::new()
+        }
+
+        fn window_size(&self) -> Option<f32> {
+            self.0
+        }
+    }
+
+    /// Each window opens at the saved size (`SynthEditor`'s constructor runs
+    /// at every opening), wider by the drawer when it is open; a model with
+    /// no config leaves the size alone.
+    #[test]
+    fn each_window_opens_at_the_saved_size() {
+        let logical = |state: &EditorState| {
+            let size = state.window.size().to_logical::<f64>(1.0);
+            (size.width, size.height)
+        };
+        let state = default_state();
+        let editor = create(state.clone(), Arc::new(Saved(Some(1.5)))).unwrap();
+        editor.reload_window_size();
+        assert_eq!(logical(&state), (2100.0, 1230.0));
+        state.drawer.set_open(true);
+        editor.reload_window_size();
+        let drawer = drawer::width_pixels(1230.0, 1.0) as f64;
+        assert_eq!(logical(&state), (2100.0 + drawer, 1230.0));
+
+        let state = default_state();
+        let editor = create(state.clone(), Arc::new(Saved(None))).unwrap();
+        editor.reload_window_size();
+        assert_eq!(logical(&state), (1400.0, 820.0));
     }
 
     /// A new size is saved once it has held for half a second: not the size

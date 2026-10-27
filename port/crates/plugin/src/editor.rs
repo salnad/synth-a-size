@@ -412,6 +412,12 @@ impl EditorModel for PluginModel {
         lock(&self.data_directory).clone()
     }
 
+    fn window_size(&self) -> Option<f32> {
+        self.midi_learn
+            .config_file()
+            .map(crate::config::window_size)
+    }
+
     fn save_window_size(&self, window_size: f32) {
         if let Some(path) = self.midi_learn.config_file() {
             let _ = crate::config::save_window_size(path, window_size);
@@ -552,6 +558,34 @@ mod tests {
     use sas_engine::edit_bus::EditBus;
     use sas_engine::keyboard::keyboard;
     use sas_preset::InitContent;
+
+    /// `LoadSave::loadWindowSize` and `saveWindowSize` through the model:
+    /// the config's size, and none without a config.
+    #[test]
+    fn the_window_size_is_kept_in_the_config() {
+        let model = |midi_learn: MidiLearn| {
+            let (edits, _consumer) =
+                EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+            let (_writer, telemetry) = Telemetry::new(Arc::default());
+            PluginModel::new(
+                Arc::new(SynthParams::new(edits)),
+                telemetry,
+                keyboard().0,
+                Arc::new(midi_learn),
+                None,
+            )
+        };
+        let dir = std::env::temp_dir().join(format!("sas-window-size-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        let saved = model(MidiLearn::with_config_file(path.clone()));
+        assert_eq!(saved.window_size(), Some(1.0));
+        saved.save_window_size(1.5);
+        assert_eq!(saved.window_size(), Some(1.5));
+        assert_eq!(crate::config::window_size(&path), 1.5);
+        assert_eq!(model(MidiLearn::in_memory()).window_size(), None);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn a_preset_that_doesnt_load_gives_upstreams_reason() {

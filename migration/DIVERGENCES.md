@@ -781,28 +781,22 @@ MCP server) extends this entry when it lands.*
 - **Approved:** coordinator, relaying Voice Reviewer's review of #170,
   2026-10-26.
 
-### D30. The saved window size: each new instance opens at it, unclamped
+### D30. The saved window size isn't kept within the screen
 
-- **Differs:** the size the editor window opens at.
-- **Upstream:** `SynthEditor`'s constructor runs each time the window
-  opens. It reads the config's `window_size` (`LoadSave::loadWindowSize`,
-  at least 0.25), keeps it within the desktop's total bounds less 50
-  pixels of height, and opens at 1400 × 820 times it. Every window that
-  opens takes the size last saved by any instance. `resizeEnd` saves the
-  editor's width over 1400 when a corner drag ends.
-- **Port:** a new plugin instance's window opens at 1400 × 820 times the
-  config's `window_size` (at least 0.25). After that the instance keeps its
-  own size while its window is closed (`EditorState`), as nice-plug keeps
-  one editor per instance. The editor saves its width over 1400, without
-  the chat's drawer, once a new size has held for half a second.
-- **Why:** nice-plug builds one editor per plugin instance and doesn't let
-  the window size be set again before it reopens, and no display is known
-  before the window opens, so there's nothing to clamp to. New instances,
-  including every instance of a reopened project, open at the saved size as
-  upstream's do. Only a window reopened in an instance already open keeps
-  its own size instead of one another instance saved since, and a saved
-  size too large for a smaller screen isn't reduced.
-- **Approved:** pending.
+- **Differs:** a saved window size larger than the screen the window opens
+  on.
+- **Upstream:** `SynthEditor`'s constructor, run each time the window
+  opens, reads the config's `window_size` and keeps it within the desktop's
+  total bounds less 50 pixels of height
+  (`Desktop::getInstance().getDisplays().getTotalBounds`) before opening at
+  1400 × 820 times it.
+- **Port:** each window opens at 1400 × 820 times the saved size (at least
+  0.25), as upstream's does, without the screen bound.
+- **Why:** baseview, which opens the window, reports no screen or display
+  size, so there is nothing to bound it by before the window opens. A size
+  saved on a large screen can open larger than a smaller one; the host can
+  still shrink the window.
+- **Approved:** coordinator, 2026-10-26.
 
 ## Verification exceptions
 
