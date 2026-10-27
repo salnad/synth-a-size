@@ -4348,3 +4348,28 @@ fn under_the_save_section_a_click_at_the_logo_closes_it_not_the_drawer() {
     assert!(!panel.borrow().is_open());
     assert!(shows(&harness, "Chat"));
 }
+
+/// The popup browser's closing areas cover our logo, and a click there
+/// closes the browser (`PopupBrowser::mouseDown` outside the browser), so
+/// the chat's toggle hides while it's open and that click leaves the drawer
+/// alone.
+#[test]
+fn with_the_popup_browser_open_a_click_at_the_logo_closes_it_not_the_drawer() {
+    let fixture = Fixture::new();
+    let panel = RefCell::new(sas_gui::ChatPanel::default());
+    let mut harness = chat_harness(&fixture, &panel, (1400.0, 820.0));
+    fixture.interface.borrow_mut().request_wavetable_browser(0);
+    harness.step();
+    harness.step();
+    assert!(fixture.interface.borrow().popup_browser_rows().is_some());
+    assert!(!fixture.interface.borrow().logo_shown());
+    assert!(!shows(&harness, "Chat"));
+
+    let at = toggle(&fixture, &harness);
+    click(&mut harness, at);
+    harness.step();
+    assert!(fixture.interface.borrow().popup_browser_rows().is_none());
+    assert!(!fixture.interface.borrow().drawer_open());
+    assert!(!panel.borrow().is_open());
+    assert!(shows(&harness, "Chat"));
+}

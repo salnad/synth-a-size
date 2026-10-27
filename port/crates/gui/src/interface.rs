@@ -875,12 +875,17 @@ impl Interface {
     /// can be there: the header is drawn (no wavetable editor replaces it,
     /// `showWavetableEditSection`), and nothing that closes on a click
     /// outside it covers the logo (the save and delete sections over the
-    /// whole interface). The preset browser keeps the header and leaves the
+    /// whole interface, and the popup browser's closing areas around its
+    /// owner's section). The preset browser keeps the header and leaves the
     /// logo alone.
     pub fn logo_shown(&self) -> bool {
         let header_drawn = self.wavetable_editor.is_none();
         // Each takes a click at the logo to close itself.
-        let covered = [self.save_section.is_open(), self.delete_section.is_some()];
+        let covered = [
+            self.save_section.is_open(),
+            self.delete_section.is_some(),
+            self.popup_browser.is_open(),
+        ];
         header_drawn && !covered.contains(&true)
     }
 

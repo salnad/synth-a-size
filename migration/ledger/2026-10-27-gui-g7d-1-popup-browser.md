@@ -70,6 +70,10 @@ LFO come in G7d-2; the added folders ("Add Folder") in G7d-3.
 - The corpus guard's empty-folder check has its closing quote, and the step
   runs clean under `bash -e` and fails with an empty folder planted
   (Harness Builder, #172).
+- The chat's toggle hides while the browser is open
+  (`Interface::logo_shown`, from #177): its closing areas cover our logo,
+  and a click there closes the browser, as upstream's does, instead of
+  toggling the chat (UI Reviewer).
 - `user_folders::files_of_type` (`getAllFilesOfTypeInDirectories`: every
   file of the given types under the folders, recursively, matched ignoring
   case as on macOS) and `shifted_file` (`getShiftedFile`).
@@ -105,6 +109,9 @@ LFO come in G7d-2; the added folders ("Add Folder") in G7d-3.
     closes;
   - Escape and a press outside close the browser, and the oscillator's
     arrows work with it open;
+  - `with_the_popup_browser_open_a_click_at_the_logo_closes_it_not_the_drawer`
+    (in `tests/controls.rs`; it fails with the browser left out of
+    `logo_shown`);
   - a drag on a list row over the oscillator reaches none of its controls
     (it fails with click-only sensing).
 - `tests/layout.rs`: the popup browser's parts at every size.
