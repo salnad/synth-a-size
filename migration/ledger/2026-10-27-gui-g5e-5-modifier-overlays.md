@@ -54,6 +54,11 @@ controls are sliders and toggles
 - `views.json`: `wavetable_editor_frequency_filter`, `_slew_limiter`,
   `_wave_folder` and `_wave_warp`.
 
+- `migration/reference/gui/README.md`: a note that the reference's text
+  is larger than the gallery's (7.7% monospace, 3.3% Montserrat, 1.3%
+  Lato) from FreeType's em sizing, pointing to `fonts.rs`; the port
+  follows macOS (coordinator, 2026-10-27).
+
 **Tests**
 
 - `the_slider_modifiers_map_to_their_overlays`: the mapping, and only the
