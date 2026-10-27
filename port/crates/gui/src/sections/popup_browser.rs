@@ -482,10 +482,11 @@ mod tests {
     #[test]
     fn a_folder_chosen_for_one_owner_is_cleared_for_another() {
         let root = std::env::temp_dir().join(format!("sas-popup-owners-{}", std::process::id()));
-        for file in ["Wavetables/Table.vitaltable", "LFOs/Shape.vitallfo"] {
-            let path = root.join(file);
+        let table = root.join(format!("Wavetables/Table.{WAVETABLE_EXTENSION}"));
+        let shape = root.join(format!("LFOs/Shape.{LFO_EXTENSION}"));
+        for path in [&table, &shape] {
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(&path, "").unwrap();
+            std::fs::write(path, "").unwrap();
         }
         let model = DataFolder(root.clone());
         let area = Rect::new(0, 0, 100, 100);
@@ -496,17 +497,11 @@ mod tests {
             .folders
             .set_selected(Some(Selection::Path(wavetables.clone())));
         browser.list_folder(&wavetables);
-        assert_eq!(
-            browser.file_rows(),
-            [Selection::Path(wavetables.join("Table.vitaltable"))]
-        );
+        assert_eq!(browser.file_rows(), [Selection::Path(table)]);
 
         browser.open(&model, BrowserOwner::Lfo(0), area, area, None);
         assert_eq!(browser.folders.selected(), None);
-        assert_eq!(
-            browser.file_rows(),
-            [Selection::Path(root.join("LFOs/Shape.vitallfo"))]
-        );
+        assert_eq!(browser.file_rows(), [Selection::Path(shape)]);
         std::fs::remove_dir_all(&root).unwrap();
     }
 
