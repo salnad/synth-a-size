@@ -185,6 +185,19 @@ repeat the check in FL Studio where the note says so.
    - *REAPER:* settles the sheet and drawing behaviour, which come from
      AppKit and the plugin window rather than the host. FL Studio wraps
      plugins in its own windows, so repeat the parenting check there.
+9. **The error message (#164).** Make a broken preset (copy any `.vital`
+   file and replace its contents with `x`), then choose "Open External
+   Preset" in the preset menu and pick it.
+   - An "Error opening preset" message should show as a sheet on the
+     plugin's window, ending "Preset file is corrupted.", and OK should
+     dismiss it, leaving the editor working.
+   - Open the broken preset again and, with the message showing, close the
+     plugin window: the host should neither hang nor crash, and the message
+     should not stay behind. Then remove the plugin from the track with the
+     message showing and check the same.
+   - *REAPER:* settles the sheet and closing behaviour, which come from
+     AppKit and the plugin window. Repeat the parenting and closing checks
+     in FL Studio, which wraps plugins in its own windows.
 
 ## Vendored egui-baseview
 

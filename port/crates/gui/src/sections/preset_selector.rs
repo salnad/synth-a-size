@@ -279,7 +279,9 @@ pub fn show(
 
     let ctx = panel.ui.ctx().clone();
     // importPreset and exportPreset: the preset is external to the list.
-    if let Some(Some(path)) = file_dialog::take_result(&ctx, open_dialog()) {
+    // importPreset skips a choice that doesn't exist, without a message.
+    let opened = file_dialog::take_result(&ctx, open_dialog()).flatten();
+    if let Some(path) = opened.filter(|path| path.exists()) {
         match model.load_preset_file(&path) {
             Ok(()) => browser.external_preset_loaded(Some(path)),
             Err(error) => preset_browser::alert_load_error(&ctx, &error),

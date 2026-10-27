@@ -122,9 +122,16 @@ fn with_dialogs<R>(ctx: &egui::Context, f: impl FnOnce(&mut Dialogs) -> R) -> R 
     f(&mut dialogs)
 }
 
-/// The window dialogs attach to: the editor's own.
+/// The window dialogs attach to: the editor's own. When it closes (`None`),
+/// alerts not yet shown are dropped with it, so none is made later for a
+/// window that is gone.
 pub fn set_parent(ctx: &egui::Context, parent: Option<PlatformHandle>) {
-    with_dialogs(ctx, |dialogs| dialogs.parent = parent);
+    with_dialogs(ctx, |dialogs| {
+        if parent.is_none() {
+            dialogs.alerts.clear();
+        }
+        dialogs.parent = parent;
+    });
 }
 
 /// Whether a dialog started under `id` is still open.
@@ -154,25 +161,22 @@ pub fn open(ctx: &egui::Context, id: egui::Id, request: &FileRequest) {
     if let Some(parent) = &parent {
         dialog = dialog.set_parent(parent);
     }
+    // The dialog is made here, while the parent window is known to exist:
+    // rfd keeps the window's handle once asked, and a dialog made at a later
+    // poll could reach a window the host has closed since.
     let future: Pending = match request.kind {
-        DialogKind::Open => Box::pin(async move {
-            dialog
-                .pick_file()
-                .await
-                .map(|file| file.path().to_path_buf())
-        }),
-        DialogKind::Folder => Box::pin(async move {
-            dialog
-                .pick_folder()
-                .await
-                .map(|folder| folder.path().to_path_buf())
-        }),
-        DialogKind::Save => Box::pin(async move {
-            dialog
-                .save_file()
-                .await
-                .map(|file| file.path().to_path_buf())
-        }),
+        DialogKind::Open => {
+            let pick = dialog.pick_file();
+            Box::pin(async move { pick.await.map(|file| file.path().to_path_buf()) })
+        }
+        DialogKind::Folder => {
+            let pick = dialog.pick_folder();
+            Box::pin(async move { pick.await.map(|folder| folder.path().to_path_buf()) })
+        }
+        DialogKind::Save => {
+            let save = dialog.save_file();
+            Box::pin(async move { save.await.map(|file| file.path().to_path_buf()) })
+        }
     };
     start(ctx, id, future);
 }
@@ -220,11 +224,13 @@ pub fn show_alerts(ctx: &egui::Context) {
             dialogs.alert_ids.push(id);
             id
         });
+        // Shown now, while the parent window is known to exist (see open).
+        let shown = dialog.show();
         start(
             ctx,
             id,
             Box::pin(async move {
-                dialog.show().await;
+                shown.await;
                 None
             }),
         );
@@ -319,5 +325,23 @@ mod tests {
             Some(Some(PathBuf::from("/tmp/a.scl")))
         );
         assert_eq!(take_result(&ctx, id), None);
+    }
+
+    /// Closing the editor drops alerts not yet shown, so no dialog is made
+    /// for its window afterwards: a later `show_alerts` finds nothing to show
+    /// and starts nothing.
+    #[test]
+    fn closing_the_editor_drops_queued_alerts() {
+        let ctx = egui::Context::default();
+        alert(
+            &ctx,
+            "Error opening preset",
+            "There was an error open the preset.",
+        );
+        assert_eq!(queued_alerts(&ctx).len(), 1);
+        set_parent(&ctx, None);
+        assert!(queued_alerts(&ctx).is_empty());
+        show_alerts(&ctx);
+        assert!(with_dialogs(&ctx, |dialogs| dialogs.pending.is_empty()));
     }
 }
