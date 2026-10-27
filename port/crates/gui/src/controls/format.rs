@@ -29,6 +29,10 @@ pub struct Format {
     /// `string_lookup_` (`setStringLookup`): option names for a slider whose
     /// control has none of its own.
     pub string_lookup: Option<&'static [&'static str]>,
+    /// For a slider with no parameter assignment (`has_parameter_assignment_`
+    /// false), JUCE's `Slider::getTextFromValue`: the value with this many
+    /// decimal places (`numDecimalPlaces`, 7 for a range with no interval).
+    pub unassigned_decimal_places: Option<usize>,
 }
 
 impl Default for Format {
@@ -40,6 +44,7 @@ impl Default for Format {
             display_multiply: None,
             exponential_base: 2.0,
             string_lookup: None,
+            unassigned_decimal_places: None,
         }
     }
 }
@@ -123,6 +128,9 @@ pub fn slider_text(info: &ParamInfo, format: &Format, value: f32) -> String {
             return option.to_string();
         }
     }
+    if let Some(places) = format.unassigned_decimal_places {
+        return format!("{value:.places$}");
+    }
     format_value(
         info,
         format,
@@ -163,7 +171,8 @@ fn juce_float(value: f32) -> String {
     juce_double(value as f64)
 }
 
-fn juce_double(value: f64) -> String {
+/// JUCE's `String(double)`, the same formatting as [`juce_float`].
+pub(crate) fn juce_double(value: f64) -> String {
     if value == 0.0 {
         return "0".to_string();
     }
@@ -195,7 +204,7 @@ fn juce_double(value: f64) -> String {
 }
 
 /// JUCE's `String::getDoubleValue`: the leading number, or 0.
-fn juce_double_value(text: &str) -> f64 {
+pub(crate) fn juce_double_value(text: &str) -> f64 {
     let text = text.trim_start();
     let mut end = 0;
     for (index, c) in text.char_indices() {

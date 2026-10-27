@@ -26,6 +26,8 @@ use sas_common::line_generator::LineGenerator;
 use sas_common::scalar::power_scale;
 
 use crate::controls::clicks::Clicks;
+use crate::controls::format::{juce_double, juce_double_value};
+use crate::controls::text_editor::{self, TextStyle};
 use crate::interface::EditorModel;
 use crate::layout::Rect;
 use crate::paint::{PixelPainter, RectF};
@@ -72,6 +74,8 @@ pub const PAINT_PATTERN_NAMES: [&str; 5] = ["Step", "Half", "Down", "Up", "Tri"]
 /// `LfoEditor`'s).
 pub mod menu {
     pub const REMOVE_POINT: i32 = 1;
+    pub const ENTER_PHASE: i32 = 2;
+    pub const ENTER_VALUE: i32 = 3;
     pub const RESET_POWER: i32 = 4;
     pub const COPY: i32 = 5;
     pub const PASTE: i32 = 6;
@@ -82,6 +86,20 @@ pub mod menu {
     pub const SET_PHASE_TO_POINT: i32 = 11;
     pub const SET_PHASE_TO_POWER: i32 = 12;
     pub const SET_PHASE_TO_GRID: i32 = 13;
+    pub const IMPORT_LFO: i32 = 14;
+    pub const EXPORT_LFO: i32 = 15;
+}
+
+/// `showTextEntry`'s `kTextEntryWidth` and `kTextEntryHeight`, before the
+/// size ratio.
+const TEXT_ENTRY_WIDTH: f32 = 50.0;
+const TEXT_ENTRY_HEIGHT: f32 = 30.0;
+
+/// The point being typed in (`entering_phase_`, `entering_index_`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct PointEntry {
+    phase: bool,
+    index: usize,
 }
 
 /// The shape an editor edits, and what differs between targets.
@@ -252,6 +270,11 @@ struct LineState {
     /// popup-menu button is down on the editor.
     clicks: Clicks,
     secondary_down: bool,
+    /// The point's text entry while it shows (`value_entry_`), its text,
+    /// and whether it takes the keyboard this frame (`grabKeyboardFocus`).
+    entry: Option<PointEntry>,
+    entry_text: String,
+    entry_focus: bool,
 }
 
 impl Default for LineState {
@@ -270,6 +293,9 @@ impl Default for LineState {
             mouse_down: false,
             clicks: Clicks::default(),
             secondary_down: false,
+            entry: None,
+            entry_text: String::new(),
+            entry_focus: false,
         }
     }
 }
@@ -732,6 +758,62 @@ pub struct LineEditorEvent {
     pub changed: bool,
     /// The frame's listener calls, in upstream's order.
     pub changes: Vec<LineChange>,
+    /// The menu's Import LFO and Export LFO (`Listener::importLfo`,
+    /// `exportLfo`), for the section to carry out.
+    pub import: bool,
+    pub export: bool,
+}
+
+/// `showTextEntry`'s text: the point's phase (`String(point.x)`), or its
+/// value (`String(1.0 - point.y)`, in doubles).
+fn entry_text(line: &LineGenerator, entry: PointEntry) -> String {
+    let (x, y) = line.point(entry.index);
+    if entry.phase {
+        juce_double(f64::from(x))
+    } else {
+        juce_double(1.0 - f64::from(y))
+    }
+}
+
+/// `getMinX` and `getMaxX`: the neighbours' phases, 0 at the first point
+/// and 1 at the last.
+fn phase_range(line: &LineGenerator, index: usize) -> (f32, f32) {
+    let last = line.num_points() - 1;
+    if index == 0 {
+        return (0.0, 0.0);
+    }
+    if index == last {
+        return (1.0, 1.0);
+    }
+    (line.point(index - 1).0, line.point(index + 1).0)
+}
+
+/// `setSliderPositionFromText`: the typed phase, within its neighbours', or
+/// the typed value, from 0 to 1. A level end typed to a new value takes the
+/// other end with it when the two were level.
+fn set_point_from_text(line: &mut LineGenerator, entry: PointEntry, text: &str) {
+    let value = juce_double_value(text) as f32;
+    let index = entry.index;
+    let mut point = line.point(index);
+    if entry.phase {
+        let (min, max) = phase_range(line, index);
+        point.0 = value.min(max).max(min);
+        line.set_point(index, point);
+    } else {
+        let value = value.clamp(0.0, 1.0);
+        let start_y = point.1;
+        point.1 = 1.0 - value;
+        line.set_point(index, point);
+        let last = line.num_points() - 1;
+        if index == 0 && line.point(last).1 == start_y {
+            point.0 = 1.0;
+            line.set_point(last, point);
+        } else if index == last && line.point(0).1 == start_y {
+            point.0 = 0.0;
+            line.set_point(0, point);
+        }
+    }
+    line.render();
 }
 
 /// The shape in clipboard `text`, if it holds one
@@ -814,6 +896,19 @@ impl LineEditor {
         panel.ui.data_mut(|data| data.insert_temp(id, state));
     }
 
+    /// Renames the shape (`LfoSection::exportLfo`'s `setName`), through the
+    /// editor's copy as [`set_smooth`](Self::set_smooth) does.
+    pub fn set_name(&self, panel: &mut Panel, name: &str) {
+        let mut line = self.shape(panel);
+        line.set_name(name);
+        let id = self.id(panel);
+        let mut state = self.state(panel);
+        state.line = Some(line);
+        state.pending = true;
+        self.push(panel, &mut state);
+        panel.ui.data_mut(|data| data.insert_temp(id, state));
+    }
+
     /// Sends the editor's copy to the synth if it changed.
     fn push(&self, panel: &Panel, state: &mut LineState) {
         if !state.pending {
@@ -855,6 +950,7 @@ impl LineEditor {
         let mut changed = false;
         let mut edits = Vec::new();
         let mut changes = Vec::new();
+        let (mut import, mut export) = (false, false);
         let points = |changes: &mut Vec<LineChange>, edits: &[PointEdit], from: usize| {
             changes.extend(edits[from..].iter().map(|edit| LineChange::Points(*edit)));
         };
@@ -870,7 +966,23 @@ impl LineEditor {
             .take_if(|a| a.target == self.target)
         {
             let from = edits.len();
-            changed |= self.respond(panel, &mut line, action, settings, &mut edits);
+            match action.choice {
+                menu::ENTER_PHASE | menu::ENTER_VALUE => {
+                    // showTextEntry, for a point that exists.
+                    if action.point >= 0 && (action.point as usize) < line.num_points() {
+                        let entry = PointEntry {
+                            phase: action.choice == menu::ENTER_PHASE,
+                            index: action.point as usize,
+                        };
+                        state.entry_text = entry_text(&line, entry);
+                        state.entry = Some(entry);
+                        state.entry_focus = true;
+                    }
+                }
+                menu::IMPORT_LFO => import = true,
+                menu::EXPORT_LFO => export = true,
+                _ => changed |= self.respond(panel, &mut line, action, settings, &mut edits),
+            }
             points(&mut changes, &edits, from);
             if matches!(action.choice, menu::FLIP_HORIZONTAL | menu::FLIP_VERTICAL) {
                 changes.push(LineChange::PointChanged {
@@ -1076,6 +1188,8 @@ impl LineEditor {
             state.mouse_down = false;
         }
 
+        changed |= self.show_entry(panel, bounds, &mut line, &mut state);
+
         let smooth = line.smooth();
         if !edits.is_empty() {
             self.target.points_edited(panel.host.model(), &edits);
@@ -1102,6 +1216,8 @@ impl LineEditor {
             edits,
             changed,
             changes,
+            import,
+            export,
         }
     }
 
@@ -1115,7 +1231,9 @@ impl LineEditor {
             if state.active_point >= 0 {
                 if state.active_point > 0 && state.active_point < num_points - 1 {
                     items.push(MenuItem::new(menu::REMOVE_POINT, "Remove Point"));
+                    items.push(MenuItem::new(menu::ENTER_PHASE, "Enter Point Phase"));
                 }
+                items.push(MenuItem::new(menu::ENTER_VALUE, "Enter Point Value"));
                 items.push(MenuItem::new(-1, ""));
             }
             if state.active_power >= 0 {
@@ -1125,7 +1243,9 @@ impl LineEditor {
             items.push(MenuItem::new(menu::SET_PHASE_TO_POINT, "Set Start Point"));
             if state.active_point >= 1 && state.active_point < num_points - 1 {
                 items.push(MenuItem::new(menu::REMOVE_POINT, "Remove Point"));
+                items.push(MenuItem::new(menu::ENTER_PHASE, "Enter Point Phase"));
             }
+            items.push(MenuItem::new(menu::ENTER_VALUE, "Enter Point Value"));
             items.push(MenuItem::new(-1, ""));
         } else if state.active_power >= 0 {
             items.push(MenuItem::new(menu::SET_PHASE_TO_POWER, "Set Start Point"));
@@ -1148,6 +1268,10 @@ impl LineEditor {
         }
         items.push(MenuItem::new(menu::FLIP_HORIZONTAL, "Flip Horizontal"));
         items.push(MenuItem::new(menu::FLIP_VERTICAL, "Flip Vertical"));
+        if lfo {
+            items.push(MenuItem::new(menu::IMPORT_LFO, "Import LFO"));
+            items.push(MenuItem::new(menu::EXPORT_LFO, "Export LFO"));
+        }
         let ppp = panel.pixels.pixels_per_point();
         let origin = panel.pixels.area().min;
         let position = Pos2::new((at.x - origin.x) * ppp, (at.y - origin.y) * ppp);
@@ -1162,6 +1286,78 @@ impl LineEditor {
                 grid_section: state.active_grid_section,
             }),
         ));
+    }
+
+    /// The point's text entry while it shows (`showTextEntry`): a centred
+    /// monospace field at the point, kept inside the editor, that takes the
+    /// keyboard and selects its text when it opens. Return, Escape or losing
+    /// the keyboard set the point from the text and hide it: upstream's
+    /// Escape hides the field, and hiding it loses the keyboard, which sets
+    /// the point (`textEditorFocusLost`). Returns whether the shape changed.
+    fn show_entry(
+        &self,
+        panel: &mut Panel,
+        bounds: Rect,
+        line: &mut LineGenerator,
+        state: &mut LineState,
+    ) -> bool {
+        let Some(entry) = state.entry else {
+            return false;
+        };
+        if entry.index >= line.num_points() {
+            state.entry = None;
+            return false;
+        }
+        let size_ratio = panel.scope.size_ratio();
+        let width = (TEXT_ENTRY_WIDTH * size_ratio) as i32;
+        let height = (TEXT_ENTRY_HEIGHT * size_ratio) as i32;
+        let (x, y) = line.point(entry.index);
+        let field = Rect::new(
+            bounds.x + ((x * bounds.width as f32) as i32).min(bounds.width - width),
+            bounds.y + ((y * bounds.height as f32) as i32).min(bounds.height - height),
+            width,
+            height,
+        );
+        let scope = &panel.scope;
+        let rounding = scope.value(ValueId::WidgetRoundedCorner);
+        let background = scope.color(ColorId::TextEditorBackground);
+        let border = scope.color(ColorId::TextEditorBorder);
+        panel.layer().custom(move |pixels: &PixelPainter| {
+            pixels.fill_rounded_rect(field, rounding, background);
+            pixels.draw_rounded_rect(RectF::from(field).reduced(0.5), rounding, 1.0, border);
+        });
+        let salt = ("line editor entry", self.target);
+        if state.entry_focus {
+            state.entry_focus = false;
+            text_editor::focus_select_all(panel.ui, salt, &state.entry_text);
+        }
+        let style = TextStyle {
+            font_size: height as f32 / 2.0,
+            colour: ColorId::BodyText,
+            centred: true,
+            hide_prompt: true,
+            mono: true,
+        };
+        let events = text_editor::single_line_styled(
+            panel.ui,
+            panel.pixels,
+            &panel.scope,
+            salt,
+            field,
+            &mut state.entry_text,
+            "text_entry",
+            style,
+        );
+        if !(events.return_pressed || events.escape || events.lost_focus) {
+            return false;
+        }
+        state.entry = None;
+        text_editor::surrender_focus(panel.ui, salt);
+        if state.entry_text.is_empty() {
+            return false;
+        }
+        set_point_from_text(line, entry, &state.entry_text);
+        true
     }
 
     /// `LfoEditor::respondToCallback`. Returns whether the shape changed.

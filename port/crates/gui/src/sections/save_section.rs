@@ -434,6 +434,9 @@ impl SaveSection {
             let style = TextStyle {
                 font_size: layout.editor_font_size,
                 colour: ColorId::PresetText,
+                centred: false,
+                hide_prompt: false,
+                mono: false,
             };
             // fillTextEditorBackground, under each field.
             text_editor::paint_background(panel.pixels, &scope, layout.name);

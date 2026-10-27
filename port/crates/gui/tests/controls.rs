@@ -2543,7 +2543,14 @@ fn the_lfo_menu_flips_the_shape() {
     let names: Vec<&str> = items.iter().map(|item| item.name.as_str()).collect();
     assert_eq!(
         names,
-        ["Copy", "Save to LFOs", "Flip Horizontal", "Flip Vertical"]
+        [
+            "Copy",
+            "Save to LFOs",
+            "Flip Horizontal",
+            "Flip Vertical",
+            "Import LFO",
+            "Export LFO"
+        ]
     );
     let row = Pos2::new(position.x + 20.0, position.y + 12.0 + 24.0 * 3.0);
     harness.event(Event::PointerMoved(row));
@@ -5520,4 +5527,117 @@ fn the_remap_strip_loads_lfo_files() {
 
     click(&mut harness, centre(preset.text));
     assert_eq!(popup_files(&fixture), ["Bank Shape", "Ramp 2", "Wobble"]);
+}
+
+/// Opens LFO 1's menu over the point at `x`, `y` (fractions of the editor)
+/// and returns the menu's item names.
+fn open_lfo_point_menu(harness: &mut Harness, fixture: &Fixture, x: f32, y: f32) -> Vec<String> {
+    let at = lfo_point(lfo_layout(fixture).editor, x, y);
+    harness.event(Event::PointerMoved(at));
+    harness.step();
+    press(harness, at, PointerButton::Secondary, Modifiers::NONE);
+    release(harness, at, PointerButton::Secondary, Modifiers::NONE);
+    let interface = fixture.interface.borrow();
+    let menu = interface.overlay().menu.as_ref().expect("the LFO menu");
+    menu.items.iter().map(|item| item.name.clone()).collect()
+}
+
+/// Chooses row `row` of the open menu (rows above any divider).
+fn choose_open_menu_row(harness: &mut Harness, fixture: &Fixture, row: usize) {
+    let position = {
+        let interface = fixture.interface.borrow();
+        interface.overlay().menu.as_ref().expect("a menu").position
+    };
+    let pos = Pos2::new(position.x + 20.0, position.y + 12.0 + 24.0 * row as f32);
+    harness.event(Event::PointerMoved(pos));
+    harness.step();
+    click(harness, pos);
+    for _ in 0..2 {
+        harness.step();
+    }
+}
+
+/// `LfoEditor::mouseDown` over a point: Set Start Point, then Remove Point
+/// and Enter Point Phase for an inner point, then Enter Point Value, before
+/// the shape's items; over an end point, no removal or phase.
+#[test]
+fn the_lfo_point_menu_offers_the_entries() {
+    sas_gui::controls::line_editor::set_clipboard_reader(|| None);
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let tail = [
+        "Copy",
+        "Save to LFOs",
+        "Flip Horizontal",
+        "Flip Vertical",
+        "Import LFO",
+        "Export LFO",
+    ];
+    let peak = open_lfo_point_menu(&mut harness, &fixture, 0.5, 0.0);
+    let mut expected = vec![
+        "Set Start Point",
+        "Remove Point",
+        "Enter Point Phase",
+        "Enter Point Value",
+        "",
+    ];
+    expected.extend(tail);
+    assert_eq!(peak, expected);
+    fixture.interface.borrow_mut().overlay_mut().menu = None;
+    harness.step();
+    let start = open_lfo_point_menu(&mut harness, &fixture, 0.0, 1.0);
+    let mut expected = vec!["Set Start Point", "Enter Point Value", ""];
+    expected.extend(tail);
+    assert_eq!(start, expected);
+}
+
+/// Types `text` into the point entry LFO 1's menu row `row` opened over the
+/// point at `x`, `y`, then ends it with `end`.
+fn enter_point(fixture: &Fixture, x: f32, y: f32, row: usize, text: &str, end: Key) {
+    sas_gui::controls::line_editor::set_clipboard_reader(|| None);
+    let mut harness = fixture.harness();
+    open_lfo_point_menu(&mut harness, fixture, x, y);
+    choose_open_menu_row(&mut harness, fixture, row);
+    harness.event(Event::Text(text.to_string()));
+    harness.step();
+    key(&mut harness, end);
+    for _ in 0..3 {
+        harness.step();
+    }
+}
+
+/// `setSliderPositionFromText`: the peak's typed value sets its height, and
+/// its typed phase stays within its neighbours'.
+#[test]
+fn a_typed_point_value_or_phase_moves_the_point() {
+    let fixture = Fixture::new();
+    enter_point(&fixture, 0.5, 0.0, 3, "0.25", Key::Enter);
+    assert_eq!(lfo_1_shape(&fixture).point(1), (0.5, 0.75));
+
+    let fixture = Fixture::new();
+    enter_point(&fixture, 0.5, 0.0, 2, "0.3", Key::Enter);
+    assert_eq!(lfo_1_shape(&fixture).point(1), (0.3, 0.0));
+
+    let fixture = Fixture::new();
+    enter_point(&fixture, 0.5, 0.0, 2, "2", Key::Enter);
+    assert_eq!(lfo_1_shape(&fixture).point(1), (1.0, 0.0));
+}
+
+/// A level end typed to a new value takes the other end with it.
+#[test]
+fn a_typed_end_value_moves_both_ends() {
+    let fixture = Fixture::new();
+    enter_point(&fixture, 0.0, 1.0, 1, "0.5", Key::Enter);
+    let line = lfo_1_shape(&fixture);
+    assert_eq!(line.point(0), (0.0, 0.5));
+    assert_eq!(line.point(2), (1.0, 0.5));
+}
+
+/// Escape hides the entry, and hiding it loses the keyboard, which sets
+/// the point (`textEditorFocusLost`), as upstream's does.
+#[test]
+fn escape_sets_the_typed_point_too() {
+    let fixture = Fixture::new();
+    enter_point(&fixture, 0.5, 0.0, 3, "0.5", Key::Escape);
+    assert_eq!(lfo_1_shape(&fixture).point(1), (0.5, 0.5));
 }
