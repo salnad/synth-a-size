@@ -23,8 +23,10 @@ chosen component selected, which upstream's editor only does on a click.
   `@wavetable-select group:component[:keyframe]` lays the following paths
   out with that keyframe selected, until `@wavetable-select none`; their
   fixture entries name it (`"wavetable_select"`), as they name a preset
-  and an overlay. No fixture uses it yet: `layout --check` passes
-  unchanged.
+  and an overlay. Both refuse a selection without the wavetable editor
+  overlay, or one that isn't `group:component[:keyframe]`
+  (`check_wavetable_select`), so a fixture can't record a selection that
+  wasn't made. No fixture uses it yet: `layout --check` passes unchanged.
 - `generate.py`: `wavetable_modifiers.vital`, oscillator 1's wavetable as
   one group of a line source and every modifier with an overlay (Phase
   Shift, Wave Window, Frequency Filter, Slew Limiter, Wave Folder, Wave
@@ -44,6 +46,12 @@ chosen component selected, which upstream's editor only does on a click.
   add such fixtures route them.
 
 **Tests**
+
+- `test_gui_reference.py`: `layout_paths()` yields the selection as a
+  fourth field (the preset and overlay tests updated); a selection applies
+  until `@wavetable-select none`; `@wavetable-select` without the editor
+  overlay, or malformed, fails; `overlay_args` passes a selection through
+  and refuses it without the editor or malformed.
 
 - `tests/wavetable_editor.rs`
   `a_requested_keyframe_is_selected_when_the_editor_shows`: a second

@@ -38,6 +38,7 @@ OpenGL (LIBGL_ALWAYS_SOFTWARE=1) is used either way.
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -131,22 +132,32 @@ def live_args(view):
 
 
 OVERLAYS = ("preset_browser", "save_section", "popup_browser", "wavetable_editor")
+# ref-gui --wavetable-select: zero-based group, component and keyframe.
+WAVETABLE_SELECT = re.compile(r"^\d+:\d+(:\d+)?$")
+
+
+def check_wavetable_select(select, overlay, where):
+    """Exits unless `select` is "group:component[:keyframe]" and `overlay`
+    is the wavetable editor, which the selection is made in."""
+    if overlay != "wavetable_editor":
+        sys.exit(f"gui_reference.py: {where}: wavetable_select {select} needs overlay wavetable_editor")
+    if not WAVETABLE_SELECT.fullmatch(select):
+        sys.exit(f"gui_reference.py: {where}: wavetable_select {select} isn't group:component[:keyframe]")
 
 
 def overlay_args(view):
     """ref-gui options for the overlay a view opens over its tab: "overlay"
     is one of OVERLAYS."""
     overlay = view.get("overlay")
+    select = view.get("wavetable_select")
+    if select is not None:
+        check_wavetable_select(select, overlay, f"{VIEWS.name}: {view.get('name', '?')}")
     if overlay is None:
         return []
     if overlay not in OVERLAYS:
         sys.exit(f"gui_reference.py: {VIEWS.name}: {view.get('name', '?')}: unknown overlay {overlay}")
     args = ["--overlay", overlay]
-    select = view.get("wavetable_select")
     if select is not None:
-        if overlay != "wavetable_editor":
-            sys.exit(f"gui_reference.py: {view.get('name', '?')}: wavetable_select needs "
-                     "overlay wavetable_editor")
         args += ["--wavetable-select", select]
     return args
 
@@ -179,6 +190,8 @@ def layout_paths():
         elif line and not line.startswith("#"):
             if line in seen:
                 sys.exit(f"gui_reference.py: {LAYOUT_PATHS.name}: {line} is listed twice")
+            if select is not None:
+                check_wavetable_select(select, overlay, f"{LAYOUT_PATHS.name}: {line}")
             seen.add(line)
             paths.append((line, preset, overlay, select))
     return paths
