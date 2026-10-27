@@ -831,6 +831,19 @@ MCP server) extends this entry when it lands.*
   the listing.
 - **Approved:** coordinator, 2026-10-26.
 
+### D29. No "Open File Location" menu on the All, Favorites and Add Folder rows
+
+- **Differs:** a right-click on the All, Favorites or Add Folder row of the
+  preset browser's or popup browser's folder list.
+- **Upstream:** `SelectionList::menuClick` offers "Open File Location" on
+  any hovered row. For these three rows the row is a made-up file under
+  `cwd/_` that doesn't exist, so `revealToUser` does nothing.
+- **Port:** the menu is offered only on rows that are real files or
+  folders (`selection_list.rs`); a right-click on these three rows opens
+  nothing.
+- **Why:** a menu item that does nothing is left out rather than copied.
+- **Approved:** coordinator, 2026-10-26.
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change

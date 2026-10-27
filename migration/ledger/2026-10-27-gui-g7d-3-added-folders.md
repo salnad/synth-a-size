@@ -21,8 +21,9 @@ FL checklist item 11.
   with the pointer on it (`remove_additional_x_`, Icon Button Off and Off
   Hover).
 - Upstream's right-click menu offers "Open File Location" on the Add
-  Folder row too, for a file that doesn't exist; the port offers it only
-  on real files and folders.
+  Folder row too, for a file that doesn't exist, as on All and Favorites;
+  the port offers it only on real files and folders (D29, covering all
+  three rows).
 
 **The popup browser** (`sections/popup_browser.rs`):
 
