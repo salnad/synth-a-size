@@ -567,6 +567,21 @@
   "oscillator 1/component list/Add Modifier#2": {"bounds": [25, 352, 172, 11], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
   "oscillator 1/component list/Add Modifier#3": {"bounds": [25, 404, 172, 11], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
   "oscillator 1/component list/plus#2": {"bounds": [28, 352, 11, 11], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
-  "oscillator 1/component list/plus#3": {"bounds": [28, 404, 11, 11], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"}
+  "oscillator 1/component list/plus#3": {"bounds": [28, 404, 11, 11], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
+  "oscillator 1/PHASE SHIFTER": {"bounds": [0, 0, 700, 283], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:1"},
+  "oscillator 1/PHASE SHIFTER/background": {"bounds": [169, 175, 361, 21], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:1"},
+  "oscillator 1/PHASE SHIFTER/background/text": {"bounds": [169, 175, 84, 8], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:1"},
+  "oscillator 1/PHASE SHIFTER/background/text#2": {"bounds": [253, 175, 170, 8], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:1"},
+  "oscillator 1/PHASE SHIFTER/background/text#3": {"bounds": [423, 175, 107, 8], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:1"},
+  "oscillator 1/PHASE SHIFTER/Harmonic Phase": {"bounds": [169, 183, 84, 13], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:1"},
+  "oscillator 1/PHASE SHIFTER/Phase Mix": {"bounds": [435, 183, 85, 13], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:1"},
+  "oscillator 1/WAVE WINDOW": {"bounds": [0, 0, 700, 283], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:2"},
+  "oscillator 1/WAVE WINDOW/background": {"bounds": [190, 175, 319, 21], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:2"},
+  "oscillator 1/WAVE WINDOW/background/text": {"bounds": [190, 175, 105, 8], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:2"},
+  "oscillator 1/WAVE WINDOW/background/text#2": {"bounds": [295, 175, 107, 8], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:2"},
+  "oscillator 1/WAVE WINDOW/background/text#3": {"bounds": [402, 175, 107, 8], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:2"},
+  "oscillator 1/WAVE WINDOW/Window Shape": {"bounds": [190, 175, 105, 21], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:2"},
+  "oscillator 1/WAVE WINDOW/Left Position": {"bounds": [307, 183, 85, 13], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:2"},
+  "oscillator 1/WAVE WINDOW/Right Position": {"bounds": [414, 183, 85, 13], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:2"}
  }
 }

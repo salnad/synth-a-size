@@ -567,6 +567,21 @@
   "oscillator 1/component list/Add Modifier#2": {"bounds": [106, 1419, 690, 53], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
   "oscillator 1/component list/Add Modifier#3": {"bounds": [106, 1639, 690, 53], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
   "oscillator 1/component list/plus#2": {"bounds": [118, 1419, 53, 53], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
-  "oscillator 1/component list/plus#3": {"bounds": [118, 1639, 53, 53], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"}
+  "oscillator 1/component list/plus#3": {"bounds": [118, 1639, 53, 53], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
+  "oscillator 1/PHASE SHIFTER": {"bounds": [0, 0, 2800, 1135], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:1"},
+  "oscillator 1/PHASE SHIFTER/background": {"bounds": [652, 706, 1495, 87], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:1"},
+  "oscillator 1/PHASE SHIFTER/background/text": {"bounds": [652, 706, 348, 34], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:1"},
+  "oscillator 1/PHASE SHIFTER/background/text#2": {"bounds": [1000, 706, 704, 34], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:1"},
+  "oscillator 1/PHASE SHIFTER/background/text#3": {"bounds": [1704, 706, 443, 34], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:1"},
+  "oscillator 1/PHASE SHIFTER/Harmonic Phase": {"bounds": [652, 740, 348, 53], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:1"},
+  "oscillator 1/PHASE SHIFTER/Phase Mix": {"bounds": [1755, 740, 349, 53], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:1"},
+  "oscillator 1/WAVE WINDOW": {"bounds": [0, 0, 2800, 1135], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:2"},
+  "oscillator 1/WAVE WINDOW/background": {"bounds": [739, 706, 1321, 87], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:2"},
+  "oscillator 1/WAVE WINDOW/background/text": {"bounds": [739, 706, 435, 34], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:2"},
+  "oscillator 1/WAVE WINDOW/background/text#2": {"bounds": [1174, 706, 443, 34], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:2"},
+  "oscillator 1/WAVE WINDOW/background/text#3": {"bounds": [1617, 706, 443, 34], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:2"},
+  "oscillator 1/WAVE WINDOW/Window Shape": {"bounds": [739, 706, 435, 87], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:2"},
+  "oscillator 1/WAVE WINDOW/Left Position": {"bounds": [1225, 740, 349, 53], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:2"},
+  "oscillator 1/WAVE WINDOW/Right Position": {"bounds": [1668, 740, 349, 53], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:2"}
  }
 }

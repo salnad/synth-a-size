@@ -622,3 +622,29 @@ oscillator 1/component list/Add Modifier#2
 oscillator 1/component list/Add Modifier#3
 oscillator 1/component list/plus#2
 oscillator 1/component list/plus#3
+
+# G5e-4: oscillator 1's Phase Shift and Wave Window overlays, each with its
+# modifier's keyframe selected: the overlay, its controls background with
+# the three title texts, and the controls (the phase style is upstream's
+# "Harmonic Phase"; the phase editor among them isn't a named component).
+@preset migration/corpus/gui/presets/wavetable_modifiers.vital
+@overlay wavetable_editor
+@wavetable-select 0:1
+oscillator 1/PHASE SHIFTER
+oscillator 1/PHASE SHIFTER/background
+oscillator 1/PHASE SHIFTER/background/text
+oscillator 1/PHASE SHIFTER/background/text#2
+oscillator 1/PHASE SHIFTER/background/text#3
+oscillator 1/PHASE SHIFTER/Harmonic Phase
+oscillator 1/PHASE SHIFTER/Phase Mix
+@wavetable-select 0:2
+oscillator 1/WAVE WINDOW
+oscillator 1/WAVE WINDOW/background
+oscillator 1/WAVE WINDOW/background/text
+oscillator 1/WAVE WINDOW/background/text#2
+oscillator 1/WAVE WINDOW/background/text#3
+oscillator 1/WAVE WINDOW/Window Shape
+oscillator 1/WAVE WINDOW/Left Position
+oscillator 1/WAVE WINDOW/Right Position
+@wavetable-select none
+@overlay none

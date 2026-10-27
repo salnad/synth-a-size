@@ -23,6 +23,7 @@ pub mod matrix;
 pub mod modulation;
 pub mod oscillator;
 pub mod oscillator_advanced;
+pub mod phase_window_overlays;
 pub mod popup_browser;
 pub mod portamento;
 pub mod preset_browser;
