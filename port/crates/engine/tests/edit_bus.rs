@@ -1095,9 +1095,10 @@ fn stale_auditions_change_nothing() {
 }
 
 /// `end_audition` after a drag that isn't committed: the shared and engine
-/// tables are the document's creator again, and the synth plays bit for bit
-/// as one that only ever had the committed table; the document and revision
-/// stay.
+/// tables are the document's creator again, the drag's token goes stale so
+/// a late audition or frame changes nothing, and the synth plays bit for
+/// bit as one that only ever had the committed table; the document and
+/// revision stay.
 #[test]
 fn ending_an_audition_plays_the_document_again() {
     let _rng = ENGINE_RNG.lock().unwrap_or_else(|p| p.into_inner());
@@ -1135,6 +1136,20 @@ fn ending_an_audition_plays_the_document_again() {
             corpus_wavetable().to_json().dump()
         );
     });
+
+    // The drag's token is stale now: a late audition or frame from it
+    // (a worker's render in flight at the cancel) changes nothing.
+    assert!(!edits.audition_wavetable(0, drawn_creator(), token).unwrap());
+    assert!(!edits
+        .set_wavetable_frame(0, drawn_creator(), 9, token)
+        .unwrap());
+    assert!(!edits.end_audition(0, token).unwrap());
+    consumer.drain(&mut synth);
+    assert_eq!(
+        table_bits(&edits.wavetable(0).unwrap()),
+        table_bits(&before)
+    );
+    assert_eq!(table_bits(&engine.borrow()), table_bits(&before));
 
     let actual = render(&mut synth, &[]);
     assert!(expected.iter().any(|&sample| sample != 0.0));

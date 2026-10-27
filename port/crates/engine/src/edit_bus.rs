@@ -129,8 +129,8 @@ pub struct PreparedWavetable {
 }
 
 /// Which oscillator wavetable an audition belongs to: the state's
-/// generation and the oscillator's wavetable commits when the drag began
-/// ([`EditHandle::audition_token`]).
+/// generation and the oscillator's wavetable commits and ended auditions
+/// when the drag began ([`EditHandle::audition_token`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AuditionToken {
     generation: u64,
@@ -262,8 +262,9 @@ struct Mirror {
     revision: u64,
     next_seq: u64,
     wavetables: [Option<Arc<Wavetable>>; NUM_OSCILLATORS],
-    /// Each oscillator's wavetable commits ([`Batch::set_prepared_wavetable`]),
-    /// which make older auditions stale.
+    /// Each oscillator's wavetable commits ([`Batch::set_prepared_wavetable`])
+    /// and ended auditions ([`EditHandle::end_audition`]), which make older
+    /// auditions stale.
     wavetable_commits: [u64; NUM_OSCILLATORS],
 }
 
@@ -952,8 +953,7 @@ impl EditHandle {
     ) -> Result<bool, EditError> {
         check_index(oscillator, NUM_OSCILLATORS)?;
         let prepared = PreparedWavetable::render(creator)?;
-        self.collect_retired();
-        self.swap_audition(oscillator, prepared, token)
+        self.swap_audition(oscillator, prepared, token, false)
     }
 
     /// Ends a drag that won't be committed (cancelled, or the editor closed
@@ -962,7 +962,9 @@ impl EditHandle {
     /// plays is again what a save stores. Like the auditions, it leaves the
     /// document and the revision alone, and returns false, changing
     /// nothing, when `token` is stale, since a commit or restore has
-    /// already replaced the table.
+    /// already replaced the table. It makes `token` stale, so an audition
+    /// or frame of the drag still in flight can't swap the auditioned
+    /// table back in.
     pub fn end_audition(&self, oscillator: usize, token: AuditionToken) -> Result<bool, EditError> {
         check_index(oscillator, NUM_OSCILLATORS)?;
         let creator = {
@@ -973,16 +975,18 @@ impl EditHandle {
             mirror.document.state.wavetables[oscillator].clone()
         };
         let prepared = PreparedWavetable::render(creator)?;
-        self.swap_audition(oscillator, prepared, token)
+        self.swap_audition(oscillator, prepared, token, true)
     }
 
     /// Swaps `prepared` into the shared table and the engine's, unless
-    /// `token` has gone stale while it rendered.
+    /// `token` has gone stale while it rendered. `end` then makes `token`
+    /// stale.
     fn swap_audition(
         &self,
         oscillator: usize,
         prepared: PreparedWavetable,
         token: AuditionToken,
+        end: bool,
     ) -> Result<bool, EditError> {
         self.collect_retired();
         let mut mirror = self.lock();
@@ -991,6 +995,9 @@ impl EditHandle {
         }
         if self.capacity_remaining() < 1 {
             return Err(EditError::QueueFull);
+        }
+        if end {
+            mirror.wavetable_commits[oscillator] += 1;
         }
         mirror.wavetables[oscillator] = Some(prepared.shared);
         let staged = vec![Staged::Pending(

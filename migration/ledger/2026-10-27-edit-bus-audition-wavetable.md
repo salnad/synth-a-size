@@ -39,8 +39,11 @@ commit on release, as under D18.
   the document's creator and swaps it into the shared table and the
   engine's, so what plays is again what a save stores. It leaves the
   document and revision alone and does nothing when the token is stale (a
-  commit or restore has already replaced the table). The editor calls it on
-  cancel, close and failure.
+  commit or restore has already replaced the table). It advances the
+  oscillator's count, so the drag's token goes stale and an audition or
+  frame still in flight (a worker's render at the cancel) can't swap the
+  auditioned table back in. The editor calls it on cancel, close and
+  failure.
 - `wavetable()`'s lazy render after a restore keeps a table an audition
   stored while it rendered, instead of overwriting it.
 - `EditorModel::content_revision`'s doc says auditions don't move it.
@@ -63,8 +66,10 @@ commit on release, as under D18.
 - `ending_an_audition_plays_the_document_again`: after an audition and a
   drawn frame, `end_audition` makes the shared and engine tables
   bit-identical to the committed one, with the document and revision
-  unchanged, and the synth then plays bit for bit like one that only ever
-  had the committed table.
+  unchanged; a late audition, frame or second end with the drag's token
+  then returns false and leaves the tables as the document's; and the
+  synth plays bit for bit like one that only ever had the committed
+  table.
 - The frame tests now check that the document keeps its creator and the
   revision stays (they checked the opposite under #178's first contract).
 - The allocation test's producer also auditions a whole table every 40
