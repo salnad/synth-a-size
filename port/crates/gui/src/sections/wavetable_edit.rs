@@ -790,7 +790,10 @@ impl WavetableEditSection {
                     PointerButton::Primary
                 };
                 self.clicks.press(now, pos, button, modifiers);
-                self.organizer_down(layout, offset, local(pos), popup);
+                // mouse_down_position_ = e.position.toInt() truncates.
+                let (x, y) = to_pixels(panel.pixels, pos);
+                let down = (x as i32 - organizer.x, y as i32 - organizer.y);
+                self.organizer_down(layout, offset, local(pos), down, popup);
             }
             Some(press) => {
                 let held = if press.popup && !primary_down {
@@ -822,11 +825,12 @@ impl WavetableEditSection {
         layout: &WavetableEditLayout,
         offset: i32,
         at: (i32, i32),
+        down: (i32, i32),
         popup: bool,
     ) {
         let mut press = OrganizerPress {
             mode: OrganizerMode::Waiting,
-            down: at,
+            down,
             current: at,
             popup,
             moved: false,

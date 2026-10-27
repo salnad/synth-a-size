@@ -31,7 +31,8 @@ table, as upstream's `render()` does.
     sends after the second click's `mouseUp`, deletes the keyframe under
     the pointer or creates one there and selects it. The popup-menu button
     opens "Create Keyframe", or "Remove Keyframe(s)" over a selection.
-    Pointer positions round, as JUCE's `MouseEvent::x` and `y` do.
+    Pointer positions round, as JUCE's `MouseEvent::x` and `y` do, except
+    the press position, which truncates as `mouse_down_position_` does.
   - The component list: "Add Source" and each group's "Add Modifier" open
     the type menus, and each row's menu button opens the group menu (Move
     Group Up and Down, Reset Source, Remove Group) or the modifier menu
