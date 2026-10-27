@@ -8,13 +8,17 @@
 //! FM/RM dependency check of `SynthesisInterface::distortionTypeChanged`.
 //!
 //! The wavetable view is `controls::wavetable_3d`; the edit button opens
-//! the wavetable editor (`sections::wavetable_edit`). The wavetable's
-//! browser comes later. The text-to-wavetable field is absent (D20: it
-//! needs sign-in).
+//! the wavetable editor (`sections::wavetable_edit`), and the name the
+//! popup browser (`sections::popup_browser`). The text-to-wavetable field
+//! is absent (D20: it needs sign-in).
 
 use std::cell::RefCell;
+use std::path::{Path, PathBuf};
 
-use super::{MenuOwner, Panel};
+use egui::Sense;
+use sas_preset::user_folders::{self, Kind};
+
+use super::{popup_browser, MenuOwner, Panel};
 use crate::colour::Colour;
 use crate::controls::button::SynthButton;
 use crate::controls::paths::Icon;
@@ -24,6 +28,7 @@ use crate::controls::transpose_quantize;
 use crate::controls::wavetable_3d::{RenderType, ViewSettings, Wavetable3d};
 use crate::fonts::Face;
 use crate::host::Host;
+use crate::interface::EditorModel;
 use crate::layout::{PresetSelectorLayout, Rect};
 use crate::paint::PixelPainter;
 use crate::popup::{Menu, MenuItem};
@@ -578,6 +583,11 @@ impl OscillatorLayout {
     }
 }
 
+/// `textMouseDown`'s `kBrowserWidth` and `kBrowserHeight`, before the size
+/// ratio.
+const BROWSER_WIDTH: f32 = 600.0;
+const BROWSER_HEIGHT: f32 = 400.0;
+
 /// One oscillator section's controls (`OscillatorSection`'s constructor).
 pub struct OscillatorSection {
     index: usize,
@@ -598,6 +608,14 @@ pub struct OscillatorSection {
     distortion_amount: Slider,
     spectral_morph_amount: Slider,
     wave_frame: Slider,
+    /// `current_file_`: the wavetable file last loaded from the browser or
+    /// the arrows.
+    current_file: RefCell<Option<PathBuf>>,
+    /// The popup browser this section asked for since the last call: its
+    /// bounds and the section's (`textMouseDown`).
+    browse_request: RefCell<Option<(Rect, Rect)>>,
+    /// Opens the browser next frame as a press on the name does.
+    browse_next_frame: std::cell::Cell<bool>,
 }
 
 impl OscillatorSection {
@@ -609,6 +627,9 @@ impl OscillatorSection {
         view.save_available = true;
         OscillatorSection {
             index,
+            current_file: RefCell::new(None),
+            browse_request: RefCell::new(None),
+            browse_next_frame: std::cell::Cell::new(false),
             view: RefCell::new(view),
             names,
             on: SynthButton::power(names.on),
@@ -646,6 +667,29 @@ impl OscillatorSection {
     /// the last call (`OscillatorSection::saveWavetable`).
     pub fn take_save_request(&self) -> bool {
         self.view.borrow_mut().take_save_request()
+    }
+
+    /// `getCurrentFile`.
+    pub fn current_file(&self) -> Option<PathBuf> {
+        self.current_file.borrow().clone()
+    }
+
+    /// `loadFile`: loads `file` and keeps it as the current file.
+    pub fn load_file(&self, model: &dyn EditorModel, file: &Path) {
+        *self.current_file.borrow_mut() = Some(file.to_path_buf());
+        popup_browser::load_wavetable_file(model, self.index, file);
+    }
+
+    /// Opens the popup browser next frame, as a press on the wavetable's
+    /// name does.
+    pub fn request_browse(&self) {
+        self.browse_next_frame.set(true);
+    }
+
+    /// The popup browser asked for since the last call: the browser's
+    /// bounds and the section's.
+    pub fn take_browse_request(&self) -> Option<(Rect, Rect)> {
+        self.browse_request.borrow_mut().take()
     }
 
     /// The section's layout for the current wave morph type.
@@ -1036,8 +1080,10 @@ impl OscillatorSection {
         );
     }
 
-    /// The wavetable's name with its arrows, and the edit button; browsing
-    /// wavetables comes later.
+    /// The wavetable's name with its arrows, and the edit button. A press on
+    /// the name opens the popup browser (`textMouseDown`); the arrows load
+    /// the wavetable before or after the current file among the user's
+    /// (`prevClicked`, `nextClicked`).
     fn show_wavetable_buttons(&self, panel: &mut Panel, layout: &OscillatorLayout) {
         let host = panel.host;
         let index = self.index;
@@ -1051,14 +1097,39 @@ impl OscillatorSection {
             preset.text_size,
             panel.scope.color(ColorId::PresetText),
         );
-        panel.shape_button(
-            ("wavetable prev", index),
-            ShapeButton {
-                shape: Shape::Prev,
-                colours: ui_colours,
-            },
-            preset.previous,
+        let text = panel.pixels.rect(preset.text.into());
+        let response = panel.ui.interact(
+            text,
+            panel.ui.scope_id().with(("wavetable name", index)),
+            Sense::click(),
         );
+        let pressed = response.hovered() && panel.ui.input(|input| input.pointer.primary_pressed());
+        if pressed || self.browse_next_frame.take() {
+            // kBrowserWidth × kBrowserHeight from the unison voices' left,
+            // level with the name.
+            let ratio = panel.scope.size_ratio();
+            let browser = Rect::new(
+                layout.unison_voices.x,
+                preset.bounds.y,
+                (BROWSER_WIDTH * ratio) as i32,
+                (BROWSER_HEIGHT * ratio) as i32,
+            );
+            *self.browse_request.borrow_mut() = Some((browser, layout.bounds));
+        }
+        let mut shift = 0;
+        if panel
+            .shape_button(
+                ("wavetable prev", index),
+                ShapeButton {
+                    shape: Shape::Prev,
+                    colours: ui_colours,
+                },
+                preset.previous,
+            )
+            .clicked
+        {
+            shift = -1;
+        }
         let pencil = ShapeButton {
             shape: Shape::from(Icon::Pencil),
             colours: ShapeColours::icon(&panel.scope),
@@ -1069,14 +1140,33 @@ impl OscillatorSection {
         {
             panel.overlay.open_wavetable_editor = Some(index);
         }
-        panel.shape_button(
-            ("wavetable next", index),
-            ShapeButton {
-                shape: Shape::Next,
-                colours: ui_colours,
-            },
-            preset.next,
-        );
+        if panel
+            .shape_button(
+                ("wavetable next", index),
+                ShapeButton {
+                    shape: Shape::Next,
+                    colours: ui_colours,
+                },
+                preset.next,
+            )
+            .clicked
+        {
+            shift = 1;
+        }
+        if shift != 0 {
+            let model = host.model();
+            // getShiftedFile: the user's folders, then the added ones.
+            let mut directories = user_folders::root(model.data_directory().as_deref())
+                .map(|root| user_folders::directories(&root, Kind::Wavetables))
+                .unwrap_or_default();
+            directories.extend(model.additional_folders(Kind::Wavetables));
+            let files =
+                user_folders::files_of_type(&directories, popup_browser::WAVETABLE_EXTENSIONS);
+            let current = self.current_file();
+            if let Some(file) = user_folders::shifted_file(files, current.as_deref(), shift) {
+                self.load_file(model, &file);
+            }
+        }
 
         let count = DIMENSION_NAMES.len();
         let render_type = (host.value(self.names.view_2d) as usize).min(count - 1);

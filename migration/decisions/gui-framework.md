@@ -234,7 +234,28 @@ repeat the check in FL Studio where the note says so.
       plugins in its own window, and whether it honours a plugin's own
       resize on macOS is what this item settles; if it doesn't, the overlay
       fallback should take over.
-11. **The saved window size.** Drag the corner resizer at the plugin
+11. **The popup browser (G7d).** Click oscillator 1's wavetable name, then
+    the sample's name and LFO 1's name, choosing a file in each.
+    - Each browser should open beside its name, list the user's files of
+      its kind, and load the file clicked; Escape, the cross, or a click
+      outside its section should close it. Dragging in its lists should
+      move no knob underneath.
+    - In the wavetable browser, click "Add Folder" at the bottom of the
+      folder list and choose a folder holding a few `.wav` files. The
+      folder dialog should open as a sheet on the plugin's window, as in
+      item 8; the folder should then be listed above "Add Folder", and its
+      files appear under All and in the oscillator's arrows.
+    - Add the same folder again, then a folder holding more than 8,000
+      files: each should show an "Error Adding Folder" message as a sheet,
+      as in item 9, and add nothing.
+    - Close and reopen the plugin window, and open a second instance: the
+      added folder should still be listed (it is kept in the config the
+      instances share). Hover it and click the cross at its right: it
+      should go, and stay gone after reopening.
+    - *REAPER:* settles the sheets; repeat the parenting checks in FL
+      Studio, as in items 8 and 9.
+
+12. **The saved window size.** Drag the corner resizer at the plugin
     window's bottom right (JUCE's three diagonal lines), let go, close the
     window, then insert a second instance and open it.
     - The new instance should open at the size the first was left at,

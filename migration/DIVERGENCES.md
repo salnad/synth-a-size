@@ -345,8 +345,10 @@ MCP server) extends this entry when it lands.*
     parameter gesture, an edit bus edit, or a whole-state load through the
     host, exactly as the editor makes them. Undo restores the same way.
   - The editor has a chat panel (`sas_gui::chat`). Its toggle is our logo
-    section, the product-name area of D14, with a small "chat" caption.
-    The toggle opens a drawer: the window widens by 360 points at the
+    section, the product-name area of D14, with a small "chat" caption,
+    shown while that section is: not while the wavetable editor replaces
+    the header, nor under the save and delete sections, which cover the
+    whole interface. The toggle opens a drawer: the window widens by 360 points at the
     editor's scale (G7e), and the panel docks there at full height, beside
     upstream's unchanged layout. If the host keeps the window's width, the
     panel overlays the editor's right side instead, below the header and
@@ -596,10 +598,11 @@ MCP server) extends this entry when it lands.*
   parked as I20.
 - **Approved:** coordinator, relaying UI Reviewer's review of #137.
 
-### D21. Pasting wavetable JSON that can't be read leaves the oscillator unchanged
+### D21. Wavetable JSON that can't be read, pasted or loaded from a file, leaves the oscillator unchanged
 
 - **Differs:** what pasting wavetable JSON onto an oscillator does when the
-  text passes the validity check but can't be read.
+  text passes the validity check but can't be read, and what loading a
+  `.vitaltable` file that can't be read does.
 - **Upstream:** the paste checks `WavetableCreator::isValidJson` (an object
   with `version`, `name` and an array of `groups`, or a line shape) and then
   calls `WavetableEditSection::loadWavetable`. That clears the creator, and
@@ -607,17 +610,24 @@ MCP server) extends this entry when it lands.*
   groups. If a group can't be read (for example `"groups": [7]`), the
   exception is caught and nothing re-renders, so the creator is left
   cleared and partly loaded while the oscillator keeps playing its old
-  table.
+  table. Loading a `.vitaltable` (the popup browser, the oscillator's
+  arrows, a drop) goes through `WavetableEditSection::loadFile`, which
+  clears the creator first and, if the file doesn't parse or a group can't
+  be read, returns before re-rendering: the same cleared creator over the
+  old sound.
 - **Port:** `EditorModel::load_wavetable_json` reads the JSON into a copy of
   the oscillator's creator and sets it only if reading succeeds
   (`PluginModel`, `port/crates/plugin/src/editor.rs`). Unreadable JSON
   returns false and leaves the creator, the table and the edit bus revision
-  unchanged.
+  unchanged. A `.vitaltable` file goes through the same call
+  (`popup_browser::load_wavetable_file`), and one that doesn't parse returns
+  false before it, so it too leaves the oscillator unchanged.
 - **Why:** upstream's result is a creator that no longer matches the sound,
   and saving the preset then would store the partial state. Rejecting the
   paste keeps the two consistent. Valid JSON loads exactly as upstream's.
 - **Approved:** coordinator, relaying UI Reviewer's and Graph Reviewer's
-  reviews of #137.
+  reviews of #137; extended to files, relaying UI Reviewer's review of
+  #172.
 
 ### D22. "Resynthesize Preset to Wavetable" renders a fresh synth on a worker thread
 
@@ -760,6 +770,25 @@ MCP server) extends this entry when it lands.*
 - **Approved:** coordinator, relaying Voice Reviewer's review of #159,
   2026-10-26.
 
+### D26. The popup browser always has its search box, and no store button
+
+- **Differs:** the top of the popup browser that sections open to choose a
+  wavetable, sample or LFO file.
+- **Upstream:** `PopupBrowser::checkNoContent` shows a "Download content"
+  button in place of the search box until the factory content is installed
+  (`LoadSave::hasDataDirectory` needs the installer's `packs.json` in the
+  data folder); it starts the factory download (`startDownload`).
+  `checkStoreButton` shows a "Get more … by <author>" button, opening
+  upstream's store, for the loaded file's author when that author has packs
+  on sale (`getAvailablePacks`).
+- **Port:** the search box always shows, where the download button would
+  be, and there is no store button
+  (`port/crates/gui/src/sections/popup_browser.rs`).
+- **Why:** the port ships no factory content or installer (rule 3), and the
+  store needs upstream's accounts and servers (rule 4). Without them, the
+  search box is what upstream shows once content is installed.
+- **Approved:** coordinator, 2026-10-26.
+
 ### D27. A cycle of modulation amounts reads at a share instead of hanging
 
 - **Differs:** amount knobs whose connections modulate each other's amounts
@@ -780,6 +809,40 @@ MCP server) extends this entry when it lands.*
   without repeats, so it shows and moves a sensible amount.
 - **Approved:** coordinator, relaying Voice Reviewer's review of #170,
   2026-10-26.
+
+### D28. "Add Folder" refuses a folder that links back into itself
+
+- **Differs:** what the popup browser's "Add Folder" does with a folder
+  holding a symbolic link to itself or to a folder above it.
+- **Upstream:** `isAcceptableRoot` walks the folder with
+  `findChildFiles(File::findDirectories, false)`, linked folders followed,
+  and refuses it once more than `kMaxRootFiles` (8,000) files are counted.
+  A loop is walked round and round, each pass deeper in the path. With
+  files in it, the count soon passes 8,000 and the folder is refused. With
+  none, the walk goes on until the system refuses the path, and with two
+  such links it doubles at every level, so the host hangs.
+- **Port:** `popup_browser::is_acceptable_root` walks and counts the same
+  way, linked folders followed, so a folder without a loop gets upstream's
+  answer. A folder whose walk reaches one of the folders above it is
+  refused at once, with the same "too many files" message.
+- **Why:** no folder a user picks may hang the host. A looped folder with
+  files is refused by upstream too, and the browser's listings follow
+  links as upstream's do, so an accepted loop would only move the hang to
+  the listing.
+- **Approved:** coordinator, 2026-10-26.
+
+### D29. No "Open File Location" menu on the All, Favorites and Add Folder rows
+
+- **Differs:** a right-click on the All, Favorites or Add Folder row of the
+  preset browser's or popup browser's folder list.
+- **Upstream:** `SelectionList::menuClick` offers "Open File Location" on
+  any hovered row. For these three rows the row is a made-up file under
+  `cwd/_` that doesn't exist, so `revealToUser` does nothing.
+- **Port:** the menu is offered only on rows that are real files or
+  folders (`selection_list.rs`); a right-click on these three rows opens
+  nothing.
+- **Why:** a menu item that does nothing is left out rather than copied.
+- **Approved:** coordinator, 2026-10-26.
 
 ### D30. The saved window size isn't kept within the screen
 

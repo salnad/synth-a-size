@@ -32,6 +32,21 @@ pub fn exit_x() -> &'static Path {
     })
 }
 
+/// `Paths::thickX`: a cross stroked thicker, with butt ends.
+pub fn thick_x() -> &'static Path {
+    static PATH: OnceLock<Path> = OnceLock::new();
+    PATH.get_or_init(|| {
+        let mut outline = Path::new();
+        outline.move_to(0.25, 0.25);
+        outline.line_to(0.75, 0.75);
+        outline.move_to(0.25, 0.75);
+        outline.line_to(0.75, 0.25);
+        let mut path = outline.stroked(0.1, JointStyle::Curved, EndCapStyle::Butt);
+        pad(&mut path, 0.0, 1.0, 0.2);
+        path
+    })
+}
+
 /// `Paths::star`.
 pub fn star() -> &'static Path {
     static PATH: OnceLock<Path> = OnceLock::new();

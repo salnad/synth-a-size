@@ -26,8 +26,20 @@ class LayoutPathsTest(unittest.TestCase):
         preset = "migration/corpus/gui/presets/all_effects.vital"
         self.assertEqual(
             self.paths(f"# comment\nheader_section\n\n@preset {preset}\neffects/container/CHORUS\n"),
-            [("header_section", None), ("effects/container/CHORUS", preset)],
+            [("header_section", None, None), ("effects/container/CHORUS", preset, None)],
         )
+
+    def test_an_overlay_applies_until_none(self):
+        self.assertEqual(
+            self.paths("header_section\n@overlay popup_browser\nPopup Browser/Exit\n"
+                       "@overlay none\neffects\n"),
+            [("header_section", None, None), ("Popup Browser/Exit", None, "popup_browser"),
+             ("effects", None, None)],
+        )
+
+    def test_an_unknown_overlay_fails(self):
+        with self.assertRaises(SystemExit):
+            self.paths("@overlay about_section\nheader_section\n")
 
     def test_a_path_listed_twice_fails(self):
         preset = "migration/corpus/gui/presets/all_effects.vital"
@@ -120,6 +132,10 @@ class OverlayArgsTest(unittest.TestCase):
     def test_the_wavetable_editor(self):
         self.assertEqual(gui_reference.overlay_args({"name": "v", "overlay": "wavetable_editor"}),
                          ["--overlay", "wavetable_editor"])
+
+    def test_the_popup_browser(self):
+        self.assertEqual(gui_reference.overlay_args({"name": "v", "overlay": "popup_browser"}),
+                         ["--overlay", "popup_browser"])
 
     def test_an_unknown_overlay_fails(self):
         with self.assertRaises(SystemExit):

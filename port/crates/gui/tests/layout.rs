@@ -16,6 +16,7 @@ use sas_gui::sections::filter::{self, FilterLayout, Kind};
 use sas_gui::sections::lfo::{self, LfoLayout};
 use sas_gui::sections::modulation::{ModulationInterface, ModulationLayout};
 use sas_gui::sections::oscillator::{self, OscillatorLayout};
+use sas_gui::sections::popup_browser::{self, PopupBrowserLayout};
 use sas_gui::sections::portamento::{self, PortamentoLayout};
 use sas_gui::sections::preset_browser::PresetBrowserLayout;
 use sas_gui::sections::random::{self, RandomLayout};
@@ -25,7 +26,7 @@ use sas_gui::sections::synthesis::SynthesisLayout;
 use sas_gui::sections::voice::{self, VoiceLayout};
 use sas_gui::sections::volume::VolumeLayout;
 use sas_gui::sections::wavetable_edit::WavetableEditLayout;
-use sas_gui::skin::Skin;
+use sas_gui::skin::{Skin, ValueId};
 
 /// G6: the Effects tab, laid out with every effect on
 /// (`migration/corpus/gui/presets/all_effects.vital`).
@@ -429,6 +430,47 @@ fn wavetable_editor_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option
     })
 }
 
+/// The popup browser's parts, open for oscillator 1's wavetables
+/// (`OscillatorSection::textMouseDown`, `PopupBrowser::resized`), over the
+/// whole window.
+fn popup_browser_rect(
+    skin: &Skin,
+    layout: &FullLayout,
+    width: i32,
+    height: i32,
+    path: &str,
+) -> Option<Rect> {
+    let top = Scope::top(skin, layout.size_ratio);
+    let synthesis = SynthesisLayout::new(&top, layout.main);
+    let osc = OscillatorLayout::new(
+        &top.within(oscillator::SKIN),
+        synthesis.oscillators[0],
+        false,
+    );
+    let ratio = layout.size_ratio;
+    let browser = Rect::new(
+        osc.unison_voices.x,
+        osc.preset_selector.bounds.y,
+        (600.0 * ratio) as i32,
+        (400.0 * ratio) as i32,
+    );
+    let scope = top.within(popup_browser::SKIN);
+    let parts = PopupBrowserLayout::new(ratio, scope.value(ValueId::Padding), browser);
+    let areas = popup_browser::closing_areas(Rect::new(0, 0, width, height), osc.bounds);
+    Some(match path.strip_prefix("Popup Browser/")? {
+        "Ignore Area" => areas[0],
+        "Ignore Area#2" => areas[1],
+        "Ignore Area#3" => areas[2],
+        "Ignore Area#4" => areas[3],
+        "Exit" => parts.exit,
+        // The download button, where the search box goes.
+        "Login" => parts.search,
+        "Selection List" => parts.folders,
+        "Selection List#2" => parts.files,
+        _ => return None,
+    })
+}
+
 /// The macro and wheel source column.
 fn extra_mod_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> {
     let top = Scope::top(skin, layout.size_ratio);
@@ -758,6 +800,9 @@ fn layout_matches_upstream_at_every_size() {
             let actual = match preset {
                 Some(effects::ALL_EFFECTS) => effects::all_effects_rect(&skin, &layout, path),
                 _ if path.starts_with("save_section/") => save_rect(&layout, width, height, path),
+                _ if entry.get("overlay").and_then(|o| o.as_str()) == Some("popup_browser") => {
+                    popup_browser_rect(&skin, &layout, width, height, path)
+                }
                 _ => port_rect(&skin, &layout, path, preset),
             }
             .unwrap_or_else(|| panic!("{}: no port rectangle for {path}", file.display()));

@@ -183,6 +183,30 @@ fn producer(edits: EditHandle, stop: Arc<AtomicBool>, routing: bool) -> usize {
             let creator = wavetables[(count / 40) % wavetables.len()].clone();
             retry(|| edits.set_wavetable((count / 40) % 3, creator.clone()));
         }
+        if count % 4 == 1 {
+            // Drawing on a wavetable: one frame at a time.
+            let creator = wavetables[count % wavetables.len()].clone();
+            retry(|| {
+                let token = edits.audition_token(count % 3)?;
+                edits.set_wavetable_frame(count % 3, creator.clone(), (count * 7) % 257, token)
+            });
+        }
+        if count % 40 == 20 {
+            // The drag's whole-table auditions between its frames.
+            let oscillator = (count / 40) % 3;
+            let creator = wavetables[(count / 20) % wavetables.len()].clone();
+            retry(|| {
+                let token = edits.audition_token(oscillator)?;
+                edits.audition_wavetable(oscillator, creator.clone(), token)
+            });
+            if count % 80 == 20 {
+                // A drag that isn't committed.
+                retry(|| {
+                    let token = edits.audition_token(oscillator)?;
+                    edits.end_audition(oscillator, token)
+                });
+            }
+        }
         if count % 60 == 0 {
             let sample = SampleState {
                 name: format!("sample {count}"),

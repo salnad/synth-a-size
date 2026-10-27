@@ -8,7 +8,8 @@
 // Usage:
 //   ref-gui [--out frame.png] [--layout layout.jsonl] [--preset file.vital]
 //           [--tab voice|effects|matrix|advanced] [--width 1400] [--height 820] [--frames 30]
-//           [--effects-scroll 0] [--overlay preset_browser|save_section|wavetable_editor]
+//           [--effects-scroll 0]
+//           [--overlay preset_browser|save_section|popup_browser|wavetable_editor]
 //           [--data-dir folder]
 //
 // --effects-scroll scrolls the effects column down that many pixels (the
@@ -18,7 +19,9 @@
 // header's preset selector does. --overlay save_section opens the save
 // section for a preset, as the header's save button does, without
 // SaveSection::setIsPreset: that makes the user's preset folder inside the
-// data folder.
+// data folder. --overlay popup_browser opens the popup browser for
+// oscillator 1's wavetables, as a press on its wavetable name does
+// (OscillatorSection::textMouseDown).
 // --overlay wavetable_editor opens oscillator 1's wavetable editor in place of
 // the interface, as its edit button does.
 //
@@ -55,6 +58,7 @@
 #include "effects_interface.h"
 #include "full_interface.h"
 #include "load_save.h"
+#include "oscillator_section.h"
 #include "save_section.h"
 #include "sound_engine.h"
 #include "synth_base.h"
@@ -130,6 +134,24 @@ EffectsViewport* findEffectsViewport(Component* component) {
   for (Component* child : component->getChildren()) {
     if (EffectsViewport* found = findEffectsViewport(child))
       return found;
+  }
+  return nullptr;
+}
+
+OscillatorSection* findOscillatorSection(Component* component) {
+  if (auto* oscillator = dynamic_cast<OscillatorSection*>(component))
+    return oscillator;
+  for (Component* child : component->getChildren()) {
+    if (OscillatorSection* found = findOscillatorSection(child))
+      return found;
+  }
+  return nullptr;
+}
+
+Component* findChildNamed(Component* component, const String& name) {
+  for (Component* child : component->getChildren()) {
+    if (child->getName() == name)
+      return child;
   }
   return nullptr;
 }
@@ -318,10 +340,12 @@ class RefGuiApplication : public JUCEApplication {
       if ((options.out.empty() && options.layout.empty()) || tab < 0)
         return fail("usage: ref-gui (--out frame.png | --layout layout.jsonl) [--preset file.vital] "
                     "[--tab voice|effects|matrix|advanced] [--width W] [--height H] [--frames N] "
-                    "[--effects-scroll Y] [--overlay preset_browser|save_section|wavetable_editor] "
+                    "[--effects-scroll Y] "
+                    "[--overlay preset_browser|save_section|popup_browser|wavetable_editor] "
                     "[--data-dir folder]");
       if (!options.overlay.empty() && options.overlay != "preset_browser" &&
-          options.overlay != "save_section" && options.overlay != "wavetable_editor")
+          options.overlay != "save_section" && options.overlay != "popup_browser" &&
+          options.overlay != "wavetable_editor")
         return fail("unknown overlay " + options.overlay);
 
       if (!options.data_dir.empty()) {
@@ -397,6 +421,19 @@ class RefGuiApplication : public JUCEApplication {
       }
       if (options.overlay == "wavetable_editor")
         gui->showWavetableEditSection(0);
+      if (options.overlay == "popup_browser") {
+        // OscillatorSection::textMouseDown for oscillator 1.
+        OscillatorSection* oscillator = findOscillatorSection(gui);
+        Component* unison = oscillator ? findChildNamed(oscillator, "osc_1_unison_voices") : nullptr;
+        Component* name = oscillator ? findChildNamed(oscillator, "preset_selector") : nullptr;
+        if (unison == nullptr || name == nullptr)
+          return fail("oscillator 1's wavetable name not found");
+        float ratio = oscillator->getSizeRatio();
+        Rectangle<int> bounds(unison->getX(), name->getY(), 600 * ratio, 400 * ratio);
+        gui->popupBrowser(oscillator, bounds, LoadSave::getWavetableDirectories(),
+                          vital::kWavetableExtensionsList, LoadSave::kWavetableFolderName,
+                          LoadSave::kAdditionalWavetableFoldersName);
+      }
 
       if (!options.layout.empty()) {
         std::string out;

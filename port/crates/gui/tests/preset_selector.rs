@@ -20,14 +20,16 @@ use sas_gui::layout::{FullLayout, HeaderLayout, Rect};
 use sas_gui::scope::Scope;
 use sas_gui::sections::delete_section::DeleteLayout;
 use sas_gui::sections::oscillator::{self, OscillatorLayout};
+use sas_gui::sections::popup_browser::{self, PopupBrowserLayout};
 use sas_gui::sections::preset_browser::PresetBrowserLayout;
+use sas_gui::sections::sample::{self, SampleLayout};
 use sas_gui::sections::save_section::{OverwriteLayout, SaveLayout};
 use sas_gui::sections::selection_list::Selection;
 use sas_gui::sections::synthesis::SynthesisLayout;
 use sas_gui::skin::Skin;
 use sas_gui::{EditorModel, Host, HostParam, Interface, OpenGestures, Tab};
 use sas_preset::registry::registry;
-use sas_preset::user_folders::PRESET_EXTENSION;
+use sas_preset::user_folders::{Kind, PRESET_EXTENSION};
 
 /// Every registry control, linear over its range, and the editor settings.
 struct Synth {
@@ -39,6 +41,8 @@ struct Synth {
     /// What the editor asked the synth to do with presets.
     calls: Mutex<Vec<String>>,
     favourites: Mutex<Vec<PathBuf>>,
+    /// The folders added to the wavetable browser.
+    added_wavetable_folders: Mutex<Vec<PathBuf>>,
     generation: AtomicU64,
     default_author: Mutex<String>,
 }
@@ -65,6 +69,7 @@ impl Synth {
             active_file: Mutex::new(None),
             calls: Mutex::new(Vec::new()),
             favourites: Mutex::new(Vec::new()),
+            added_wavetable_folders: Mutex::new(Vec::new()),
             generation: AtomicU64::new(0),
             default_author: Mutex::new("Someone".to_string()),
         })
@@ -132,8 +137,50 @@ impl EditorModel for Synth {
         self.generation.fetch_add(1, Ordering::Relaxed);
     }
 
+    fn load_wavetable_json(&self, oscillator: usize, json: &str) -> bool {
+        let data = sas_common::json::parse(json).unwrap();
+        let name = data.get("name").unwrap().to_str().unwrap().to_string();
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("wavetable {oscillator} {name}"));
+        true
+    }
+
+    fn load_audio_as_wavetable(
+        &self,
+        oscillator: usize,
+        path: &Path,
+        _style: sas_engine::sas_oscillators::sas_wavetable::creator::AudioFileLoadStyle,
+    ) -> bool {
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("audio {oscillator} {name}"));
+        true
+    }
+
+    fn load_sample_file(&self, path: &Path) -> bool {
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        self.calls.lock().unwrap().push(format!("sample {name}"));
+        name != "Broken.wav"
+    }
+
     fn favourites(&self) -> Vec<PathBuf> {
         self.favourites.lock().unwrap().clone()
+    }
+
+    fn additional_folders(&self, kind: Kind) -> Vec<PathBuf> {
+        match kind {
+            Kind::Wavetables => self.added_wavetable_folders.lock().unwrap().clone(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn set_additional_folders(&self, kind: Kind, folders: &[PathBuf]) {
+        assert_eq!(kind, Kind::Wavetables);
+        *self.added_wavetable_folders.lock().unwrap() = folders.to_vec();
     }
 
     fn set_favourite(&self, path: &Path, favourite: bool) {
@@ -1020,6 +1067,232 @@ fn the_browser_takes_no_keys_while_saving() {
     assert_eq!(save_state(&fixture), (true, false));
 }
 
+/// A data folder holding wavetables: in its Wavetables folder, a folder
+/// inside that, and a bank's.
+fn wavetable_data(fixture: &Fixture, tag: &str) -> Folder {
+    let folder = Folder::new(tag, &[]);
+    for file in [
+        "Wavetables/Glass 2.vitaltable",
+        "Wavetables/glass 10.vitaltable",
+        "Wavetables/Loop.wav",
+        "Wavetables/Vocal/Vox A.vitaltable",
+        "Wavetables/readme.txt",
+        "Bank/Wavetables/Bank Table.vitaltable",
+    ] {
+        let path = folder.0.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, r#"{"version":"1.0.0","name":"Inside","groups":[]}"#).unwrap();
+    }
+    *fixture.synth.data_directory.lock().unwrap() = Some(folder.0.clone());
+    folder
+}
+
+/// Oscillator 1's layout and its popup browser's
+/// (`OscillatorSection::textMouseDown`: 600 × 400 from the unison voices'
+/// left, level with the name).
+fn oscillator_browser(fixture: &Fixture) -> (OscillatorLayout, PopupBrowserLayout) {
+    let layout = FullLayout::new(&fixture.skin, 1400, 820);
+    let top = Scope::top(&fixture.skin, layout.size_ratio);
+    let synthesis = SynthesisLayout::new(&top, layout.main);
+    let osc = OscillatorLayout::new(
+        &top.within(oscillator::SKIN),
+        synthesis.oscillators[0],
+        false,
+    );
+    let browser = Rect::new(osc.unison_voices.x, osc.preset_selector.bounds.y, 600, 400);
+    let scope = top.within(popup_browser::SKIN);
+    let padding = scope.value(sas_gui::skin::ValueId::Padding);
+    (osc, PopupBrowserLayout::new(1.0, padding, browser))
+}
+
+/// The centre of row `row` of a list at `list` (rows 24 pixels high).
+fn popup_row(list: Rect, row: i32) -> Pos2 {
+    Pos2::new(
+        list.x as f32 + list.width as f32 / 2.0,
+        (list.y + 24 * row + 12) as f32,
+    )
+}
+
+fn stems(rows: &[Selection]) -> Vec<String> {
+    rows.iter()
+        .map(|row| match row {
+            Selection::All => "All".to_string(),
+            Selection::Favourites => "Favorites".to_string(),
+            Selection::AddFolder => "Add Folder".to_string(),
+            Selection::Path(path) => path.file_stem().unwrap().to_string_lossy().into_owned(),
+        })
+        .collect()
+}
+
+fn browser_rows(fixture: &Fixture) -> Option<(Vec<String>, Vec<String>)> {
+    let rows = fixture.interface.borrow().popup_browser_rows();
+    rows.map(|(folders, files)| (stems(&folders), stems(&files)))
+}
+
+/// A press on oscillator 1's wavetable name opens the popup browser beside
+/// it: All, Favorites and the wavetable folders (a folder named Wavetables
+/// shows its parent's name), and with All chosen every wavetable file,
+/// `.vitaltable`, `.wav` or `.flac`, in any folder, by full path
+/// (`loadPresets`; the bank's folder sorts before the root's). A file chosen in it loads into the oscillator, a
+/// `.vitaltable` named after its file and audio spliced (`loadFile`).
+#[test]
+fn the_wavetable_name_opens_the_popup_browser_and_a_file_loads() {
+    let fixture = Fixture::new();
+    let data = wavetable_data(&fixture, "popup-open");
+    let mut harness = fixture.harness();
+    let (osc, browser) = oscillator_browser(&fixture);
+    assert_eq!(browser_rows(&fixture), None);
+    click(&mut harness, centre(osc.preset_selector.text));
+    let rows = fixture.interface.borrow().popup_browser_rows().unwrap();
+    assert_eq!(
+        rows.0,
+        [
+            Selection::All,
+            Selection::Favourites,
+            Selection::Path(data.0.join("Bank/Wavetables")),
+            Selection::Path(data.0.join("Wavetables")),
+            Selection::AddFolder,
+        ]
+    );
+    assert_eq!(
+        stems(&rows.1),
+        ["Bank Table", "Glass 2", "glass 10", "Loop", "Vox A"]
+    );
+
+    click(&mut harness, popup_row(browser.files, 2));
+    assert_eq!(calls(&fixture), ["wavetable 0 glass 10"]);
+    click(&mut harness, popup_row(browser.files, 3));
+    assert_eq!(calls(&fixture), ["audio 0 Loop.wav"]);
+    assert!(browser_rows(&fixture).is_some());
+}
+
+/// A `.vitaltable` that doesn't parse loads nothing, leaving the oscillator
+/// as it was (D21).
+#[test]
+fn an_unreadable_wavetable_file_leaves_the_oscillator() {
+    let fixture = Fixture::new();
+    let data = wavetable_data(&fixture, "popup-broken");
+    std::fs::write(data.0.join("Wavetables/glass 10.vitaltable"), "{not json").unwrap();
+    let mut harness = fixture.harness();
+    let (osc, browser) = oscillator_browser(&fixture);
+    click(&mut harness, centre(osc.preset_selector.text));
+    click(&mut harness, popup_row(browser.files, 2));
+    assert!(calls(&fixture).is_empty());
+    click(&mut harness, popup_row(browser.files, 1));
+    assert_eq!(calls(&fixture), ["wavetable 0 Glass 2"]);
+}
+
+/// The arrows load the wavetable after or before the current one among all
+/// the user's, wrapping round, and the first one with none current
+/// (`nextClicked`, `getShiftedFile`).
+#[test]
+fn the_wavetable_arrows_step_through_the_users_wavetables() {
+    let fixture = Fixture::new();
+    let _data = wavetable_data(&fixture, "popup-arrows");
+    let mut harness = fixture.harness();
+    let (osc, _) = oscillator_browser(&fixture);
+    click(&mut harness, centre(osc.preset_selector.next));
+    assert_eq!(calls(&fixture), ["wavetable 0 Bank Table"]);
+    click(&mut harness, centre(osc.preset_selector.next));
+    assert_eq!(calls(&fixture), ["wavetable 0 Glass 2"]);
+    click(&mut harness, centre(osc.preset_selector.previous));
+    click(&mut harness, centre(osc.preset_selector.previous));
+    assert_eq!(
+        calls(&fixture),
+        ["wavetable 0 Bank Table", "wavetable 0 Vox A"]
+    );
+}
+
+/// A folder lists its files (`newSelection`); the search keeps the names
+/// with every word (`filterPresets`); a double click on the selected file
+/// closes the browser (`doubleClickedSelected`).
+#[test]
+fn folders_and_search_choose_what_the_browser_lists() {
+    let fixture = Fixture::new();
+    let _data = wavetable_data(&fixture, "popup-search");
+    let mut harness = fixture.harness();
+    let (osc, browser) = oscillator_browser(&fixture);
+    click(&mut harness, centre(osc.preset_selector.text));
+    // Sorted by full path, the bank's folder comes before the root's.
+    click(&mut harness, popup_row(browser.folders, 2));
+    assert_eq!(browser_rows(&fixture).unwrap().1, ["Bank Table"]);
+    click(&mut harness, popup_row(browser.folders, 0));
+    click(&mut harness, centre(browser.search));
+    type_text(&mut harness, "glass 1");
+    assert_eq!(browser_rows(&fixture).unwrap().1, ["glass 10"]);
+
+    let row = popup_row(browser.files, 0);
+    // Well after the last click, so egui counts no triple click.
+    for _ in 0..30 {
+        harness.step();
+    }
+    click(&mut harness, row);
+    assert_eq!(calls(&fixture), ["wavetable 0 glass 10"]);
+    // The second click of a double click.
+    button(&mut harness, row, true);
+    button(&mut harness, row, false);
+    harness.step();
+    assert_eq!(browser_rows(&fixture), None);
+}
+
+/// Escape closes the browser while the search box doesn't have the
+/// keyboard; a press outside the browser and the oscillator closes it and
+/// reaches nothing else; a press in the oscillator's section reaches the
+/// oscillator and leaves the browser open (`PopupClosingArea`).
+#[test]
+fn the_browser_closes_outside_its_owner_and_on_escape() {
+    let fixture = Fixture::new();
+    let _data = wavetable_data(&fixture, "popup-close");
+    let mut harness = fixture.harness();
+    let (osc, _) = oscillator_browser(&fixture);
+    let name = centre(osc.preset_selector.text);
+    click(&mut harness, name);
+    press_key(&mut harness, egui::Key::Escape);
+    assert_eq!(browser_rows(&fixture), None);
+
+    click(&mut harness, name);
+    // The oscillator's arrows, inside its section, still work.
+    click(&mut harness, centre(osc.preset_selector.next));
+    assert!(browser_rows(&fixture).is_some());
+    assert_eq!(calls(&fixture), ["wavetable 0 Bank Table"]);
+
+    // The header's menu button is outside: the press only closes, so no
+    // menu opened there for its first row (Browse Presets) to answer.
+    let menu = fixture.header().menu_button;
+    click(&mut harness, centre(menu));
+    assert_eq!(browser_rows(&fixture), None);
+    choose_row(&mut harness, menu.x as f32, menu.bottom() as f32, 0);
+    assert!(!browser_visible(&fixture));
+}
+
+/// The browser's lists take drags: one on a folder row over oscillator 1's
+/// section reaches none of its controls, as upstream's `SelectionList` takes
+/// the mouse.
+#[test]
+fn a_drag_on_the_browsers_lists_reaches_nothing_beneath() {
+    let fixture = Fixture::new();
+    let _data = wavetable_data(&fixture, "popup-drag");
+    let mut harness = fixture.harness();
+    let (osc, browser) = oscillator_browser(&fixture);
+    click(&mut harness, centre(osc.preset_selector.text));
+    let row = popup_row(browser.folders, 0);
+    // The row lies over the oscillator's section, its passthrough area.
+    assert!(row.y < osc.bounds.bottom() as f32 && row.x < osc.bounds.right() as f32);
+    fixture.recorder.log.lock().unwrap().clear();
+    harness.event(Event::PointerMoved(row));
+    harness.step();
+    button(&mut harness, row, true);
+    for step in 1..=4 {
+        harness.event(Event::PointerMoved(
+            row + egui::vec2(0.0, 6.0 * step as f32),
+        ));
+        harness.step();
+    }
+    button(&mut harness, row + egui::vec2(0.0, 24.0), false);
+    harness.step();
+    assert_eq!(*fixture.recorder.log.lock().unwrap(), Vec::<String>::new());
+}
+
 /// Drags `from` 40 pixels up, step by step.
 fn drag_up(harness: &mut Harness, from: Pos2) {
     harness.event(Event::PointerMoved(from));
@@ -1080,4 +1353,186 @@ fn the_delete_section_takes_drags_meant_for_controls_beneath() {
     assert_eq!(*fixture.recorder.log.lock().unwrap(), Vec::<String>::new());
     assert!(fixture.interface.borrow().deleting().is_none());
     assert_eq!(shown(&fixture).len(), 3);
+}
+
+/// The delete section covers the whole interface and closes on a click
+/// outside its box, so our logo (the chat's toggle) isn't reachable under it,
+/// and is again once it closes.
+#[test]
+fn the_delete_section_hides_the_chat_toggle_until_it_closes() {
+    let folder = copied_data("delete-logo");
+    let fixture = Fixture::new();
+    *fixture.synth.data_directory.lock().unwrap() = Some(folder.0.clone());
+    fixture
+        .interface
+        .borrow_mut()
+        .set_preset_browser_visible(true);
+    let mut harness = fixture.harness();
+    assert!(
+        fixture.interface.borrow().logo_shown(),
+        "the preset browser keeps the logo"
+    );
+    let row = list_row(&fixture, 1);
+    right_click(&mut harness, row);
+    choose_row(&mut harness, row.x, row.y, 2);
+    harness.step();
+    assert!(fixture.interface.borrow().deleting().is_some());
+    assert!(!fixture.interface.borrow().logo_shown());
+    drag_up(&mut harness, centre(fixture.header().volume));
+    assert!(fixture.interface.borrow().deleting().is_none());
+    assert!(fixture.interface.borrow().logo_shown());
+}
+
+/// A data folder holding samples: two in Samples (and a file of another
+/// type) and one in the bank's.
+fn sample_data(fixture: &Fixture, tag: &str) -> Folder {
+    let folder = Folder::new(tag, &[]);
+    for file in [
+        "Samples/Hit.wav",
+        "Samples/Pad.flac",
+        "Samples/notes.txt",
+        "Bank/Samples/Bank Loop.wav",
+    ] {
+        let path = folder.0.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "").unwrap();
+    }
+    *fixture.synth.data_directory.lock().unwrap() = Some(folder.0.clone());
+    folder
+}
+
+/// The sample section's layout and its popup browser's: 450 × 300 right
+/// of the name, level with it (`SampleSection::textMouseDown`).
+fn sample_browser(fixture: &Fixture) -> (SampleLayout, PopupBrowserLayout) {
+    let layout = FullLayout::new(&fixture.skin, 1400, 820);
+    let top = Scope::top(&fixture.skin, layout.size_ratio);
+    let synthesis = SynthesisLayout::new(&top, layout.main);
+    let section = SampleLayout::new(&top.within(sample::SKIN), synthesis.sample);
+    let preset = section.preset_selector.bounds;
+    let browser = Rect::new(preset.right(), preset.y, 450, 300);
+    let padding = top
+        .within(popup_browser::SKIN)
+        .value(sas_gui::skin::ValueId::Padding);
+    (section, PopupBrowserLayout::new(1.0, padding, browser))
+}
+
+/// A press on the sample's name opens the popup browser for the user's
+/// `.wav` and `.flac` samples; a file chosen in it loads as the sample, and
+/// the arrows step through them (`SampleSection::textMouseDown`,
+/// `loadFile`, `nextClicked`).
+#[test]
+fn the_sample_name_opens_the_browser_and_the_arrows_step() {
+    let fixture = Fixture::new();
+    let _data = sample_data(&fixture, "samples");
+    let mut harness = fixture.harness();
+    let (section, browser) = sample_browser(&fixture);
+    click(&mut harness, centre(section.preset_selector.text));
+    let rows = fixture.interface.borrow().popup_browser_rows().unwrap();
+    assert_eq!(stems(&rows.1), ["Bank Loop", "Hit", "Pad"]);
+    click(&mut harness, popup_row(browser.files, 2));
+    assert_eq!(calls(&fixture), ["sample Pad.flac"]);
+
+    press_key(&mut harness, egui::Key::Escape);
+    click(&mut harness, centre(section.preset_selector.next));
+    assert_eq!(calls(&fixture), ["sample Bank Loop.wav"]);
+    click(&mut harness, centre(section.preset_selector.previous));
+    assert_eq!(calls(&fixture), ["sample Pad.flac"]);
+}
+
+/// A sample that doesn't read becomes the current file all the same, as
+/// `SampleSection::loadFile` sets the last browsed file before it reads, so
+/// the arrows step on past it.
+#[test]
+fn the_sample_arrows_step_past_a_file_that_doesnt_read() {
+    let fixture = Fixture::new();
+    let data = sample_data(&fixture, "samples-broken");
+    std::fs::write(data.0.join("Samples/Broken.wav"), "").unwrap();
+    let mut harness = fixture.harness();
+    let (section, _) = sample_browser(&fixture);
+    let next = centre(section.preset_selector.next);
+    click(&mut harness, next);
+    assert_eq!(calls(&fixture), ["sample Bank Loop.wav"]);
+    click(&mut harness, next);
+    assert_eq!(calls(&fixture), ["sample Broken.wav"]);
+    click(&mut harness, next);
+    assert_eq!(calls(&fixture), ["sample Hit.wav"]);
+}
+
+/// A folder outside the data folder holding one wavetable, added to the
+/// wavetable browser.
+fn added_wavetables(fixture: &Fixture, data: &Folder) -> PathBuf {
+    let added = data.0.join("Outside/Added");
+    std::fs::create_dir_all(&added).unwrap();
+    std::fs::write(
+        added.join("Zeta.vitaltable"),
+        r#"{"version":"1.0.0","name":"Inside","groups":[]}"#,
+    )
+    .unwrap();
+    *fixture.synth.added_wavetable_folders.lock().unwrap() = vec![added.clone()];
+    added
+}
+
+/// The square left of a list's scroll bar in row `row`, where an added
+/// folder's remove cross is (`x_area_`).
+fn cross_square(list: Rect, row: i32) -> Pos2 {
+    Pos2::new(
+        (list.right() - 15 - 12) as f32,
+        (list.y + 24 * row + 12) as f32,
+    )
+}
+
+/// An added folder is listed after the user's and before Add Folder, its
+/// files among All's. A press on its cross removes it from the list and the
+/// config; the same square on a user's folder does nothing, not even select
+/// it (`leftClick`'s `x_area_`).
+#[test]
+fn an_added_folder_lists_and_its_cross_removes_it() {
+    let fixture = Fixture::new();
+    let data = wavetable_data(&fixture, "popup-added");
+    let added = added_wavetables(&fixture, &data);
+    let mut harness = fixture.harness();
+    let (osc, browser) = oscillator_browser(&fixture);
+    click(&mut harness, centre(osc.preset_selector.text));
+    let rows = fixture.interface.borrow().popup_browser_rows().unwrap();
+    assert_eq!(
+        rows.0[4..],
+        [Selection::Path(added.clone()), Selection::AddFolder]
+    );
+    assert!(stems(&rows.1).contains(&"Zeta".to_string()));
+
+    click(&mut harness, cross_square(browser.folders, 3));
+    let rows = fixture.interface.borrow().popup_browser_rows().unwrap();
+    assert_eq!(rows.0.len(), 6, "the user's folder stays");
+    assert!(
+        stems(&rows.1).contains(&"Zeta".to_string()),
+        "All stays selected"
+    );
+
+    click(&mut harness, cross_square(browser.folders, 4));
+    let rows = fixture.interface.borrow().popup_browser_rows().unwrap();
+    assert_eq!(rows.0[4..], [Selection::AddFolder]);
+    assert!(fixture
+        .synth
+        .added_wavetable_folders
+        .lock()
+        .unwrap()
+        .is_empty());
+}
+
+/// The wavetable arrows step through the added folders' files too, all
+/// sorted by full path (`getShiftedFile` with
+/// `kAdditionalWavetableFoldersName`): here the added folder's file comes
+/// after the bank's.
+#[test]
+fn the_wavetable_arrows_step_into_added_folders() {
+    let fixture = Fixture::new();
+    let data = wavetable_data(&fixture, "popup-added-arrows");
+    let _added = added_wavetables(&fixture, &data);
+    let mut harness = fixture.harness();
+    let (osc, _) = oscillator_browser(&fixture);
+    let next = centre(osc.preset_selector.next);
+    click(&mut harness, next);
+    assert_eq!(calls(&fixture), ["wavetable 0 Bank Table"]);
+    click(&mut harness, next);
+    assert_eq!(calls(&fixture), ["wavetable 0 Zeta"]);
 }

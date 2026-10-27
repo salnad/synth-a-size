@@ -97,6 +97,64 @@ impl SynthesisInterface {
             .position(OscillatorSection::take_save_request)
     }
 
+    /// The oscillator that asked for the popup browser since the last call,
+    /// with the browser's bounds and its section's.
+    pub fn take_browse_request(&self) -> Option<(usize, Rect, Rect)> {
+        self.oscillators
+            .iter()
+            .enumerate()
+            .find_map(|(index, oscillator)| {
+                oscillator
+                    .take_browse_request()
+                    .map(|(browser, section)| (index, browser, section))
+            })
+    }
+
+    /// Opens the popup browser for oscillator `index`'s wavetables next
+    /// frame, as a press on its name does.
+    pub fn request_wavetable_browser(&self, index: usize) {
+        if let Some(oscillator) = self.oscillators.get(index) {
+            oscillator.request_browse();
+        }
+    }
+
+    /// The sample section's popup browser request since the last call:
+    /// the browser's bounds and the section's.
+    pub fn take_sample_browse_request(&self) -> Option<(Rect, Rect)> {
+        self.sample.take_browse_request()
+    }
+
+    /// The sample's current file.
+    pub fn sample_file(&self) -> Option<std::path::PathBuf> {
+        self.sample.current_file()
+    }
+
+    /// Loads `file` as the sample (`SampleSection::loadFile`).
+    pub fn load_sample_file(
+        &self,
+        model: &dyn crate::interface::EditorModel,
+        file: &std::path::Path,
+    ) {
+        self.sample.load_file(model, file);
+    }
+
+    /// Oscillator `index`'s current wavetable file (`getCurrentFile`).
+    pub fn wavetable_file(&self, index: usize) -> Option<std::path::PathBuf> {
+        self.oscillators.get(index)?.current_file()
+    }
+
+    /// Loads `file` into oscillator `index` (`OscillatorSection::loadFile`).
+    pub fn load_wavetable_file(
+        &self,
+        model: &dyn crate::interface::EditorModel,
+        index: usize,
+        file: &std::path::Path,
+    ) {
+        if let Some(oscillator) = self.oscillators.get(index) {
+            oscillator.load_file(model, file);
+        }
+    }
+
     /// The oscillator sections' layouts for the current wave morph types.
     pub fn oscillator_layouts(
         &self,

@@ -16,9 +16,9 @@ Commands:
            artifacts only and are never committed. A view may run the engine
            first ("midi", "seconds") and draw the animated views from it
            ("animate"); see live_args. A view may open an overlay over its
-           tab ("overlay": "preset_browser" or "save_section"), or
-           oscillator 1's wavetable editor in place of the interface
-           ("overlay": "wavetable_editor"); see overlay_args.
+           tab ("overlay": "preset_browser", "save_section" or
+           "popup_browser"), or oscillator 1's wavetable editor in place of
+           the interface ("overlay": "wavetable_editor"); see overlay_args.
 
 ref-gui runs with migration/corpus/gui/data (written by
 migration/corpus/generate.py) as its data folder, which the port's gallery
@@ -124,7 +124,7 @@ def live_args(view):
     return args
 
 
-OVERLAYS = ("preset_browser", "save_section", "wavetable_editor")
+OVERLAYS = ("preset_browser", "save_section", "popup_browser", "wavetable_editor")
 
 
 def overlay_args(view):
@@ -140,29 +140,39 @@ def overlay_args(view):
 
 def layout_paths():
     """The checked paths in file order, each with the preset it is laid out
-    with (None for the init preset)."""
+    with (None for the init preset) and the overlay open over it (None for
+    none)."""
     paths = []
     seen = set()
     preset = None
+    overlay = None
     for line in LAYOUT_PATHS.read_text().splitlines():
         line = line.strip()
         if line.startswith("@preset "):
             preset = line[len("@preset "):].strip()
             check_preset(preset, LAYOUT_PATHS.name)
+        elif line.startswith("@overlay "):
+            overlay = line[len("@overlay "):].strip()
+            if overlay == "none":
+                overlay = None
+            elif overlay not in OVERLAYS:
+                sys.exit(f"gui_reference.py: {LAYOUT_PATHS.name}: unknown overlay {overlay}")
         elif line and not line.startswith("#"):
             if line in seen:
                 sys.exit(f"gui_reference.py: {LAYOUT_PATHS.name}: {line} is listed twice")
             seen.add(line)
-            paths.append((line, preset))
+            paths.append((line, preset, overlay))
     return paths
 
 
-def layout_for(width, height, paths, preset=None):
+def layout_for(width, height, paths, preset=None, overlay=None):
     with tempfile.TemporaryDirectory() as tmp:
         dump = Path(tmp) / "layout.jsonl"
         args = ["--layout", str(dump), "--width", str(width), "--height", str(height)]
         if preset:
             args += ["--preset", str(REPO / preset)]
+        if overlay:
+            args += overlay_args({"name": LAYOUT_PATHS.name, "overlay": overlay})
         run_ref_gui(args)
         entries = {}
         seen = {}
@@ -176,12 +186,16 @@ def layout_for(width, height, paths, preset=None):
     missing = [path for path in paths if path not in entries]
     if missing:
         with_preset = f" with {preset}" if preset else ""
-        sys.exit(f"gui_reference.py: upstream has no component {missing} at {width}x{height}{with_preset}")
+        with_overlay = f" under {overlay}" if overlay else ""
+        sys.exit(f"gui_reference.py: upstream has no component {missing} at {width}x{height}"
+                 f"{with_preset}{with_overlay}")
     laid_out = {}
     for path in paths:
         entry = {"bounds": entries[path]["bounds"], "visible": entries[path]["visible"]}
         if preset:
             entry["preset"] = preset
+        if overlay:
+            entry["overlay"] = overlay
         laid_out[path] = entry
     return laid_out
 
@@ -190,13 +204,13 @@ def layout(check):
     paths = layout_paths()
     LAYOUT_DIR.mkdir(parents=True, exist_ok=True)
     stale = []
-    presets = list(dict.fromkeys(preset for _, preset in paths))
+    groups = list(dict.fromkeys((preset, overlay) for _, preset, overlay in paths))
     for width, height in SIZES:
         laid_out = {}
-        for preset in presets:
-            group = [path for path, path_preset in paths if path_preset == preset]
-            laid_out.update(layout_for(width, height, group, preset))
-        components = {path: laid_out[path] for path, _ in paths}
+        for preset, overlay in groups:
+            group = [path for path, p, o in paths if (p, o) == (preset, overlay)]
+            laid_out.update(layout_for(width, height, group, preset, overlay))
+        components = {path: laid_out[path] for path, _, _ in paths}
         lines = [f"  {json.dumps(path)}: {json.dumps(entry)}" for path, entry in components.items()]
         text = (f'{{\n "width": {width},\n "height": {height},\n "components": {{\n'
                 + ",\n".join(lines) + "\n }\n}\n")

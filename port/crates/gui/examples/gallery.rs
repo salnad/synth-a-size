@@ -329,6 +329,7 @@ fn main() {
             Some("preset_browser") => interface.borrow_mut().set_preset_browser_visible(true),
             Some("save_section") => interface.borrow_mut().request_save_preset(),
             Some("wavetable_editor") => interface.borrow_mut().show_wavetable_editor(Some(0)),
+            Some("popup_browser") => interface.borrow_mut().request_wavetable_browser(0),
             _ => {}
         }
         if let Some(scroll) = view.get("effects_scroll").and_then(|v| v.as_f64()) {

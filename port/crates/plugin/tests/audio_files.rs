@@ -8,7 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
-use sas_plugin::audio_file::{read_audio, AUDIO_EXTENSIONS};
+use sas_plugin::audio_file::{read_audio, read_audio_channels, AUDIO_EXTENSIONS};
 
 fn corpus(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -87,4 +87,26 @@ fn the_offered_formats_are_upstreams_macos_set_without_caf() {
         assert!(AUDIO_EXTENSIONS.contains(&extension), "{extension}");
     }
     assert!(!AUDIO_EXTENSIONS.contains(&"caf"));
+}
+
+/// A decoded file's read stops at `max_frames`, part way through a packet
+/// as well as at its end, and gives the start of the whole read: both
+/// channels of the stereo FLAC and AIFF files.
+#[test]
+fn decoding_stops_at_max_frames() {
+    for name in ["flac_16_stereo.flac", "aiff_pcm16_stereo.aiff"] {
+        let path = corpus(name);
+        let bytes = std::fs::read(&path).unwrap();
+        let extension = path.extension().unwrap().to_str().unwrap();
+        let whole = read_audio_channels(&bytes, extension, 2, usize::MAX).unwrap();
+        assert_eq!(whole.channels.len(), 2, "{name}");
+        assert_eq!(whole.channels[0].len(), 8192, "{name}");
+        for max_frames in [1000, 4096] {
+            let part = read_audio_channels(&bytes, extension, 2, max_frames).unwrap();
+            assert_eq!(part.sample_rate, whole.sample_rate);
+            for (part, whole) in part.channels.iter().zip(&whole.channels) {
+                assert_eq!(part[..], whole[..max_frames], "{name} {max_frames}");
+            }
+        }
+    }
 }

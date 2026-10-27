@@ -49,10 +49,12 @@ use crate::sections::keyboard::{self, KeyboardLayout, PlayingNote};
 use crate::sections::matrix::MatrixTab;
 use crate::sections::modulation::ModulationInterface;
 use crate::sections::oscillator::NUM_OSCILLATORS;
+use crate::sections::popup_browser::{self, BrowserEvent, BrowserOwner, PopupBrowser};
 use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
 use crate::sections::preset_browser::{self, PresetBrowser, PresetBrowserLayout};
 use crate::sections::preset_selector;
 use crate::sections::save_section::{self, SaveOutcome, SaveSection, SaveTarget};
+use crate::sections::selection_list::Selection;
 use crate::sections::synthesis::SynthesisInterface;
 use crate::sections::voice::{self, VoiceLayout, VoiceSection};
 use crate::sections::volume::{PeakLevels, VolumeLayout, VolumeSection};
@@ -285,6 +287,19 @@ pub trait EditorModel: Send + Sync + 'static {
         Vec::new()
     }
 
+    /// `LoadSave::getAdditionalFolders`: the folders added to the browser for
+    /// `kind`, in the order they were added. Only wavetables and samples
+    /// have them.
+    fn additional_folders(&self, kind: sas_preset::user_folders::Kind) -> Vec<PathBuf> {
+        let _ = kind;
+        Vec::new()
+    }
+
+    /// `LoadSave::saveAdditionalFolders`.
+    fn set_additional_folders(&self, kind: sas_preset::user_folders::Kind, folders: &[PathBuf]) {
+        let _ = (kind, folders);
+    }
+
     /// `LoadSave::addFavorite` / `removeFavorite`.
     fn set_favourite(&self, path: &Path, favourite: bool) {
         let _ = (path, favourite);
@@ -415,6 +430,13 @@ pub trait EditorModel: Send + Sync + 'static {
         false
     }
 
+    /// `SampleSection::loadFile`: loads the audio file at `path` as the
+    /// sample, named after the file. Returns false, changing nothing, when
+    /// the file can't be read.
+    fn load_sample_file(&self, _path: &std::path::Path) -> bool {
+        false
+    }
+
     /// Calls `f` with the sample oscillator's audio, read in place: nothing
     /// is copied. `left` is the mono or left channel `SampleViewer` draws
     /// (`Sample::buffer`, `originalLength`). `f` is not called when there is
@@ -435,7 +457,10 @@ pub trait EditorModel: Send + Sync + 'static {
     /// edit, preset load and state restore), so drawings of them can be
     /// cached against it. Read it before the content you cache: a change
     /// that lands in between then moves the revision past the one stored,
-    /// and the next frame reads the content again.
+    /// and the next frame reads the content again. A wavetable editor drag's
+    /// auditions don't move it: they change the drawn and played table but
+    /// not the document, so a drawing of the table during a drag must read
+    /// it each frame.
     fn content_revision(&self) -> u64 {
         0
     }
@@ -528,6 +553,8 @@ pub struct Interface {
     preset_browser_was_visible: bool,
     /// `delete_section_`, while it asks before deleting a preset.
     delete_section: Option<DeleteSection>,
+    /// `popup_browser_`, while a section browses its files.
+    popup_browser: PopupBrowser,
     /// `save_section_`, while it names a preset or a wavetable to save.
     save_section: SaveSection,
     /// The save section opens for the preset next frame.
@@ -573,6 +600,7 @@ impl Interface {
             wavetable_edits: std::array::from_fn(WavetableEditSection::new),
             wavetable_editor: None,
             delete_section: None,
+            popup_browser: PopupBrowser::default(),
             save_section: SaveSection::default(),
             save_requested: false,
             preset_modified: preset_selector::Modified::default(),
@@ -771,6 +799,7 @@ impl Interface {
         self.show_amount_knobs(ui, host, &pixels, &layout, width, height);
         let top = Scope::top(&self.skin, layout.size_ratio);
         self.overlay.modulation.paint_drag(host, &pixels, &top);
+        self.show_popup_browser(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
         self.show_overlay(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
         self.show_save_section(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
         if let Some(index) = self.overlay.open_wavetable_editor.take() {
@@ -794,6 +823,84 @@ impl Interface {
         }
     }
 
+    /// The popup browser, opened by an oscillator's wavetable name
+    /// (`showPopupBrowser`); a file chosen in it loads into its owner.
+    fn show_popup_browser(
+        &mut self,
+        ui: &mut Ui,
+        host: &Host,
+        pixels: &PixelPainter,
+        layout: &FullLayout,
+        bounds: Rect,
+    ) {
+        if let Some((index, browser, section)) = self.synthesis.take_browse_request() {
+            let current = self.synthesis.wavetable_file(index);
+            self.popup_browser.open(
+                host.model(),
+                BrowserOwner::Oscillator(index),
+                browser,
+                section,
+                current.as_deref(),
+            );
+        }
+        if let Some((browser, section)) = self.synthesis.take_sample_browse_request() {
+            let current = self.synthesis.sample_file();
+            self.popup_browser.open(
+                host.model(),
+                BrowserOwner::Sample,
+                browser,
+                section,
+                current.as_deref(),
+            );
+        }
+        if let Some((index, browser, section)) = self.modulation.take_lfo_browse_request() {
+            let current = self.modulation.lfo_file(index);
+            self.popup_browser.open(
+                host.model(),
+                BrowserOwner::Lfo(index),
+                browser,
+                section,
+                current.as_deref(),
+            );
+        }
+        if !self.popup_browser.is_open() {
+            return;
+        }
+        let top = Scope::top(&self.skin, layout.size_ratio).within(popup_browser::SKIN);
+        let mut panel = Panel::new(ui, host, pixels, top, &mut self.overlay, bounds);
+        let event = self.popup_browser.show(&mut panel, bounds);
+        panel.finish();
+        match event {
+            Some(BrowserEvent::Load(BrowserOwner::Oscillator(index), file)) => {
+                self.synthesis
+                    .load_wavetable_file(host.model(), index, &file);
+            }
+            Some(BrowserEvent::Load(BrowserOwner::Lfo(index), file)) => {
+                self.modulation.load_lfo_file(host.model(), index, &file);
+            }
+            Some(BrowserEvent::Load(BrowserOwner::Sample, file)) => {
+                self.synthesis.load_sample_file(host.model(), &file);
+            }
+            None => {}
+        }
+    }
+
+    /// Opens the popup browser for oscillator `index`'s wavetables, as a
+    /// press on its wavetable's name does (the gallery's view).
+    pub fn request_wavetable_browser(&mut self, index: usize) {
+        self.synthesis.request_wavetable_browser(index);
+    }
+
+    /// The popup browser's rows: (folders, files).
+    pub fn popup_browser_rows(&self) -> Option<(Vec<Selection>, Vec<Selection>)> {
+        self.popup_browser.is_open().then(|| {
+            (
+                self.popup_browser.folder_rows().to_vec(),
+                self.popup_browser.file_rows().to_vec(),
+            )
+        })
+    }
+
     /// The save section, opened by the header (`savePreset`) or an
     /// oscillator's wavetable view (`saveWavetable`). A save reloads the
     /// browser's presets and clears the header's `*`, for a wavetable too:
@@ -811,6 +918,11 @@ impl Interface {
         {
             self.save_section.open(host, SaveTarget::Preset);
         }
+        if let Some(data) = crate::controls::line_editor::take_save_request(ui.ctx()) {
+            if let Some(target) = SaveTarget::lfo(host.model(), data) {
+                self.save_section.open(host, target);
+            }
+        }
         if let Some(oscillator) = self.synthesis.take_wavetable_save_request() {
             if let Some(target) = SaveTarget::wavetable(host.model(), oscillator) {
                 self.save_section.open(host, target);
@@ -827,6 +939,24 @@ impl Interface {
             self.preset_browser.reload();
             self.preset_modified.fresh();
         }
+    }
+
+    /// Whether our logo section shows and takes clicks, so the chat's toggle
+    /// can be there: the header is drawn (no wavetable editor replaces it,
+    /// `showWavetableEditSection`), and nothing that closes on a click
+    /// outside it covers the logo (the save and delete sections over the
+    /// whole interface, and the popup browser's closing areas around its
+    /// owner's section). The preset browser keeps the header and leaves the
+    /// logo alone.
+    pub fn logo_shown(&self) -> bool {
+        let header_drawn = self.wavetable_editor.is_none();
+        // Each takes a click at the logo to close itself.
+        let covered = [
+            self.save_section.is_open(),
+            self.delete_section.is_some(),
+            self.popup_browser.is_open(),
+        ];
+        header_drawn && !covered.contains(&true)
     }
 
     /// Opens the save section for the preset next frame, as the header's
@@ -1155,6 +1285,7 @@ impl Interface {
             header_bottom: points(layout.header.bounds).max.y,
             scale: layout.size_ratio / pixels_per_point,
             style: ChatStyle::from_scope(&overlay, pixels_per_point),
+            logo_shown: self.logo_shown(),
             mode: match split.drawer {
                 Some(drawer) => ChatMode::Docked(drawer),
                 None => ChatMode::Overlay,

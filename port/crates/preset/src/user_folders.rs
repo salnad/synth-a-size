@@ -175,6 +175,57 @@ pub fn step(current: &Path, by: i32) -> Option<PathBuf> {
     Some(files[next as usize].clone())
 }
 
+/// `LoadSave::getAllFilesOfTypeInDirectories`: the files inside each of
+/// `directories` and their folders (`findChildFiles`, recursive) whose
+/// extension is one of `extensions` (lowercase, without the dot), matched
+/// ignoring case as on macOS. Each folder's files come in natural order.
+pub fn files_of_type(directories: &[PathBuf], extensions: &[&str]) -> Vec<PathBuf> {
+    fn walk(folder: &Path, extensions: &[&str], files: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(folder) else {
+            return;
+        };
+        let mut entries: Vec<PathBuf> = entries
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .collect();
+        entries.sort_by(|a, b| compare_paths(a, b));
+        for path in entries {
+            if path.is_dir() {
+                walk(&path, extensions, files);
+            } else if path.extension().is_some_and(|extension| {
+                let extension = extension.to_string_lossy().to_lowercase();
+                extensions.contains(&extension.as_str())
+            }) {
+                files.push(path);
+            }
+        }
+    }
+    let mut files = Vec::new();
+    for directory in directories {
+        walk(directory, extensions, &mut files);
+    }
+    files
+}
+
+/// `LoadSave::getShiftedFile`: the file `shift` places from `current`
+/// among `files` sorted by full path, wrapping round; the first file when
+/// `current` isn't among them, and `None` when there are none.
+pub fn shifted_file(
+    mut files: Vec<PathBuf>,
+    current: Option<&Path>,
+    shift: i32,
+) -> Option<PathBuf> {
+    if files.is_empty() {
+        return None;
+    }
+    files.sort_by(|a, b| compare_paths(a, b));
+    let Some(index) = current.and_then(|current| files.iter().position(|file| file == current))
+    else {
+        return Some(files[0].clone());
+    };
+    let count = files.len() as i32;
+    Some(files[(index as i32 + shift).rem_euclid(count) as usize].clone())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -252,6 +303,50 @@ mod tests {
                 [root.join("User").join(kind.folder_name())]
             );
         }
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// Files of the given types under the folders and theirs, ignoring the
+    /// extension's case; stepping wraps round them in full-path order, and
+    /// starts at the first for a file not among them.
+    #[test]
+    fn files_of_a_type_step_round_every_folder() {
+        let root = std::env::temp_dir().join(format!("sas-shifted-{}", std::process::id()));
+        for file in [
+            "Wavetables/b.vitaltable",
+            "Wavetables/A.WAV",
+            "Wavetables/Sub/c.flac",
+            "Wavetables/notes.txt",
+            "Bank/Wavetables/d.vitaltable",
+        ] {
+            let path = root.join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "").unwrap();
+        }
+        let directories = directories(&root, Kind::Wavetables);
+        let files = files_of_type(&directories, &["vitaltable", "wav", "flac"]);
+        assert_eq!(
+            files,
+            [
+                root.join("Wavetables/A.WAV"),
+                root.join("Wavetables/b.vitaltable"),
+                root.join("Wavetables/Sub/c.flac"),
+                root.join("Bank/Wavetables/d.vitaltable"),
+            ]
+        );
+        let b = root.join("Wavetables/b.vitaltable");
+        assert_eq!(
+            shifted_file(files.clone(), Some(&b), 1),
+            Some(root.join("Wavetables/Sub/c.flac"))
+        );
+        // Sorted by full path, the bank's comes first.
+        let d = root.join("Bank/Wavetables/d.vitaltable");
+        assert_eq!(
+            shifted_file(files.clone(), Some(&d), -1),
+            Some(root.join("Wavetables/Sub/c.flac"))
+        );
+        assert_eq!(shifted_file(files.clone(), None, 1), Some(d.clone()));
+        assert_eq!(shifted_file(Vec::new(), Some(&b), 1), None);
         std::fs::remove_dir_all(&root).unwrap();
     }
 
