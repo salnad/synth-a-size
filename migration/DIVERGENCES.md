@@ -892,6 +892,7 @@ MCP server) extends this entry when it lands.*
   audio, spliced, as the oscillator does
   (`popup_browser::editor_load_wavetable_file`).
 - **Why:** a file the browser offers should load, as in D1 and D19.
+- **Approved:** coordinator, 2026-10-27.
 
 ### D33. Audio dropped on the Audio File Source that can't be read, or is too short, loads nothing
 

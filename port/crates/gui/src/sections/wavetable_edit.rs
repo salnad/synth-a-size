@@ -376,7 +376,7 @@ pub enum OverlayKind {
 }
 
 impl OverlayKind {
-    /// The overlay for `component`'s keyframes, if it has one yet.
+    /// The overlay for `component`'s keyframes: every component has one.
     pub fn of(component: &WavetableComponent) -> Option<OverlayKind> {
         match component {
             WavetableComponent::WaveSource(_) => Some(OverlayKind::WaveSource(0)),
@@ -389,7 +389,6 @@ impl OverlayKind {
             WavetableComponent::SlewLimiter(_) => Some(OverlayKind::SlewLimiter),
             WavetableComponent::WaveFolder(_) => Some(OverlayKind::WaveFolder),
             WavetableComponent::WaveWarp(_) => Some(OverlayKind::WaveWarp),
-            _ => None,
         }
     }
 
