@@ -773,6 +773,18 @@ impl Interface {
         &self.wavetable_edits[oscillator]
     }
 
+    /// Selects `keyframe` in oscillator `oscillator`'s wavetable editor when
+    /// it next shows ([`WavetableEditSection::request_selection`]).
+    pub fn select_wavetable_keyframe(
+        &mut self,
+        oscillator: usize,
+        keyframe: crate::sections::wavetable_edit::KeyframeRef,
+    ) {
+        if let Some(section) = self.wavetable_edits.get_mut(oscillator) {
+            section.request_selection(keyframe);
+        }
+    }
+
     /// Local control `name`'s value ([`crate::local`]), if it is one.
     pub fn local_value(&self, name: &str) -> Option<f32> {
         self.locals.get(name)

@@ -8,6 +8,10 @@
 # their fixture entries name it; the rest use the init preset. Paths after
 # an "@overlay <name>" line (an overlay gui_reference.py knows) are laid out
 # with it open, until "@overlay none"; their entries name it too.
+# Paths after an "@wavetable-select group:component[:keyframe]" line, under
+# "@overlay wavetable_editor", are laid out with that keyframe selected in
+# the editor's organizer, until "@wavetable-select none"; their entries name
+# it as well.
 
 # G1: the shell.
 header_section

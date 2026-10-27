@@ -31,7 +31,8 @@ itself:
 ref-gui [--out frame.png] [--layout layout.jsonl] [--preset file.vital]
         [--tab voice|effects|matrix|advanced] [--width 1400] [--height 820] [--frames 30]
         [--midi file.mid] [--seconds S] [--block-size 64] [--animate on|off]
-        [--overlay preset_browser|wavetable_editor] [--data-dir folder]
+        [--overlay preset_browser|save_section|popup_browser|wavetable_editor]
+        [--wavetable-select group:component[:keyframe]] [--data-dir folder]
 ```
 
 The interface draws with upstream's `DefaultLookAndFeel`, which the
@@ -49,7 +50,11 @@ gallery reads too.
 header's preset selector does; in `views.json`, `"overlay":
 "preset_browser"`. `--overlay wavetable_editor` opens oscillator 1's
 wavetable editor in place of the interface, as its edit button does
-(`"overlay": "wavetable_editor"`).
+(`"overlay": "wavetable_editor"`). With it, `--wavetable-select
+group:component[:keyframe]` (zero-based, keyframe 0 by default) selects that
+keyframe of oscillator 1's wavetable in the editor's organizer, as a click
+on it does, so its component's overlay shows (`"wavetable_select":
+"0:3"`; `@wavetable-select 0:3` in `layout_paths.txt`).
 
 ## A running engine
 
