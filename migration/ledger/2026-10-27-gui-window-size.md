@@ -36,3 +36,12 @@ as `BorderBoundsConstrainer::resizeEnd` does.
 - `sas-plugin` `a_new_instance_opens_at_the_saved_window_size`.
 
 No audio change.
+
+**G7 acceptance pack.** The FL checklist in `decisions/gui-framework.md`
+stays the source; a one-sitting test script generated from it, ordered for
+a single run (preparation, the editor opening first, the focus-check
+bundle last), is in the project store at `docs/fl-acceptance-checklist.md`.
+The screenshot gallery it pairs with is CI run 40444408190's `gui-gallery`
+artifact at #179's head 0a12760 (the top of the G7 stack): 19 views,
+upstream on top and the port below, kept in the store at
+`media/gui/g7-gallery/` with upstream's logo masked (never in git).
