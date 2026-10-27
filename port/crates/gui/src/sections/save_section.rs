@@ -349,7 +349,10 @@ impl SaveSection {
         let screen = panel.ui.interact(
             panel.pixels.rect(bounds.into()),
             panel.ui.scope_id().with("save overlay"),
-            Sense::click(),
+            // Drags too, so none reaches a control beneath: egui gives a
+            // press to the top widget that senses drags as well as to the
+            // one that senses clicks.
+            Sense::click_and_drag(),
         );
         let scope = panel.scope;
         panel
@@ -495,11 +498,12 @@ impl SaveSection {
             }
         }
 
-        // mouseUp: a click outside the save box closes it, in either mode.
+        // mouseUp: a click or drag ending outside the save box closes it,
+        // in either mode.
         let outside = screen
             .interact_pointer_pos()
             .filter(|pos| !panel.pixels.rect(layout.body.into()).contains(*pos));
-        if screen.clicked() && outside.is_some() {
+        if (screen.clicked() || screen.drag_stopped()) && outside.is_some() {
             outcome = SaveOutcome::Closed;
         }
         if save {

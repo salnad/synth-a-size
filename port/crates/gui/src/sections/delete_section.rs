@@ -121,7 +121,10 @@ impl DeleteSection {
         let screen = ui.interact(
             pixels.rect(bounds.into()),
             ui.scope_id().with("delete overlay"),
-            Sense::click(),
+            // Drags too, so none reaches a control beneath: egui gives a
+            // press to the top widget that senses drags as well as to the
+            // one that senses clicks.
+            Sense::click_and_drag(),
         );
 
         pixels.fill_rect(bounds, scope.color(ColorId::OverlayScreen));
@@ -180,7 +183,8 @@ impl DeleteSection {
         let outside = screen
             .interact_pointer_pos()
             .filter(|pos| !pixels.rect(layout.body.into()).contains(*pos));
-        if screen.clicked() && outside.is_some() {
+        // mouseUp, after a click or a drag.
+        if (screen.clicked() || screen.drag_stopped()) && outside.is_some() {
             return DeleteOutcome::Cancelled;
         }
         DeleteOutcome::Open
