@@ -219,6 +219,15 @@ repeat the check in FL Studio where the note says so.
       (`HOST_ANSWER_TIMEOUT`) as a refusal and asks for the old size back,
       so a host that accepts slowly would show as the window shrinking
       back. If it does, the timeout needs raising for that host.
+    - *CLAP build* (when one is made): open the drawer in a CLAP host
+      (REAPER, Bitwig) and wait a few seconds; the window should stay wide.
+      The one-second fallback waits only for VST3's answer: a CLAP host
+      accepts `gui.request_resize` without calling back, and refuses with an
+      error at once. While the drawer is open the editor reports no fixed
+      aspect ratio, but nice-plug 0.4.2 can't tell a CLAP host that its
+      resize hints changed, so a host that enforces the 1400:820 hint it
+      read when the window opened may fight a corner drag until the window
+      reopens.
     - *REAPER:* honours VST3's `resizeView` on its floating FX windows and
       answers with `onSize`, so the drawer should dock there. Check a docked
       FX window too, where REAPER may not grow the dock. FL Studio wraps

@@ -23,6 +23,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use nice_plug::context::gui::GuiContext;
+use nice_plug::context::PluginApi;
 use nice_plug::editor::dpi::NativeSize;
 use nice_plug::editor::{
     HostMethods, Modifiers, ParentWindowHandle, ResizeHint, SpawnedEditor, VirtualKeyCode,
@@ -143,15 +144,37 @@ impl App {
         if let Some(size) =
             drawer_resize(self.drawer_followed, open, window, ctx.pixels_per_point())
         {
-            self.drawer.forget_host_size();
-            self.resize_pending = Some(drawer::PendingResize {
-                previous: window.size(),
-                asked_at: now,
-            });
+            let api = self.gui_context.as_ref().map(GuiContext::plugin_api);
+            if waits_for_host_answer(api) {
+                self.drawer.forget_host_size();
+                self.resize_pending = Some(drawer::PendingResize {
+                    previous: window.size(),
+                    asked_at: now,
+                });
+            }
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
         self.drawer_followed = Some(open);
+    }
+}
+
+/// Whether a size the editor asks for awaits the host's answer. Only VST3
+/// answers with a call (`onSize`, through `set_size`) and drops a refusal
+/// on the way; a CLAP host that accepts `gui.request_resize` needn't call
+/// `set_size`, and one that refuses answers at once with an error, on which
+/// baseview puts the view back itself.
+pub fn waits_for_host_answer(api: Option<PluginApi>) -> bool {
+    api == Some(PluginApi::Vst3)
+}
+
+/// The resize hint while the drawer is `open`: no fixed aspect ratio, since
+/// the window is upstream's 1400:820 plus a drawer whose width follows the
+/// height. `adjust_size` still keeps upstream's ratio for the editor's part.
+pub fn drawer_resize_hint(hint: ResizeHint, open: bool) -> ResizeHint {
+    ResizeHint {
+        preserve_aspect_ratio: hint.preserve_aspect_ratio && !open,
+        ..hint
     }
 }
 
@@ -447,7 +470,7 @@ impl nice_plug::editor::Editor for Editor {
 
     fn resize_hint(&self) -> ResizeHint {
         guarded("reporting its resize hint", ResizeHint::default, || {
-            self.inner.resize_hint()
+            drawer_resize_hint(self.inner.resize_hint(), self.drawer.is_open())
         })
     }
 
@@ -655,5 +678,31 @@ mod tests {
         window.open();
         window.close();
         assert_eq!(calls(&model), [true, false]);
+    }
+
+    /// Only VST3's answer is awaited: CLAP accepts without a call, and
+    /// refuses at once.
+    #[test]
+    fn only_vst3_resizes_wait_for_the_host() {
+        assert!(waits_for_host_answer(Some(PluginApi::Vst3)));
+        assert!(!waits_for_host_answer(Some(PluginApi::Clap)));
+        assert!(!waits_for_host_answer(Some(PluginApi::Standalone)));
+        assert!(!waits_for_host_answer(None));
+    }
+
+    /// The open drawer lifts the fixed aspect ratio and keeps the rest.
+    #[test]
+    fn the_open_drawer_lifts_the_aspect_ratio_hint() {
+        let hint = ResizeHint {
+            preserve_aspect_ratio: true,
+            ..ResizeHint::resizable()
+                .with_min_logical_size(LogicalSize::new(MIN_WIDTH, MIN_HEIGHT))
+                .with_aspect_ratio(DEFAULT_WIDTH as u32, DEFAULT_HEIGHT as u32)
+        };
+        let open = drawer_resize_hint(hint, true);
+        assert!(!open.preserve_aspect_ratio);
+        assert!(open.can_resize);
+        assert_eq!(open.size_constraints, hint.size_constraints);
+        assert_eq!(drawer_resize_hint(hint, false), hint);
     }
 }
