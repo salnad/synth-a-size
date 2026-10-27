@@ -249,6 +249,8 @@ class RefGuiApplication : public JUCEApplication {
 
     void initialise(const String& command_line) override {
       home_ = isolateUserEnvironment();
+      if (home_.empty())
+        return fail("cannot isolate HOME");
       Options options;
       StringArray args = StringArray::fromTokens(command_line, true);
       for (int i = 0; i + 1 < args.size(); i += 2) {
