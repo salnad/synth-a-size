@@ -371,6 +371,14 @@ pub trait EditorModel: Send + Sync + 'static {
         None
     }
 
+    /// Sets oscillator `oscillator`'s wavetable creator, as the wavetable
+    /// editor's edits do: it renders the whole table
+    /// (`WavetableCreator::render`). Returns false, changing nothing, past
+    /// the oscillators or when the edit can't be queued.
+    fn set_wavetable_creator(&self, _oscillator: usize, _creator: WavetableCreator) -> bool {
+        false
+    }
+
     /// Oscillator `oscillator`'s wavetable creator as upstream's JSON
     /// (`FullInterface::getWavetableJson`), for copying. None past the
     /// oscillators, or without an engine.

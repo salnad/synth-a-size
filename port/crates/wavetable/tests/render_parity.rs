@@ -1,15 +1,19 @@
 //! Parity of rendered wavetables (time-domain frames and the oscillator's
 //! harmonic coefficients) against
-//! `migration/corpus/modules/wavetable/render.json`.
+//! `migration/corpus/modules/wavetable/render.json`, and of the wavetable
+//! editor's edits (the saved creator and its render) against `edit.json`.
 
 mod support;
 
 use sas_common::json;
-use sas_parity::{assert_parity, ModuleCase};
+use sas_parity::{assert_artifact, assert_parity, ModuleCase};
+use sas_wavetable::creator::component::ComponentType;
+use sas_wavetable::creator::edits::{self, KeyframeIndex, MODIFIER_TYPES, SOURCE_TYPES};
 use sas_wavetable::creator::WavetableCreator;
 use sas_wavetable::wave_frame::DEFAULT_SAMPLE_RATE;
 use sas_wavetable::wavetable::{FREQUENCY_FLOATS, NUM_HARMONICS};
 use sas_wavetable::{Wavetable, NUM_OSCILLATOR_WAVE_FRAMES};
+use serde_json::Value;
 
 struct Rendered {
     wave: Vec<f32>,
@@ -19,8 +23,8 @@ struct Rendered {
     info: Vec<f32>,
 }
 
-/// The arrays `migration/reference/src/modules/wavetable/render.cpp` emits.
-fn render(case: &ModuleCase) -> Rendered {
+/// The case's starting creator: `params.creator` or `params.preset`.
+fn creator(case: &ModuleCase) -> WavetableCreator {
     let params = case.params();
     let mut creator = WavetableCreator::new();
     if let Some(text) = params["creator"].as_str() {
@@ -33,6 +37,12 @@ fn render(case: &ModuleCase) -> Rendered {
             other => panic!("unknown preset {other:?}"),
         }
     }
+    creator
+}
+
+/// The arrays `migration/reference/src/modules/wavetable/render.cpp` (and
+/// `render_arrays.h`) emit for `creator`.
+fn render(creator: &mut WavetableCreator) -> Rendered {
     let mut wavetable = Wavetable::new(NUM_OSCILLATOR_WAVE_FRAMES as usize);
     creator.render(&mut wavetable).expect("renders");
 
@@ -111,7 +121,94 @@ fn wavetable_render() {
     for id in support::case_ids("wavetable/render/") {
         let case = ModuleCase::load(&id);
         check_no_phase_modifier_in_nofastmath_case(&case);
-        let rendered = render(&case);
+        let rendered = render(&mut creator(&case));
+        assert_parity!(&format!("{id}:info"), rendered.info);
+        assert_parity!(&format!("{id}:lanes"), rendered.lanes);
+        assert_parity!(&format!("{id}:wave"), rendered.wave);
+        assert_parity!(&format!("{id}:coefficients"), rendered.coefficients);
+        assert_parity!(
+            &format!("{id}:phase_coefficients"),
+            rendered.phase_coefficients
+        );
+    }
+}
+
+fn index(value: &Value) -> usize {
+    value.as_i64().expect("an index") as usize
+}
+
+fn keyframe(value: &Value) -> KeyframeIndex {
+    KeyframeIndex {
+        group: index(&value[0]),
+        component: index(&value[1]),
+        keyframe: index(&value[2]),
+    }
+}
+
+/// One of `edit.cpp`'s edits, through `creator::edits` as the editor makes
+/// it.
+fn apply_edit(creator: &mut WavetableCreator, edit: &Value) {
+    let group = edit["group"].as_i64().unwrap_or(-1) as usize;
+    let component = edit["component"].as_i64().unwrap_or(-1) as usize;
+    let kind = |types: &[ComponentType]| types[index(&edit["type"])];
+    match edit["op"].as_str().expect("an op") {
+        "add_source" => edits::add_source(creator, kind(&SOURCE_TYPES)),
+        "add_modifier" => edits::add_modifier(creator, group, kind(&MODIFIER_TYPES)),
+        "remove_group" => edits::remove_group(creator, group),
+        "remove_component" => edits::remove_component(creator, group, component),
+        "reset_component" => edits::reset_component(creator, group, component),
+        "move_group_up" => edits::move_group_up(creator, group),
+        "move_group_down" => edits::move_group_down(creator, group),
+        "move_modifier_up" => edits::move_modifier_up(creator, group, component),
+        "move_modifier_down" => edits::move_modifier_down(creator, group, component),
+        "create_keyframe" => {
+            let position = edit["position"].as_i64().expect("a position") as i32;
+            edits::create_keyframe(creator, group, component, position);
+        }
+        "delete_keyframe" => edits::delete_keyframe(
+            creator,
+            KeyframeIndex {
+                group,
+                component,
+                keyframe: index(&edit["keyframe"]),
+            },
+        ),
+        "drag_keyframes" => {
+            let selected: Vec<KeyframeIndex> = edit["selected"]
+                .as_array()
+                .expect("selected keyframes")
+                .iter()
+                .map(keyframe)
+                .collect();
+            let dragged = keyframe(&edit["dragged"]);
+            for target in edit["targets"].as_array().expect("targets") {
+                let target = target.as_i64().expect("a target") as i32;
+                edits::drag_keyframes(creator, &selected, dragged, target);
+            }
+            edits::finish_keyframe_drag(creator, &selected);
+        }
+        other => panic!("unknown edit {other}"),
+    }
+}
+
+#[test]
+fn wavetable_edit() {
+    for id in support::case_ids("wavetable/edit/") {
+        let case = ModuleCase::load(&id);
+        let mut creator = creator(&case);
+        // Upstream's jsonToState and init render, which leaves the compute
+        // frames that a keyframe created with no keyframes left copies.
+        creator
+            .render(&mut Wavetable::new(NUM_OSCILLATOR_WAVE_FRAMES as usize))
+            .expect("renders");
+        // edit.cpp sets the generator counter before the edits.
+        let seed = case.params()["seed"].as_i64().unwrap_or(0) as i32;
+        sas_common::random::use_thread_seed_counter(seed);
+        for edit in case.params()["edits"].as_array().expect("edits") {
+            apply_edit(&mut creator, edit);
+        }
+        let rendered = render(&mut creator);
+        assert_artifact!(&id, "saved.json", creator.to_json().dump());
         assert_parity!(&format!("{id}:info"), rendered.info);
         assert_parity!(&format!("{id}:lanes"), rendered.lanes);
         assert_parity!(&format!("{id}:wave"), rendered.wave);

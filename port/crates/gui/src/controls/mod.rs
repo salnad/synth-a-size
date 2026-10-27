@@ -5,6 +5,7 @@
 
 pub mod bars;
 pub mod button;
+pub mod clicks;
 pub mod envelope_editor;
 pub mod file_dialog;
 pub mod filter_response;

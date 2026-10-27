@@ -571,3 +571,22 @@ effects/container/PHASER/phaser_feedback
 effects/container/PHASER/phaser_blend
 effects/container/PHASER/phaser_dry_wet
 effects/container/PHASER/phaser_on
+
+# G5e-2: the wavetable editor's component list with three groups of sources
+# and modifiers: the rows past the first and the later groups' add buttons
+# (the paths listed above keep the init preset's).
+@preset migration/corpus/gui/presets/wavetable_groups.vital
+oscillator 1/component list/1
+oscillator 1/component list/1#2
+oscillator 1/component list/2
+oscillator 1/component list/2#2
+oscillator 1/component list/3
+oscillator 1/component list/3#2
+oscillator 1/component list/4
+oscillator 1/component list/4#2
+oscillator 1/component list/5
+oscillator 1/component list/5#2
+oscillator 1/component list/Add Modifier#2
+oscillator 1/component list/Add Modifier#3
+oscillator 1/component list/plus#2
+oscillator 1/component list/plus#3

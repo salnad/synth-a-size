@@ -20,6 +20,7 @@
     { "name": "save_section", "tab": "voice", "overlay": "save_section" },
     { "name": "all_effects_live", "tab": "effects", "preset": "migration/corpus/gui/presets/all_effects.vital", "midi": "migration/corpus/midi/chord_progression.mid", "seconds": 2, "animate": true },
     { "name": "wavetable_editor", "tab": "voice", "overlay": "wavetable_editor" },
-    { "name": "popup_browser", "tab": "voice", "overlay": "popup_browser" }
+    { "name": "popup_browser", "tab": "voice", "overlay": "popup_browser" },
+    { "name": "wavetable_editor_groups", "tab": "voice", "preset": "migration/corpus/gui/presets/wavetable_groups.vital", "overlay": "wavetable_editor" }
   ]
 }

@@ -37,13 +37,8 @@ const SLOW_DRAG_MULTIPLIER: f32 = 0.1;
 /// `SynthSlider::kLinearWidthPercent` / `kLinearHandlePercent`.
 const LINEAR_WIDTH_PERCENT: f32 = 0.26;
 const LINEAR_HANDLE_PERCENT: f32 = 1.2;
-/// JUCE's multiple-click rules (`MouseInputSource`): presses within 0.4 s
-/// (`MouseEvent::getDoubleClickTimeout`) and 8 points of each other, where
-/// the last moved less than 4 points and was held no more than 0.3 s.
-pub(crate) const DOUBLE_CLICK_TIMEOUT: f64 = 0.4;
-pub(crate) const MULTIPLE_CLICK_DISTANCE: f32 = 8.0;
-const MOVED_SIGNIFICANTLY: f32 = 4.0;
-const LONG_PRESS: f64 = 0.3;
+use super::clicks::Clicks;
+pub(crate) use super::clicks::{DOUBLE_CLICK_TIMEOUT, MULTIPLE_CLICK_DISTANCE};
 /// How many frames a released slider keeps drawing its own value while
 /// the host catches up with the last set (a few in CLAP).
 const HOLD_FRAMES: u8 = 10;
@@ -756,7 +751,7 @@ impl Slider {
                     } else {
                         PointerButton::Primary
                     };
-                    state.last_press = Some((now, pointer, button));
+                    state.clicks.press(now, pointer, button, modifiers);
                 }
             } else if let Some(pointer) = pointer {
                 let button = if primary_down || !middle_down {
@@ -764,22 +759,11 @@ impl Slider {
                 } else {
                     PointerButton::Middle
                 };
-                // MouseInputSource::getNumberOfMultipleClicks: a press with
-                // the same buttons as the previous one, near it and soon
-                // after it.
-                let follows_press = state.last_press.is_some_and(|(time, at, last)| {
-                    last == button
-                        && now - time < DOUBLE_CLICK_TIMEOUT
-                        && (pointer.x - at.x).abs() < MULTIPLE_CLICK_DISTANCE
-                        && (pointer.y - at.y).abs() < MULTIPLE_CLICK_DISTANCE
-                });
                 state.down = true;
                 state.last = pointer;
-                state.second_click = follows_press;
-                state.moved = false;
                 state.value = self.host_value(host);
                 state.proportion = self.proportion(state.value);
-                state.last_press = Some((now, pointer, button));
+                state.clicks.press(now, pointer, button, modifiers);
                 host.begin(self.name);
                 event.popup = true;
             }
@@ -788,9 +772,7 @@ impl Slider {
             // with the middle one too). SynthSlider::mouseDrag ignores drags
             // with alt held.
             if let (Some(pointer), false) = (pointer, modifiers.alt) {
-                if let Some((_, at, _)) = state.last_press {
-                    state.moved |= pointer.distance(at) >= MOVED_SIGNIFICANTLY;
-                }
+                state.clicks.drag(pointer);
                 if pointer != state.last {
                     let ppp = pixels.pixels_per_point();
                     state.proportion =
@@ -822,10 +804,7 @@ impl Slider {
             }
             event.value = Some(state.value);
             state.holding = HOLD_FRAMES;
-            let long_press = state
-                .last_press
-                .is_some_and(|(time, _, _)| now - time > LONG_PRESS);
-            if self.double_click_returns && state.second_click && !state.moved && !long_press {
+            if self.double_click_returns && state.clicks.count(now) >= 2 {
                 // Slider::mouseDoubleClick: back to the default value.
                 let value = self.double_click_value.unwrap_or(self.info.default_value);
                 host.set_once(self.name, self.to_host(value));
@@ -922,13 +901,8 @@ struct DragState {
     /// Frames left to keep drawing `value` after a release, until the host
     /// shows it.
     holding: u8,
-    /// The time, place (points) and buttons of the last press.
-    last_press: Option<(f64, Pos2, PointerButton)>,
-    /// This press followed the previous one closely enough to make a
-    /// double click.
-    second_click: bool,
-    /// The pointer has moved far enough from the press to make it a drag.
-    moved: bool,
+    /// The recent presses, for double clicks.
+    clicks: Clicks,
 }
 
 /// `OpenGlSlider::getLinearSliderWidth`.
@@ -995,9 +969,7 @@ mod tests {
             proportion: 0.5,
             value: 0.0,
             holding: 0,
-            last_press: None,
-            second_click: false,
-            moved: false,
+            clicks: Clicks::default(),
         };
         let bounds = Rect::new(0, 0, 60, 60);
         // Up 20 and right 20: 40 pixels of a 200-pixel turn.

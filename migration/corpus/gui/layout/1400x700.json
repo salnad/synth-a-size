@@ -530,6 +530,20 @@
   "effects/container/PHASER/phaser_feedback": {"bounds": [629, 873, 69, 56], "visible": true, "preset": "migration/corpus/gui/presets/all_effects.vital"},
   "effects/container/PHASER/phaser_blend": {"bounds": [442, 869, 187, 20], "visible": true, "preset": "migration/corpus/gui/presets/all_effects.vital"},
   "effects/container/PHASER/phaser_dry_wet": {"bounds": [702, 873, 69, 56], "visible": true, "preset": "migration/corpus/gui/presets/all_effects.vital"},
-  "effects/container/PHASER/phaser_on": {"bounds": [305, 873, 27, 27], "visible": true, "preset": "migration/corpus/gui/presets/all_effects.vital"}
+  "effects/container/PHASER/phaser_on": {"bounds": [305, 873, 27, 27], "visible": true, "preset": "migration/corpus/gui/presets/all_effects.vital"},
+  "oscillator 1/component list/1": {"bounds": [156, 534, 248, 21], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
+  "oscillator 1/component list/1#2": {"bounds": [383, 534, 21, 21], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
+  "oscillator 1/component list/2": {"bounds": [133, 580, 271, 21], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
+  "oscillator 1/component list/2#2": {"bounds": [383, 580, 21, 21], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
+  "oscillator 1/component list/3": {"bounds": [133, 626, 271, 21], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
+  "oscillator 1/component list/3#2": {"bounds": [383, 626, 21, 21], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
+  "oscillator 1/component list/4": {"bounds": [156, 649, 248, 21], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
+  "oscillator 1/component list/4#2": {"bounds": [383, 649, 21, 21], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
+  "oscillator 1/component list/5": {"bounds": [156, 672, 248, 21], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
+  "oscillator 1/component list/5#2": {"bounds": [383, 672, 21, 21], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
+  "oscillator 1/component list/Add Modifier#2": {"bounds": [145, 603, 294, 21], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
+  "oscillator 1/component list/Add Modifier#3": {"bounds": [145, 695, 294, 21], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
+  "oscillator 1/component list/plus#2": {"bounds": [150, 603, 21, 21], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"},
+  "oscillator 1/component list/plus#3": {"bounds": [150, 695, 21, 21], "visible": true, "preset": "migration/corpus/gui/presets/wavetable_groups.vital"}
  }
 }

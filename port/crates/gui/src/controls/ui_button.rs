@@ -10,6 +10,7 @@
 
 use egui::{Id, PointerButton, Sense, Ui};
 
+use crate::colour::Colour;
 use crate::fonts::Face;
 use crate::layout::Rect;
 use crate::paint::PixelPainter;
@@ -40,6 +41,37 @@ pub fn show(
     primary: bool,
     bounds: Rect,
 ) -> bool {
+    let (clicked, colour) = interact(ui, pixels, scope, id, primary, bounds);
+    pixels.fill_rounded_rect(
+        bounds,
+        scope.value(ValueId::LabelBackgroundRounding),
+        colour,
+    );
+    pixels.text_line(
+        text,
+        bounds,
+        (
+            Face::Light,
+            TEXT_SIZE_MULT * bounds.height as f32,
+            scope.color(ColorId::UiButtonText),
+        ),
+        Justify::Centred,
+        Overflow::Fit,
+    );
+    clicked
+}
+
+/// Handles the mouse over a button whose visible part is `bounds`, for a
+/// caller that draws it: whether it was clicked, and its background
+/// colour, pressed or faded towards the hover colour.
+pub fn interact(
+    ui: &mut Ui,
+    pixels: &PixelPainter,
+    scope: &Scope,
+    id: Id,
+    primary: bool,
+    bounds: Rect,
+) -> (bool, Colour) {
     let response = ui.interact(pixels.rect(bounds.into()), id, Sense::click());
     let mut state: UiButtonState = ui.data(|data| data.get_temp(id)).unwrap_or_default();
     let primary_down = ui.input(|input| input.pointer.button_down(PointerButton::Primary));
@@ -83,21 +115,5 @@ pub fn show(
             .color(on)
             .interpolated_with(scope.color(hover), state.hover_amount)
     };
-    pixels.fill_rounded_rect(
-        bounds,
-        scope.value(ValueId::LabelBackgroundRounding),
-        colour,
-    );
-    pixels.text_line(
-        text,
-        bounds,
-        (
-            Face::Light,
-            TEXT_SIZE_MULT * bounds.height as f32,
-            scope.color(ColorId::UiButtonText),
-        ),
-        Justify::Centred,
-        Overflow::Fit,
-    );
-    clicked
+    (clicked, colour)
 }

@@ -137,8 +137,18 @@ impl ScrollBar {
     /// is taller than the viewport (JUCE's auto-hide), in the scope's
     /// lightened screen colour.
     pub fn paint(&self, pixels: &PixelPainter, scope: &Scope, bar: Rect, total: f32, visible: f32) {
+        if let Some(quad) = self.quad(scope, bar, total, visible) {
+            let mut batch = QuadBatch::new();
+            batch.push(quad);
+            batch.paint(pixels, RectF::from(bar));
+        }
+    }
+
+    /// The bar [`Self::paint`] draws, for a caller that draws it with its
+    /// own quads; None while the column fits the viewport.
+    pub fn quad(&self, scope: &Scope, bar: Rect, total: f32, visible: f32) -> Option<Quad> {
         if total <= visible || total <= 0.0 {
-            return;
+            return None;
         }
         let start = self.position / total;
         let end = (self.position + visible) / total;
@@ -159,8 +169,6 @@ impl ScrollBar {
         };
         let mut quad = Quad::new(QuadKind::RoundedRectangle, rect, color);
         quad.rounding = bar.width as f32 * 0.25;
-        let mut batch = QuadBatch::new();
-        batch.push(quad);
-        batch.paint(pixels, RectF::from(bar));
+        Some(quad)
     }
 }

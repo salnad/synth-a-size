@@ -25,8 +25,9 @@ use sas_gui::sections::save_section::SaveLayout;
 use sas_gui::sections::synthesis::SynthesisLayout;
 use sas_gui::sections::voice::{self, VoiceLayout};
 use sas_gui::sections::volume::VolumeLayout;
-use sas_gui::sections::wavetable_edit::WavetableEditLayout;
+use sas_gui::sections::wavetable_edit::{component_rows, WavetableEditLayout};
 use sas_gui::skin::{Skin, ValueId};
+use sas_preset::{InitContent, PresetState};
 
 /// G6: the Effects tab, laid out with every effect on
 /// (`migration/corpus/gui/presets/all_effects.vital`).
@@ -226,7 +227,11 @@ mod effects {
 }
 
 fn corpus() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../migration/corpus/gui")
+    repo().join("migration/corpus/gui")
+}
+
+fn repo() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
 }
 
 /// `migration/corpus/gui/layout_paths.txt`: every component the port lays out.
@@ -311,7 +316,9 @@ fn port_rect(skin: &Skin, layout: &FullLayout, path: &str, preset: Option<&str>)
         _ if path.starts_with("master_controls/") => return advanced_rect(skin, layout, path),
         _ if path.starts_with("MODULATION MATRIX/") => return matrix_rect(skin, layout, path),
         _ if path.starts_with("preset_browser") => return browser_rect(skin, layout, path),
-        _ if path.starts_with("oscillator 1") => return wavetable_editor_rect(skin, layout, path),
+        _ if path.starts_with("oscillator 1") => {
+            return wavetable_editor_rect(skin, layout, path, preset)
+        }
         _ => return synthesis_rect(skin, layout, path, phase_visible(preset)),
     })
 }
@@ -398,8 +405,14 @@ fn save_rect(layout: &FullLayout, width: i32, height: i32, path: &str) -> Option
 }
 
 /// Oscillator 1's wavetable editor (`WavetableEditSection::resized`),
-/// with the init preset's one Wave Source in the component list.
-fn wavetable_editor_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> {
+/// with the component list's rows for `preset`'s wavetable (the init
+/// preset's one Wave Source without one).
+fn wavetable_editor_rect(
+    skin: &Skin,
+    layout: &FullLayout,
+    path: &str,
+    preset: Option<&str>,
+) -> Option<Rect> {
     let top = Scope::top(skin, layout.size_ratio);
     let bounds = Rect::new(
         layout.bounds.x,
@@ -408,16 +421,44 @@ fn wavetable_editor_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option
         layout.bounds.height,
     );
     let edit = WavetableEditLayout::new(&top, bounds);
-    Some(match path {
+    let mut state = PresetState::new(&InitContent { sample_seed: 0 });
+    if let Some(preset) = preset {
+        state
+            .load_file(&repo().join(preset))
+            .unwrap_or_else(|e| panic!("{preset}: {e:?}"));
+    }
+    let rows = component_rows(&state.wavetables[0]);
+    // Each group's "Add Modifier" row follows its components, and "Add
+    // Source" follows the last group.
+    let mut add_rows = Vec::new();
+    let mut row = 0;
+    for group in &state.wavetables[0].groups {
+        row += group.components.len();
+        add_rows.push(row);
+        row += 1;
+    }
+    let source_row = row;
+    // A repeated name's later instances are "#2", "#3", ... in tree order.
+    let (name, instance) = match path.rsplit_once('#') {
+        Some((name, n)) => (name, n.parse::<usize>().ok()?),
+        None => (path, 1),
+    };
+    Some(match name {
         "oscillator 1" => edit.bounds,
         "oscillator 1/Wavetable Organizer" => edit.organizer,
         "oscillator 1/component list" => edit.component_list,
-        "oscillator 1/component list/0" => edit.component_name(0, false),
-        "oscillator 1/component list/0#2" => edit.component_menu(0),
-        "oscillator 1/component list/Add Modifier" => edit.add_button(&top, 1, true),
-        "oscillator 1/component list/Add Source" => edit.add_button(&top, 2, false),
-        "oscillator 1/component list/plus" => edit.add_plus(&top, 1, true),
-        "oscillator 1/component list/plus#17" => edit.add_plus(&top, 2, false),
+        "oscillator 1/component list/Add Source" => edit.add_button(&top, source_row, false),
+        "oscillator 1/component list/Add Modifier" => {
+            edit.add_button(&top, *add_rows.get(instance - 1)?, true)
+        }
+        // `plus_icons_`: one per group, then Add Source's (the
+        // seventeenth).
+        "oscillator 1/component list/plus" if instance == 17 => {
+            edit.add_plus(&top, source_row, false)
+        }
+        "oscillator 1/component list/plus" => {
+            edit.add_plus(&top, *add_rows.get(instance - 1)?, true)
+        }
         "oscillator 1/Playhead" => edit.playhead,
         "oscillator 1/Exit" => edit.exit,
         "oscillator 1/preset_selector" => edit.preset.bounds,
@@ -426,7 +467,19 @@ fn wavetable_editor_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option
         "oscillator 1/preset_selector/Next" => edit.preset.next,
         "oscillator 1/Menu" => edit.menu,
         "oscillator 1/Settings" => edit.settings,
-        _ => return None,
+        _ => {
+            // `names_[i]` then `menu_buttons_[i]`, both named i.
+            let index: usize = name
+                .strip_prefix("oscillator 1/component list/")?
+                .parse()
+                .ok()?;
+            let row = rows.get(index)?;
+            match instance {
+                1 => edit.component_name(row.row, row.component > 0),
+                2 => edit.component_menu(row.row),
+                _ => return None,
+            }
+        }
     })
 }
 

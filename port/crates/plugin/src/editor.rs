@@ -290,6 +290,13 @@ impl EditorModel for PluginModel {
             .with_document(|document| document.state.wavetables.get(oscillator).cloned())
     }
 
+    fn set_wavetable_creator(&self, oscillator: usize, creator: WavetableCreator) -> bool {
+        self.params
+            .edit_handle()
+            .set_wavetable(oscillator, creator)
+            .is_ok()
+    }
+
     fn wavetable_json(&self, oscillator: usize) -> Option<String> {
         self.params.edit_handle().with_document(|document| {
             document
