@@ -65,6 +65,11 @@ LFO come in G7d-2; the added folders ("Add Folder") in G7d-3.
   reaches nothing beneath; the popup browser's lists cover their owner's
   section, and a drag there moved oscillator 1's morph knobs (UI Reviewer,
   #172).
+- A `.vitaltable` that doesn't parse leaves the oscillator unchanged; D21
+  now covers loading from a file as well as pasting (UI Reviewer, #172).
+- The corpus guard's empty-folder check has its closing quote, and the step
+  runs clean under `bash -e` and fails with an empty folder planted
+  (Harness Builder, #172).
 - `user_folders::files_of_type` (`getAllFilesOfTypeInDirectories`: every
   file of the given types under the folders, recursively, matched ignoring
   case as on macOS) and `shifted_file` (`getShiftedFile`).

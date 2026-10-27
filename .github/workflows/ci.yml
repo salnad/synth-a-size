@@ -232,7 +232,7 @@ jobs:
         run: |
           git diff --exit-code -- migration/corpus
           test -z "$(git status --porcelain migration/corpus)"
-          test -z "$(find migration/corpus -type d -empty)
+          test -z "$(find migration/corpus -type d -empty)"
       - name: Side-by-side images (upstream on top)
         run: |
           mkdir -p build/gui/side-by-side

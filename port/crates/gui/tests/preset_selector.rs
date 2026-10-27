@@ -1142,6 +1142,22 @@ fn the_wavetable_name_opens_the_popup_browser_and_a_file_loads() {
     assert!(browser_rows(&fixture).is_some());
 }
 
+/// A `.vitaltable` that doesn't parse loads nothing, leaving the oscillator
+/// as it was (D21).
+#[test]
+fn an_unreadable_wavetable_file_leaves_the_oscillator() {
+    let fixture = Fixture::new();
+    let data = wavetable_data(&fixture, "popup-broken");
+    std::fs::write(data.0.join("Wavetables/glass 10.vitaltable"), "{not json").unwrap();
+    let mut harness = fixture.harness();
+    let (osc, browser) = oscillator_browser(&fixture);
+    click(&mut harness, centre(osc.preset_selector.text));
+    click(&mut harness, popup_row(browser.files, 2));
+    assert!(calls(&fixture).is_empty());
+    click(&mut harness, popup_row(browser.files, 1));
+    assert_eq!(calls(&fixture), ["wavetable 0 Glass 2"]);
+}
+
 /// The arrows load the wavetable after or before the current one among all
 /// the user's, wrapping round, and the first one with none current
 /// (`nextClicked`, `getShiftedFile`).

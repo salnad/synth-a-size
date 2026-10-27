@@ -598,10 +598,11 @@ MCP server) extends this entry when it lands.*
   parked as I20.
 - **Approved:** coordinator, relaying UI Reviewer's review of #137.
 
-### D21. Pasting wavetable JSON that can't be read leaves the oscillator unchanged
+### D21. Wavetable JSON that can't be read, pasted or loaded from a file, leaves the oscillator unchanged
 
 - **Differs:** what pasting wavetable JSON onto an oscillator does when the
-  text passes the validity check but can't be read.
+  text passes the validity check but can't be read, and what loading a
+  `.vitaltable` file that can't be read does.
 - **Upstream:** the paste checks `WavetableCreator::isValidJson` (an object
   with `version`, `name` and an array of `groups`, or a line shape) and then
   calls `WavetableEditSection::loadWavetable`. That clears the creator, and
@@ -609,17 +610,24 @@ MCP server) extends this entry when it lands.*
   groups. If a group can't be read (for example `"groups": [7]`), the
   exception is caught and nothing re-renders, so the creator is left
   cleared and partly loaded while the oscillator keeps playing its old
-  table.
+  table. Loading a `.vitaltable` (the popup browser, the oscillator's
+  arrows, a drop) goes through `WavetableEditSection::loadFile`, which
+  clears the creator first and, if the file doesn't parse or a group can't
+  be read, returns before re-rendering: the same cleared creator over the
+  old sound.
 - **Port:** `EditorModel::load_wavetable_json` reads the JSON into a copy of
   the oscillator's creator and sets it only if reading succeeds
   (`PluginModel`, `port/crates/plugin/src/editor.rs`). Unreadable JSON
   returns false and leaves the creator, the table and the edit bus revision
-  unchanged.
+  unchanged. A `.vitaltable` file goes through the same call
+  (`popup_browser::load_wavetable_file`), and one that doesn't parse returns
+  false before it, so it too leaves the oscillator unchanged.
 - **Why:** upstream's result is a creator that no longer matches the sound,
   and saving the preset then would store the partial state. Rejecting the
   paste keeps the two consistent. Valid JSON loads exactly as upstream's.
 - **Approved:** coordinator, relaying UI Reviewer's and Graph Reviewer's
-  reviews of #137.
+  reviews of #137; extended to files, relaying UI Reviewer's review of
+  #172.
 
 ### D22. "Resynthesize Preset to Wavetable" renders a fresh synth on a worker thread
 
