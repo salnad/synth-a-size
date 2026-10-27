@@ -39,8 +39,9 @@ FL checklist item 11.
   of the user's folders ("Folder already added"); otherwise it is listed
   and saved after the folders already in the config.
 - The cross removes the folder from the list and the config.
-- `is_acceptable_root` doesn't follow linked folders, so a loop of links
-  can't keep it counting; upstream's walk would.
+- `is_acceptable_root` follows linked folders as upstream's walk does,
+  but refuses a folder that links back to itself or a folder above it,
+  which upstream walks round, hanging when the loop holds no files (D28).
 
 **The arrows.** The wavetable and sample arrows step through the added
 folders' files too (`getShiftedFile` with the additional folders name).
@@ -60,7 +61,9 @@ next, and a segment adds its start, not its end); `paths::thick_x` is
 
 - `controls::path` `dashes_follow_juces_walk`.
 - `config` `additional_folders_round_trip`: other keys are kept.
-- `popup_browser` `folders_are_added_and_removed_as_upstreams_are`: an
+- `popup_browser` `a_folder_that_loops_back_is_refused` (and a linked
+  folder elsewhere is followed and counted), and
+  `folders_are_added_and_removed_as_upstreams_are`: an
   accepted folder is listed before Add Folder and saved; a repeat, a user's
   folder and a folder of 8,001 files (across a subfolder) are refused with
   upstream's alerts; the folder's files are under All and it is listed

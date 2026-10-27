@@ -52,25 +52,36 @@ fn add_folder_dialog() -> egui::Id {
 }
 
 /// `isAcceptableRoot`: whether `folder` and the folders inside it hold no
-/// more than [`MAX_ROOT_FILES`] files. Linked folders aren't followed, so a
-/// loop of links can't keep it counting.
+/// more than [`MAX_ROOT_FILES`] files, counted folder by folder as
+/// upstream's walk does, linked folders followed. A folder that leads back
+/// to one of the folders above it is refused, where upstream's walk would
+/// go round the loop (D28).
 pub fn is_acceptable_root(folder: &Path) -> bool {
-    let mut folders = vec![folder.to_path_buf()];
+    let mut folders = vec![(folder.to_path_buf(), Vec::<PathBuf>::new())];
     let mut files = 0usize;
-    while let Some(current) = folders.pop() {
+    while let Some((current, mut above)) = folders.pop() {
+        let Ok(real) = std::fs::canonicalize(&current) else {
+            continue;
+        };
+        if above.contains(&real) {
+            return false;
+        }
+        above.push(real);
         let Ok(entries) = std::fs::read_dir(&current) else {
             continue;
         };
-        for entry in entries.flatten() {
-            match entry.file_type() {
-                Ok(kind) if kind.is_dir() => folders.push(entry.path()),
-                Ok(kind) if kind.is_file() || entry.path().is_file() => files += 1,
-                _ => {}
+        let mut inside = Vec::new();
+        for path in entries.flatten().map(|entry| entry.path()) {
+            if path.is_dir() {
+                inside.push(path);
+            } else if path.is_file() {
+                files += 1;
             }
         }
         if files > MAX_ROOT_FILES {
             return false;
         }
+        folders.extend(inside.into_iter().map(|path| (path, above.clone())));
     }
     true
 }
@@ -716,6 +727,34 @@ mod tests {
 
         browser.open(&model, BrowserOwner::Lfo(0), area, area, None);
         assert!(!browser.folder_rows().contains(&Selection::AddFolder));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// A folder holding a link back to itself is refused rather than walked
+    /// round; a link to a folder elsewhere is followed and its files
+    /// counted (D28).
+    #[cfg(unix)]
+    #[test]
+    fn a_folder_that_loops_back_is_refused() {
+        let root = std::env::temp_dir().join(format!("sas-popup-loop-{}", std::process::id()));
+        let looped = root.join("Looped");
+        let linked = root.join("Linked");
+        let plain = root.join("Plain");
+        for folder in [&looped, &linked, &plain] {
+            std::fs::create_dir_all(folder).unwrap();
+            std::fs::write(folder.join("one.wav"), "").unwrap();
+        }
+        std::os::unix::fs::symlink(&looped, looped.join("again")).unwrap();
+        assert!(!is_acceptable_root(&looped));
+        std::os::unix::fs::symlink(&linked, plain.join("elsewhere")).unwrap();
+        assert!(is_acceptable_root(&plain));
+        for index in 0..MAX_ROOT_FILES {
+            std::fs::write(linked.join(format!("{index}.wav")), "").unwrap();
+        }
+        assert!(
+            !is_acceptable_root(&plain),
+            "the linked folder's files count"
+        );
         std::fs::remove_dir_all(&root).unwrap();
     }
 
