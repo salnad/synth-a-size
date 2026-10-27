@@ -19,6 +19,7 @@ use std::sync::Arc;
 use egui_kittest::Harness;
 use nice_plug::prelude::{FloatParam, FloatRange, IntParam, IntRange, Param};
 use sas_engine::edit_bus::PreparedWavetable;
+use sas_engine::keyboard::keyboard;
 use sas_engine::midi_file::{read_midi_file, TimedMessage};
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::synth::{render, RenderSettings, Synth};
@@ -92,21 +93,17 @@ impl Live {
             Telemetry::with_equalizer_memory(synth.audio_memory(), synth.equalizer_memory());
         synth.write_telemetry(&mut writer);
 
-        // MidiKeyboardState over the events the render played.
-        let mut held_notes = 0u128;
+        // The plugin's keyboard state (MidiKeyboardState) over the events
+        // the render played.
+        let (keyboard, mut consumer) = keyboard();
         for event in events {
             let sample = (event.seconds * LIVE_SAMPLE_RATE as f64 + 0.5).floor() as i64;
             if sample >= frames as i64 {
                 break;
             }
-            let [status, note, velocity] = event.message;
-            let bit = 1u128 << (note & 0x7f);
-            match status & 0xf0 {
-                0x90 if velocity > 0 => held_notes |= bit,
-                0x80 | 0x90 => held_notes &= !bit,
-                _ => {}
-            }
+            consumer.host_message(event.message);
         }
+        let held_notes = keyboard.held_notes();
         Some(Live {
             telemetry,
             held_notes,

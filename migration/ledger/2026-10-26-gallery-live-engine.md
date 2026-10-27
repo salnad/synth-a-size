@@ -18,9 +18,10 @@ upstream against a static port.
 
   It then writes the synth's telemetry once into its own `Telemetry` pair
   (with the equalizer memory, as the plugin does), and the gallery's
-  `EditorModel` returns it from `telemetry()`. `held_notes()` returns the
-  notes still held at the end of the render, which is what
-  `MidiKeyboardState` shows upstream.
+  `EditorModel` returns it from `telemetry()`. `held_notes()` feeds the
+  events the render played through the plugin's own keyboard state
+  (`sas_engine::keyboard`: per channel, cleared by all-notes-off), as
+  upstream's `MidiKeyboardState` shows them (UI Reviewer's nit).
 - **Same checks as `gui_reference.py`'s `live_args`.** The MIDI must be in
   `migration/corpus/midi/`, `seconds` must be a number of at least 0, and
   `animate` needs a render that isn't empty.
