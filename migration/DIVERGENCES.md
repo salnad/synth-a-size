@@ -302,8 +302,9 @@ D12: retired (temporary, removed in #82).
 
 *Started in #91 (L1, tool core); extended by #92 (L2: modulation, LFO,
 wavetable and preset tools), #95 (L3: providers, agent loop, `sas-llm`)
-#100 (L4: the tools on the running plugin), #101 (L5: the chat panel) and
-L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
+#100 (L4: the tools on the running plugin), #101 (L5: the chat panel),
+#102 (L6: the listen loop) and L8 (the chat docked in the drawer). L7 (the
+MCP server) extends this entry when it lands.*
 
 - **Differs:** the port adds a layer that lets a language model read and
   edit the synth by name: the tools in `port/crates/llm-control`, and later a
@@ -345,10 +346,13 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
     host, exactly as the editor makes them. Undo restores the same way.
   - The editor has a chat panel (`sas_gui::chat`). Its toggle is our logo
     section, the product-name area of D14, with a small "chat" caption.
-    Until G7's drawer exists, the panel overlays the editor's right side,
-    below the header and inside the editor's bounds, coloured from the
-    skin's Overlay section. Both are placed from the editor's layout, so
-    they scale and letterbox with it (`gui-plan.md` §4).
+    The toggle opens a drawer: the window widens by 360 points at the
+    editor's scale (G7e), and the panel docks there at full height, beside
+    upstream's unchanged layout. If the host keeps the window's width, the
+    panel overlays the editor's right side instead, below the header and
+    inside the editor's bounds. It is coloured from the skin's Overlay
+    section, and placed from the editor's layout, so it scales and
+    letterboxes with it (`gui-plan.md` §4).
     The chat runs in the plugin (`sas_plugin::chat`) and lasts as long as
     the plugin instance; it is never saved. Its API key is kept in the
     macOS Keychain (or an environment variable), never in a file. Only the

@@ -8,12 +8,15 @@
 //! the running synth), so this crate stays free of the LLM crates.
 //!
 //! The toggle is our logo section (D14's product-name area, whose upstream
-//! click opens an About section that isn't ported). Until the editor's
-//! right-side drawer exists (G7), the panel opens over the right of the
-//! editor, inside its letterboxed bounds and below the header, coloured
-//! from the skin's Overlay section as upstream's overlays are. Both come
-//! from the editor's layout ([`Interface::chat_placement`](crate::Interface::chat_placement)),
-//! so they scale and letterbox with it.
+//! click opens an About section that isn't ported), and it opens the
+//! editor's drawer ([`crate::drawer`]). The panel docks in the drawer, the
+//! window's full height beside upstream's layout, when the host widened the
+//! window for it. If the host kept the window's width, it overlays the right
+//! of the editor instead, inside its letterboxed bounds and below the
+//! header. Either way it is coloured from the skin's Overlay section, as
+//! upstream's overlays are, and placed from the editor's layout
+//! ([`Interface::chat_placement`](crate::Interface::chat_placement)), so it
+//! scales and letterboxes with it.
 
 use egui::{
     Align, Align2, Color32, CornerRadius, FontId, Frame, Id, Key, Layout, Order, RichText,
@@ -131,6 +134,9 @@ impl ChatPlacement {
     /// The open panel's rectangle: at the editor's right, below the header,
     /// [`PANEL_WIDTH`] at the text scale, and inside the editor.
     pub fn panel(&self) -> egui::Rect {
+        if let ChatMode::Docked(drawer) = self.mode {
+            return drawer;
+        }
         let margin = (self.editor.height() * 0.008).clamp(1.0, 8.0);
         let top = self.header_bottom + margin;
         let width = (PANEL_WIDTH * self.text_scale())
@@ -317,10 +323,15 @@ impl ChatPanel {
                     ctx.pixels_per_point(),
                 );
                 let margin = (panel.width() * 0.025).clamp(2.0, 8.0).round();
+                // Docked, the panel is flush with the window's edges.
+                let rounding = match placement.mode {
+                    ChatMode::Docked(_) => 0.0,
+                    ChatMode::Overlay => style.rounding,
+                };
                 Frame::new()
                     .fill(style.body)
                     .stroke(Stroke::new(1.0, style.border))
-                    .corner_radius(style.rounding)
+                    .corner_radius(rounding)
                     .inner_margin(margin)
                     .show(ui, |ui| {
                         let inner = panel.shrink(margin + 1.0);

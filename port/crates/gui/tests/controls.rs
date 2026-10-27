@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use egui::{Event, Key, Modifiers, PointerButton, Pos2};
+use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
 use nice_plug::context::gui::{GuiContext, GuiContextInner};
 use nice_plug::context::PluginApi;
@@ -1708,6 +1709,18 @@ fn a_docked_drawer_leaves_upstream_its_layout_and_input() {
         ))
     );
     assert!(panel.borrow().is_open());
+    // The panel fills the drawer, entirely beside upstream's layout, and
+    // draws there (its title, Undo and the message field).
+    assert_eq!(
+        placement.panel(),
+        egui::Rect::from_min_max(Pos2::new(1400.0, 0.0), Pos2::new(1760.0, 820.0))
+    );
+    assert!(!placement.panel().intersects(placement.editor.shrink(0.5)));
+    for label in ["Sound design chat", "Undo", "Message"] {
+        let node = harness.get_by_label(label);
+        let bounds = node.rect();
+        assert!(bounds.min.x >= 1400.0, "{label} at {bounds:?}");
+    }
     fixture.take_log();
 
     let inside = Pos2::new(1580.0, 600.0);
@@ -4123,4 +4136,19 @@ fn an_aux_knobs_overlay_shows_its_shown_amount() {
     for (value, expected) in quad.shader_values.iter().zip([low, high, low, high]) {
         assert!((value - expected).abs() < 1e-5, "{:?}", quad.shader_values);
     }
+}
+
+/// With the drawer open but the window not widened (the host refused), the
+/// panel overlays the editor as before: inside its bounds, below the header.
+#[test]
+fn without_a_wider_window_the_open_drawer_overlays_the_editor() {
+    let mut interface = Interface::default();
+    interface.set_drawer_open(true);
+    let window = egui::Rect::from_min_size(Pos2::ZERO, egui::vec2(1400.0, 820.0));
+    let placement = interface.chat_placement(window, 1.0);
+    assert_eq!(placement.mode, sas_gui::ChatMode::Overlay);
+    let panel = placement.panel();
+    assert!(placement.editor.contains_rect(panel));
+    assert!(panel.min.y >= placement.header_bottom);
+    assert!((panel.width() - sas_gui::chat::PANEL_WIDTH).abs() < 1.0);
 }
