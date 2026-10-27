@@ -220,10 +220,9 @@ achievable on arm64.
    Apple library: it is one u32→f32 conversion and one float add, so it
    can be computed on any machine. Because only the official build folds,
    the macOS official and no-fast-math references differ in the saved
-   `random_seed` of every case that saves a newly constructed `FileSource`,
-   and JSON
-   integers are compared exactly. The macOS justification step ("proxy
-   must pass") therefore fails on such cases
+   `random_seed` of every case that saves a newly constructed
+   `FileSource`, and JSON integers are compared exactly. The macOS
+   justification step ("proxy must pass") therefore fails on such cases
    (`wavetable/edit/add_sources:artifact/saved.json`) whatever the port
    does. How that step treats a fast-math-only A-entry is open.
 
