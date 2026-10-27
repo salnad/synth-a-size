@@ -402,6 +402,14 @@ impl EditorModel for Synth {
         connected
     }
 
+    fn set_line_mapping(&self, slot: usize, _line: LineGenerator) -> bool {
+        self.bus
+            .lock()
+            .unwrap()
+            .push(format!("line_mapping {slot}"));
+        true
+    }
+
     fn disconnect_modulation(&self, source: &str, destination: &str) -> Option<usize> {
         let slot = self
             .routing
@@ -2527,15 +2535,9 @@ fn the_lfo_menu_flips_the_shape() {
     let names: Vec<&str> = items.iter().map(|item| item.name.as_str()).collect();
     assert_eq!(
         names,
-        [
-            "Copy",
-            "Save to LFOs",
-            "Initialize",
-            "Flip Horizontal",
-            "Flip Vertical"
-        ]
+        ["Copy", "Save to LFOs", "Flip Horizontal", "Flip Vertical"]
     );
-    let row = Pos2::new(position.x + 20.0, position.y + 12.0 + 24.0 * 4.0);
+    let row = Pos2::new(position.x + 20.0, position.y + 12.0 + 24.0 * 3.0);
     harness.event(Event::PointerMoved(row));
     harness.step();
     click(&mut harness, row);
@@ -4577,9 +4579,9 @@ fn choose_lfo_menu_row(harness: &mut Harness, fixture: &Fixture, row: usize) {
 
 /// "Save to LFOs" opens the save section for the shape, which writes it
 /// with its name and author into the user's LFOs folder
-/// (`FullInterface::saveLfo`); Initialize makes the shape linear.
+/// (`FullInterface::saveLfo`).
 #[test]
-fn the_lfo_menu_saves_and_initializes_the_shape() {
+fn the_lfo_menu_saves_the_shape() {
     sas_gui::controls::line_editor::set_clipboard_reader(|| None);
     let fixture = Fixture::new();
     let data = lfo_data(&fixture, "save");
@@ -4592,9 +4594,6 @@ fn the_lfo_menu_saves_and_initializes_the_shape() {
     let written = std::fs::read_to_string(data.0.join("LFOs/My Shape.vitallfo")).unwrap();
     assert!(written.contains(r#""name":"My Shape""#), "{written}");
     assert!(written.contains(r#""num_points":3"#), "{written}");
-
-    choose_lfo_menu_row(&mut harness, &fixture, 2);
-    assert_eq!(lfo_1_shape(&fixture).num_points(), 2);
 }
 
 /// Paste shows when the clipboard holds a shape, and loads it.
@@ -5089,4 +5088,359 @@ fn rechoosing_a_selectors_item_does_nothing() {
     choose_in_matrix(&mut harness, &fixture, 1, true, "macro_control_1");
     assert!(fixture.synth.bus.lock().unwrap().is_empty());
     assert_eq!(fixture.interface.borrow().matrix().selected(), 0);
+}
+
+/// A stand-in line editor for `target` over the whole window,
+/// on the caller's `shape` when given, recording each frame's event.
+fn line_editor_harness<'a>(
+    fixture: &'a Fixture,
+    overlay: &'a RefCell<Overlay>,
+    target: sas_gui::controls::line_editor::LineTarget,
+    shape: Option<&'a RefCell<LineGenerator>>,
+    paint: &'a std::cell::Cell<bool>,
+    events: &'a RefCell<Vec<sas_gui::controls::line_editor::LineEditorEvent>>,
+) -> Harness<'a> {
+    use sas_gui::controls::line_editor::{LineEditor, LineSettings};
+    let bounds = Rect::new(0, 0, 400, 300);
+    let mut harness = Harness::builder()
+        .with_size((400.0, 300.0))
+        .with_step_dt(1.0 / 60.0)
+        .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
+        .build_ui(move |ui| {
+            let area = ui.ctx().content_rect();
+            let host = Host::tracking(
+                fixture.synth.as_ref(),
+                Some(&fixture.context),
+                &fixture.open,
+            );
+            let painter = ui.painter_at(area);
+            let pixels = PixelPainter::new(&painter, area, 1.0);
+            let interface = fixture.interface.borrow();
+            let top = Scope::top(interface.skin(), 1.0);
+            let mut overlay = overlay.borrow_mut();
+            let mut panel = Panel::new(ui, &host, &pixels, top, &mut overlay, bounds);
+            let settings = LineSettings {
+                grid_size_x: 4,
+                grid_size_y: 0,
+                paint: paint.get(),
+                paint_pattern: 0,
+                phase: None,
+            };
+            let editor = LineEditor { target };
+            let event = match shape {
+                Some(shape) => {
+                    editor.show(&mut panel, bounds, settings, Some(&mut shape.borrow_mut()))
+                }
+                None => editor.show(&mut panel, bounds, settings, None),
+            };
+            panel.finish();
+            events.borrow_mut().push(event);
+        });
+    harness.step();
+    events.borrow_mut().clear();
+    harness
+}
+
+/// The frames' listener calls, in order.
+fn line_changes(
+    events: &RefCell<Vec<sas_gui::controls::line_editor::LineEditorEvent>>,
+) -> Vec<sas_gui::controls::line_editor::LineChange> {
+    std::mem::take(&mut *events.borrow_mut())
+        .into_iter()
+        .flat_map(|event| event.changes)
+        .collect()
+}
+
+/// Waits out the double-click time.
+fn settle(harness: &mut Harness) {
+    for _ in 0..30 {
+        harness.step();
+    }
+}
+
+/// A caller-owned shape is edited in place, and the target's shape is
+/// neither written nor read. The listener calls are upstream's:
+/// - a point drag: `pointChanged(i, false)` while moving, then
+///   `pointChanged(i, true)` on its release (`drawUp`);
+/// - a power drag: `powersChanged(false)`, then `powersChanged(true)`;
+/// - a press and release on a point without a move still releases it;
+/// - a double click on empty space: `pointAdded`, with no release before it
+///   (no active point); on a point: its release, then `pointRemoved`.
+#[test]
+fn a_caller_owned_shape_reports_upstreams_listener_calls() {
+    use sas_gui::controls::line_editor::{LineChange, LineTarget, PointEdit};
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let shape = RefCell::new(LineTarget::Remap(5).init_shape());
+    let paint = std::cell::Cell::new(false);
+    let events = RefCell::new(Vec::new());
+    let mut harness = line_editor_harness(
+        &fixture,
+        &overlay,
+        LineTarget::Remap(5),
+        Some(&shape),
+        &paint,
+        &events,
+    );
+    let middle = egui::pos2(200.0, 60.0);
+
+    click(&mut harness, middle);
+    click(&mut harness, middle);
+    assert_eq!(
+        line_changes(&events),
+        [LineChange::Points(PointEdit::Added(1))]
+    );
+    assert_eq!(shape.borrow().point(1), (0.5, 0.2));
+    settle(&mut harness);
+
+    click(&mut harness, middle);
+    let up = LineChange::PointChanged {
+        index: 1,
+        mouse_up: true,
+    };
+    assert_eq!(line_changes(&events), [up]);
+    assert!(!events.borrow().iter().any(|event| event.changed));
+    settle(&mut harness);
+
+    drag(
+        &mut harness,
+        middle,
+        egui::pos2(200.0, 120.0),
+        Modifiers::NONE,
+    );
+    let changes = line_changes(&events);
+    let (last, moving) = changes.split_last().unwrap();
+    assert_eq!(*last, up);
+    assert!(!moving.is_empty());
+    assert!(moving.iter().all(|change| *change
+        == LineChange::PointChanged {
+            index: 1,
+            mouse_up: false
+        }));
+    let point = shape.borrow().point(1);
+    assert!(point.1 > 0.2);
+    settle(&mut harness);
+
+    // The power handle halfway between the first two points.
+    let first = shape.borrow().point(0);
+    let power = egui::pos2(
+        (first.0 + point.0) / 2.0 * 400.0,
+        (first.1 + point.1) / 2.0 * 300.0,
+    );
+    drag(
+        &mut harness,
+        power,
+        power + egui::vec2(0.0, 30.0),
+        Modifiers::NONE,
+    );
+    let changes = line_changes(&events);
+    let (last, moving) = changes.split_last().unwrap();
+    assert_eq!(*last, LineChange::PowersChanged { mouse_up: true });
+    assert!(!moving.is_empty());
+    assert!(moving
+        .iter()
+        .all(|change| *change == LineChange::PowersChanged { mouse_up: false }));
+    assert_ne!(shape.borrow().power(0), 0.0);
+    settle(&mut harness);
+
+    let on_point = egui::pos2(point.0 * 400.0, 120.0);
+    click(&mut harness, on_point);
+    click(&mut harness, on_point);
+    assert_eq!(
+        line_changes(&events),
+        [up, up, LineChange::Points(PointEdit::Removed(1))]
+    );
+    assert_eq!(shape.borrow().num_points(), 2);
+
+    assert!(
+        !fixture
+            .synth
+            .bus
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|entry| entry.starts_with("line_mapping")),
+        "the target's shape was written"
+    );
+}
+
+/// Painting calls only `pointAdded`, `pointsAdded` and `pointsRemoved`, and
+/// its release calls nothing (`mouseUp` calls `drawUp` only when not
+/// painting), so the shape's owner decides when to commit.
+#[test]
+fn a_paint_strokes_release_calls_nothing() {
+    use sas_gui::controls::line_editor::{LineChange, LineTarget};
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let shape = RefCell::new(LineTarget::Remap(5).init_shape());
+    let paint = std::cell::Cell::new(true);
+    let events = RefCell::new(Vec::new());
+    let mut harness = line_editor_harness(
+        &fixture,
+        &overlay,
+        LineTarget::Remap(5),
+        Some(&shape),
+        &paint,
+        &events,
+    );
+    press(
+        &mut harness,
+        egui::pos2(150.0, 100.0),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    for x in [180.0, 250.0, 320.0] {
+        harness.event(Event::PointerMoved(egui::pos2(x, 100.0)));
+        harness.step();
+    }
+    let stroke = line_changes(&events);
+    assert!(!stroke.is_empty());
+    assert!(
+        stroke
+            .iter()
+            .all(|change| matches!(change, LineChange::Points(_))),
+        "{stroke:?}"
+    );
+    let points = shape.borrow().num_points();
+    assert!(points > 2);
+    release(
+        &mut harness,
+        egui::pos2(320.0, 100.0),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert_eq!(line_changes(&events), []);
+    assert_eq!(shape.borrow().num_points(), points);
+}
+
+/// The menu's calls: the flips release point 0 (`pointChanged(0, true)`),
+/// Remove Point calls `pointRemoved`, Initialize `fileLoaded`, and Reset
+/// Power changes the shape without a call.
+#[test]
+fn the_line_menus_listener_calls() {
+    use sas_gui::controls::line_editor::{menu, LineAction, LineChange, LineTarget, PointEdit};
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let mut line = LineTarget::Remap(5).init_shape();
+    line.add_point(1, (0.5, 0.2));
+    line.set_power(0, 3.0);
+    line.render();
+    let shape = RefCell::new(line);
+    let paint = std::cell::Cell::new(false);
+    let events = RefCell::new(Vec::new());
+    let mut harness = line_editor_harness(
+        &fixture,
+        &overlay,
+        LineTarget::Remap(5),
+        Some(&shape),
+        &paint,
+        &events,
+    );
+    let mut choose = |choice: i32| {
+        overlay.borrow_mut().line_action = Some(LineAction {
+            target: LineTarget::Remap(5),
+            choice,
+            point: 1,
+            power: 0,
+            grid_section: -1,
+        });
+        harness.step();
+        let changed = events.borrow().iter().any(|event| event.changed);
+        (line_changes(&events), changed)
+    };
+    let flipped = vec![LineChange::PointChanged {
+        index: 0,
+        mouse_up: true,
+    }];
+    assert_eq!(choose(menu::FLIP_HORIZONTAL), (flipped.clone(), true));
+    assert_eq!(choose(menu::FLIP_VERTICAL), (flipped, true));
+    assert_eq!(choose(menu::RESET_POWER), (vec![], true));
+    assert_eq!(shape.borrow().power(0), 0.0);
+    assert_eq!(
+        choose(menu::REMOVE_POINT),
+        (vec![LineChange::Points(PointEdit::Removed(1))], true)
+    );
+    assert_eq!(
+        choose(menu::INIT),
+        (vec![LineChange::Points(PointEdit::Loaded)], true)
+    );
+}
+
+/// Without a caller's shape the editor writes the target's shape as before.
+#[test]
+fn without_a_callers_shape_the_target_is_written() {
+    use sas_gui::controls::line_editor::{LineChange, PointEdit};
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let paint = std::cell::Cell::new(false);
+    let events = RefCell::new(Vec::new());
+    let mut harness = line_editor_harness(
+        &fixture,
+        &overlay,
+        sas_gui::controls::line_editor::LineTarget::Remap(5),
+        None,
+        &paint,
+        &events,
+    );
+    let middle = egui::pos2(200.0, 60.0);
+    click(&mut harness, middle);
+    click(&mut harness, middle);
+    assert_eq!(
+        line_changes(&events),
+        [LineChange::Points(PointEdit::Added(1))]
+    );
+    assert_eq!(*fixture.synth.bus.lock().unwrap(), ["line_mapping 5"]);
+}
+
+/// A right-click's release calls `drawUp` in the base editor (its
+/// `mouseUp` has no popup check): over a point `pointChanged(i, true)`,
+/// over a power `powersChanged(true)`. `LfoEditor::mouseUp` skips popup
+/// releases, so an LFO reports nothing.
+#[test]
+fn a_right_clicks_release_is_reported_except_on_an_lfo() {
+    use sas_gui::controls::line_editor::{LineChange, LineTarget};
+    let fixture = Fixture::new();
+    let mut line = LineTarget::Remap(5).init_shape();
+    line.add_point(1, (0.5, 0.2));
+    line.render();
+    // The point, and the power handle between the first two points.
+    let point = egui::pos2(200.0, 60.0);
+    let power = egui::pos2(100.0, 180.0);
+    let right_click = |harness: &mut Harness, at: Pos2| {
+        harness.event(Event::PointerMoved(at));
+        harness.step();
+        press(harness, at, PointerButton::Secondary, Modifiers::NONE);
+        release(harness, at, PointerButton::Secondary, Modifiers::NONE);
+    };
+    for target in [LineTarget::Remap(5), LineTarget::Lfo(0)] {
+        let overlay = RefCell::new(Overlay::default());
+        let shape = RefCell::new(line.clone());
+        let paint = std::cell::Cell::new(false);
+        let events = RefCell::new(Vec::new());
+        let mut harness =
+            line_editor_harness(&fixture, &overlay, target, Some(&shape), &paint, &events);
+        right_click(&mut harness, point);
+        assert!(
+            overlay.borrow().menu.is_some(),
+            "{target:?}: the menu opens"
+        );
+        overlay.borrow_mut().menu = None;
+        let at_point = line_changes(&events);
+        right_click(&mut harness, power);
+        overlay.borrow_mut().menu = None;
+        let at_power = line_changes(&events);
+        if target == LineTarget::Lfo(0) {
+            assert_eq!((at_point, at_power), (vec![], vec![]));
+        } else {
+            assert_eq!(
+                at_point,
+                [LineChange::PointChanged {
+                    index: 1,
+                    mouse_up: true
+                }]
+            );
+            assert_eq!(at_power, [LineChange::PowersChanged { mouse_up: true }]);
+        }
+        assert_eq!(shape.borrow().num_points(), 3);
+    }
 }

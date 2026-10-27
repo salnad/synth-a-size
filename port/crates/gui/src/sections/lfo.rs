@@ -18,7 +18,7 @@ use super::{popup_browser, MenuOwner, Panel};
 use crate::colour::Colour;
 use crate::controls::icon::fill_path;
 use crate::controls::line_editor::{
-    paint_pattern as line_paint_pattern, LineEditor, LineSettings, PAINT_PATTERN_NAMES,
+    paint_pattern as line_paint_pattern, LineEditor, LineSettings, LineTarget, PAINT_PATTERN_NAMES,
 };
 use crate::controls::path::{Path, Transform};
 use crate::controls::paths::Icon;
@@ -321,7 +321,9 @@ impl LfoSection {
             stereo: Slider::new(names.stereo, SliderStyle::Rotary)
                 .bipolar()
                 .snap_to_value(0.0),
-            editor: LineEditor { lfo: index },
+            editor: LineEditor {
+                target: LineTarget::Lfo(index),
+            },
             grid_size_x: grid_slider(local::GRID_SIZE_X[index], "X Grid"),
             grid_size_y: grid_slider(local::GRID_SIZE_Y[index], "Y Grid"),
         }
@@ -539,9 +541,9 @@ impl LfoSection {
             grid_size_y: host.value(local::GRID_SIZE_Y[self.index]) as usize,
             paint: host.value(local::PAINT[self.index]) != 0.0,
             paint_pattern: host.value(local::PAINT_PATTERN[self.index]) as usize,
-            phase: self.names.phase,
+            phase: Some(self.names.phase),
         };
-        let event = self.editor.show(panel, layout.editor, settings);
+        let event = self.editor.show(panel, layout.editor, settings, None);
         panel.slider(&self.grid_size_x, layout.grid_size_x);
         panel.slider(&self.grid_size_y, layout.grid_size_y);
 

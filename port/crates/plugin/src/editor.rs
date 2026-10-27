@@ -210,6 +210,23 @@ impl EditorModel for PluginModel {
         self.params.edit_handle().set_lfo_shape(index, line).is_ok()
     }
 
+    fn line_mapping(&self, slot: usize) -> Option<LineGenerator> {
+        self.params.edit_handle().with_document(|document| {
+            document
+                .state
+                .modulations()
+                .get(slot)
+                .map(|slot| slot.line_mapping.clone())
+        })
+    }
+
+    fn set_line_mapping(&self, slot: usize, line: LineGenerator) -> bool {
+        self.params
+            .edit_handle()
+            .set_line_mapping(slot, line)
+            .is_ok()
+    }
+
     fn macro_name(&self, index: usize) -> String {
         self.params
             .edit_handle()

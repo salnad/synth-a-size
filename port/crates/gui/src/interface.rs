@@ -152,6 +152,20 @@ pub trait EditorModel: Send + Sync + 'static {
         true
     }
 
+    /// Modulation slot `slot`'s remap curve (`ModulationConnection`'s
+    /// `modulation_processor->lineMapGenerator()`). None draws the init line.
+    fn line_mapping(&self, slot: usize) -> Option<LineGenerator> {
+        let _ = slot;
+        None
+    }
+
+    /// Replaces slot `slot`'s remap curve. False when the synth can't take
+    /// it now (its edit queue is full); the editor tries again next frame.
+    fn set_line_mapping(&self, slot: usize, line: LineGenerator) -> bool {
+        let _ = (slot, line);
+        true
+    }
+
     /// `SynthBase::getMacroName`: macro `index`'s (0-based) name, "MACRO n"
     /// when blank.
     fn macro_name(&self, index: usize) -> String {
