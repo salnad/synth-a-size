@@ -1249,12 +1249,9 @@ fn without_a_grid_drawing_follows_the_pointer() {
     let fixture = Fixture::new();
     let mut harness = opened(&fixture);
     let overlay = fixture.overlay_layout();
-    for _ in 0..6 {
-        click(&mut harness, centre(overlay.grid_x_buttons[1]));
-        for _ in 0..30 {
-            harness.step();
-        }
-    }
+    // Down the grid size's slider, to 0.
+    let grid = centre(overlay.grid_x);
+    drag(&mut harness, grid, grid + egui::vec2(0.0, 400.0));
     assert_eq!(fixture.local(WAVE_SOURCE_CONTROLS[0][0].grid_x), 0.0);
     let layout = fixture.editor_layout();
     let width = layout.waveform.width;
@@ -1393,4 +1390,33 @@ fn a_refused_commit_ends_the_audition() {
         audition.end(fixture.synth.as_ref());
     }
     assert_eq!(*fixture.synth.ends.lock().unwrap(), [0]);
+}
+
+/// The controls background lies over the top of the amplitudes and takes
+/// the presses there, as upstream's `ControlsBackground` on top of the bar
+/// editor does: a press on a title strip, or in a gap of the background,
+/// draws no bars and commits nothing.
+#[test]
+fn the_controls_background_takes_presses_over_the_bars() {
+    let fixture = Fixture::new();
+    let before = committed_samples(&fixture);
+    let mut harness = opened(&fixture);
+    let layout = fixture.editor_layout();
+    let overlay = fixture.overlay_layout();
+    let title = overlay.titles[1];
+    let y = title.y.max(layout.amplitudes.y) + 2;
+    assert!(y < title.bottom());
+    click(&mut harness, Pos2::new(centre(title).x, y as f32));
+    for _ in 0..30 {
+        harness.step();
+    }
+    // The gap between the interpolation selector and the grid sizes.
+    let gap = Pos2::new(
+        (overlay.interpolation.right() + 1) as f32,
+        centre(overlay.grid_x).y,
+    );
+    drag(&mut harness, gap, gap + egui::vec2(0.0, 2.0));
+    assert!(fixture.synth.auditions.lock().unwrap().is_empty());
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 0);
+    assert_eq!(committed_samples(&fixture), before);
 }

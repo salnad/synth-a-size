@@ -1548,7 +1548,8 @@ impl WavetableEditSection {
             return;
         };
         overlay.sync(selections, keyframe, frame, power_scale, zoom);
-        let edit = overlay.handle_mouse(panel, layout, frame, (self.oscillator, kind));
+        let controls = OverlayLayout::wave_source(&panel.scope, layout).controls;
+        let edit = overlay.handle_mouse(panel, layout, controls, frame, (self.oscillator, kind));
         self.frame_edited(panel.host.model(), edit);
     }
 
@@ -1595,6 +1596,8 @@ impl WavetableEditSection {
                     if let Some((read, _)) = &mut self.creator {
                         *read = u64::MAX;
                     }
+                    // The bars load again from the saved frame.
+                    self.frame_selections += 1;
                 }
             }
             None => {}

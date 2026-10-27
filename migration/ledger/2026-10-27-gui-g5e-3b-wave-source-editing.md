@@ -25,13 +25,16 @@ selected keyframe's frame, and a drag is heard as it is drawn.
   popup-menu press too, as upstream's `mouseUp` does, so a right-click
   commits once.
 - The bar editors (`BarEditor::changeValues`, scaled by the zoom), with the
-  hovered bar lightened (`editing_quad_`). Their changes rebuild the frame
+  hovered bar lightened (`editing_quad_`). The controls background lies over
+  the top of the amplitudes and takes the presses and the pointer there, as
+  upstream's `ControlsBackground` component on top of the bar editor does. Their changes rebuild the frame
   from every bar (`loadFrequencyDomain`: polar amplitudes and phases,
   inverse transform, normalise, forward transform).
 - The menus: the waveform's Clear, Flip Vertical and Flip Horizontal; the
   bars' Clear, Clear Left, Clear Right (of the last press), Clear Odd, Clear
-  Even and Randomize (bin 0 off, the rest from a generator seeded when first
-  used). The phases clear to the default phase.
+  Even and Randomize (bin 0 off, the rest from each bar editor's own
+  generator, seeded when first used). The phases clear to the default
+  phase.
 - `frameChanged` during a drag renders the frame under the playhead into
   the playing and drawn tables (`EditorModel::audition_wavetable_frame`,
   `EditHandle::set_wavetable_frame`, with the drag's token read at its first
@@ -40,7 +43,8 @@ selected keyframe's frame, and a drag is heard as it is drawn.
   `render(position)` and `render()` do. Only the commit changes the saved
   creator (D18); nothing writes to the host. A commit the model refuses (a
   full edit queue) ends the drag instead, and the section reads the saved
-  creator back, so the drawn frames don't keep playing.
+  creator back and reloads the bars from it, so the drawn frames don't keep
+  playing.
 - `PendingAudition`: the drag that is auditioning, shared with the editor
   window. A window that closes or fails during it, or a section hidden
   during it, ends it (`EditorModel::end_wavetable_audition`), so the
@@ -75,7 +79,8 @@ selected keyframe's frame, and a drag is heard as it is drawn.
   draws.
 - `tests/wavetable_editor.rs`: a drag whose commit is refused ends its
   audition once, commits nothing, and the editor reads the saved creator
-  back.
+  back; a press on a title strip or a gap of the controls background over
+  the amplitudes draws nothing and commits nothing.
 - Engine (`tests/edit_bus.rs`): `ending_auditions_has_room_whatever_else_is_queued`:
   with every oscillator drawn on and the queue filled with other edits and
   frames until they're refused, each drag still ends, putting its table

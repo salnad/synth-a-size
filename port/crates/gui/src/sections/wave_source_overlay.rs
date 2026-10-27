@@ -334,8 +334,8 @@ pub struct WaveSourceOverlay {
     bar_press: [Press; 2],
     bar_last_edit: [(i32, i32); 2],
     bar_mouse: [(i32, i32); 2],
-    /// `BarEditor::random_generator_`, seeded when first used.
-    random: Option<RandomGenerator>,
+    /// Each `BarEditor`'s `random_generator_`, seeded when first used.
+    random: [Option<RandomGenerator>; 2],
 }
 
 /// `BarEditor`'s `current_mouse_position_` away from it.
@@ -358,7 +358,7 @@ impl WaveSourceOverlay {
             bar_press: [Press::default(); 2],
             bar_last_edit: [(0, 0); 2],
             bar_mouse: [BAR_MOUSE_AWAY; 2],
-            random: None,
+            random: [None, None],
         }
     }
 
@@ -445,11 +445,15 @@ impl WaveSourceOverlay {
 
     /// The editors' mice over `edit`'s displays, drawing on `frame`
     /// (`mouseDown`, `mouseDrag`, `mouseUp`, `mouseMove`, `mouseExit`). A
-    /// popup-menu press opens the editor's menu for `owner`.
+    /// popup-menu press opens the editor's menu for `owner`. The controls
+    /// background at `controls` lies over the top of the amplitudes and
+    /// takes the presses and the pointer there, as upstream's component on
+    /// top of the bar editor does.
     pub fn handle_mouse(
         &mut self,
         panel: &mut Panel,
         edit: &WavetableEditLayout,
+        controls: Rect,
         frame: &mut WaveFrame,
         owner: (usize, usize),
     ) -> Option<FrameEdit> {
@@ -469,7 +473,7 @@ impl WaveSourceOverlay {
         let waveform = self.waveform_mouse(panel, edit.waveform, frame, grid, owner);
         note(waveform);
         for (bar, bounds) in [edit.amplitudes, edit.phases].into_iter().enumerate() {
-            let bars = self.bar_mouse(panel, bounds, bar, frame, owner);
+            let bars = self.bar_mouse(panel, bounds, bar, controls, frame, owner);
             note(bars);
         }
         result
@@ -538,10 +542,19 @@ impl WaveSourceOverlay {
         panel: &mut Panel,
         bounds: Rect,
         bar: usize,
+        controls: Rect,
         frame: &mut WaveFrame,
         owner: (usize, usize),
     ) -> Option<FrameEdit> {
-        let input = editor_input(panel, bounds, ("wave source bars", owner, bar));
+        let mut input = editor_input(panel, bounds, ("wave source bars", owner, bar));
+        let over_controls = input.pos.is_some_and(|(x, y)| {
+            let (x, y) = (bounds.x + x, bounds.y + y);
+            x >= controls.x && x < controls.right() && y >= controls.y && y < controls.bottom()
+        });
+        if over_controls && !self.bar_press[bar].down {
+            input.pressed = false;
+            input.hovered = false;
+        }
         let part = if bar == 0 {
             WaveSourcePart::Amplitudes
         } else {
@@ -657,8 +670,7 @@ impl WaveSourceOverlay {
                 let width = bounds.width as f32;
                 let last = self.bar_last_edit[bar];
                 if choice == BARS_RANDOMIZE {
-                    let random = self
-                        .random
+                    let random = self.random[bar]
                         .get_or_insert_with(|| RandomGenerator::from_global_counter(-1.0, 1.0));
                     let mut values = vec![-1.0];
                     values.extend((1..NUM_REAL_COMPLEX).map(|_| random.next()));
