@@ -79,8 +79,10 @@ LFO come in G7d-2; the added folders ("Add Folder") in G7d-3.
 - `migration/corpus/generate.py` adds four authored wavetables to the
   corpus data folder: two in Wavetables, one in a folder inside it and one
   in the bank.
-- The GUI reference job checks that rendering the views wrote nothing into
-  `migration/corpus` (Harness Builder's suggestion on #165).
+- The GUI reference job checks that rendering the views and running the
+  gpu tests wrote nothing into `migration/corpus`, empty folders included,
+  which git doesn't show (Harness Builder's suggestion on #165, and its
+  empty-folder check on #172).
 
 **Tests**
 
