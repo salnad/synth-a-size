@@ -4205,3 +4205,146 @@ fn a_matrix_rows_controls_are_its_slots() {
         ]
     );
 }
+
+/// The editor composed as `App::ui` draws it, with the chat, in a window
+/// `size` points wide and tall.
+fn chat_harness<'a>(
+    fixture: &'a Fixture,
+    panel: &'a RefCell<sas_gui::ChatPanel>,
+    size: (f32, f32),
+) -> Harness<'a> {
+    let mut harness = Harness::builder()
+        .with_size(size)
+        .with_step_dt(1.0 / 60.0)
+        .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
+        .build_ui(move |ui| {
+            let screen = ui.ctx().content_rect();
+            fixture.recorder.apply_pending();
+            let host = Host::tracking(
+                fixture.synth.as_ref(),
+                Some(&fixture.context),
+                &fixture.open,
+            );
+            fixture.interface.borrow_mut().show_in(ui, screen, &host);
+            sas_gui::show_chat(
+                &mut fixture.interface.borrow_mut(),
+                &mut panel.borrow_mut(),
+                ui.ctx(),
+                screen,
+                &IdleChat,
+                &mut || {},
+            );
+        });
+    harness.step();
+    harness
+}
+
+/// The centre of the chat's toggle (our logo section) in the window as it
+/// is now, letterboxed or beside a docked drawer.
+fn toggle(fixture: &Fixture, harness: &Harness) -> Pos2 {
+    let window = harness.ctx.content_rect();
+    fixture
+        .interface
+        .borrow()
+        .chat_placement(window, 1.0)
+        .toggle
+        .center()
+}
+
+fn shows(harness: &Harness, label: &str) -> bool {
+    harness.query_by_label(label).is_some()
+}
+
+/// The wavetable editor replaces the header (`showWavetableEditSection`), so
+/// the toggle goes with our logo. A docked chat stays beside the editor, and
+/// the drawer keeps its state while the toggle is away.
+#[test]
+fn the_wavetable_editor_hides_the_toggle_and_keeps_a_docked_chat() {
+    let fixture = Fixture::new();
+    let panel = RefCell::new(sas_gui::ChatPanel::default());
+    let mut harness = chat_harness(&fixture, &panel, (1760.0, 820.0));
+    let at = toggle(&fixture, &harness);
+    click(&mut harness, at);
+    harness.step();
+    assert!(fixture.interface.borrow().drawer_open());
+    assert!(shows(&harness, "Close chat") && shows(&harness, "Sound design chat"));
+
+    fixture
+        .interface
+        .borrow_mut()
+        .show_wavetable_editor(Some(0));
+    harness.step();
+    harness.step();
+    assert!(!fixture.interface.borrow().logo_shown());
+    assert!(!shows(&harness, "Close chat") && !shows(&harness, "Chat"));
+    assert!(
+        shows(&harness, "Sound design chat"),
+        "the docked chat stays"
+    );
+    // A click where the logo was reaches the wavetable editor, not the
+    // drawer.
+    let at = toggle(&fixture, &harness);
+    click(&mut harness, at);
+    harness.step();
+    assert!(fixture.interface.borrow().drawer_open());
+
+    fixture.interface.borrow_mut().show_wavetable_editor(None);
+    harness.step();
+    harness.step();
+    assert!(shows(&harness, "Close chat"));
+    let at = toggle(&fixture, &harness);
+    click(&mut harness, at);
+    harness.step();
+    assert!(!fixture.interface.borrow().drawer_open());
+}
+
+/// Without a widened window the open chat overlays the editor, so it hides
+/// with the logo, still open, and comes back with it.
+#[test]
+fn an_overlaid_chat_hides_with_the_logo_and_comes_back_open() {
+    let fixture = Fixture::new();
+    fixture.interface.borrow_mut().set_drawer_open(true);
+    let panel = RefCell::new(sas_gui::ChatPanel::default());
+    let mut harness = chat_harness(&fixture, &panel, (1400.0, 820.0));
+    harness.step();
+    assert!(shows(&harness, "Sound design chat"));
+
+    fixture
+        .interface
+        .borrow_mut()
+        .show_wavetable_editor(Some(1));
+    harness.step();
+    harness.step();
+    assert!(!shows(&harness, "Sound design chat"));
+    assert!(!shows(&harness, "Close chat"));
+    assert!(fixture.interface.borrow().drawer_open());
+
+    fixture.interface.borrow_mut().show_wavetable_editor(None);
+    harness.step();
+    harness.step();
+    assert!(shows(&harness, "Sound design chat") && shows(&harness, "Close chat"));
+}
+
+/// The save section overlays the whole interface, and a click outside its
+/// box closes it (`SaveSection::mouseUp`), including at our logo: that click
+/// closes the section and leaves the drawer alone.
+#[test]
+fn under_the_save_section_a_click_at_the_logo_closes_it_not_the_drawer() {
+    let fixture = Fixture::new();
+    let panel = RefCell::new(sas_gui::ChatPanel::default());
+    let mut harness = chat_harness(&fixture, &panel, (1400.0, 820.0));
+    fixture.interface.borrow_mut().request_save_preset();
+    harness.step();
+    harness.step();
+    assert!(fixture.interface.borrow().save_section_state().0);
+    assert!(!fixture.interface.borrow().logo_shown());
+    assert!(!shows(&harness, "Chat"));
+
+    let at = toggle(&fixture, &harness);
+    click(&mut harness, at);
+    harness.step();
+    assert!(!fixture.interface.borrow().save_section_state().0);
+    assert!(!fixture.interface.borrow().drawer_open());
+    assert!(!panel.borrow().is_open());
+    assert!(shows(&harness, "Chat"));
+}

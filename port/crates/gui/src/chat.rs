@@ -111,6 +111,12 @@ pub struct ChatPlacement {
     pub style: ChatStyle,
     /// Whether the panel docks in the drawer or overlays the editor.
     pub mode: ChatMode,
+    /// Whether our logo section shows: not while the wavetable editor
+    /// replaces the header, nor under a full-window overlay (the save and
+    /// delete sections), whose clicks outside their box close them. The
+    /// toggle shows only then, and so does the panel when it overlays the
+    /// editor; a docked panel, beside the editor, stays.
+    pub logo_shown: bool,
 }
 
 /// Where the open panel goes.
@@ -264,17 +270,9 @@ impl ChatPanel {
         self.open = open;
     }
 
-    /// The toggle in the logo section, and the panel when open, where
-    /// `placement` says. `request_focus` asks the plugin window for keyboard
-    /// focus.
-    pub fn show(
-        &mut self,
-        ctx: &egui::Context,
-        placement: &ChatPlacement,
-        host: &dyn ChatHost,
-        request_focus: &mut dyn FnMut(),
-    ) {
-        host.run_frame();
+    /// The toggle in our logo section: opens and closes the panel (and
+    /// with it the drawer).
+    fn show_toggle(&mut self, ctx: &egui::Context, placement: &ChatPlacement) {
         let style = placement.style;
         egui::Area::new(Id::unique("chat_toggle"))
             .order(Order::Foreground)
@@ -305,7 +303,26 @@ impl ChatPanel {
                     self.open = !self.open;
                 }
             });
-        if !self.open {
+    }
+
+    /// The toggle while our logo section shows, and the panel when open,
+    /// where `placement` says: docked in the drawer, or over the editor
+    /// while the logo shows (it comes back, still open, when the logo does).
+    /// `request_focus` asks the plugin window for keyboard focus.
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        placement: &ChatPlacement,
+        host: &dyn ChatHost,
+        request_focus: &mut dyn FnMut(),
+    ) {
+        host.run_frame();
+        let style = placement.style;
+        if placement.logo_shown {
+            self.show_toggle(ctx, placement);
+        }
+        let docked = matches!(placement.mode, ChatMode::Docked(_));
+        if !self.open || !(docked || placement.logo_shown) {
             return;
         }
         let panel =

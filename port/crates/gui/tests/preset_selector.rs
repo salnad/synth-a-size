@@ -1081,3 +1081,31 @@ fn the_delete_section_takes_drags_meant_for_controls_beneath() {
     assert!(fixture.interface.borrow().deleting().is_none());
     assert_eq!(shown(&fixture).len(), 3);
 }
+
+/// The delete section covers the whole interface and closes on a click
+/// outside its box, so our logo (the chat's toggle) isn't reachable under it,
+/// and is again once it closes.
+#[test]
+fn the_delete_section_hides_the_chat_toggle_until_it_closes() {
+    let folder = copied_data("delete-logo");
+    let fixture = Fixture::new();
+    *fixture.synth.data_directory.lock().unwrap() = Some(folder.0.clone());
+    fixture
+        .interface
+        .borrow_mut()
+        .set_preset_browser_visible(true);
+    let mut harness = fixture.harness();
+    assert!(
+        fixture.interface.borrow().logo_shown(),
+        "the preset browser keeps the logo"
+    );
+    let row = list_row(&fixture, 1);
+    right_click(&mut harness, row);
+    choose_row(&mut harness, row.x, row.y, 2);
+    harness.step();
+    assert!(fixture.interface.borrow().deleting().is_some());
+    assert!(!fixture.interface.borrow().logo_shown());
+    drag_up(&mut harness, centre(fixture.header().volume));
+    assert!(fixture.interface.borrow().deleting().is_none());
+    assert!(fixture.interface.borrow().logo_shown());
+}
