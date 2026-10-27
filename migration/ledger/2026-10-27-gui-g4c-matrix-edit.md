@@ -32,15 +32,23 @@
     again.
   - The choice selects the row.
 - **Row selection** (`rowSelected`):
-  - A press on a row's background (`mouseDown`) or a click on one of its
-    toggles (`buttonClicked`) selects it.
+  - A press on a row's background (`mouseDown`) selects it.
+  - Its toggles select it through `buttonClicked`: on a release over the
+    toggle, not on the press.
   - Its sliders select it only when their value changes
     (`sliderValueChanged`); a press that doesn't move one leaves the
     selection as it was. `Panel::slider_changed` compares the frame's
     input value with the host's value before it.
-  - Its selectors select it on a choice.
-  - A state load that changes a row's bipolar, bypass or stereo selects the
-    last such row, as `setAllValues` sends those toggles' `buttonClicked`.
+  - Its selectors select it on a choice. Re-choosing the item already
+    shown does nothing, since `Slider::setValue` notifies only a change: no
+    selection and no `set_slot_route`.
+  - A state load that changes a row's bipolar, bypass or stereo selects a
+    row, as `setAllValues` sends those toggles' `buttonClicked`.
+    - It selects the last changed toggle's row in `setAllValues`' order,
+      which is its button map's: by name.
+    - So `modulation_10_*` comes before `modulation_2_*`, and with slots 2
+      and 10 changed, slot 2 is selected.
+    - The sliders are set without notification, so they select nothing.
   - **Not copied: ref-gui's second highlight.** ref-gui's
     `modulations_matrix` also highlights row 1. That comes from the
     harness, which loads the preset before attaching the editor, so the
@@ -60,6 +68,8 @@
 - **Bipolar** (`buttonClicked`): the curve follows a bipolar toggle in the
   frame it is clicked (`power_slider_->setBipolar`), not a frame later as
   the host value arrives.
+  - It flips the value read before the button handles the mouse, so the
+    curve is right whether the host applies the set at once or later.
 - **The two-column selector** (`DualPopupSelector`, `PopupList`) gained:
   - left rows chosen by themselves, as "-" is;
   - dividers (a lighten line across the middle of a row, never hovered or
@@ -81,6 +91,16 @@
     stays empty throughout.
   - `a_row_cannot_modulate_its_own_amount`.
   - `rows_are_selected_by_a_press_and_by_a_load_changing_their_toggles`.
+  - Four tests from Voice Reviewer's second review. Each fails when its
+    fix is reverted:
+    - `a_rows_toggle_selects_it_on_a_release_over_it`: not on the press,
+      nor on a release off it.
+    - `a_load_selects_the_last_changed_row_in_name_order`: slots 2 and 10
+      select 2, and slots 9 and 19 select 9.
+    - `a_bipolar_click_redraws_the_curve_in_that_frame`: checked in the
+      release's own frame, with a host that applies sets at once and with
+      one that defers them.
+    - `rechoosing_a_selectors_item_does_nothing`.
   - `a_rows_slider_selects_it_only_when_it_moves`: a press on row 2's
     amount, and one on its morph curve, leave row 1 selected. A drag on the
     amount selects row 2. The test fails when the amount's change doesn't

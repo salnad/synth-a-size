@@ -454,6 +454,8 @@ pub struct MatrixTab {
     /// selects that row (`setAllValues` → `buttonClicked` → `rowSelected`).
     toggles: Vec<[bool; 3]>,
     generation: Option<u64>,
+    /// Whether each row's morph curve was last drawn bipolar.
+    curves_bipolar: std::cell::RefCell<Vec<bool>>,
 }
 
 impl Default for MatrixTab {
@@ -469,6 +471,7 @@ impl Default for MatrixTab {
             routes: None,
             toggles: vec![[false; 3]; MAX_MODULATION_CONNECTIONS],
             generation: None,
+            curves_bipolar: std::cell::RefCell::new(vec![false; MAX_MODULATION_CONNECTIONS]),
         }
     }
 }
@@ -486,6 +489,11 @@ impl MatrixTab {
 
     pub fn sort_column(&self) -> (SortColumn, bool) {
         (self.sort_column, self.sort_ascending)
+    }
+
+    /// Whether row `slot`'s morph curve was last drawn bipolar.
+    pub fn curve_bipolar(&self, slot: usize) -> bool {
+        self.curves_bipolar.borrow()[slot]
     }
 
     /// Each row's values for sorting, from the host and the selectors.
@@ -553,6 +561,10 @@ impl MatrixTab {
         else {
             return;
         };
+        // Slider::setValue notifies only a change.
+        if self.selectors[slot][usize::from(destination)] == index {
+            return;
+        }
         let [old_source, old_destination] = self.selectors[slot];
         self.selectors[slot][usize::from(destination)] = index;
         let [source, destination_index] = self.selectors[slot];
@@ -575,7 +587,10 @@ impl MatrixTab {
         self.selected = slot;
     }
 
-    /// A state load that changed rows' toggles selects the last of them.
+    /// A state load that changed rows' toggles selects the last of them in
+    /// `setAllValues`' order, its button map's: by name, so
+    /// `modulation_10_bipolar` comes before `modulation_1_bipolar` and
+    /// `modulation_2_bipolar` after `modulation_19_stereo`.
     fn follow_load(&mut self, host: &Host) {
         let generation = host.model().edit_generation();
         let toggles: Vec<[bool; 3]> = self
@@ -587,10 +602,18 @@ impl MatrixTab {
             })
             .collect();
         if self.generation.is_some_and(|last| last != generation) {
-            if let Some(slot) = (0..MAX_MODULATION_CONNECTIONS)
-                .rev()
-                .find(|&slot| toggles[slot] != self.toggles[slot])
-            {
+            let last = (0..MAX_MODULATION_CONNECTIONS)
+                .flat_map(|slot| {
+                    let row = &self.rows[slot];
+                    let (old, new) = (self.toggles[slot], toggles[slot]);
+                    [&row.bipolar, &row.bypass, &row.stereo]
+                        .into_iter()
+                        .enumerate()
+                        .filter(move |&(toggle, _)| old[toggle] != new[toggle])
+                        .map(move |(_, button)| (button.name, slot))
+                })
+                .max_by(|a, b| a.0.cmp(b.0));
+            if let Some((_, slot)) = last {
                 self.selected = slot;
             }
         }
@@ -745,9 +768,9 @@ impl MatrixTab {
         let scope = panel.scope;
         let pixels = panel.pixels;
         let host = panel.host;
-        // mouseDown on the row's background or a toggle (buttonClicked);
-        // its sliders select it when they move (sliderValueChanged), its
-        // selectors on a choice.
+        // mouseDown on the row's background; its toggles select it when
+        // clicked (buttonClicked), its sliders when they move
+        // (sliderValueChanged), its selectors on a choice.
         let pressed_at = panel.ui.input(|input| {
             input
                 .pointer
@@ -758,9 +781,17 @@ impl MatrixTab {
         let mut select = pressed_at.is_some_and(|pos| {
             let within = |rect: Rect| pixels.rect(rect.into()).contains(pos);
             within(row.bounds)
-                && ![row.source, row.destination, row.power, row.amount]
-                    .into_iter()
-                    .any(within)
+                && ![
+                    row.source,
+                    row.destination,
+                    row.bypass,
+                    row.bipolar,
+                    row.stereo,
+                    row.power,
+                    row.amount,
+                ]
+                .into_iter()
+                .any(within)
         });
 
         pixels.fill_rect(row.bounds, scope.color(ColorId::Body));
@@ -839,15 +870,15 @@ impl MatrixTab {
         }
 
         let controls = &self.rows[slot];
-        panel.button(&controls.bypass, row.bypass);
+        // buttonClicked: the curve follows the toggle at once, whenever the
+        // host applies it.
+        let was_bipolar = host.value(controls.bipolar.name) != 0.0;
+        select |= panel.button(&controls.bypass, row.bypass);
         let bipolar_clicked = panel.button(&controls.bipolar, row.bipolar);
-        panel.button(&controls.stereo, row.stereo);
-
-        // buttonClicked: the curve follows the toggle at once.
-        let mut bipolar = host.value(controls.bipolar.name) != 0.0;
-        if bipolar_clicked {
-            bipolar = !bipolar;
-        }
+        select |= bipolar_clicked;
+        select |= panel.button(&controls.stereo, row.stereo);
+        let bipolar = was_bipolar != bipolar_clicked;
+        self.curves_bipolar.borrow_mut()[slot] = bipolar;
         let mut power = controls.power;
         power.bipolar = bipolar;
         power.active = connected;

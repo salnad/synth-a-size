@@ -98,6 +98,9 @@ const CONTROLS: &[&str] = &[
     "modulation_3_bipolar",
     "modulation_3_stereo",
     "modulation_3_bypass",
+    "modulation_9_stereo",
+    "modulation_10_bypass",
+    "modulation_19_stereo",
     "env_1_delay",
     "env_1_attack",
     "env_1_hold",
@@ -4820,4 +4823,146 @@ fn a_rows_slider_selects_it_only_when_it_moves() {
     );
     assert_ne!(fixture.synth.value("modulation_2_amount"), 0.0);
     assert_eq!(fixture.interface.borrow().matrix().selected(), 1);
+}
+
+/// A row's toggle selects it through `buttonClicked`, on a release over the
+/// toggle: not on the press, and not on a release off it.
+#[test]
+fn a_rows_toggle_selects_it_on_a_release_over_it() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    let row = matrix_row(&fixture, 1);
+    let stereo = centre(row.stereo);
+    press(
+        &mut harness,
+        stereo,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 0);
+    move_to(&mut harness, centre(row.amount));
+    release(
+        &mut harness,
+        centre(row.amount),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 0);
+    press(
+        &mut harness,
+        stereo,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 0);
+    release(
+        &mut harness,
+        stereo,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 1);
+}
+
+/// After a load, the last changed toggle in `setAllValues`' name order
+/// selects its row: `modulation_10_*` sorts before `modulation_2_*`, so with
+/// slots 2 and 10 changed, slot 2 (index 1) is selected.
+#[test]
+fn a_load_selects_the_last_changed_row_in_name_order() {
+    let fixture = Fixture::new();
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    fixture.synth.set("modulation_2_bypass", 1.0);
+    fixture.synth.set("modulation_10_bypass", 1.0);
+    fixture.synth.generation.fetch_add(1, Ordering::Relaxed);
+    harness.step();
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 1);
+
+    fixture.synth.set("modulation_9_stereo", 1.0);
+    fixture.synth.set("modulation_19_stereo", 1.0);
+    fixture.synth.generation.fetch_add(1, Ordering::Relaxed);
+    harness.step();
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 8);
+}
+
+/// The morph curve follows a bipolar click in that frame
+/// (`buttonClicked` → `setBipolar`), whether the host applies the set at
+/// once or later.
+#[test]
+fn a_bipolar_click_redraws_the_curve_in_that_frame() {
+    for deferred in [false, true] {
+        let fixture = Fixture::with_sets(deferred);
+        two_sources_on_macro_1(&fixture);
+        fixture
+            .interface
+            .borrow_mut()
+            .set_tab(sas_gui::interface::Tab::Matrix);
+        let mut harness = fixture.harness();
+        harness.step();
+        assert!(!fixture.interface.borrow().matrix().curve_bipolar(0));
+        let row = matrix_row(&fixture, 0);
+        press(
+            &mut harness,
+            centre(row.bipolar),
+            PointerButton::Primary,
+            Modifiers::NONE,
+        );
+        // One frame: the release's.
+        harness.event(Event::PointerButton {
+            pos: centre(row.bipolar),
+            button: PointerButton::Primary,
+            pressed: false,
+            modifiers: Modifiers::NONE,
+        });
+        harness.step();
+        assert!(
+            fixture.interface.borrow().matrix().curve_bipolar(0),
+            "deferred {deferred}"
+        );
+        harness.step();
+        harness.step();
+        assert!(fixture.interface.borrow().matrix().curve_bipolar(0));
+        assert_eq!(fixture.synth.value("modulation_1_bipolar"), 1.0);
+    }
+}
+
+/// Choosing a selector's current item does nothing (`Slider::setValue`
+/// notifies only a change): the row isn't selected and the route isn't
+/// set again.
+#[test]
+fn rechoosing_a_selectors_item_does_nothing() {
+    let fixture = Fixture::new();
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    choose_in_matrix(&mut harness, &fixture, 1, false, "lfo_1");
+    choose_in_matrix(&mut harness, &fixture, 1, true, "macro_control_1");
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 1);
+    fixture.synth.bus.lock().unwrap().clear();
+    // Slot 1 is listed first, so slot 0 is the second row.
+    let row_0 = matrix_row(&fixture, 1);
+    let gap_0 = egui::pos2(
+        (row_0.power.right() + row_0.amount.x) as f32 / 2.0,
+        centre(row_0.bounds).y,
+    );
+    press(&mut harness, gap_0, PointerButton::Primary, Modifiers::NONE);
+    release(&mut harness, gap_0, PointerButton::Primary, Modifiers::NONE);
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 0);
+    choose_in_matrix(&mut harness, &fixture, 1, false, "lfo_1");
+    choose_in_matrix(&mut harness, &fixture, 1, true, "macro_control_1");
+    assert!(fixture.synth.bus.lock().unwrap().is_empty());
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 0);
 }
