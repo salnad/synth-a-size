@@ -422,7 +422,10 @@ pub trait EditorModel: Send + Sync + 'static {
     /// edit, preset load and state restore), so drawings of them can be
     /// cached against it. Read it before the content you cache: a change
     /// that lands in between then moves the revision past the one stored,
-    /// and the next frame reads the content again.
+    /// and the next frame reads the content again. A wavetable editor drag's
+    /// auditions don't move it: they change the drawn and played table but
+    /// not the document, so a drawing of the table during a drag must read
+    /// it each frame.
     fn content_revision(&self) -> u64 {
         0
     }

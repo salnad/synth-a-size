@@ -860,6 +860,9 @@ impl EditHandle {
     /// another position, and a position past the table's last frame
     /// changes nothing, as `loadWaveFrame` ignores it.
     ///
+    /// Returns false, changing nothing, when `token` is stale, as
+    /// [`Self::audition_wavetable`] does.
+    ///
     /// Drop any table from [`Self::wavetable`] first: while one is held, the
     /// shared table is copied (about 8.5 MB) to draw into.
     pub fn set_wavetable_frame(
@@ -867,14 +870,21 @@ impl EditHandle {
         oscillator: usize,
         creator: WavetableCreator,
         position: usize,
-    ) -> Result<(), EditError> {
+        token: AuditionToken,
+    ) -> Result<bool, EditError> {
         check_index(oscillator, NUM_OSCILLATORS)?;
         check_index(position, NUM_OSCILLATOR_WAVE_FRAMES as usize)?;
+        if self.is_stale(&self.lock(), oscillator, token) {
+            return Ok(false);
+        }
         // The shared table, rendered first if a restore cleared it.
         self.wavetable(oscillator)
             .ok_or_else(|| EditError::Render("the wavetable cannot render".to_string()))?;
         self.collect_retired();
         let mut mirror = self.lock();
+        if self.is_stale(&mirror, oscillator, token) {
+            return Ok(false);
+        }
         if self.capacity_remaining() < 1 {
             return Err(EditError::QueueFull);
         }
@@ -898,7 +908,14 @@ impl EditHandle {
             .into_iter()
             .collect();
         self.queue(&mut mirror, staged);
-        Ok(())
+        Ok(true)
+    }
+
+    /// Whether `token` predates the state's generation or the oscillator's
+    /// last wavetable commit.
+    fn is_stale(&self, mirror: &Mirror, oscillator: usize, token: AuditionToken) -> bool {
+        mirror.generation != token.generation
+            || mirror.wavetable_commits[oscillator] != token.commit
     }
 
     /// The token an audition of oscillator `oscillator`'s wavetable takes
@@ -936,10 +953,40 @@ impl EditHandle {
         check_index(oscillator, NUM_OSCILLATORS)?;
         let prepared = PreparedWavetable::render(creator)?;
         self.collect_retired();
+        self.swap_audition(oscillator, prepared, token)
+    }
+
+    /// Ends a drag that won't be committed (cancelled, or the editor closed
+    /// or failed during it): renders the document's creator on the calling
+    /// thread and swaps it into the shared table and the engine's, so what
+    /// plays is again what a save stores. Like the auditions, it leaves the
+    /// document and the revision alone, and returns false, changing
+    /// nothing, when `token` is stale, since a commit or restore has
+    /// already replaced the table.
+    pub fn end_audition(&self, oscillator: usize, token: AuditionToken) -> Result<bool, EditError> {
+        check_index(oscillator, NUM_OSCILLATORS)?;
+        let creator = {
+            let mirror = self.lock();
+            if self.is_stale(&mirror, oscillator, token) {
+                return Ok(false);
+            }
+            mirror.document.state.wavetables[oscillator].clone()
+        };
+        let prepared = PreparedWavetable::render(creator)?;
+        self.swap_audition(oscillator, prepared, token)
+    }
+
+    /// Swaps `prepared` into the shared table and the engine's, unless
+    /// `token` has gone stale while it rendered.
+    fn swap_audition(
+        &self,
+        oscillator: usize,
+        prepared: PreparedWavetable,
+        token: AuditionToken,
+    ) -> Result<bool, EditError> {
+        self.collect_retired();
         let mut mirror = self.lock();
-        if mirror.generation != token.generation
-            || mirror.wavetable_commits[oscillator] != token.commit
-        {
+        if self.is_stale(&mirror, oscillator, token) {
             return Ok(false);
         }
         if self.capacity_remaining() < 1 {
@@ -979,7 +1026,9 @@ impl EditHandle {
         let rendered = PreparedWavetable::render(creator).ok()?.shared;
         let mut mirror = self.lock();
         if mirror.revision == revision {
-            mirror.wavetables[oscillator] = Some(rendered.clone());
+            // An audition may have stored a table meanwhile; it stays.
+            let stored = mirror.wavetables[oscillator].get_or_insert(rendered);
+            return Some(stored.clone());
         }
         Some(rendered)
     }

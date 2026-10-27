@@ -28,10 +28,24 @@ commit on release, as under D18.
   - A frame drawn after an audition lands on the new table (the frame slot
     is separate and ordered). The audition's creator may be older than the
     drawn frame, so the editor sends the current frame again after one.
-- `set_wavetable_frame` is now an audition too: it no longer writes the
-  creator into the document or moves the revision. Its doc says to drop any
-  table from `wavetable()` before calling, since a held one makes the shared
-  table copy (Graph Reviewer's note on #178).
+- `set_wavetable_frame` is now an audition too: it takes the drag's token
+  and returns false, changing nothing, when it is stale, so a frame from a
+  drag before a restore or commit can't reach the new table. It no longer
+  writes the creator into the document or moves the revision. Its doc says
+  to drop any table from `wavetable()` before calling, since a held one
+  makes the shared table copy (Graph Reviewer's note on #178).
+- `EditHandle::end_audition(oscillator, token)`, for a drag that isn't
+  committed (cancelled, or the editor closed or failed during it): renders
+  the document's creator and swaps it into the shared table and the
+  engine's, so what plays is again what a save stores. It leaves the
+  document and revision alone and does nothing when the token is stale (a
+  commit or restore has already replaced the table). The editor calls it on
+  cancel, close and failure.
+- `wavetable()`'s lazy render after a restore keeps a table an audition
+  stored while it rendered, instead of overwriting it.
+- `EditorModel::content_revision`'s doc says auditions don't move it.
+- A failed commit batch keeps its commit count increment; that only makes
+  auditions in flight stale.
 - `push` is split into `queue` (no revision bump) and the revision bump.
 
 **Tests** (`port/crates/engine/tests/edit_bus.rs`, `edit_bus_no_alloc.rs`)
@@ -42,11 +56,18 @@ commit on release, as under D18.
   table, and the release's `set_wavetable` then takes the document. Nothing
   leaks.
 - `stale_auditions_change_nothing`: after the oscillator's commit, or a
-  restore, an audition returns false and queues nothing; another
-  oscillator's commit doesn't make it stale; a bad index is refused.
+  restore, an audition, a drawn frame and an end of audition each return
+  false and queue nothing, and after the restore the table is the new
+  document's; another oscillator's commit doesn't make it stale; a bad
+  index is refused.
+- `ending_an_audition_plays_the_document_again`: after an audition and a
+  drawn frame, `end_audition` makes the shared and engine tables
+  bit-identical to the committed one, with the document and revision
+  unchanged, and the synth then plays bit for bit like one that only ever
+  had the committed table.
 - The frame tests now check that the document keeps its creator and the
   revision stays (they checked the opposite under #178's first contract).
 - The allocation test's producer also auditions a whole table every 40
-  rounds while the synth plays.
+  rounds, and ends every other audition, while the synth plays.
 
 No audio change until the editor uses it (G5e-3).
