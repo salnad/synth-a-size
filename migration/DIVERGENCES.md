@@ -767,8 +767,8 @@ MCP server) extends this entry when it lands.*
 - **Why:** there is no defined result to reproduce. Doing nothing leaves the
   current preset playing, which is what a folder with nothing to step to
   suggests.
-- **Approved:** coordinator, relaying Voice Reviewer's review of #159,
-  2026-10-26.
+- **Approved:** Salil, 2026-10-27 (earlier: coordinator, relaying Voice
+  Reviewer's review of #159, 2026-10-26).
 
 ### D26. The popup browser always has its search box, and no store button
 
@@ -807,8 +807,8 @@ MCP server) extends this entry when it lands.*
 - **Why:** there is no defined result to reproduce. Stopping where the chain
   turns back on itself gives each knob the share of the longest chain
   without repeats, so it shows and moves a sensible amount.
-- **Approved:** coordinator, relaying Voice Reviewer's review of #170,
-  2026-10-26.
+- **Approved:** Salil, 2026-10-27 (earlier: coordinator, relaying Voice
+  Reviewer's review of #170, 2026-10-26).
 
 ### D28. "Add Folder" refuses a folder that links back into itself
 
@@ -829,7 +829,7 @@ MCP server) extends this entry when it lands.*
   files is refused by upstream too, and the browser's listings follow
   links as upstream's do, so an accepted loop would only move the hang to
   the listing.
-- **Approved:** coordinator, 2026-10-26.
+- **Approved:** Salil, 2026-10-27 (earlier: coordinator, 2026-10-26).
 
 ### D29. No "Open File Location" menu on the All, Favorites and Add Folder rows
 
@@ -842,7 +842,7 @@ MCP server) extends this entry when it lands.*
   folders (`selection_list.rs`); a right-click on these three rows opens
   nothing.
 - **Why:** a menu item that does nothing is left out rather than copied.
-- **Approved:** coordinator, 2026-10-26.
+- **Approved:** Salil, 2026-10-27 (earlier: coordinator, 2026-10-26).
 
 ### D30. The saved window size isn't kept within the screen
 
@@ -892,7 +892,7 @@ MCP server) extends this entry when it lands.*
   audio, spliced, as the oscillator does
   (`popup_browser::editor_load_wavetable_file`).
 - **Why:** a file the browser offers should load, as in D1 and D19.
-- **Approved:** coordinator, 2026-10-27.
+- **Approved:** Salil, 2026-10-27 (earlier: coordinator, 2026-10-27).
 
 ### D33. Audio dropped on the Audio File Source that can't be read, or is too short, loads nothing
 
@@ -912,7 +912,7 @@ MCP server) extends this entry when it lands.*
 - **Why:** reloading audio the user didn't drop, or reading outside the
   buffer, isn't behaviour to copy; leaving the source as it was matches
   D4 and D21.
-- **Approved:** coordinator, 2026-10-27.
+- **Approved:** Salil, 2026-10-27 (earlier: coordinator, 2026-10-27).
 
 ### D34. The Frequency Filter overlay's style selector shows the style when a keyframe is selected
 
@@ -928,7 +928,7 @@ MCP server) extends this entry when it lands.*
   (`port/crates/gui/src/sections/filter_slew_fold_warp_overlays.rs`).
 - **Why:** stale text naming the wrong style isn't behaviour to copy; this
   follows D1's and D19's precedent of not replicating upstream bugs.
-- **Approved:** coordinator, 2026-10-27.
+- **Approved:** Salil, 2026-10-27 (earlier: coordinator, 2026-10-27).
 
 ### D35. A Line Source's power reset commits with the double click
 
@@ -949,7 +949,7 @@ MCP server) extends this entry when it lands.*
 - **Why:** the port commits a shape the section owns rather than editing
   the document in place, so a change left uncommitted wouldn't be saved
   either. Committing it keeps the saved shape and the sound in agreement.
-- **Approved:** coordinator, 2026-10-27.
+- **Approved:** Salil, 2026-10-27 (earlier: coordinator, 2026-10-27).
 
 ### D36. A Line Source's paint stroke commits once, when it ends
 
@@ -967,7 +967,7 @@ MCP server) extends this entry when it lands.*
 - **Why:** a drag is one gesture with one commit at its end (D18), and
   committing every stroke keeps the saved shape and the sound in
   agreement, as D35 does for a power reset.
-- **Approved:** coordinator, 2026-10-27.
+- **Approved:** Salil, 2026-10-27 (earlier: coordinator, 2026-10-27).
 
 ### D37. The remap strip names the selected row's curve
 
@@ -984,7 +984,7 @@ MCP server) extends this entry when it lands.*
 - **Why:** the strip then describes the curve below it, as D34 does for the
   same kind of name. Upstream's stale name can label a row with a file
   that was loaded into another row.
-- **Approved:** coordinator, 2026-10-27.
+- **Approved:** Salil, 2026-10-27 (earlier: coordinator, 2026-10-27).
 
 ## Verification exceptions
 
