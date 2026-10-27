@@ -223,11 +223,11 @@ repeat the check in FL Studio where the note says so.
       (REAPER, Bitwig) and wait a few seconds; the window should stay wide.
       The one-second fallback waits only for VST3's answer: a CLAP host
       accepts `gui.request_resize` without calling back, and refuses with an
-      error at once. While the drawer is open the editor reports no fixed
-      aspect ratio, but nice-plug 0.4.2 can't tell a CLAP host that its
-      resize hints changed, so a host that enforces the 1400:820 hint it
-      read when the window opened may fight a corner drag until the window
-      reopens.
+      error at once. While the drawer is open the editor's resize hint is
+      1760:820, upstream's ratio widened by the drawer, but nice-plug 0.4.2
+      can't tell a CLAP host that its resize hints changed, so a host that
+      enforces the 1400:820 hint it read when the window opened may fight a
+      corner drag until the window reopens.
     - *REAPER:* honours VST3's `resizeView` on its floating FX windows and
       answers with `onSize`, so the drawer should dock there. Check a docked
       FX window too, where REAPER may not grow the dock. FL Studio wraps

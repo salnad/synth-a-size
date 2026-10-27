@@ -163,17 +163,23 @@ impl App {
 /// answers with a call (`onSize`, through `set_size`) and drops a refusal
 /// on the way; a CLAP host that accepts `gui.request_resize` needn't call
 /// `set_size`, and one that refuses answers at once with an error, on which
-/// baseview puts the view back itself.
+/// baseview puts the view back itself. The standalone wrapper never calls
+/// `set_size` either (the plugin exports only CLAP and VST3).
 pub fn waits_for_host_answer(api: Option<PluginApi>) -> bool {
     api == Some(PluginApi::Vst3)
 }
 
-/// The resize hint while the drawer is `open`: no fixed aspect ratio, since
-/// the window is upstream's 1400:820 plus a drawer whose width follows the
-/// height. `adjust_size` still keeps upstream's ratio for the editor's part.
+/// The resize hint while the drawer is `open`: upstream's width plus the
+/// drawer's to the height, 1760:820, which holds wherever the drawer
+/// follows the editor's scale (0.5 to 2). `adjust_size` keeps upstream's
+/// ratio for the editor's part at every size.
 pub fn drawer_resize_hint(hint: ResizeHint, open: bool) -> ResizeHint {
+    if !open || !hint.preserve_aspect_ratio {
+        return hint;
+    }
     ResizeHint {
-        preserve_aspect_ratio: hint.preserve_aspect_ratio && !open,
+        aspect_ratio_width: DEFAULT_WIDTH as u32 + crate::chat::PANEL_WIDTH as u32,
+        aspect_ratio_height: DEFAULT_HEIGHT as u32,
         ..hint
     }
 }
@@ -690,9 +696,11 @@ mod tests {
         assert!(!waits_for_host_answer(None));
     }
 
-    /// The open drawer lifts the fixed aspect ratio and keeps the rest.
+    /// The open drawer's hint is upstream's ratio widened by the drawer,
+    /// which is what `adjust_size` makes of a size within the drawer's
+    /// scale range; the rest of the hint stays.
     #[test]
-    fn the_open_drawer_lifts_the_aspect_ratio_hint() {
+    fn the_open_drawers_hint_is_widened_by_it() {
         let hint = ResizeHint {
             preserve_aspect_ratio: true,
             ..ResizeHint::resizable()
@@ -700,7 +708,19 @@ mod tests {
                 .with_aspect_ratio(DEFAULT_WIDTH as u32, DEFAULT_HEIGHT as u32)
         };
         let open = drawer_resize_hint(hint, true);
-        assert!(!open.preserve_aspect_ratio);
+        assert!(open.preserve_aspect_ratio);
+        assert_eq!(
+            (open.aspect_ratio_width, open.aspect_ratio_height),
+            (1760, 820)
+        );
+        let aspect = |(width, _): (u32, u32)| (width, width * 820 / 1400);
+        for height in [410, 820, 1640] {
+            let width = height * 1760 / 820;
+            assert_eq!(
+                drawer::adjust_size((width, height), 1.0, aspect),
+                (width, height)
+            );
+        }
         assert!(open.can_resize);
         assert_eq!(open.size_constraints, hint.size_constraints);
         assert_eq!(drawer_resize_hint(hint, false), hint);

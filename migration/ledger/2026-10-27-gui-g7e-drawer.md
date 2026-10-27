@@ -49,10 +49,11 @@ chat panel docks into it in L8; until then it still overlays the editor.
   CLAP host that accepts `gui.request_resize` needn't call `set_size`, and
   one that refuses answers at once with an error, on which baseview puts
   the view back itself.
-- While the drawer is open the resize hint has no fixed aspect ratio
-  (`drawer_resize_hint`), since the drawer's width follows the height.
-  nice-plug 0.4.2 can't send CLAP's `resize_hints_changed`, so a CLAP host
-  sees it when it next reads the hints, for example on reopening.
+- While the drawer is open the resize hint's aspect ratio is 1760:820
+  (`drawer_resize_hint`): upstream's widened by the drawer, which holds
+  wherever the drawer follows the editor's scale (0.5 to 2). nice-plug 0.4.2
+  can't send CLAP's `resize_hints_changed`, so a CLAP host sees it when it
+  next reads the hints, for example on reopening.
 - Focus: the resize keeps egui's focused widget, and opening the drawer
   asks for no keyboard focus. `Frame` stays where `App::ui` uses it for the
   chat's focus requests.
@@ -69,7 +70,7 @@ drawer open at 1760 × 820, which L8 can extend to the docked panel.
 **Tests**
 
 - `editor` unit tests: only VST3 waits for the host's answer, and the
-  open drawer lifts the aspect-ratio hint.
+  open drawer's hint is 1760:820, which `adjust_size` keeps.
 - `drawer` unit tests: the width at each scale, docking in a widened
   window and not otherwise, pixel alignment at 1.5×, sizes keeping room for
   the drawer and giving its width back, and the host's answer to a request.
