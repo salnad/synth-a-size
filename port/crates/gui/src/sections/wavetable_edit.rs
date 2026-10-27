@@ -19,7 +19,7 @@
 //! when it is done (`EditorModel::set_wavetable_creator`). The exit button
 //! closes the editor. The component overlays and the section's menus come
 //! in the parts that follow. The organizer counts double-clicks with JUCE's
-//! multiple-click rules (`MouseInputSource`), as the sliders do.
+//! multiple-click rules, as the sliders do (`controls::clicks`).
 //!
 //! `WavetablePlayheadInfo` draws its number with JUCE's component painting,
 //! which `FullInterface` turns off for its OpenGL context
@@ -41,12 +41,13 @@ use sas_engine::sas_oscillators::sas_wavetable::{
 
 use super::{MenuOwner, Panel};
 use crate::controls::bars::BarRenderer;
+use crate::controls::clicks::Clicks;
 use crate::controls::icon;
 use crate::controls::path::Path;
 use crate::controls::paths;
 use crate::controls::scroll_bar::ScrollBar;
 use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
-use crate::controls::slider::{DOUBLE_CLICK_TIMEOUT, MULTIPLE_CLICK_DISTANCE};
+use crate::controls::ui_button;
 use crate::fonts::Face;
 use crate::host::Host;
 use crate::interface::EditorModel;
@@ -351,9 +352,6 @@ struct OrganizerPress {
     popup: bool,
     /// The drag moved a keyframe.
     moved: bool,
-    /// `getNumberOfClicks`: presses in a row within JUCE's multiple-click
-    /// limits.
-    clicks: u32,
 }
 
 /// A component's row in the list and in the organizer.
@@ -416,8 +414,8 @@ pub struct WavetableEditSection {
     generation: Option<u64>,
     /// A press on the organizer, while it lasts.
     organizer: Option<OrganizerPress>,
-    /// The organizer's last press and its click count, for double-clicks.
-    last_press: Option<(f64, Pos2, u32)>,
+    /// The organizer's recent presses, for double-clicks.
+    clicks: Clicks,
     /// A press on the playhead, while it lasts.
     playhead_held: bool,
     /// The wave frame's host gesture is open (D18).
@@ -438,7 +436,7 @@ impl WavetableEditSection {
             visible: false,
             generation: None,
             organizer: None,
-            last_press: None,
+            clicks: Clicks::default(),
             playhead_held: false,
             wave_frame_begun: false,
             scroll: ScrollBar::default(),
@@ -715,7 +713,7 @@ impl WavetableEditSection {
                 let x = to_pixels(panel.pixels, pos).0 - playhead.x as f32;
                 let padding = layout.playhead_padding();
                 let active_width = playhead.width as f32 - 2.0 * padding + 1.0;
-                let position = ((NUM_FRAMES as f32 - 1.0) * (x.trunc() - padding) / active_width)
+                let position = ((NUM_FRAMES as f32 - 1.0) * (x.round() - padding) / active_width)
                     .round() as i32;
                 self.move_playhead(panel.host, position.clamp(0, NUM_FRAMES as i32 - 1));
             }
@@ -758,18 +756,22 @@ impl WavetableEditSection {
             .with(("wavetable organizer", self.oscillator));
         let rect = panel.pixels.rect(organizer.into());
         let response = panel.ui.interact(rect, id, Sense::click_and_drag());
-        let (primary_down, secondary_down, ctrl, pointer, now) = panel.ui.input(|input| {
+        let (primary_down, secondary_down, modifiers, pointer, now) = panel.ui.input(|input| {
             (
                 input.pointer.button_down(PointerButton::Primary),
                 input.pointer.button_down(PointerButton::Secondary),
-                input.modifiers.ctrl,
+                input.modifiers,
                 input.pointer.interact_pos(),
                 input.time,
             )
         });
+        // MouseEvent::x and y round the position.
         let local = |pos: Pos2| {
             let (x, y) = to_pixels(panel.pixels, pos);
-            (x as i32 - organizer.x, y as i32 - organizer.y)
+            (
+                x.round() as i32 - organizer.x,
+                y.round() as i32 - organizer.y,
+            )
         };
         let offset = -scroll;
         match self.organizer {
@@ -780,20 +782,15 @@ impl WavetableEditSection {
                 let Some(pos) = pointer else {
                     return;
                 };
-                let popup = secondary_down || (cfg!(target_os = "macos") && ctrl && primary_down);
-                let at = local(pos);
-                let clicks = match self.last_press {
-                    Some((time, last, count))
-                        if now - time < DOUBLE_CLICK_TIMEOUT
-                            && (pos.x - last.x).abs() < MULTIPLE_CLICK_DISTANCE
-                            && (pos.y - last.y).abs() < MULTIPLE_CLICK_DISTANCE =>
-                    {
-                        count + 1
-                    }
-                    _ => 1,
+                let popup =
+                    secondary_down || (cfg!(target_os = "macos") && modifiers.ctrl && primary_down);
+                let button = if secondary_down {
+                    PointerButton::Secondary
+                } else {
+                    PointerButton::Primary
                 };
-                self.last_press = Some((now, pos, clicks));
-                self.organizer_down(layout, offset, at, popup, clicks);
+                self.clicks.press(now, pos, button, modifiers);
+                self.organizer_down(layout, offset, local(pos), popup);
             }
             Some(press) => {
                 let held = if press.popup && !primary_down {
@@ -802,12 +799,17 @@ impl WavetableEditSection {
                     primary_down || secondary_down
                 };
                 let at = pointer.map(local).unwrap_or(press.current);
+                if let (true, Some(pos)) = (held, pointer) {
+                    self.clicks.drag(pos);
+                }
                 if held {
                     if at != press.current {
                         self.organizer_drag(panel.host, layout, at);
                     }
                 } else {
-                    self.organizer_up(panel, layout, offset, at);
+                    // Component::internalMouseUp's click count.
+                    let clicks = self.clicks.count(now);
+                    self.organizer_up(panel, layout, offset, at, clicks);
                 }
             }
         }
@@ -821,7 +823,6 @@ impl WavetableEditSection {
         offset: i32,
         at: (i32, i32),
         popup: bool,
-        clicks: u32,
     ) {
         let mut press = OrganizerPress {
             mode: OrganizerMode::Waiting,
@@ -829,7 +830,6 @@ impl WavetableEditSection {
             current: at,
             popup,
             moved: false,
-            clicks,
         };
         if let Some((keyframe, start_x)) = self.frame_at(layout, offset, at) {
             press.mode = OrganizerMode::Dragging {
@@ -883,6 +883,7 @@ impl WavetableEditSection {
         layout: &WavetableEditLayout,
         offset: i32,
         at: (i32, i32),
+        clicks: u32,
     ) {
         let Some(press) = self.organizer.take() else {
             return;
@@ -904,7 +905,7 @@ impl WavetableEditSection {
                 self.end_wave_frame(panel.host);
             }
         }
-        if press.clicks >= 2 && !press.popup {
+        if clicks >= 2 && !press.popup {
             // JUCE sends mouseDoubleClick after the second click's mouseUp.
             self.organizer_double_click(model, layout, offset, at);
         }
@@ -1617,68 +1618,25 @@ fn swap_components(selected: &mut [KeyframeRef], group: usize, a: usize, b: usiz
     }
 }
 
-/// `OpenGlButtonComponent::kHoverInc`.
-const HOVER_INC: f32 = 0.2;
-
-/// The press and hover state of a UI button that isn't a parameter.
-#[derive(Clone, Copy, Default)]
-struct UiButtonState {
-    down: bool,
-    hover_amount: f32,
-}
-
 /// A UI button (`OpenGlButtonComponent::renderUiButton`) at `bounds`, seen
 /// through `clip`: whether it was clicked (pressed and released over it),
-/// and its background colour, pressed or faded towards its hover colour.
+/// and its background colour.
 fn ui_button(
     panel: &mut Panel,
     salt: impl std::hash::Hash + std::fmt::Debug,
     bounds: Rect,
     clip: Rect,
 ) -> (bool, crate::colour::Colour) {
-    let scope = &panel.scope;
-    let normal = scope.color(ColorId::UiButton);
-    let hover_colour = scope.color(ColorId::UiButtonHover);
-    let pressed_colour = scope.color(ColorId::UiButtonPressed);
     let left = bounds.x.max(clip.x);
     let top = bounds.y.max(clip.y);
     let right = bounds.right().min(clip.right());
     let bottom = bounds.bottom().min(clip.bottom());
     if right <= left || bottom <= top {
-        return (false, normal);
+        return (false, panel.scope.color(ColorId::UiButton));
     }
     let id = panel.ui.scope_id().with(salt);
-    let rect = panel
-        .pixels
-        .rect(Rect::new(left, top, right - left, bottom - top).into());
-    let response = panel.ui.interact(rect, id, Sense::click());
-    let mut state: UiButtonState = panel.ui.data(|data| data.get_temp(id)).unwrap_or_default();
-    let primary_down = panel
-        .ui
-        .input(|input| input.pointer.button_down(PointerButton::Primary));
-    let down = (state.down || response.is_pointer_button_down_on()) && primary_down;
-    let mut clicked = false;
-    if state.down && !down {
-        let pointer = panel.ui.input(|input| input.pointer.interact_pos());
-        clicked = pointer.is_some_and(|pos| response.rect.contains(pos));
-    }
-    state.down = down;
-    let target = if response.hovered() { 1.0 } else { 0.0 };
-    if state.hover_amount != target {
-        state.hover_amount = if response.hovered() {
-            (state.hover_amount + HOVER_INC).min(1.0)
-        } else {
-            (state.hover_amount - HOVER_INC).max(0.0)
-        };
-        panel.ui.ctx().request_repaint();
-    }
-    panel.ui.data_mut(|data| data.insert_temp(id, state));
-    let colour = if down {
-        pressed_colour
-    } else {
-        normal.interpolated_with(hover_colour, state.hover_amount)
-    };
-    (clicked, colour)
+    let visible = Rect::new(left, top, right - left, bottom - top);
+    ui_button::interact(panel.ui, panel.pixels, &panel.scope, id, false, visible)
 }
 
 /// A key for an add button's id.

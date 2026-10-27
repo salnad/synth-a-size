@@ -582,7 +582,6 @@ pub type SlewLimitModifier = Modifier<SlewLimitKeyframe, ()>;
 pub type WaveFoldModifier = Modifier<WaveFoldKeyframe, ()>;
 pub type WaveWarpModifier = Modifier<WaveWarpKeyframe, WarpSettings>;
 
-/// One wavetable component.
 /// Runs `$body` with `$keyframes` bound to the component's keyframe list,
 /// whatever its keyframe type.
 macro_rules! with_keyframes {
@@ -628,6 +627,7 @@ macro_rules! with_keyframes {
     };
 }
 
+/// One wavetable component.
 #[derive(Clone, Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum WavetableComponent {

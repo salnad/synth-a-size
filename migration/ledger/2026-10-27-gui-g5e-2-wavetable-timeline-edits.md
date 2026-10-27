@@ -30,9 +30,8 @@ table, as upstream's `render()` does.
     keyframes in it; a click there deselects. A double-click, which JUCE
     sends after the second click's `mouseUp`, deletes the keyframe under
     the pointer or creates one there and selects it. The popup-menu button
-    opens "Create Keyframe", or "Remove Keyframe(s)" over a selection. The
-    click count uses JUCE's multiple-click rules, so the file gets the
-    `juce_gui_basics` GPL-3.0-only line.
+    opens "Create Keyframe", or "Remove Keyframe(s)" over a selection.
+    Pointer positions round, as JUCE's `MouseEvent::x` and `y` do.
   - The component list: "Add Source" and each group's "Add Modifier" open
     the type menus, and each row's menu button opens the group menu (Move
     Group Up and Down, Reset Source, Remove Group) or the modifier menu
@@ -40,7 +39,8 @@ table, as upstream's `render()` does.
     hover and press colours. The list scrolls with its scroll bar and with
     the wheel over the list or the organizer
     (`WavetableOrganizer::mouseWheelMove`), and the organizer's rows scroll
-    with it.
+    with it. The add buttons use `controls::ui_button::interact`, the
+    shared UI button's mouse and colours, through the list's clip.
   - The selection follows the edits, as upstream's keyframe pointers do:
     a new source or a reset component selects its keyframe, removals drop
     their keyframes, and moves carry the selection with their groups and
@@ -50,6 +50,15 @@ table, as upstream's `render()` does.
     left (a reset) copies the frame rendered last.
 - `EditorModel::set_wavetable_creator`, which the plugin sends through the
   edit bus (`set_wavetable`).
+- `controls::clicks`: JUCE's multiple-click rules
+  (`MouseInputSource::getNumberOfMultipleClicks`, `isLongPressOrDrag`), a
+  `juce_gui_basics` GPL-3.0-only translation. A press that moved 4 points
+  or was held over 0.3 s is one click, and presses chain only with the same
+  buttons and modifiers, within the double-click timeout (twice it for the
+  third). The sliders now count clicks with it too, so their double-click
+  also needs the same modifiers, as JUCE's does; the organizer counts with
+  it at the release. `ui_button::interact` splits the shared UI button's
+  mouse and colours from its drawing, for callers that draw it themselves.
 - `ScrollBar::quad`, so the list draws its scroll bar on top of its own
   rows. `paint` is unchanged.
 
@@ -90,10 +99,14 @@ table, as upstream's `render()` does.
     change the value sends nothing;
   - a keyframe drag moves the keyframe and commits once on release;
   - double-clicks create and delete keyframes;
+  - a click then a quick drag of the keyframe moves it without deleting
+    it, as do a long second press and one with other modifiers;
   - the organizer's menu creates and removes keyframes;
   - a selection box selects the keyframes in it;
   - the component list adds a source and a modifier, moves a group (the
     selection follows) and removes a modifier.
+- `controls::clicks`'s unit tests: chains in time and place, drags and long
+  presses, and buttons and modifiers.
 - Layout fixtures: the editor's paths for both presets match at all six
   sizes.
 

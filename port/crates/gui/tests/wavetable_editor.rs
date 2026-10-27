@@ -565,6 +565,56 @@ fn double_clicks_create_and_delete_keyframes() {
     assert!(log_is_empty(&fixture));
 }
 
+/// JUCE's click count: a second press that drags (4 points or more) or is
+/// held over 0.3 s is a single click (`isLongPressOrDrag`), and presses
+/// with different modifiers don't chain, so none of these deletes the
+/// keyframe.
+#[test]
+fn drags_long_presses_and_other_modifiers_are_not_double_clicks() {
+    let fixture = Fixture::new();
+    let mut harness = opened(&fixture);
+    let layout = fixture.editor_layout();
+    let from = organizer_point(&layout, 0, 0);
+    let dx = (100.0 * frame_width(&layout)).round();
+    let to = Pos2::new(from.x + dx, from.y);
+    click(&mut harness, from);
+    drag(&mut harness, from, to);
+    let moved = (dx / frame_width(&layout)) as i32;
+    assert_eq!(positions(&fixture, 0, 0), [moved]);
+    assert_eq!(fixture.selected(0), [FIRST]);
+
+    let wait = |harness: &mut Harness| {
+        for _ in 0..30 {
+            harness.step();
+        }
+    };
+    wait(&mut harness);
+    click(&mut harness, to);
+    press(&mut harness, to, PointerButton::Primary, true);
+    for _ in 0..20 {
+        harness.step();
+    }
+    press(&mut harness, to, PointerButton::Primary, false);
+    assert_eq!(positions(&fixture, 0, 0), [moved]);
+
+    wait(&mut harness);
+    click(&mut harness, to);
+    harness.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    for pressed in [true, false] {
+        harness.event(Event::PointerButton {
+            pos: to,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::SHIFT,
+        });
+        harness.step();
+    }
+    harness.event(Event::ModifiersChanged(Modifiers::NONE));
+    harness.step();
+    assert_eq!(positions(&fixture, 0, 0), [moved]);
+    assert_eq!(fixture.selected(0), [FIRST]);
+}
+
 /// The organizer's menu: "Create Keyframe" in empty space, "Remove
 /// Keyframe" over a selected keyframe (`organizerCallback`).
 #[test]
