@@ -648,7 +648,7 @@ fn a_dragged_second_press_doesnt_reset_a_compressor_ratio() {
     release(&mut harness, point);
     drag(&mut harness, point, point + egui::vec2(0.0, -5.0), 2);
     let after = fixture.synth.value("compressor_low_lower_ratio");
-    assert_ne!(after, before, "the drag moved nothing: {:?}", fixture.take_log());
+    assert_ne!(after, before, "the drag moved nothing");
     assert_ne!(after, 0.0, "the drag was taken for a double click");
 }
 
