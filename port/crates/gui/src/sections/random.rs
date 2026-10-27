@@ -5,16 +5,17 @@
 //! and the rate. Ports `RandomSection` and `RandomViewer`'s background
 //! (`vital/src/interface/editor_sections/random_section.cpp`).
 //!
-//! The viewer is drawn at rest (it animates only while its source is in
-//! use, with the animated views later). The sync selector is the shared
-//! `TempoSelector`.
+//! The viewer scrolls the random value's left and right channels from left
+//! to right while the source modulates something (`RandomViewer::render`).
+//! The sync selector is the shared `TempoSelector`.
 
 use super::Panel;
 use crate::controls::button::SynthButton;
 use crate::controls::slider::{Slider, SliderStyle};
 use crate::controls::tempo::{self, TempoSelector};
 use crate::layout::Rect;
-use crate::paint::PixelPainter;
+use crate::paint::{PixelPainter, RectF};
+use crate::primitives::line::LineRenderer;
 use crate::primitives::{Quad, QuadKind};
 use crate::scope::Scope;
 use crate::section::{
@@ -152,6 +153,9 @@ impl RandomLayout {
 
 /// One random LFO's controls (`RandomSection`'s constructor).
 pub struct RandomSection {
+    index: usize,
+    /// `RandomViewer`'s two lines, kept from frame to frame.
+    viewer: std::cell::RefCell<Viewer>,
     sync: TempoSelector,
     frequency: Slider,
     tempo: Slider,
@@ -171,6 +175,8 @@ impl RandomSection {
         const TRANSPOSE_MOUSE_SENSITIVITY: f32 = 0.2;
         let names = NAMES[index];
         RandomSection {
+            index,
+            viewer: std::cell::RefCell::new(Viewer::default()),
             sync: TempoSelector::new(names.sync),
             frequency: Slider::new(names.frequency, SliderStyle::Text),
             tempo: Slider::new(names.tempo, SliderStyle::Text).sensitivity(TEMPO_DRAG_SENSITIVITY),
@@ -228,6 +234,141 @@ impl RandomSection {
         panel.slider(&self.style, layout.style);
         panel.button(&self.sync_type, layout.sync_type);
         panel.button(&self.stereo, layout.stereo);
+        self.show_viewer(panel, layout.viewer);
         panel.widget_corners(layout.viewer);
+    }
+
+    /// `RandomViewer::render`: while the source modulates something
+    /// (`isModSourceEnabled`), each frame moves both lines one point to the
+    /// right and starts them at the value now (`random_n`), hiding the line
+    /// where it lies on the bottom edge (a boost of -1); then draws the
+    /// right channel's line and the left's, filled. At rest it draws
+    /// nothing.
+    fn show_viewer(&self, panel: &mut Panel, bounds: Rect) {
+        let name = format!("random_{}", self.index + 1);
+        let model = panel.host.model();
+        let Some(telemetry) = model.telemetry() else {
+            return;
+        };
+        if !model.modulations().iter().any(|route| route.source == name) {
+            return;
+        }
+        let height = bounds.height as f32;
+        let frame = panel.ui.ctx().cumulative_frame_nr();
+        let mut viewer = self.viewer.borrow_mut();
+        if viewer.frame != Some(frame) {
+            viewer.frame = Some(frame);
+            let value = telemetry
+                .read(|snapshot| snapshot.status_by_name(&name))
+                .unwrap_or([0.0; 4]);
+            viewer.step([value[0], value[1]], height);
+        }
+        let scope = panel.scope;
+        let line_width = scope.value(ValueId::WidgetLineWidth);
+        let fill_center = scope.value(ValueId::WidgetFillCenter);
+        let fill_fade = scope.value(ValueId::WidgetFillFade);
+        let lines = [
+            (
+                1,
+                scope.color(ColorId::WidgetPrimary2),
+                scope.color(ColorId::WidgetSecondary2),
+            ),
+            (
+                0,
+                scope.color(ColorId::WidgetPrimary1),
+                scope.color(ColorId::WidgetSecondary1),
+            ),
+        ];
+        let viewer = viewer.clone();
+        let width = bounds.width as f32;
+        panel.layer().custom(move |pixels: &PixelPainter| {
+            for (channel, colour, fill) in lines {
+                let mut line = LineRenderer::new(VIEWER_RESOLUTION, false);
+                line.line_width = line_width;
+                line.fill_center = fill_center;
+                line.fill = true;
+                line.boost_amount = VIEWER_BOOST_AMOUNT;
+                line.fill_boost_amount = VIEWER_BOOST_AMOUNT;
+                line.color = colour;
+                line.set_fill_colors(fill.with_multiplied_alpha(1.0 - fill_fade), fill);
+                for i in 0..VIEWER_RESOLUTION {
+                    let x = match i {
+                        0 => -1.0,
+                        1 => 0.0,
+                        _ => i as f32 * width / (VIEWER_RESOLUTION - 1) as f32,
+                    };
+                    line.set_x_at(i, x);
+                    line.set_y_at(i, viewer.y[channel][i]);
+                    line.set_boost_at(true, i, viewer.boost[channel][i]);
+                }
+                line.paint(pixels, RectF::from(bounds), true);
+            }
+        });
+    }
+}
+
+/// `RandomViewer::kResolution` and `kBoostAmount`.
+const VIEWER_RESOLUTION: usize = 64;
+const VIEWER_BOOST_AMOUNT: f32 = 1.0;
+
+/// `RandomViewer`'s lines: each channel's y and left boost per point, which
+/// start off below the viewer (`setYAt(i, 10000)`), and the egui frame they
+/// last moved in (upstream moves them once per render).
+#[derive(Clone, Debug)]
+struct Viewer {
+    y: [[f32; VIEWER_RESOLUTION]; 2],
+    boost: [[f32; VIEWER_RESOLUTION]; 2],
+    frame: Option<u64>,
+}
+
+impl Viewer {
+    /// One frame: each line moves a point to the right and starts at
+    /// `value`'s channel, its newest stretch hidden (a boost of -1) where it
+    /// lies on the bottom edge.
+    fn step(&mut self, value: [f32; 2], height: f32) {
+        for ((y, boost), value) in self.y.iter_mut().zip(&mut self.boost).zip(value) {
+            y.copy_within(1..VIEWER_RESOLUTION - 1, 2);
+            boost.copy_within(1..VIEWER_RESOLUTION - 1, 2);
+            let new_y = (1.0 - value) * height;
+            y[0] = new_y;
+            y[1] = new_y;
+            let hidden = new_y >= height || y[2] >= height || y[3] >= height;
+            boost[..3].fill(if hidden { -1.0 } else { 0.0 });
+        }
+    }
+}
+
+impl Default for Viewer {
+    fn default() -> Viewer {
+        Viewer {
+            y: [[10000.0; VIEWER_RESOLUTION]; 2],
+            boost: [[0.0; VIEWER_RESOLUTION]; 2],
+            frame: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod viewer_tests {
+    use super::*;
+
+    /// `RandomViewer::render`'s scroll: the newest value enters at the left
+    /// and moves one point right a frame; the stretch on the bottom edge
+    /// (value 0, or the offscreen start) is hidden, a lifted one isn't.
+    #[test]
+    fn the_viewer_scrolls_and_hides_the_bottom_edge() {
+        let mut viewer = Viewer::default();
+        viewer.step([0.5, 0.25], 100.0);
+        assert_eq!((viewer.y[0][0], viewer.y[0][1]), (50.0, 50.0));
+        assert_eq!(viewer.y[1][1], 75.0);
+        // The start is off the bottom: still hidden.
+        assert_eq!(viewer.boost[0][..3], [-1.0; 3]);
+        viewer.step([0.75, 0.25], 100.0);
+        viewer.step([0.75, 0.25], 100.0);
+        assert_eq!(viewer.y[0][..4], [25.0, 25.0, 25.0, 50.0]);
+        assert_eq!(viewer.boost[0][..3], [0.0; 3]);
+        assert_eq!(viewer.y[0][4], 10000.0);
+        viewer.step([0.0, 0.0], 100.0);
+        assert_eq!(viewer.boost[1][..3], [-1.0; 3]);
     }
 }
