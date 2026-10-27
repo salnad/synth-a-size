@@ -225,6 +225,10 @@ pub struct Panel<'a, 'b> {
     pub pixels: &'a PixelPainter<'a>,
     pub scope: Scope<'a>,
     pub overlay: &'a mut Overlay,
+    /// The modulated controls' meters, drawn under the controls
+    /// (`ModulationManager::renderMeters` runs before the components
+    /// render).
+    meters: Layer,
     layer: Layer,
     /// The always-on-top components (`setAlwaysOnTop`), drawn after the
     /// rest: a switched-off section's overlay, then its power button.
@@ -247,6 +251,7 @@ impl<'a, 'b> Panel<'a, 'b> {
             pixels,
             scope,
             overlay,
+            meters: Layer::new(),
             layer: Layer::new(),
             on_top: Layer::new(),
             clip,
@@ -259,6 +264,7 @@ impl<'a, 'b> Panel<'a, 'b> {
         let slider = &slider.displayed(self.host.model().hz_frequency_display());
         self.register_destination(slider, bounds);
         let (value, hover) = self.slider_input(slider, bounds);
+        self.meter(slider, bounds, value);
         slider.paint(
             self.pixels,
             &mut self.layer,
@@ -267,6 +273,28 @@ impl<'a, 'b> Panel<'a, 'b> {
             value,
             hover,
         );
+    }
+
+    /// `slider`'s `ModulationMeter`, if the engine is modulating it and it
+    /// is on (`renderMeters`: `isModulated() && slider->isActive()`).
+    fn meter(&mut self, slider: &Slider, bounds: Rect, value: f32) {
+        if !slider.active {
+            return;
+        }
+        let Some(current) = self.overlay.modulation.meter_value(slider.name) else {
+            return;
+        };
+        let manager = Scope::top(self.scope.skin(), self.scope.size_ratio());
+        if let Some(quad) = crate::modulation_meter::meter_quad(
+            slider,
+            bounds,
+            value,
+            current,
+            &self.scope,
+            &manager,
+        ) {
+            self.meters.quad(quad);
+        }
     }
 
     /// `ModulationManager`'s `ModulationDestination` for `slider`, if a
@@ -539,6 +567,7 @@ impl<'a, 'b> Panel<'a, 'b> {
     /// Draws the section's controls (quads, then text), clipped to the
     /// section.
     pub fn finish(self) {
+        self.meters.paint(self.pixels, RectF::from(self.clip));
         self.layer.paint(self.pixels, RectF::from(self.clip));
         self.on_top.paint(self.pixels, RectF::from(self.clip));
     }

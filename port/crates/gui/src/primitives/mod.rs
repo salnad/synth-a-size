@@ -96,6 +96,10 @@ pub struct Quad {
     /// `setCoordinates`: x, y, width, height of the shader coordinates
     /// across the quad, from its bottom left corner.
     pub coordinates: [f32; 4],
+    /// `setRotatedCoordinates`: the coordinates turned a quarter turn, x
+    /// running from the bottom edge to the top and y from the right edge to
+    /// the left.
+    pub rotated: bool,
 }
 
 impl Quad {
@@ -119,6 +123,7 @@ impl Quad {
             max_arc: 2.0,
             alpha_mult: 1.0,
             coordinates: [-1.0, -1.0, 2.0, 2.0],
+            rotated: false,
         }
     }
 
@@ -205,7 +210,12 @@ impl Quad {
                 self.thumb_amount,
                 self.start_pos,
             ],
-            params2: [self.max_arc, alpha_mult, self.kind as u32 as f32, 0.0],
+            params2: [
+                self.max_arc,
+                alpha_mult,
+                self.kind as u32 as f32,
+                if self.rotated { 1.0 } else { 0.0 },
+            ],
             coordinates: self.coordinates,
             rect: [
                 self.rect.x,

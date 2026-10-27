@@ -197,7 +197,9 @@ impl Default for SampleSection {
                 SynthButton::icon("sample_loop", Icon::Loop),
                 SynthButton::icon("sample_bounce", Icon::Bounce),
             ],
-            transpose: text("sample_transpose").sensitivity(TRANSPOSE_MOUSE_SENSITIVITY),
+            transpose: text("sample_transpose")
+                .sensitivity(TRANSPOSE_MOUSE_SENSITIVITY)
+                .modulation_bar_right(false),
             tune: text("sample_tune").display(3, 0),
             level: Slider::new("sample_level", SliderStyle::Rotary),
             pan: Slider::new("sample_pan", SliderStyle::Rotary).bipolar(),

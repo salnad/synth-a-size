@@ -609,9 +609,11 @@ impl OscillatorSection {
             view: RefCell::new(Wavetable3d::new(index)),
             names,
             on: SynthButton::power(names.on),
-            transpose: text(names.transpose).sensitivity(TRANSPOSE_MOUSE_SENSITIVITY),
+            transpose: text(names.transpose)
+                .sensitivity(TRANSPOSE_MOUSE_SENSITIVITY)
+                .modulation_bar_right(false),
             tune: text(names.tune).bipolar().display(3, 0),
-            unison_voices: text(names.unison_voices),
+            unison_voices: text(names.unison_voices).modulation_bar_right(false),
             unison_detune: text(names.unison_detune).display(3, 0),
             // InvisibleSlider: the unison viewer draws in its place.
             detune_power: Slider::new(names.detune_power, SliderStyle::Curve)

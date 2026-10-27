@@ -116,6 +116,9 @@ pub struct Slider {
     /// `setModulationPlacement`: which side the selected source's amount
     /// knob goes for this control.
     pub modulation_placement: Placement,
+    /// `setModulationBarRight`: a text slider's modulation meter is on its
+    /// right (true) or left.
+    pub modulation_bar_right: bool,
     pub show_popup_on_hover: bool,
     /// `OpenGlSlider::active_`: drawn in the disabled colours when false.
     pub active: bool,
@@ -161,6 +164,7 @@ impl Slider {
             text_height_percentage: 0.0,
             popup_placement: Placement::Below,
             modulation_placement: Placement::Below,
+            modulation_bar_right: true,
             show_popup_on_hover: false,
             active: true,
             text_selector: false,
@@ -253,6 +257,12 @@ impl Slider {
     /// `setModulationPlacement`.
     pub fn modulation_placement(mut self, placement: Placement) -> Slider {
         self.modulation_placement = placement;
+        self
+    }
+
+    /// `setModulationBarRight`.
+    pub fn modulation_bar_right(mut self, right: bool) -> Slider {
+        self.modulation_bar_right = right;
         self
     }
 

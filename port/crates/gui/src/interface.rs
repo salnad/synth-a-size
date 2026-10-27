@@ -558,6 +558,7 @@ impl Interface {
         self.overlay
             .modulation
             .begin_frame(model.modulations(), model.edit_generation());
+        self.overlay.modulation.read_meters(model.telemetry());
         self.paint_background(&pixels, &layout, width, height);
         self.paint_header(&pixels, &layout, host.model());
         self.handle_tabs(ui, &pixels, &layout);
