@@ -769,9 +769,10 @@ pub fn viewer_lines(
     if length <= 0 {
         return (top, bottom);
     }
-    // getDataBuffer() starts one padding sample in; a share starting at the
-    // end reads the padding after it.
-    let buffer = &data[1..];
+    // setAudioPositions reads the padded buffer from its start
+    // (`data.get()`, not `getDataBuffer()`), one sample before the audio;
+    // the padding after it covers the last share.
+    let buffer = &data[..];
     let length = i64::from(length);
     let resolution = RESOLUTION as i64;
     for i in 0..RESOLUTION {
@@ -842,6 +843,8 @@ mod tests {
         let mut audio = vec![0.0f32; 2560];
         audio[5] = 0.5;
         audio[7] = -0.9;
+        // Sample 9 is the padded buffer's 10th, so it's in the second share.
+        audio[9] = 0.8;
         audio[2559] = -0.25;
         source.load_buffer(&audio, 0);
         source.set_window_size(256.0);
@@ -849,7 +852,8 @@ mod tests {
         assert_eq!(top.x_at(255), 255.0);
         assert_eq!(top.y_at(0), 25.0);
         assert_eq!(bottom.y_at(0), 75.0);
-        assert_eq!(top.y_at(1), 50.0);
+        assert_eq!(top.y_at(1), 10.0);
+        assert_eq!(top.y_at(2), 50.0);
         assert_eq!(top.y_at(255), 50.0);
         // The window spans 0.5 to 0.6 of the audio, faded over 1/256.
         assert_eq!(top.boost_left_at(0), 0.0);
