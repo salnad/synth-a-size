@@ -72,9 +72,14 @@ pub enum SliderStyle {
     /// wheel springs back to 0 on release (`PitchWheel::mouseUp`).
     Wheel { spring_back: bool },
     /// A modulation's amount knob (`ModulationAmountKnob`, an `OpenGlSlider`
-    /// with `setModulationKnob`): `arc` is its rotary arc colour, and a
-    /// bypassed modulation draws in grey.
-    ModulationKnob { arc: Colour, bypass: bool },
+    /// with `setModulationKnob`): `arc` is its rotary arc colour, a
+    /// bypassed modulation draws in grey, and one whose amount another
+    /// source modulates (`setAux`) has a dot in its centre.
+    ModulationKnob {
+        arc: Colour,
+        bypass: bool,
+        aux: bool,
+    },
 }
 
 impl SliderStyle {
@@ -149,6 +154,9 @@ pub struct Slider {
     /// `SynthSection::setSliderHasHzAlternateDisplay`: with the hertz
     /// setting on, the value reads in hertz (see [`Slider::displayed`]).
     pub hz_alternate: bool,
+    /// The host value is this times the shown one: an amount knob driving
+    /// the end of an aux chain (`getAuxMultiplier`).
+    pub value_scale: f32,
 }
 
 impl Slider {
@@ -177,6 +185,7 @@ impl Slider {
             popup_prefix: None,
             hz_alternate: false,
             snap_to: None,
+            value_scale: 1.0,
         }
     }
 
@@ -258,6 +267,16 @@ impl Slider {
     pub fn modulation_placement(mut self, placement: Placement) -> Slider {
         self.modulation_placement = placement;
         self
+    }
+
+    /// The value shown for the host's ([`value_scale`](Self::value_scale)).
+    pub fn host_value(&self, host: &Host) -> f32 {
+        host.value(self.name) / self.value_scale
+    }
+
+    /// The host value for a shown `value`.
+    pub fn to_host(&self, value: f32) -> f32 {
+        value * self.value_scale
     }
 
     /// `setModulationBarRight`.
@@ -546,7 +565,7 @@ impl Slider {
                 layer.custom(move |pixels| wheel::paint(pixels, bounds, t, colours));
             }
             SliderStyle::Text => self.paint_text(layer, scope, bounds, value),
-            SliderStyle::ModulationKnob { arc, bypass } => {
+            SliderStyle::ModulationKnob { arc, bypass, aux } => {
                 // OpenGlSlider::redoImage with modulation_knob_, and
                 // ModulationAmountKnob's bypass desaturation.
                 let saturation = |colour: Colour| {
@@ -570,6 +589,11 @@ impl Slider {
                     quad.alt_color = unselected;
                 }
                 quad.thumb_color = saturation(arc);
+                if aux {
+                    // modulation_amount_: the centre dot.
+                    quad.mod_color = scope.color(ColorId::ModulationMeterControl);
+                    quad.background_color = background;
+                }
                 quad.thickness = if hover { 1.8 } else { 1.0 };
                 layer.quad(quad);
             }
@@ -753,7 +777,7 @@ impl Slider {
                 state.last = pointer;
                 state.second_click = follows_press;
                 state.moved = false;
-                state.value = host.value(self.name);
+                state.value = self.host_value(host);
                 state.proportion = self.proportion(state.value);
                 state.last_press = Some((now, pointer, button));
                 host.begin(self.name);
@@ -777,7 +801,7 @@ impl Slider {
                         modifiers.command,
                     );
                     if value != state.value {
-                        host.set(self.name, value);
+                        host.set(self.name, self.to_host(value));
                         state.value = value;
                     }
                 }
@@ -804,7 +828,7 @@ impl Slider {
             if self.double_click_returns && state.second_click && !state.moved && !long_press {
                 // Slider::mouseDoubleClick: back to the default value.
                 let value = self.double_click_value.unwrap_or(self.info.default_value);
-                host.set_once(self.name, value);
+                host.set_once(self.name, self.to_host(value));
                 state.value = value;
                 event.value = Some(value);
                 event.popup = true;
@@ -813,7 +837,7 @@ impl Slider {
         if state.down {
             event.value = Some(state.value);
         } else if state.holding > 0 && event.value.is_none() {
-            if host.value(self.name) == state.value {
+            if self.host_value(host) == state.value {
                 state.holding = 0;
             } else {
                 state.holding -= 1;

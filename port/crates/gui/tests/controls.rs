@@ -92,6 +92,11 @@ const CONTROLS: &[&str] = &[
     "modulation_2_bipolar",
     "modulation_2_stereo",
     "modulation_2_bypass",
+    "modulation_3_power",
+    "modulation_3_amount",
+    "modulation_3_bipolar",
+    "modulation_3_stereo",
+    "modulation_3_bypass",
     "env_1_delay",
     "env_1_attack",
     "env_1_hold",
@@ -3781,5 +3786,199 @@ fn a_drag_shows_its_temporary_connections_range() {
     }
     release(&mut harness, first, PointerButton::Primary, Modifiers::NONE);
     move_to(&mut harness, Pos2::new(700.0, 10.0));
+    assert!(amount_overlay(&fixture).is_none());
+}
+
+/// ENV 1's knob in its source button for its connection to Macro 1 (slot 2).
+fn env_knob(fixture: &Fixture) -> AmountKnob {
+    knobs_of(fixture, KnobKind::Source)
+        .into_iter()
+        .find(|knob| knob.route.slot == 1)
+        .expect("ENV 1's button shows its knob")
+}
+
+/// A drop on another connection's amount knob
+/// (`modulationDraggedToHoverSlider`): the dragged source gets an aux
+/// connection to that slot's amount with half of it, and the slot's own
+/// amount goes to 0, through the engine only while dragging; the knob now
+/// drives the aux slot at half scale and shows its centre dot. The host
+/// hears the new slot and the emptied amount once the drag ends (D18).
+#[test]
+fn a_drop_on_an_amount_knob_makes_an_aux_connection() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    fixture.synth.set("modulation_2_amount", 0.6);
+    let mut harness = fixture.harness();
+    harness.step();
+    let (source, _, _) = modulation_spots(&fixture);
+    let knob = env_knob(&fixture);
+    fixture.take_log();
+    fixture.synth.bus.lock().unwrap().clear();
+
+    press(
+        &mut harness,
+        source,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    move_to(&mut harness, centre(knob.bounds));
+    assert_eq!(
+        *fixture.synth.bus.lock().unwrap(),
+        [
+            "values 1 0.00 unipolar",
+            "connect lfo_1 modulation_2_amount 0.30 unipolar",
+        ]
+    );
+    assert_eq!(fixture.take_log(), Vec::<String>::new());
+    let knob = env_knob(&fixture);
+    assert_eq!(knob.slider.name, "modulation_3_amount");
+    assert_eq!(knob.slider.value_scale, 0.5);
+    assert!(matches!(
+        knob.slider.style,
+        SliderStyle::ModulationKnob { aux: true, .. }
+    ));
+
+    release(
+        &mut harness,
+        centre(knob.bounds),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    let log = fixture.take_log();
+    assert!(
+        log.contains(&"set modulation_3_amount".to_string()),
+        "{log:?}"
+    );
+    assert!(
+        log.contains(&"set modulation_2_amount".to_string()),
+        "{log:?}"
+    );
+    harness.step();
+    assert!((fixture.synth.value("modulation_3_amount") - 0.3).abs() < 1e-6);
+    assert_eq!(fixture.synth.value("modulation_2_amount"), 0.0);
+    assert!(fixture.synth.modulations().contains(&Route {
+        slot: 2,
+        source: "lfo_1".into(),
+        destination: "modulation_2_amount".into(),
+    }));
+}
+
+/// Leaving the knob mid-drag (`clearTemporaryHoverModulation`) removes the
+/// aux connection and gives the knob's connection its amount back; the host
+/// hears nothing.
+#[test]
+fn leaving_an_amount_knob_mid_drag_undoes_the_aux_connection() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    fixture.synth.set("modulation_2_amount", 0.6);
+    let mut harness = fixture.harness();
+    harness.step();
+    let (source, _, _) = modulation_spots(&fixture);
+    let knob = env_knob(&fixture);
+    fixture.take_log();
+    fixture.synth.bus.lock().unwrap().clear();
+
+    press(
+        &mut harness,
+        source,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    move_to(&mut harness, centre(knob.bounds));
+    let away = Pos2::new(700.0, 10.0);
+    move_to(&mut harness, away);
+    assert_eq!(
+        *fixture.synth.bus.lock().unwrap(),
+        [
+            "values 1 0.00 unipolar",
+            "connect lfo_1 modulation_2_amount 0.30 unipolar",
+            "disconnect lfo_1 modulation_2_amount",
+            "values 1 0.60 unipolar",
+        ]
+    );
+    release(&mut harness, away, PointerButton::Primary, Modifiers::NONE);
+    harness.step();
+    assert_eq!(fixture.take_log(), Vec::<String>::new());
+    assert_eq!(fixture.synth.modulations().len(), 2);
+    assert_eq!(env_knob(&fixture).slider.name, "modulation_2_amount");
+}
+
+/// An aux knob drives the end of its chain at its share
+/// (`sliderValueChanged`: `getAuxMultiplier`), and reads in the first
+/// connection's destination units (`setModulationSliderScale`).
+#[test]
+fn an_aux_knob_drives_its_aux_slot_at_half_scale() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    fixture
+        .synth
+        .routing
+        .lock()
+        .unwrap()
+        .add_modulation("lfo_2", "modulation_2_amount")
+        .unwrap();
+    fixture.synth.set("modulation_3_amount", 0.25);
+    let mut harness = fixture.harness();
+    harness.step();
+    let knob = env_knob(&fixture);
+    assert_eq!(knob.slider.name, "modulation_3_amount");
+    fixture.take_log();
+    let start = centre(knob.bounds);
+    drag(
+        &mut harness,
+        start,
+        start + egui::vec2(0.0, -20.0),
+        Modifiers::NONE,
+    );
+    let log = fixture.take_log();
+    assert_eq!(
+        log,
+        [
+            "begin modulation_3_amount",
+            "set modulation_3_amount",
+            "end modulation_3_amount"
+        ]
+    );
+    harness.step();
+    let shown = 2.0 * fixture.synth.value("modulation_3_amount");
+    assert!(shown > 0.5, "{shown}");
+    assert_eq!(fixture.synth.value("modulation_2_amount"), 0.0);
+}
+
+/// Dragging an amount knob: the overlay follows the amount every frame
+/// (`sliderValueChanged` → `showModulationAmountOverlay`), stays up while
+/// the pointer is off the knob mid-drag (`changing_hover_modulation_`), and
+/// hides on release away from it (`hoverEnded`).
+#[test]
+fn the_amount_overlay_follows_a_knob_drag_and_hides_on_release() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    let mut harness = fixture.harness();
+    harness.step();
+    let knob = knobs_of(&fixture, KnobKind::Source)
+        .into_iter()
+        .find(|knob| knob.route.slot == 0)
+        .unwrap();
+    let start = centre(knob.bounds);
+    press(&mut harness, start, PointerButton::Primary, Modifiers::NONE);
+    let mut last = None;
+    for step in 1..=4 {
+        move_to(&mut harness, start + egui::vec2(0.0, -10.0 * step as f32));
+        let quad = amount_overlay(&fixture).expect("the overlay shows while dragging");
+        let high = quad.shader_values[1];
+        if let Some(last) = last {
+            assert!(high > last, "step {step}: {high} after {last}");
+        }
+        last = Some(high);
+    }
+    let away = Pos2::new(700.0, 10.0);
+    move_to(&mut harness, away);
+    assert!(
+        amount_overlay(&fixture).is_some(),
+        "still dragging off the knob"
+    );
+    release(&mut harness, away, PointerButton::Primary, Modifiers::NONE);
+    harness.step();
+    harness.step();
     assert!(amount_overlay(&fixture).is_none());
 }

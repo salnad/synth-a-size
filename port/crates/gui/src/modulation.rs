@@ -266,6 +266,20 @@ struct Pending {
 }
 
 impl PendingConnection {
+    /// The value `name` takes when the pending connection is written.
+    fn value(&self, name: &str) -> Option<f32> {
+        let pending = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        pending
+            .as_ref()?
+            .values
+            .iter()
+            .find(|(control, _)| *control == name)
+            .map(|&(_, value)| value)
+    }
+
     fn set(&self, pending: Option<Pending>) {
         *self
             .0
@@ -298,11 +312,22 @@ impl PendingConnection {
     }
 }
 
-/// The connection the drag has made (`temporarily_set_destination_`).
+/// The connection the drag has made (`temporarily_set_destination_`), or
+/// for a drop on an amount knob the aux connection to its slot's amount
+/// (`temporarily_set_hover_slider_`).
 #[derive(Debug)]
 struct Temporary {
     destination: &'static str,
     connection: GuiConnection,
+    values: SlotValues,
+    knob: Option<KnobDrop>,
+}
+
+/// The amount knob a drag has dropped on: its connection, whose amount the
+/// aux connection took over, and that connection's values before.
+#[derive(Debug)]
+struct KnobDrop {
+    route: Route,
     values: SlotValues,
 }
 
@@ -321,10 +346,12 @@ impl Temporary {
     }
 
     /// The connection's host parameter changes with the slot's current
-    /// values.
+    /// values; after a drop on an amount knob, also that knob's slot's
+    /// amount, which the drop set to 0.
     fn host_values(&self) -> HostValues {
         let flag = |on: bool| if on { 1.0 } else { 0.0 };
-        self.connection
+        let mut values: HostValues = self
+            .connection
             .parameter_changes
             .iter()
             .map(|&(name, value)| {
@@ -337,7 +364,11 @@ impl Temporary {
                 };
                 (name, value)
             })
-            .collect()
+            .collect();
+        if let Some(knob) = &self.knob {
+            values.push((slot_control(knob.route.slot, "amount"), 0.0));
+        }
+        values
     }
 }
 
@@ -721,8 +752,33 @@ impl ModulationManager {
     /// one.
     fn drag_over(&mut self, host: &Host, drag: &mut Drag) {
         let model = host.model();
-        let over = self.destination_at(drag.pointer, drag.source);
-        if let Some(temporary) = &mut drag.temporary {
+        // An amount knob is over the controls (getComponentAt); a selected
+        // knob of the dragged source stops everything.
+        let knob = self
+            .knobs
+            .iter()
+            .rev()
+            .find(|knob| RectF::from(knob.bounds).contains(drag.pointer.x, drag.pointer.y))
+            .cloned();
+        if knob
+            .as_ref()
+            .is_some_and(|knob| knob.kind == KnobKind::Selected && knob.route.source == drag.source)
+        {
+            return;
+        }
+        let over = match knob {
+            Some(_) => None,
+            None => self.destination_at(drag.pointer, drag.source),
+        };
+        if let Some(Temporary {
+            knob: Some(dropped),
+            ..
+        }) = &drag.temporary
+        {
+            if knob.as_ref().map(|knob| knob.route.slot) != Some(dropped.route.slot) {
+                self.clear_knob_drop(host, drag);
+            }
+        } else if let Some(temporary) = &mut drag.temporary {
             if over != Some(temporary.destination) {
                 // clearTemporaryModulation.
                 if model
@@ -744,6 +800,10 @@ impl ModulationManager {
                 }
             }
         }
+        if let Some(knob) = knob {
+            self.drag_to_knob(host, drag, &knob);
+            return;
+        }
         // modulationDraggedToComponent.
         let Some(name) = over else {
             return;
@@ -757,11 +817,97 @@ impl ModulationManager {
                 destination: name,
                 connection,
                 values,
+                knob: None,
             };
             self.pending
                 .set(Some(temporary.pending(drag.source, self.generation)));
             drag.temporary = Some(temporary);
         }
+    }
+
+    /// `modulationDraggedToHoverSlider`: a drop on another connection's
+    /// amount knob gives half its amount to an aux connection from the
+    /// dragged source to that amount, and sets its own to 0, in the engine
+    /// only until the drag ends (D18).
+    fn drag_to_knob(&mut self, host: &Host, drag: &mut Drag, knob: &AmountKnob) {
+        let model = host.model();
+        let slot = knob.route.slot;
+        let target = slot_control(slot, "amount");
+        if drag.temporary.is_some()
+            || AuxLinks::new(self.routes()).has_aux(slot)
+            || self.connected(drag.source, target)
+        {
+            return;
+        }
+        let flag = |name: &str| host.value(slot_control(slot, name)) != 0.0;
+        let before = SlotValues {
+            amount: host.value(target),
+            bipolar: flag("bipolar"),
+            stereo: flag("stereo"),
+            bypass: flag("bypass"),
+        };
+        let values = SlotValues {
+            amount: before.amount * 0.5,
+            bipolar: false,
+            stereo: false,
+            bypass: false,
+        };
+        let emptied = SlotValues {
+            amount: 0.0,
+            ..before
+        };
+        if !model.set_connection_values(&knob.route.source, &knob.route.destination, emptied) {
+            return;
+        }
+        let Some(connection) = model.connect_modulation(drag.source, target, values) else {
+            model.set_connection_values(&knob.route.source, &knob.route.destination, before);
+            return;
+        };
+        let temporary = Temporary {
+            destination: target,
+            connection,
+            values,
+            knob: Some(KnobDrop {
+                route: knob.route.clone(),
+                values: before,
+            }),
+        };
+        self.pending
+            .set(Some(temporary.pending(drag.source, self.generation)));
+        drag.temporary = Some(temporary);
+    }
+
+    /// `clearTemporaryHoverModulation`: the pointer left the knob, so the
+    /// aux connection goes and the knob's connection gets its amount back
+    /// (`removeModulation`: twice the aux connection's).
+    fn clear_knob_drop(&mut self, host: &Host, drag: &mut Drag) {
+        let model = host.model();
+        let Some(temporary) = drag.temporary.take() else {
+            return;
+        };
+        let Some(dropped) = &temporary.knob else {
+            drag.temporary = Some(temporary);
+            return;
+        };
+        if model
+            .disconnect_modulation(drag.source, temporary.destination)
+            .is_none()
+        {
+            drag.temporary = Some(temporary);
+            return;
+        }
+        let restored = SlotValues {
+            amount: temporary.values.amount * 2.0,
+            ..dropped.values
+        };
+        model.set_connection_values(&dropped.route.source, &dropped.route.destination, restored);
+        self.pending.set(None);
+    }
+
+    /// The value the host will hear for `name` when the drag ends, if the
+    /// drag has changed it (D18 holds it back until then).
+    pub fn pending_value(&self, name: &str) -> Option<f32> {
+        self.pending.value(name)
     }
 
     /// The selected source's outline (`drawCurrentModulator`) and the lit
@@ -1526,10 +1672,88 @@ fn intern(text: String) -> &'static str {
     interned
 }
 
+/// The aux connections: a slot whose destination is another slot's amount
+/// (`aux_connections_from_to_` and `aux_connections_to_from_`, as
+/// `initAuxConnections` rebuilds them from the bank in slot order).
+#[derive(Debug, Default)]
+pub struct AuxLinks {
+    /// The slot modulating each slot's amount.
+    to_from: HashMap<usize, usize>,
+    /// The slot whose amount each slot modulates.
+    from_to: HashMap<usize, usize>,
+}
+
+impl AuxLinks {
+    pub fn new(routes: &[Route]) -> AuxLinks {
+        let mut links = AuxLinks::default();
+        let mut routes: Vec<&Route> = routes.iter().collect();
+        routes.sort_by_key(|route| route.slot);
+        for route in routes {
+            let Some(to) = amount_slot(&route.destination) else {
+                continue;
+            };
+            // addAuxConnection.
+            if to != route.slot {
+                links.to_from.insert(to, route.slot);
+                links.from_to.insert(route.slot, to);
+            }
+        }
+        links
+    }
+
+    /// Whether another slot modulates `slot`'s amount (`hasAux`).
+    pub fn has_aux(&self, slot: usize) -> bool {
+        self.to_from.contains_key(&slot)
+    }
+
+    /// The slot `slot`'s knob drives and the share of its value that slot
+    /// takes: the end of its aux chain, halving at each step
+    /// (`getAuxMultiplier`, `sliderValueChanged`).
+    pub fn driven(&self, slot: usize) -> (usize, f32) {
+        let (mut index, mut scale) = (slot, 1.0);
+        for _ in 0..MAX_MODULATION_CONNECTIONS {
+            let Some(&from) = self.to_from.get(&index) else {
+                break;
+            };
+            index = from;
+            scale *= 0.5;
+        }
+        (index, scale)
+    }
+
+    /// The slot at the other end of `slot`'s chain, whose destination its
+    /// knob reads in, and how many times larger (`setModulationSliderScale`).
+    pub fn display_end(&self, slot: usize) -> (usize, f32) {
+        let (mut index, mut scale) = (slot, 1.0);
+        for _ in 0..MAX_MODULATION_CONNECTIONS {
+            let Some(&to) = self.from_to.get(&index) else {
+                break;
+            };
+            index = to;
+            scale *= 2.0;
+        }
+        (index, scale)
+    }
+}
+
+/// The 0-based slot of a `modulation_N_amount` control.
+fn amount_slot(name: &str) -> Option<usize> {
+    let number: usize = name
+        .strip_prefix("modulation_")?
+        .strip_suffix("_amount")?
+        .parse()
+        .ok()?;
+    (1..=MAX_MODULATION_CONNECTIONS)
+        .contains(&number)
+        .then(|| number - 1)
+}
+
 /// `ModulationAmountKnob` for `route`'s slot: shows its popup on hover, a
 /// double click does nothing, and its text entry is twice as wide
 /// (`setTextEntrySizePercent(2.0f, 1.0f)`). A linear or indexed
 /// destination's amount reads in its own units (`setModulationSliderScale`).
+/// A knob whose amount another source modulates (`setAux`) drives the end
+/// of its aux chain instead, at that share of its value.
 fn knob_slider(
     host: &Host,
     kind: KnobKind,
@@ -1539,24 +1763,34 @@ fn knob_slider(
     placement: Placement,
 ) -> Slider {
     use sas_preset::registry::ValueScale;
-    let number = route.slot + 1;
-    let name = Host::info(&format!("modulation_{number}_amount"))
-        .name
-        .as_str();
-    let bypass = host.value(&format!("modulation_{number}_bypass")) != 0.0;
-    let mut slider = Slider::new(name, SliderStyle::ModulationKnob { arc, bypass });
-    slider.instance = 1 + kind as u8;
+    let routes = host.model().modulations();
+    let links = AuxLinks::new(&routes);
+    let (driven, value_scale) = links.driven(route.slot);
+    let aux = driven != route.slot;
+    let name = slot_control(driven, "amount");
+    let bypass = host.value(slot_control(route.slot, "bypass")) != 0.0;
+    let mut slider = Slider::new(name, SliderStyle::ModulationKnob { arc, bypass, aux });
+    slider.value_scale = value_scale;
+    // Tells it apart from the driven slot's own knob of the same kind.
+    slider.instance = 1 + kind as u8 + if aux { 16 } else { 0 };
     slider.show_popup_on_hover = true;
     slider.double_click_returns = false;
     slider.text_entry_width_percent = 2.0;
     slider.popup_prefix = Some(prefix);
     slider.popup_placement = placement;
-    let destination = Host::info(&route.destination);
+    let (end, scale) = links.display_end(route.slot);
+    let end_destination = routes
+        .iter()
+        .find(|route| route.slot == end)
+        .map_or(route.destination.as_str(), |route| {
+            route.destination.as_str()
+        });
+    let destination = Host::info(end_destination);
     if matches!(
         destination.value_scale,
         ValueScale::Linear | ValueScale::Indexed
     ) {
-        slider.format.display_multiply = Some(destination.max - destination.min);
+        slider.format.display_multiply = Some(scale * (destination.max - destination.min));
     }
     slider
 }
@@ -1747,6 +1981,38 @@ mod tests {
         let span = h * (expected - 0.25) + 2.0 * SOURCE_METER_MIN_RADIUS;
         let bar = lanes[1].1[0].rect;
         assert!((bar.height - span * 0.5 * 800.0).abs() < 1e-2, "{bar:?}");
+    }
+
+    /// `initAuxConnections` and the chain walks: a slot whose destination is
+    /// another slot's amount drives it, halving per step one way and
+    /// doubling the other; other destinations, and a slot on its own
+    /// amount, link nothing.
+    #[test]
+    fn aux_links_follow_chains_of_amount_destinations() {
+        use super::AuxLinks;
+        let route = |slot: usize, destination: &str| Route {
+            slot,
+            source: "lfo_1".into(),
+            destination: destination.into(),
+        };
+        let links = AuxLinks::new(&[
+            route(4, "modulation_1_amount"),
+            route(0, "osc_1_level"),
+            route(9, "modulation_5_amount"),
+            route(3, "modulation_4_amount"),
+            route(7, "modulation_70_amount"),
+        ]);
+        assert!(links.has_aux(0));
+        assert!(links.has_aux(4));
+        assert!(!links.has_aux(9));
+        assert!(!links.has_aux(3));
+        assert_eq!(links.driven(0), (9, 0.25));
+        assert_eq!(links.driven(4), (9, 0.5));
+        assert_eq!(links.driven(9), (9, 1.0));
+        assert_eq!(links.driven(3), (3, 1.0));
+        assert_eq!(links.display_end(9), (0, 4.0));
+        assert_eq!(links.display_end(4), (0, 2.0));
+        assert_eq!(links.display_end(0), (0, 1.0));
     }
 
     /// `renderMeters`' value for each modulated control: the mono total,

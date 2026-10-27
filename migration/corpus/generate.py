@@ -1375,6 +1375,15 @@ GUI_PRESETS = {
             ("lfo_1", "env_1_attack", 0.15),
         ),
     ),
+    "modulations_aux": preset(
+        "modulations aux",
+        "Env 2 modulating LFO 1's amount on oscillator 1's level, so LFO 1's knob is an aux knob.",
+        {},
+        modulations=(
+            ("lfo_1", "osc_1_level", 0.0),
+            ("env_2", "modulation_1_amount", 0.3),
+        ),
+    ),
 }
 
 
