@@ -10,12 +10,22 @@
 //! 350 × 205, keeping the 1400:820 aspect ratio. Upstream also scales the
 //! first size by a factor saved in its config file; the port does not yet.
 
+use std::error::Error;
+use std::fmt;
+use std::mem::ManuallyDrop;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 
 use nice_plug::context::gui::GuiContext;
+use nice_plug::editor::dpi::NativeSize;
+use nice_plug::editor::{
+    HostMethods, Modifiers, ParentWindowHandle, ResizeHint, SpawnedEditor, VirtualKeyCode,
+};
+use nice_plug::prelude::TrackInfo;
 use nice_plug_egui::baseview::dpi::LogicalSize;
 use nice_plug_egui::{
-    create_egui_editor, EguiEditor, EguiEditorState, EguiNiceSettings, Frame, NiceEguiApp,
+    baseview, create_egui_editor, EguiEditor, EguiEditorHandle, EguiEditorState, EguiNiceSettings,
+    Frame, NiceEguiApp,
 };
 
 use crate::chat::ChatPanel;
@@ -27,9 +37,6 @@ use crate::layout::{DEFAULT_HEIGHT, DEFAULT_WIDTH};
 /// `vital::kMinWindowWidth` / `kMinWindowHeight`.
 pub const MIN_WIDTH: f32 = 350.0;
 pub const MIN_HEIGHT: f32 = 205.0;
-
-/// The editor type `sas-plugin` hands to nice-plug.
-pub type Editor = EguiEditor<App>;
 
 /// The editor's size state at the default size. Keep one per plugin
 /// instance so the size survives closing and reopening the window.
@@ -51,7 +58,7 @@ pub fn create(state: Arc<EguiEditorState>, model: Arc<dyn EditorModel>) -> Optio
     let settings = EguiNiceSettings::default()
         .with_tile(PRODUCT_NAME)
         .with_resize_hint(resize_hint);
-    create_egui_editor(state, Default::default(), settings, App::new(model))
+    create_egui_editor(state, Default::default(), settings, App::new(model)).map(Editor)
 }
 
 /// The egui app behind [`Editor`].
@@ -99,22 +106,31 @@ impl NiceEguiApp for App {
         // waiting for the end of its gesture. nice-plug-egui keeps this app
         // across windows without telling it one closed; the patched
         // egui-baseview does.
-        let (model, open) = (self.model.clone(), self.open_gestures.clone());
-        let context = gui_context.clone();
         // Likewise a key the on-screen keyboard is still playing, and a
-        // modulation a drag has connected but not yet written to the host.
-        let playing_note = self.interface.playing_note();
+        // modulation a drag has connected but not yet written to the host;
+        // all of them also when the window stops after a panic (it stays open,
+        // inert, until the host closes it).
+        let release = {
+            let (model, open) = (self.model.clone(), self.open_gestures.clone());
+            let context = gui_context.clone();
+            let playing_note = self.interface.playing_note();
+            let pending = self.interface.pending_connection();
+            move || {
+                let host = Host::tracking(model.as_ref(), Some(&context), &open);
+                host.end_open_gestures();
+                pending.commit(&host);
+                playing_note.release(model.as_ref());
+            }
+        };
+        frame.on_failure(release.clone());
+        let model = self.model.clone();
         let dialogs = egui_ctx.clone();
-        let pending = self.interface.pending_connection();
         frame.on_close(move || {
             // The window handle (on X11, with its connection) goes with the
             // window.
             crate::controls::file_dialog::set_parent(&dialogs, None);
             model.set_editor_open(false);
-            let host = Host::tracking(model.as_ref(), Some(&context), &open);
-            host.end_open_gestures();
-            pending.commit(&host);
-            playing_note.release(model.as_ref());
+            release();
         });
         let repaint = egui_ctx.clone();
         self.model.attach(
@@ -158,5 +174,240 @@ impl NiceEguiApp for App {
         }
         #[cfg(feature = "focus-spike")]
         self.focus_spike.show(ui, frame);
+    }
+}
+
+/// The editor type `sas-plugin` hands to nice-plug: nice-plug-egui's editor
+/// with every call the host makes into it under `catch_unwind`. nice-plug
+/// calls these from the host's plugin API (VST3's `extern "system"`
+/// methods), where a panic aborts the host. egui-baseview guards the
+/// window's own callbacks; this covers nice-plug-egui's setup in `spawn`,
+/// baseview's window creation and teardown, and the rest of the editor API.
+pub struct Editor(EguiEditor<App>);
+
+/// [`Editor`]'s handle, its calls guarded the same way.
+pub struct EditorHandle(EguiEditorHandle);
+
+/// The editor's window, dropped (closed) under `catch_unwind`: closing it
+/// drops the window's app and renderer, and on X11 joins its thread,
+/// re-raising a panic from it.
+pub struct EditorWindow(ManuallyDrop<baseview::Window>);
+
+impl Drop for EditorWindow {
+    fn drop(&mut self) {
+        // SAFETY: the window is not used again.
+        let window = unsafe { ManuallyDrop::take(&mut self.0) };
+        guarded("closing the window", || (), move || drop(window));
+    }
+}
+
+/// An [`EditorHandle`] call that failed or panicked.
+#[derive(Debug)]
+pub enum EditorError {
+    Window(baseview::Error),
+    Panicked(&'static str),
+}
+
+impl fmt::Display for EditorError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EditorError::Window(error) => write!(f, "{error}"),
+            EditorError::Panicked(what) => write!(f, "{what} panicked"),
+        }
+    }
+}
+
+impl Error for EditorError {}
+
+/// `call`'s result, or `fallback`'s (logged) if it panics.
+fn guarded<R>(what: &str, fallback: impl FnOnce() -> R, call: impl FnOnce() -> R) -> R {
+    catch_unwind(AssertUnwindSafe(call)).unwrap_or_else(|_| {
+        nice_plug::nice_error!("the editor panicked while {what}");
+        fallback()
+    })
+}
+
+/// A window call under [`guarded`].
+fn window_call(
+    what: &'static str,
+    call: impl FnOnce() -> Result<(), baseview::Error>,
+) -> Result<(), EditorError> {
+    guarded(
+        what,
+        || Err(EditorError::Panicked(what)),
+        || call().map_err(EditorError::Window),
+    )
+}
+
+impl nice_plug::editor::Editor for Editor {
+    type Handle = EditorHandle;
+
+    fn spawn(
+        &self,
+        parent: Option<ParentWindowHandle>,
+        wait_for_parent: bool,
+        fallback_scale_factor: Option<f64>,
+        gui_context: GuiContext,
+        host: Option<HostMethods>,
+    ) -> Result<SpawnedEditor<EditorHandle>, Box<dyn Error>> {
+        guarded(
+            "opening the window",
+            || Err("opening the editor window panicked".into()),
+            || {
+                let spawned = self.0.spawn(
+                    parent,
+                    wait_for_parent,
+                    fallback_scale_factor,
+                    gui_context,
+                    host,
+                )?;
+                Ok(SpawnedEditor {
+                    handle: EditorHandle(spawned.handle),
+                    window: EditorWindow(ManuallyDrop::new(spawned.window)),
+                })
+            },
+        )
+    }
+
+    fn size(&self) -> NativeSize<u32> {
+        guarded(
+            "reporting its size",
+            || {
+                let size = LogicalSize::new(DEFAULT_WIDTH as f64, DEFAULT_HEIGHT as f64);
+                NativeSize::from_size(size.into(), 1.0)
+            },
+            || self.0.size(),
+        )
+    }
+
+    fn resize_hint(&self) -> ResizeHint {
+        guarded("reporting its resize hint", ResizeHint::default, || {
+            self.0.resize_hint()
+        })
+    }
+
+    fn track_info_updated(&self, info: TrackInfo) {
+        guarded(
+            "taking track info",
+            || (),
+            || self.0.track_info_updated(info),
+        )
+    }
+
+    unsafe fn assume_standalone_in_process(&self) {
+        // SAFETY: the caller upholds the inner editor's contract.
+        guarded(
+            "going standalone",
+            || (),
+            || unsafe { self.0.assume_standalone_in_process() },
+        )
+    }
+}
+
+impl nice_plug::editor::EditorHandle for EditorHandle {
+    type Window = EditorWindow;
+    type Error = EditorError;
+
+    fn run_until_closed(mut window: EditorWindow) -> Result<(), EditorError> {
+        // SAFETY: `window` is forgotten, so the inner window is taken once.
+        let inner = unsafe { ManuallyDrop::take(&mut window.0) };
+        std::mem::forget(window);
+        window_call("running the window", || {
+            EguiEditorHandle::run_until_closed(inner)
+        })
+    }
+
+    fn set_parent(
+        &self,
+        parent: ParentWindowHandle,
+        window: &EditorWindow,
+    ) -> Result<(), EditorError> {
+        window_call("setting its parent", || {
+            self.0.set_parent(parent, &window.0)
+        })
+    }
+
+    fn show(&self, window: &EditorWindow) -> Result<(), EditorError> {
+        window_call("showing the window", || self.0.show(&window.0))
+    }
+
+    fn hide(&self, window: &EditorWindow) -> Result<(), EditorError> {
+        window_call("hiding the window", || self.0.hide(&window.0))
+    }
+
+    fn set_size(
+        &self,
+        new_size: NativeSize<u32>,
+        window: &EditorWindow,
+    ) -> Result<(), EditorError> {
+        window_call("resizing the window", || {
+            self.0.set_size(new_size, &window.0)
+        })
+    }
+
+    fn host_main_thread_callback(&self, window: &EditorWindow) {
+        guarded(
+            "running a main-thread callback",
+            || (),
+            || self.0.host_main_thread_callback(&window.0),
+        )
+    }
+
+    fn adjust_size(
+        &self,
+        new_size: NativeSize<u32>,
+        window: &EditorWindow,
+    ) -> Option<NativeSize<u32>> {
+        guarded(
+            "adjusting a size",
+            || None,
+            || self.0.adjust_size(new_size, &window.0),
+        )
+    }
+
+    fn set_fallback_scale_factor(
+        &self,
+        scale_factor: f64,
+        window: &EditorWindow,
+    ) -> Result<(), EditorError> {
+        window_call("setting its scale factor", || {
+            self.0.set_fallback_scale_factor(scale_factor, &window.0)
+        })
+    }
+
+    fn on_virtual_key_from_host(
+        &self,
+        key_code: VirtualKeyCode,
+        is_down: bool,
+        modifiers: Modifiers,
+    ) -> bool {
+        guarded(
+            "taking a host key",
+            || false,
+            || {
+                self.0
+                    .on_virtual_key_from_host(key_code, is_down, modifiers)
+            },
+        )
+    }
+
+    fn state_changed(&self) {
+        guarded("taking a state change", || (), || self.0.state_changed())
+    }
+
+    fn param_value_changed(&self, id: &str, normalized_value: f32) {
+        guarded(
+            "taking a parameter change",
+            || (),
+            || self.0.param_value_changed(id, normalized_value),
+        )
+    }
+
+    fn param_modulation_changed(&self, id: &str, modulation_offset: f32) {
+        guarded(
+            "taking a modulation change",
+            || (),
+            || self.0.param_modulation_changed(id, modulation_offset),
+        )
     }
 }

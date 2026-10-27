@@ -1,4 +1,5 @@
 use std::cell::{Cell, RefCell};
+use std::mem::ManuallyDrop;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -278,19 +279,26 @@ pub struct Frame {
     key_capture: KeyCapture,
     // synth-a-size patch: run when the window is torn down.
     on_close: Vec<Box<dyn FnOnce()>>,
+    // synth-a-size patch: run when a window callback panics.
+    on_failure: Vec<Box<dyn FnOnce()>>,
 }
 
 // synth-a-size patch: the frame lives as long as its window, so dropping it
 // is the window closing.
 impl Drop for Frame {
     fn drop(&mut self) {
-        for callback in self.on_close.drain(..) {
-            if let Err(payload) = catch_unwind(AssertUnwindSafe(callback)) {
-                error!(
-                    "egui-baseview: a window close callback panicked: {}",
-                    panic_message(&*payload)
-                );
-            }
+        run_guarded("close", self.on_close.drain(..));
+    }
+}
+
+/// Runs each callback under `catch_unwind`, logging the ones that panic.
+fn run_guarded(kind: &str, callbacks: impl IntoIterator<Item = Box<dyn FnOnce()>>) {
+    for callback in callbacks {
+        if let Err(payload) = catch_unwind(AssertUnwindSafe(callback)) {
+            error!(
+                "egui-baseview: a window {kind} callback panicked: {}",
+                panic_message(&*payload)
+            );
         }
     }
 }
@@ -301,6 +309,13 @@ impl Frame {
         self.on_close.push(Box::new(callback));
     }
 
+    /// synth-a-size patch: runs `callback` once, when a window callback
+    /// panics and the window stops drawing and handling input (it stays open
+    /// until the host closes it).
+    pub fn on_failure(&mut self, callback: impl FnOnce() + 'static) {
+        self.on_failure.push(Box::new(callback));
+    }
+
     fn new(renderer: Renderer, window: WindowContext) -> Self {
         Self {
             renderer,
@@ -308,6 +323,7 @@ impl Frame {
             clear_color: Rgba::BLACK,
             key_capture: Default::default(),
             on_close: Vec::new(),
+            on_failure: Vec::new(),
         }
     }
 
@@ -368,7 +384,8 @@ struct EguiWindowInner<A: App> {
 
 /// Handles an egui-baseview application
 pub struct EguiWindow<A: App> {
-    inner: RefCell<EguiWindowInner<A>>,
+    // synth-a-size patch: dropped under `catch_unwind` (see `Drop`).
+    inner: ManuallyDrop<RefCell<EguiWindowInner<A>>>,
     egui_input: RefCell<egui::RawInput>,
     viewport_id: egui::ViewportId,
     start_time: Instant,
@@ -462,12 +479,12 @@ impl<A: App> EguiWindow<A> {
         let start_time = Instant::now();
 
         Ok(Self {
-            inner: RefCell::new(EguiWindowInner {
+            inner: ManuallyDrop::new(RefCell::new(EguiWindowInner {
                 user_app,
                 egui_ctx,
                 clipboard_ctx,
                 frame,
-            }),
+            })),
             viewport_id,
             start_time,
             egui_input: egui_input.into(),
@@ -624,6 +641,23 @@ impl<A: App> WindowHandler for EguiWindow<A> {
     }
 }
 
+// synth-a-size patch: baseview drops the handler when the window closes, from
+// AppKit's callbacks or the host's `removed()` on macOS and on the X11 window
+// thread (whose panic the host's thread re-raises when it joins). Dropping the
+// app, egui and the renderer must not unwind into either.
+impl<A: App> Drop for EguiWindow<A> {
+    fn drop(&mut self) {
+        // SAFETY: `inner` is not used again.
+        let inner = unsafe { ManuallyDrop::take(&mut self.inner) };
+        if let Err(payload) = catch_unwind(AssertUnwindSafe(move || drop(inner))) {
+            error!(
+                "egui-baseview: dropping the window panicked: {}",
+                panic_message(&*payload)
+            );
+        }
+    }
+}
+
 /// The message of a panic payload.
 fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
     if let Some(message) = payload.downcast_ref::<&str>() {
@@ -651,6 +685,12 @@ impl<A: App> EguiWindow<A> {
                      stops drawing and handling input",
                     panic_message(&*payload)
                 );
+                // The unwind released every borrow of `inner`.
+                let callbacks = match self.inner.try_borrow_mut() {
+                    Ok(mut inner) => std::mem::take(&mut inner.frame.on_failure),
+                    Err(_) => Vec::new(),
+                };
+                run_guarded("failure", callbacks);
                 fallback
             }
         }

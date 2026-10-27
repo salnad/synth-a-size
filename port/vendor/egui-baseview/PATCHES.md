@@ -51,6 +51,13 @@ entries. Changes to the code, each marked "synth-a-size patch":
      logs it and stops drawing and handling input. Creating the window
      (the renderer and `App::build`) is guarded the same way and fails the
      window instead, and so is each `Frame::on_close` callback.
+   - `Frame::on_failure(callback)` runs once when a callback panics, so
+     the app can end what the dead window leaves open (host gestures).
+   - The window's inner state (app, egui context, frame and renderer) is
+     a `ManuallyDrop` dropped under `catch_unwind` in `EguiWindow`'s
+     `Drop`: baseview drops the handler from AppKit callbacks or the
+     host's `removed()` on macOS, and on the X11 window thread, whose
+     panic the host's thread re-raises when it joins.
    - The renderer logs once, at info level, when it presents its first
      frame; CI's editor-open check (`scripts/editor_smoke.sh` in
      `sas-plugin`) looks for that line.
