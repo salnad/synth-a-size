@@ -17,6 +17,9 @@ crate-type = ["cdylib", "lib"]
 # says. Without it they are dropped.
 nice-plug = { workspace = true, features = ["tracing-subscriber"] }
 sas-common.workspace = true
+# Audio files dropped on a wavetable view, beyond WAV (which the port reads
+# itself): JUCE's registerBasicFormats set on macOS (D23).
+symphonia = { version = "=0.6.1", default-features = false, features = ["pcm", "wav", "aiff", "flac", "ogg", "vorbis", "mp3", "aac", "isomp4"] }
 sas-engine.workspace = true
 sas-gui.workspace = true
 # The LLM tools' live session and the chat (no network code here; see the

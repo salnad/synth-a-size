@@ -11,6 +11,8 @@
 
 # Never commit renders, captures or bundles outside the committed corpus
 *.wav
+# The authored audio files generate.py writes are corpus.
+!/migration/corpus/audio/*.wav
 *.npy
 *.vst3
 *.clap

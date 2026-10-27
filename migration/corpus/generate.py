@@ -2,8 +2,8 @@
 """Generate the synth-a-size golden test corpus (presets + MIDI files).
 
 Everything in migration/corpus/presets, migration/corpus/midi,
-migration/corpus/gui/presets and migration/corpus/gui/data is produced by
-this script from the definitions
+migration/corpus/audio, migration/corpus/gui/presets and
+migration/corpus/gui/data is produced by this script from the definitions
 below; nothing is copied from any factory or third-party preset bank. Re-run
 after editing and commit the outputs:
 
@@ -1400,6 +1400,185 @@ GUI_DATA = {
 
 
 # --------------------------------------------------------------------------
+# Audio files (decoder parity: the port's readers against JUCE's)
+# --------------------------------------------------------------------------
+
+AUDIO_DIR = os.path.join(HERE, "audio")
+AUDIO_FRAMES = 8192  # two FLAC blocks of 4096
+
+
+def audio_tone(frames, sample_rate, bits, channel):
+    """Integer samples of an authored two-harmonic tone at `bits` bits.
+    Channel 1 (right) is a different tone, so readers must pick channel 0."""
+    peak = (1 << (bits - 1)) - 1
+    base = 220.0 if channel == 0 else 330.0
+    out = []
+    for n in range(frames):
+        t = n / sample_rate
+        value = 0.6 * math.sin(2 * math.pi * base * t) + 0.25 * math.sin(2 * math.pi * 3 * base * t + 0.5)
+        out.append(int(round(value * peak)))
+    return out
+
+
+def audio_float_tone(frames, sample_rate, channel):
+    base = 220.0 if channel == 0 else 330.0
+    return [struct.unpack("<f", struct.pack("<f", 0.7 * math.sin(2 * math.pi * base * n / sample_rate)))[0]
+            for n in range(frames)]
+
+
+def riff_chunk(label, data):
+    pad = b"\0" if len(data) % 2 else b""
+    return label + struct.pack("<I", len(data)) + data + pad
+
+
+def wav_file(channels, sample_rate, bits, frames_by_channel, tag=1, extensible=False, declared_frames=None):
+    """A RIFF WAVE file. `tag` 1 is PCM, 3 IEEE float; `extensible` wraps
+    it in WAVE_FORMAT_EXTENSIBLE with the standard sub-format GUID.
+    `declared_frames` declares a longer data chunk than the file holds."""
+    block = channels * ((bits + 7) // 8)
+    fmt = struct.pack("<HHIIHH", 0xFFFE if extensible else tag, channels, sample_rate, sample_rate * block, block, bits)
+    if extensible:
+        guid = struct.pack("<H", tag) + bytes([0, 0, 0, 0, 0x10, 0, 0x80, 0, 0, 0xAA, 0, 0x38, 0x9B, 0x71])
+        fmt += struct.pack("<HHI", 22, bits, 0) + guid
+    data = bytearray()
+    for frame in zip(*frames_by_channel):
+        for value in frame:
+            if tag == 3:
+                data += struct.pack("<f", value)
+            elif bits == 8:
+                data += struct.pack("<B", value + 128)
+            elif bits == 16:
+                data += struct.pack("<h", value)
+            elif bits == 24:
+                data += struct.pack("<i", value)[:3]
+            else:
+                data += struct.pack("<i", value)
+    data_chunk = riff_chunk(b"data", bytes(data))
+    if declared_frames is not None:
+        data_chunk = b"data" + struct.pack("<I", declared_frames * block) + bytes(data)
+    body = b"WAVE" + riff_chunk(b"fmt ", fmt) + data_chunk
+    return b"RIFF" + struct.pack("<I", len(body)) + body
+
+
+def extended80(value):
+    """An IEEE 754 80-bit extended float (big-endian), for AIFF's COMM."""
+    exponent = 16383 + int(math.floor(math.log2(value)))
+    mantissa = int(value * (1 << (63 - (exponent - 16383))))
+    return struct.pack(">HQ", exponent, mantissa)
+
+
+def aiff_file(channels, sample_rate, bits, frames_by_channel):
+    """An AIFF file: COMM and SSND, big-endian PCM."""
+    frames = len(frames_by_channel[0])
+    comm = struct.pack(">hIh", channels, frames, bits) + extended80(sample_rate)
+    data = bytearray()
+    for frame in zip(*frames_by_channel):
+        for value in frame:
+            data += struct.pack(">h", value) if bits == 16 else struct.pack(">i", value)[1:]
+    ssnd = struct.pack(">II", 0, 0) + bytes(data)
+
+    def chunk(label, payload):
+        return label + struct.pack(">I", len(payload)) + payload + (b"\0" if len(payload) % 2 else b"")
+
+    body = b"AIFF" + chunk(b"COMM", comm) + chunk(b"SSND", ssnd)
+    return b"FORM" + struct.pack(">I", len(body)) + body
+
+
+class BitWriter:
+    def __init__(self):
+        self.bytes = bytearray()
+        self.accumulator = 0
+        self.count = 0
+
+    def write(self, value, bits):
+        value &= (1 << bits) - 1
+        self.accumulator = (self.accumulator << bits) | value
+        self.count += bits
+        while self.count >= 8:
+            self.count -= 8
+            self.bytes.append((self.accumulator >> self.count) & 0xFF)
+        self.accumulator &= (1 << self.count) - 1
+
+    def align(self):
+        if self.count:
+            self.write(0, 8 - self.count)
+
+
+def crc8(data):
+    crc = 0
+    for byte in data:
+        crc ^= byte
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x07) & 0xFF if crc & 0x80 else (crc << 1) & 0xFF
+    return crc
+
+
+def crc16(data):
+    crc = 0
+    for byte in data:
+        crc ^= byte << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x8005) & 0xFFFF if crc & 0x8000 else (crc << 1) & 0xFFFF
+    return crc
+
+
+def flac_file(channels, sample_rate, bits, frames_by_channel, block_size=4096):
+    """A FLAC stream with verbatim subframes and independent channels: the
+    simplest valid encoding, enough for decoders to be compared sample for
+    sample. The STREAMINFO MD5 is zero ("unknown")."""
+    frames = len(frames_by_channel[0])
+    assert frames % block_size == 0
+    info = BitWriter()
+    info.write(block_size, 16)
+    info.write(block_size, 16)
+    info.write(0, 24)
+    info.write(0, 24)
+    info.write(sample_rate, 20)
+    info.write(channels - 1, 3)
+    info.write(bits - 1, 5)
+    info.write(frames, 36)
+    info.bytes += bytes(16)
+    out = bytearray(b"fLaC") + bytes([0x80]) + struct.pack(">I", len(info.bytes))[1:] + info.bytes
+    rate_code = {44100: 9, 48000: 10}[sample_rate]
+    size_code = {16: 4, 24: 6}[bits]
+    block_code = {4096: 12}[block_size]
+    for index in range(frames // block_size):
+        assert index < 128
+        header = bytearray([0xFF, 0xF8, (block_code << 4) | rate_code, ((channels - 1) << 4) | (size_code << 1), index])
+        header.append(crc8(header))
+        writer = BitWriter()
+        writer.bytes += header
+        for channel in frames_by_channel:
+            writer.write(0x02, 8)  # verbatim, no wasted bits
+            for value in channel[index * block_size:(index + 1) * block_size]:
+                writer.write(value, bits)
+        writer.align()
+        frame = bytes(writer.bytes)
+        out += frame + struct.pack(">H", crc16(frame))
+    return bytes(out)
+
+
+def audio_files():
+    rate = 44100
+    n = AUDIO_FRAMES
+    files = {
+        "wav_pcm8_mono.wav": wav_file(1, rate, 8, [audio_tone(n, rate, 8, 0)]),
+        "wav_pcm16_stereo.wav": wav_file(2, rate, 16, [audio_tone(n, rate, 16, 0), audio_tone(n, rate, 16, 1)]),
+        "wav_pcm24_mono.wav": wav_file(1, 48000, 24, [audio_tone(n, 48000, 24, 0)]),
+        "wav_pcm32_mono.wav": wav_file(1, rate, 32, [audio_tone(n, rate, 32, 0)]),
+        "wav_float32_stereo.wav": wav_file(2, rate, 32, [audio_float_tone(n, rate, 0), audio_float_tone(n, rate, 1)],
+                                           tag=3),
+        "wav_extensible_pcm24.wav": wav_file(1, rate, 24, [audio_tone(n, rate, 24, 0)], extensible=True),
+        "wav_truncated_data.wav": wav_file(1, rate, 16, [audio_tone(n // 2, rate, 16, 0)], declared_frames=n),
+        "aiff_pcm16_stereo.aiff": aiff_file(2, rate, 16, [audio_tone(n, rate, 16, 0), audio_tone(n, rate, 16, 1)]),
+        "aiff_pcm24_mono.aif": aiff_file(1, 48000, 24, [audio_tone(n, 48000, 24, 0)]),
+        "flac_16_stereo.flac": flac_file(2, rate, 16, [audio_tone(n, rate, 16, 0), audio_tone(n, rate, 16, 1)]),
+        "flac_24_mono.flac": flac_file(1, 48000, 24, [audio_tone(n, 48000, 24, 0)]),
+    }
+    return files
+
+
+# --------------------------------------------------------------------------
 
 def outputs():
     files = {}
@@ -1422,6 +1601,8 @@ def outputs():
         files[os.path.join(GUI_DATA_DIR, path)] = (json.dumps(data, indent=2, sort_keys=True) + "\n").encode()
     for name, events in BENCH_MIDI.items():
         files[os.path.join(BENCH_DIR, "midi", name + ".mid")] = midi_file(events)
+    for name, data in audio_files().items():
+        files[os.path.join(AUDIO_DIR, name)] = data
     return files
 
 

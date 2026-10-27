@@ -48,6 +48,16 @@ registry and engine tables are captured by
 preset here needs a case in `state.json`; the `sas-preset` tests check
 that.
 
+## Audio files (`audio/*`)
+
+Authored tones (two harmonics; a different tone on the right channel) in
+the lossless formats a wavetable view takes: WAV (8, 16, 24 and 32-bit PCM,
+32-bit float, extensible, and a data chunk longer than the file), AIFF (16
+and 24-bit) and FLAC (16 and 24-bit, verbatim subframes). `generate.py`
+writes them with the standard library. Module `audio_file/decode` captures
+how the reference's JUCE readers decode each one, and the port's readers
+must match sample for sample (D23). Lossy formats can't be authored here.
+
 ## MIDI (`midi/*.mid`)
 
 Format 0, 480 PPQ, 120 BPM.

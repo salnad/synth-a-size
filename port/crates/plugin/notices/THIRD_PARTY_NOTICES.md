@@ -32,8 +32,9 @@ as follows:
 
 - `juce_dsp` (the FFT), `juce_graphics` (colours, paths and path
   strokes), `juce_gui_basics` (slider dragging, click and double-click
-  timing, buttons, colour lookup) and `juce_data_structures` (the config
-  file location), under the GNU General Public License, version 3 only;
+  timing, buttons, colour lookup), `juce_data_structures` (the config
+  file location) and `juce_audio_formats` (which WAV files are read, and
+  how a short or unsized `data` chunk is), under the GNU General Public License, version 3 only;
 - `juce_core` (base64, string and file-name helpers) and
   `juce_audio_basics` (on-screen keyboard state, MIDI file reading, MPE
   zones, MIDI event ordering, flush-to-zero), under the ISC licence:
@@ -74,10 +75,24 @@ Florian Loitsch's Grisu2), Copyright (c) 2013-2018 Niels Lohmann
 
 The plugin links Rust crates under permissive licences (MIT, Apache-2.0,
 ISC, Zlib, BSD, Unicode-3.0, Unlicense and similar), all compatible with
-the GPLv3. Where a crate offers a choice, the permissive option applies.
+the GPLv3, and the audio decoders below under the Mozilla Public License
+2.0. Where a crate offers a choice, the permissive option applies.
 Their licences are in each crate's source on crates.io. One, egui-baseview 0.9.0 (MIT OR
 Apache-2.0, Copyright (c) 2021 Billy Messenger), is built from a copy with
 small local changes, under its Apache-2.0 option (the licence text is
 `Apache-2.0.txt` in this bundle). The changed copy, its licence files and a
 list of the changes are in the synth-a-size source under
 `port/vendor/egui-baseview`.
+
+## Audio decoders
+
+The plugin reads AIFF, FLAC, Ogg Vorbis, MP3 and AAC/M4A files dropped on
+a wavetable view with Symphonia 0.6.1 (https://github.com/pdeljanov/Symphonia,
+Copyright (c) 2019-2026 The Project Symphonia Developers), used unmodified:
+the crates `symphonia`, `symphonia-core`, `symphonia-common`,
+`symphonia-metadata`, `symphonia-bundle-flac`, `symphonia-bundle-mp3`,
+`symphonia-codec-aac`, `symphonia-codec-pcm`, `symphonia-codec-vorbis`,
+`symphonia-format-isomp4`, `symphonia-format-ogg` and
+`symphonia-format-riff`. They are under the Mozilla Public License 2.0
+(`MPL-2.0.txt` in this bundle), which is compatible with the GPLv3. Their
+source code is available from crates.io and the repository above.

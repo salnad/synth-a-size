@@ -653,22 +653,49 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
 - **Approved:** coordinator (render off the GUI thread, seed isolation,
   record the differences); Graph Reviewer reviews on the resynthesis PR.
 
-### D23. Audio files dropped on a wavetable view are read as WAV only (temporary)
+### D23. Audio files dropped on a wavetable view: CAF and rarer CoreAudio types aren't read, and lossy decoders can differ
 
 - **Differs:** which audio files a wavetable view takes when one is dropped
-  on it.
+  on it, and the samples lossy files decode to.
 - **Upstream:** `AudioFileDropSource` takes one file in any format JUCE's
   `AudioFormatManager::registerBasicFormats()` reads. On macOS that is
-  WAV, AIFF, FLAC, Ogg Vorbis and CoreAudio's formats (MP3, AAC/M4A, CAF
-  and others).
-- **Port:** the view takes only `.wav` files (8, 16, 24 and 32-bit PCM,
-  32 and 64-bit float, plain or `WAVE_FORMAT_EXTENSIBLE`), read with the
-  same sample values as JUCE's WAV reader
-  (`port/crates/plugin/src/audio_file.rs`). Other files get no copy badge
+  WAV, AIFF, FLAC, Ogg Vorbis (JUCE's own readers) and CoreAudio's formats:
+  MP3, AAC/M4A, CAF and rarer types (AC3, AMR, 3GP and others).
+- **Port:** the view takes `.wav`, `.bwf`, `.aif`, `.aiff`, `.flac`,
+  `.ogg`, `.mp3`, `.m4a` and `.aac` (`port/crates/plugin/src/audio_file.rs`).
+  WAV is read by the port's own reader. The others decode with Symphonia
+  0.6.1 (MPL-2.0; see the bundle notices). Other files get no copy badge,
   and the drop is refused.
-- **Why:** the port has no decoder for the other formats yet. The next PR
-  adds one (symphonia) for upstream's macOS set and narrows this entry.
-- **Approved:** coordinator, 2026-10-26 (WAV first, the decoder next).
+  - **Lossless formats match JUCE sample for sample.** The authored WAV,
+    AIFF and FLAC files in `migration/corpus/audio` decode exactly as the
+    reference's JUCE readers do (module `audio_file/decode`, compared at
+    zero tolerance).
+  - **Lossy formats** (Ogg Vorbis, MP3, AAC/M4A) aren't covered by our
+    fixture tests. The project can't author encoded files (`generate.py`
+    has no encoders, and hard rule 3 allows no outside content), so they
+    rely on Symphonia's own codec tests. Their decoded samples can differ
+    slightly from JUCE's Ogg reader and CoreAudio's MP3 and AAC decoders
+    (rounding, and the encoder delay and padding they trim). An empty or
+    corrupt file of each type is refused without changing anything.
+  - **CAF and the rarer CoreAudio types** aren't read.
+  - **WAV data lengths:** JUCE reads the frames a `data` chunk declares
+    and zero-fills what the file lacks, sizing its buffer from the header.
+    The port does the same only within bounds. A declared length of
+    `0xFFFFFFFF` or 0, the "unknown length" markers streamed WAVs (ffmpeg
+    or sox writing to a pipe) carry, reads the rest of the file, unless
+    a 0 is followed by what looks like a chunk header (a printable label
+    and a length the file can hold): that is an empty chunk, read as JUCE
+    reads it. A declared length more than double the bytes present, or
+    past 2^24 frames, reads only the bytes present. Buffers are reserved
+    fallibly, so no file can make the plugin abort the host, where JUCE
+    would try to allocate gigabytes for such a header.
+- **Why:** parity first. The port matches upstream's macOS formats with an
+  open-source decoder, since CoreAudio isn't available to it everywhere
+  and JUCE's readers aren't part of the port. CAF and the rarer types are
+  left out as seldom used for wavetable sources.
+- **Approved:** coordinator, 2026-10-26 (the formats, the decoder and the
+  lossy-fixture policy); Graph Reviewer reviews the decoder and Parity
+  Reviewer the reference case and corpus.
 
 ### D24. The user data folder: one default root, and a menu item to choose it
 

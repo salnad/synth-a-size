@@ -1,0 +1,138 @@
+{
+  "description": "Audio files a wavetable view takes, read as JUCE's AudioFormatManager (registerBasicFormats) reads them for WavetableEditSection::loadAudioFile: the first channel and the sample rate. The port's readers (port/crates/plugin/src/audio_file.rs) must match sample for sample (max_abs_error 0). The files are authored by generate.py (corpus/audio). Lossy formats aren't here: generate.py can't author them, and MP3/AAC are CoreAudio's on macOS (D23).",
+  "module": "audio_file_decode",
+  "cases": {
+    "aiff_pcm16_stereo": {
+      "params": {
+        "file": "audio/aiff_pcm16_stereo.aiff"
+      },
+      "tolerances": {
+        "max_abs_error": 0.0,
+        "residual_db": -80.0
+      },
+      "artifacts": {
+        "sample_rate.txt": "exact"
+      }
+    },
+    "aiff_pcm24_mono": {
+      "params": {
+        "file": "audio/aiff_pcm24_mono.aif"
+      },
+      "tolerances": {
+        "max_abs_error": 0.0,
+        "residual_db": -80.0
+      },
+      "artifacts": {
+        "sample_rate.txt": "exact"
+      }
+    },
+    "flac_16_stereo": {
+      "params": {
+        "file": "audio/flac_16_stereo.flac"
+      },
+      "tolerances": {
+        "max_abs_error": 0.0,
+        "residual_db": -80.0
+      },
+      "artifacts": {
+        "sample_rate.txt": "exact"
+      }
+    },
+    "flac_24_mono": {
+      "params": {
+        "file": "audio/flac_24_mono.flac"
+      },
+      "tolerances": {
+        "max_abs_error": 0.0,
+        "residual_db": -80.0
+      },
+      "artifacts": {
+        "sample_rate.txt": "exact"
+      }
+    },
+    "wav_extensible_pcm24": {
+      "params": {
+        "file": "audio/wav_extensible_pcm24.wav"
+      },
+      "tolerances": {
+        "max_abs_error": 0.0,
+        "residual_db": -80.0
+      },
+      "artifacts": {
+        "sample_rate.txt": "exact"
+      }
+    },
+    "wav_float32_stereo": {
+      "params": {
+        "file": "audio/wav_float32_stereo.wav"
+      },
+      "tolerances": {
+        "max_abs_error": 0.0,
+        "residual_db": -80.0
+      },
+      "artifacts": {
+        "sample_rate.txt": "exact"
+      }
+    },
+    "wav_pcm16_stereo": {
+      "params": {
+        "file": "audio/wav_pcm16_stereo.wav"
+      },
+      "tolerances": {
+        "max_abs_error": 0.0,
+        "residual_db": -80.0
+      },
+      "artifacts": {
+        "sample_rate.txt": "exact"
+      }
+    },
+    "wav_pcm24_mono": {
+      "params": {
+        "file": "audio/wav_pcm24_mono.wav"
+      },
+      "tolerances": {
+        "max_abs_error": 0.0,
+        "residual_db": -80.0
+      },
+      "artifacts": {
+        "sample_rate.txt": "exact"
+      }
+    },
+    "wav_pcm32_mono": {
+      "params": {
+        "file": "audio/wav_pcm32_mono.wav"
+      },
+      "tolerances": {
+        "max_abs_error": 0.0,
+        "residual_db": -80.0
+      },
+      "artifacts": {
+        "sample_rate.txt": "exact"
+      }
+    },
+    "wav_pcm8_mono": {
+      "params": {
+        "file": "audio/wav_pcm8_mono.wav"
+      },
+      "tolerances": {
+        "max_abs_error": 0.0,
+        "residual_db": -80.0
+      },
+      "artifacts": {
+        "sample_rate.txt": "exact"
+      }
+    },
+    "wav_truncated_data": {
+      "params": {
+        "file": "audio/wav_truncated_data.wav"
+      },
+      "tolerances": {
+        "max_abs_error": 0.0,
+        "residual_db": -80.0
+      },
+      "artifacts": {
+        "sample_rate.txt": "exact"
+      }
+    }
+  }
+}
