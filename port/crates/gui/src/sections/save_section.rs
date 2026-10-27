@@ -636,12 +636,19 @@ mod tests {
 
     #[test]
     fn legal_file_names_drop_what_files_cant_have() {
-        assert_eq!(legal_file_name("a/b:c?.vital"), "abc.vital");
-        assert_eq!(legal_file_name("Plain Name.vital"), "Plain Name.vital");
-        let long = format!("{}.vital", "x".repeat(200));
+        let ext = PRESET_EXTENSION;
+        assert_eq!(
+            legal_file_name(&format!("a/b:c?.{ext}")),
+            format!("abc.{ext}")
+        );
+        assert_eq!(
+            legal_file_name(&format!("Plain Name.{ext}")),
+            format!("Plain Name.{ext}")
+        );
+        let long = format!("{}.{ext}", "x".repeat(200));
         let legal = legal_file_name(&long);
         assert_eq!(legal.chars().count(), 128);
-        assert!(legal.ends_with("x.vital"));
+        assert!(legal.ends_with(&format!("x.{ext}")));
         let no_extension = "y".repeat(200);
         assert_eq!(legal_file_name(&no_extension), "y".repeat(128));
     }
