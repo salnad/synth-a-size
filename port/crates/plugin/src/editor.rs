@@ -257,6 +257,13 @@ impl EditorModel for PluginModel {
             .flatten()
     }
 
+    fn set_slot_route(&self, slot: usize, route: Option<(&str, &str)>) -> bool {
+        self.params
+            .edit_handle()
+            .set_slot_route(slot, route)
+            .unwrap_or(false)
+    }
+
     fn tuning_name(&self) -> String {
         self.params
             .edit_handle()

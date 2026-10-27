@@ -229,6 +229,19 @@ enum Command {
         source: &'static str,
         destination: &'static str,
     },
+    /// A matrix row connecting its own slot (values and curve unchanged).
+    ConnectSlot {
+        slot: usize,
+        source: &'static str,
+        destination: &'static str,
+    },
+    /// A matrix row freeing its own slot, which connects `source` to
+    /// `destination`.
+    DisconnectSlot {
+        slot: usize,
+        source: &'static str,
+        destination: &'static str,
+    },
     /// Apply the pending payload of `slot` if it is still the one pushed
     /// with `seq`.
     Apply { slot: usize, seq: u64 },
@@ -460,6 +473,46 @@ impl Batch<'_> {
             }));
         }
         Ok(slot)
+    }
+
+    /// A modulation matrix row choosing slot `slot`'s route (see
+    /// [`PresetState::set_slot_route`](sas_preset::PresetState::set_slot_route)):
+    /// the slot's old route is disconnected and `route` connected in the same
+    /// slot, with its controls and curve as they are, in one step for the
+    /// engine. No host parameter changes. Returns whether the slot is
+    /// connected afterwards (a route to its own amount is refused).
+    pub fn set_slot_route(
+        &mut self,
+        slot: usize,
+        route_names: Option<(&str, &str)>,
+    ) -> Result<bool, EditError> {
+        check_index(slot, MAX_MODULATION_CONNECTIONS)?;
+        let route_names = route_names
+            .map(|(source, destination)| route(source, destination))
+            .transpose()?;
+        let state = &mut self.mirror.document.state;
+        let old = &state.modulations()[slot];
+        let old = (!old.is_free())
+            .then(|| route(&old.source, &old.destination))
+            .transpose()?;
+        let connected = state
+            .set_slot_route(slot, route_names)
+            .map_err(|_| EditError::BadIndex(slot))?;
+        if let Some((source, destination)) = old {
+            self.staged.push(Staged::Command(Command::DisconnectSlot {
+                slot,
+                source,
+                destination,
+            }));
+        }
+        if let (true, Some((source, destination))) = (connected, route_names) {
+            self.staged.push(Staged::Command(Command::ConnectSlot {
+                slot,
+                source,
+                destination,
+            }));
+        }
+        Ok(connected)
     }
 
     /// The remap curve of modulation slot `slot` (0-based).
@@ -787,6 +840,15 @@ impl EditHandle {
         self.single(|batch| batch.connect_modulation(source, destination, values))
     }
 
+    /// See [`Batch::set_slot_route`].
+    pub fn set_slot_route(
+        &self,
+        slot: usize,
+        route: Option<(&str, &str)>,
+    ) -> Result<bool, EditError> {
+        self.single(|batch| batch.set_slot_route(slot, route))
+    }
+
     /// See [`Batch::disconnect_modulation`].
     pub fn disconnect_modulation(
         &self,
@@ -1080,6 +1142,11 @@ pub trait EditTarget {
     /// `values` are the slot's if the connection creates it.
     fn connect_modulation(&mut self, source: &str, destination: &str, values: Option<&SlotValues>);
     fn disconnect_modulation(&mut self, source: &str, destination: &str);
+    /// Connects bank slot `slot` itself (`connectModulation(connection)`).
+    fn connect_slot(&mut self, slot: usize, source: &str, destination: &str);
+    /// Frees bank slot `slot` itself, which connects `source` to
+    /// `destination` (`disconnectModulation(connection)`).
+    fn disconnect_slot(&mut self, slot: usize, source: &str, destination: &str);
     fn set_lfo_shape(&mut self, lfo: usize, line: &mut LineGenerator);
     fn set_line_mapping(&mut self, slot: usize, line: &mut LineGenerator);
     /// Modulation slot `slot`'s amount, bipolar, stereo and bypass.
@@ -1109,6 +1176,12 @@ impl EditTarget for Synth {
 
     fn disconnect_modulation(&mut self, source: &str, destination: &str) {
         Synth::disconnect_modulation(self, source, destination);
+    }
+    fn connect_slot(&mut self, slot: usize, source: &str, destination: &str) {
+        Synth::connect_bank_slot(self, slot, source, destination);
+    }
+    fn disconnect_slot(&mut self, slot: usize, source: &str, destination: &str) {
+        Synth::disconnect_bank_slot(self, slot, source, destination);
     }
 
     fn set_lfo_shape(&mut self, lfo: usize, line: &mut LineGenerator) {
@@ -1154,6 +1227,8 @@ impl EditTarget for () {
     ) {
     }
     fn disconnect_modulation(&mut self, _source: &str, _destination: &str) {}
+    fn connect_slot(&mut self, _slot: usize, _source: &str, _destination: &str) {}
+    fn disconnect_slot(&mut self, _slot: usize, _source: &str, _destination: &str) {}
     fn set_lfo_shape(&mut self, _lfo: usize, _line: &mut LineGenerator) {}
     fn set_line_mapping(&mut self, _slot: usize, _line: &mut LineGenerator) {}
     fn set_connection_values(&mut self, _slot: usize, _values: &SlotValues) {}
@@ -1300,6 +1375,16 @@ impl EditConsumer {
                 source,
                 destination,
             } => target.disconnect_modulation(source, destination),
+            Command::ConnectSlot {
+                slot,
+                source,
+                destination,
+            } => target.connect_slot(slot, source, destination),
+            Command::DisconnectSlot {
+                slot,
+                source,
+                destination,
+            } => target.disconnect_slot(slot, source, destination),
             Command::Apply { slot, seq } => {
                 let Some(mut pending) = self.take_pending(slot, seq) else {
                     return;

@@ -162,6 +162,9 @@ fn producer(edits: EditHandle, stop: Arc<AtomicBool>, routing: bool) -> usize {
             } else {
                 retry(|| edits.disconnect_modulation(source, destination));
             }
+            // A matrix row rewiring its own slot.
+            let rewire = (count % 3 != 0).then_some(routes[(count + 1) % routes.len()]);
+            retry(|| edits.set_slot_route(40, rewire));
             if count % 25 == 0 {
                 retry(|| {
                     edits.batch(|batch| {
