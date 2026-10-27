@@ -345,8 +345,10 @@ MCP server) extends this entry when it lands.*
     parameter gesture, an edit bus edit, or a whole-state load through the
     host, exactly as the editor makes them. Undo restores the same way.
   - The editor has a chat panel (`sas_gui::chat`). Its toggle is our logo
-    section, the product-name area of D14, with a small "chat" caption.
-    The toggle opens a drawer: the window widens by 360 points at the
+    section, the product-name area of D14, with a small "chat" caption,
+    shown while that section is: not while the wavetable editor replaces
+    the header, nor under the save and delete sections, which cover the
+    whole interface. The toggle opens a drawer: the window widens by 360 points at the
     editor's scale (G7e), and the panel docks there at full height, beside
     upstream's unchanged layout. If the host keeps the window's width, the
     panel overlays the editor's right side instead, below the header and

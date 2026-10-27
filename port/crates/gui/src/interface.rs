@@ -813,6 +813,16 @@ impl Interface {
         }
     }
 
+    /// Whether our logo section shows: the header is drawn (no wavetable
+    /// editor replaces it, `showWavetableEditSection`) and no full-window
+    /// overlay covers it (the save and delete sections, whose clicks outside
+    /// their box close them). The preset browser keeps the header.
+    pub fn logo_shown(&self) -> bool {
+        self.wavetable_editor.is_none()
+            && !self.save_section.is_open()
+            && self.delete_section.is_none()
+    }
+
     /// Opens the save section for the preset next frame, as the header's
     /// save button does (`SynthPresetSelector::savePreset`).
     pub fn request_save_preset(&mut self) {
@@ -1138,6 +1148,7 @@ impl Interface {
             header_bottom: points(layout.header.bounds).max.y,
             scale: layout.size_ratio / pixels_per_point,
             style: ChatStyle::from_scope(&overlay, pixels_per_point),
+            logo_shown: self.logo_shown(),
             mode: match split.drawer {
                 Some(drawer) => ChatMode::Docked(drawer),
                 None => ChatMode::Overlay,
