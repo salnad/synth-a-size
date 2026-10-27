@@ -931,6 +931,24 @@ MCP server) extends this entry when it lands.*
   either. Committing it keeps the saved shape and the sound in agreement.
 - **Approved:** coordinator, 2026-10-27.
 
+### D36. A Line Source's paint stroke commits once, when it ends
+
+- **Differs:** painting (Command held, or the paint mode) on a Line Source
+  keyframe in the wavetable editor's Line Source overlay.
+- **Upstream:** `LineEditor::paintLine` tells the overlay of each painted
+  cell that changes the shape's point count (`pointAdded`, `pointsAdded`,
+  `pointsRemoved`), and the overlay commits each
+  (`notifyChanged(true)`); a cell that keeps the count tells it nothing,
+  and the stroke's release (`mouseUp` without `drawUp`) commits nothing
+  either. A stroke commits once per cell that changed the count, and a
+  stroke that never changes it is left for the next commit.
+- **Port:** each painted cell auditions the playhead's frame, and the
+  stroke commits once, when it ends (`sections/line_source_overlay.rs`).
+- **Why:** a drag is one gesture with one commit at its end (D18), and
+  committing every stroke keeps the saved shape and the sound in
+  agreement, as D35 does for a power reset.
+- **Approved:** coordinator, 2026-10-27.
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change

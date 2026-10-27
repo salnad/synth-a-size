@@ -39,8 +39,10 @@ built on #195's generalised line editor (merged into this branch at
     as the base `mouseUp` calls `drawUp` after a popup press (#195).
   - An added or removed point (a double click, the menu) commits at once.
   - A paint stroke (Command held) auditions as it paints and commits once,
-    when the stroke ends. Upstream commits each painted cell
-    (`pointsAdded` with `notifyChanged(true)`); its release reports nothing.
+    when the stroke ends (D36). Upstream commits each painted cell that
+    changes the point count (`pointsAdded`, `pointsRemoved` with
+    `notifyChanged(true)`) and never one that keeps it; its release reports
+    nothing.
   - The pull power auditions while it drags and commits when the drag ends
     (`sliderValueChanged`, `sliderDragEnded`).
   - A double click's or the menu's power reset changes the shape with no
@@ -55,6 +57,10 @@ built on #195's generalised line editor (merged into this branch at
   horizontal grid (`lineEditorScrolled`): up for a scroll up, down
   otherwise.
 - `frameSelected`: the pull power loads from the selected keyframe.
+- While a press on the editor, a paint stroke or a pull power drag is under
+  way, the section keeps its copy of the creator: another change reaching
+  the model mid-drag (a chat tool's, say) doesn't replace the keyframe the
+  drag is editing, so its commit carries the whole drag.
 - The new controls are local (`local::LINE_SOURCE_CONTROLS`: pull power,
   0 to 5, and grid sizes, 6 and 4 by default, per oscillator).
 - `Format::juce_decimal_places`: a slider with no parameter behind it
@@ -87,8 +93,10 @@ built on #195's generalised line editor (merged into this branch at
   removes it from both, each committing; a paint stroke auditions and
   commits once when it ends, keeping both keyframes' counts in step; the
   pull power auditions and commits once when its drag ends; the wheel steps
-  the horizontal grid; a right-click on a point commits. Nothing reaches
-  the host in any of them.
+  the horizontal grid; a right-click on a point commits; a power drag with
+  another change to the model partway through commits the same bend as
+  without it (with the press covering only paint strokes, half the bend
+  was lost). Nothing reaches the host in any of them.
 - The overlay dispatch test now maps Line Sources, Phase Shifts and Wave
   Windows to their overlays and checks the displays each covers.
 - Unit tests: point changes mirror into another keyframe; the Line Source

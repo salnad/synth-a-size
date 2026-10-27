@@ -1964,3 +1964,39 @@ fn a_right_click_on_a_point_commits() {
     assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
     assert!(log_is_empty(&fixture));
 }
+
+/// A power drag with another change to the model partway through: the
+/// overlay's press holds the editor's copy (no refresh mid-drag), so the
+/// committed bend is the whole drag's, as without the change.
+#[test]
+fn a_refresh_during_a_power_drag_keeps_the_drag() {
+    let committed_power = |refresh: bool| {
+        let fixture = Fixture::new();
+        let mut harness = line_source_selected(&fixture);
+        let from = line_point(&fixture, 0.25, 0.5);
+        harness.event(Event::PointerMoved(from));
+        harness.step();
+        press(&mut harness, from, PointerButton::Primary, true);
+        for (i, dy) in [10.0, 20.0, 30.0, 40.0].into_iter().enumerate() {
+            if refresh && i == 2 {
+                // Another edit reaches the model (a chat tool, say).
+                let creator = fixture.synth.wavetable_creator(0).unwrap();
+                fixture.synth.set_creator(0, creator);
+            }
+            harness.event(Event::PointerMoved(Pos2::new(from.x, from.y - dy)));
+            harness.step();
+        }
+        press(
+            &mut harness,
+            Pos2::new(from.x, from.y - 40.0),
+            PointerButton::Primary,
+            false,
+        );
+        harness.step();
+        assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+        line_keyframe(&fixture, 0).0.power(0)
+    };
+    let without = committed_power(false);
+    assert_ne!(without, 0.0);
+    assert_eq!(committed_power(true), without);
+}

@@ -139,6 +139,8 @@ pub struct LineSourceOverlay {
     /// A paint stroke is under way: its point changes audition, and it
     /// commits when it ends.
     painting: bool,
+    /// A press that began on the editor is still down.
+    editor_pressed: bool,
 }
 
 impl LineSourceOverlay {
@@ -156,12 +158,14 @@ impl LineSourceOverlay {
             pull_power_seen: 0.0,
             pending: false,
             painting: false,
+            editor_pressed: false,
         }
     }
 
-    /// Whether a paint stroke is under way.
+    /// Whether a press on the editor, a paint stroke or a pull power drag
+    /// is under way, whose edits to the keyframe aren't committed yet.
     pub fn pressed(&self) -> bool {
-        self.painting
+        self.editor_pressed || self.painting || self.pending
     }
 
     /// The editor's settings: the grid sizes, no paint button and the base
@@ -262,6 +266,9 @@ impl LineSourceOverlay {
         }
 
         let down = any_button_down(panel);
+        let editor = panel.pixels.rect(edit.waveform.into());
+        let origin = panel.ui.input(|input| input.pointer.press_origin());
+        self.editor_pressed = down && origin.is_some_and(|pos| editor.contains(pos));
         if event.changed && event.painting && down {
             // A paint stroke's points: upstream commits each, the port
             // when the stroke ends.
