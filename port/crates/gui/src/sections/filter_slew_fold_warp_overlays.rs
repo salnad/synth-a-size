@@ -391,6 +391,13 @@ impl SliderModifierOverlays {
         }
     }
 
+    /// Whether a slider's change is waiting for its commit
+    /// (`sliderDragEnded`): the section keeps its copy of the creator until
+    /// then, so a change reaching the model mid-drag doesn't drop the drag's.
+    pub fn pressed(&self) -> bool {
+        self.states.iter().any(|state| state.pending)
+    }
+
     /// `frameSelected`: the controls from keyframe `keyframe` of
     /// `component`, when the selection changed since they last were set
     /// (`dontSendNotification`: nothing is edited).

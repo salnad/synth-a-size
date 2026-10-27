@@ -2428,3 +2428,47 @@ fn the_fold_and_warp_sliders_commit_once() {
         assert!(log_is_empty(&fixture));
     }
 }
+
+/// A cutoff drag with another change to the model partway through: the
+/// overlay counts as pressed until the drag's commit, so the section keeps
+/// its copy and the committed cutoff is the whole drag's, as without the
+/// change.
+#[test]
+fn a_refresh_during_a_cutoff_drag_keeps_the_drag() {
+    let committed_cutoff = |refresh: bool| {
+        let fixture = Fixture::new();
+        let mut harness = slider_modifier_selected(&fixture, 1);
+        let from = centre(slider_modifier_layout(&fixture, SliderModifier::Filter).sliders[1]);
+        harness.event(Event::PointerMoved(from));
+        harness.step();
+        press(&mut harness, from, PointerButton::Primary, true);
+        for dy in [10.0, 20.0, 30.0] {
+            harness.event(Event::PointerMoved(Pos2::new(from.x, from.y - dy)));
+            harness.step();
+        }
+        harness.step();
+        if refresh {
+            // Another edit reaches the model (a chat tool, say), after the
+            // drag's last move.
+            let creator = fixture.synth.wavetable_creator(0).unwrap();
+            fixture.synth.set_creator(0, creator);
+            harness.step();
+        }
+        press(
+            &mut harness,
+            Pos2::new(from.x, from.y - 30.0),
+            PointerButton::Primary,
+            false,
+        );
+        harness.step();
+        harness.step();
+        assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+        let WavetableComponent::FrequencyFilter(filter) = modifier_component(&fixture, 1) else {
+            panic!("row 1 is the Frequency Filter");
+        };
+        filter.keyframes.keyframes[0].data.cutoff
+    };
+    let without = committed_cutoff(false);
+    assert_ne!(without, 4.0);
+    assert_eq!(committed_cutoff(true), without);
+}

@@ -704,7 +704,8 @@ impl WavetableEditSection {
             || self.phase.pressed()
             || self.window.pressed()
             || self.line_source.pressed()
-            || self.file_source.pressed();
+            || self.file_source.pressed()
+            || self.slider_modifiers.pressed();
         if !loaded && (self.organizer.is_some() || overlay_pressed) {
             // A keyframe drag, or drawing on an overlay, edits the copy
             // until it's committed.

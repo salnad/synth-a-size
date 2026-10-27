@@ -38,7 +38,9 @@ controls are sliders and toggles
   keyframe and auditions; the commit comes once no button is held. The
   filter style (Low Pass, Band Pass, High Pass, Comb) and the toggles
   (NORMALIZE, X and Y Asymmetric) write the modifier and commit at once.
-  Nothing is written to the host.
+  Nothing is written to the host. From a slider's first change until its
+  commit the overlays count as pressed, so the section keeps its copy of
+  the creator through a change that reaches the model mid-drag.
 - **D34**: the style selector shows the modifier's style once a keyframe
   is selected, where upstream's keeps the text it was last drawn with
   (approved by the coordinator, 2026-10-27).
@@ -67,6 +69,8 @@ controls are sliders and toggles
   cutoff auditions while dragged and commits once; the filter style
   commits without an audition; NORMALIZE and X Asymmetric set their
   modifiers and commit once; the left slew slider is the up limit; the
-  fold and warp sliders commit once; nothing reaches the host.
+  fold and warp sliders commit once; nothing reaches the host;
+  `a_refresh_during_a_cutoff_drag_keeps_the_drag`: a model change during
+  a cutoff drag leaves the committed cutoff the drag's.
 
 No audio change.
