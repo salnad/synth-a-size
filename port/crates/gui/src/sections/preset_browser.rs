@@ -400,6 +400,13 @@ struct Rename {
     focused: bool,
 }
 
+/// `SynthPresetSelector::newPresetSelected` and `importPreset`: a preset
+/// that didn't load says why in a native message box.
+pub fn alert_load_error(ctx: &egui::Context, error: &str) {
+    let message = format!("There was an error open the preset. {error}");
+    crate::controls::file_dialog::alert(ctx, "Error opening preset", &message);
+}
+
 /// The row menu's choices (`PresetList::MenuOptions`).
 const OPEN_FILE_LOCATION: i32 = 1;
 const RENAME: i32 = 2;
@@ -665,9 +672,11 @@ impl PresetBrowser {
 
     /// `SynthPresetSelector::newPresetSelected`: a preset picked in the list
     /// (or shifted to) loads, and the arrows step through the list again.
-    fn new_preset_selected(&mut self, model: &dyn EditorModel, path: PathBuf) {
+    fn new_preset_selected(&mut self, ctx: &egui::Context, model: &dyn EditorModel, path: PathBuf) {
         self.external = None;
-        let _ = model.load_preset_file(&path);
+        if let Err(error) = model.load_preset_file(&path) {
+            alert_load_error(ctx, &error);
+        }
         self.selected = Some(path);
     }
 
@@ -675,7 +684,7 @@ impl PresetBrowser {
     /// exists, the preset `by` places from it among those beside it;
     /// otherwise the list's selection moves `by` rows, wrapping round
     /// (`PresetList::shiftSelectedPreset`).
-    pub fn jump_to_preset(&mut self, model: &dyn EditorModel, by: i32) {
+    pub fn jump_to_preset(&mut self, ctx: &egui::Context, model: &dyn EditorModel, by: i32) {
         if let Some(external) = self.external.clone() {
             if external.parent().is_some_and(Path::is_dir) {
                 if let Some(next) = user_folders::step(&external, by) {
@@ -693,7 +702,7 @@ impl PresetBrowser {
         let selected = self.selected_index().map_or(-1, |index| index as i32);
         let index = (selected + count + by).rem_euclid(count) as usize;
         let path = self.presets[self.filtered[index]].path.clone();
-        self.new_preset_selected(model, path);
+        self.new_preset_selected(ctx, model, path);
     }
 
     /// `visibilityChanged`: the search box empties (and the list refilters)
@@ -772,10 +781,10 @@ impl PresetBrowser {
             )
         });
         if previous {
-            self.jump_to_preset(model, -1);
+            self.jump_to_preset(&panel.ui.ctx().clone(), model, -1);
         }
         if next {
-            self.jump_to_preset(model, 1);
+            self.jump_to_preset(&panel.ui.ctx().clone(), model, 1);
         }
         escape
     }
@@ -898,7 +907,15 @@ impl PresetBrowser {
         );
         if response.clicked() {
             if let Some((x, y)) = response.interact_pointer_pos().map(to_pixels) {
-                self.left_click(model, list, title_width, x - list.x as f32, y, row_at(y));
+                self.left_click(
+                    &panel.ui.ctx().clone(),
+                    model,
+                    list,
+                    title_width,
+                    x - list.x as f32,
+                    y,
+                    row_at(y),
+                );
             }
         }
         // menuClick: Open File Location, and Rename and Delete for a file
@@ -933,8 +950,10 @@ impl PresetBrowser {
 
     /// `PresetList::leftClick`, at `x` from the list's left and `y` in
     /// interface pixels.
+    #[allow(clippy::too_many_arguments)]
     fn left_click(
         &mut self,
+        ctx: &egui::Context,
         model: &dyn EditorModel,
         list: Rect,
         title_width: i32,
@@ -977,7 +996,7 @@ impl PresetBrowser {
                 self.favourites.remove(&path);
             }
         } else {
-            self.new_preset_selected(model, path);
+            self.new_preset_selected(ctx, model, path);
         }
     }
 

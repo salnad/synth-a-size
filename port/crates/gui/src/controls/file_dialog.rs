@@ -100,6 +100,11 @@ struct Dialogs {
     parent: Option<PlatformHandle>,
     pending: Vec<(egui::Id, Pending)>,
     answered: Vec<(egui::Id, Answer)>,
+    /// Alerts asked for and not yet shown (title, message).
+    alerts: Vec<(String, String)>,
+    /// The ids alerts were shown under, whose answers nobody takes.
+    alert_ids: Vec<egui::Id>,
+    shown_alerts: u64,
 }
 
 #[derive(Clone, Default)]
@@ -117,9 +122,16 @@ fn with_dialogs<R>(ctx: &egui::Context, f: impl FnOnce(&mut Dialogs) -> R) -> R 
     f(&mut dialogs)
 }
 
-/// The window dialogs attach to: the editor's own.
+/// The window dialogs attach to: the editor's own. When it closes (`None`),
+/// alerts not yet shown are dropped with it, so none is made later for a
+/// window that is gone.
 pub fn set_parent(ctx: &egui::Context, parent: Option<PlatformHandle>) {
-    with_dialogs(ctx, |dialogs| dialogs.parent = parent);
+    with_dialogs(ctx, |dialogs| {
+        if parent.is_none() {
+            dialogs.alerts.clear();
+        }
+        dialogs.parent = parent;
+    });
 }
 
 /// Whether a dialog started under `id` is still open.
@@ -149,27 +161,80 @@ pub fn open(ctx: &egui::Context, id: egui::Id, request: &FileRequest) {
     if let Some(parent) = &parent {
         dialog = dialog.set_parent(parent);
     }
+    // The dialog is made here, while the parent window is known to exist:
+    // rfd keeps the window's handle once asked, and a dialog made at a later
+    // poll could reach a window the host has closed since.
     let future: Pending = match request.kind {
-        DialogKind::Open => Box::pin(async move {
-            dialog
-                .pick_file()
-                .await
-                .map(|file| file.path().to_path_buf())
-        }),
-        DialogKind::Folder => Box::pin(async move {
-            dialog
-                .pick_folder()
-                .await
-                .map(|folder| folder.path().to_path_buf())
-        }),
-        DialogKind::Save => Box::pin(async move {
-            dialog
-                .save_file()
-                .await
-                .map(|file| file.path().to_path_buf())
-        }),
+        DialogKind::Open => {
+            let pick = dialog.pick_file();
+            Box::pin(async move { pick.await.map(|file| file.path().to_path_buf()) })
+        }
+        DialogKind::Folder => {
+            let pick = dialog.pick_folder();
+            Box::pin(async move { pick.await.map(|folder| folder.path().to_path_buf()) })
+        }
+        DialogKind::Save => {
+            let save = dialog.save_file();
+            Box::pin(async move { save.await.map(|file| file.path().to_path_buf()) })
+        }
     };
     start(ctx, id, future);
+}
+
+/// `AlertWindow::showNativeDialogBox(title, message, false)`: asks for a
+/// native message box with an OK button, which the editor shows after the
+/// frame ([`show_alerts`]).
+pub fn alert(ctx: &egui::Context, title: &str, message: &str) {
+    with_dialogs(ctx, |dialogs| {
+        dialogs
+            .alerts
+            .push((title.to_string(), message.to_string()))
+    });
+    ctx.request_repaint();
+}
+
+/// The alerts asked for and not yet shown (title, message).
+pub fn queued_alerts(ctx: &egui::Context) -> Vec<(String, String)> {
+    with_dialogs(ctx, |dialogs| dialogs.alerts.clone())
+}
+
+/// Shows the alerts asked for, each as a native message box attached to the
+/// editor's window, without waiting for them.
+pub fn show_alerts(ctx: &egui::Context) {
+    let (alerts, parent) = with_dialogs(ctx, |dialogs| {
+        let done: Vec<egui::Id> = dialogs.alert_ids.clone();
+        dialogs.answered.retain(|(id, _)| !done.contains(id));
+        dialogs
+            .alert_ids
+            .retain(|id| dialogs.pending.iter().any(|(open, _)| open == id));
+        (std::mem::take(&mut dialogs.alerts), dialogs.parent.clone())
+    });
+    for (title, message) in alerts {
+        let mut dialog = rfd::AsyncMessageDialog::new()
+            .set_level(rfd::MessageLevel::Info)
+            .set_title(&title)
+            .set_description(&message)
+            .set_buttons(rfd::MessageButtons::Ok);
+        if let Some(parent) = &parent {
+            dialog = dialog.set_parent(parent);
+        }
+        let id = with_dialogs(ctx, |dialogs| {
+            dialogs.shown_alerts += 1;
+            let id = egui::Id::unique("alert").with(dialogs.shown_alerts);
+            dialogs.alert_ids.push(id);
+            id
+        });
+        // Shown now, while the parent window is known to exist (see open).
+        let shown = dialog.show();
+        start(
+            ctx,
+            id,
+            Box::pin(async move {
+                shown.await;
+                None
+            }),
+        );
+    }
 }
 
 /// Waits on `future` as the dialog under `id`.
@@ -260,5 +325,23 @@ mod tests {
             Some(Some(PathBuf::from("/tmp/a.scl")))
         );
         assert_eq!(take_result(&ctx, id), None);
+    }
+
+    /// Closing the editor drops alerts not yet shown, so no dialog is made
+    /// for its window afterwards: a later `show_alerts` finds nothing to show
+    /// and starts nothing.
+    #[test]
+    fn closing_the_editor_drops_queued_alerts() {
+        let ctx = egui::Context::default();
+        alert(
+            &ctx,
+            "Error opening preset",
+            "There was an error open the preset.",
+        );
+        assert_eq!(queued_alerts(&ctx).len(), 1);
+        set_parent(&ctx, None);
+        assert!(queued_alerts(&ctx).is_empty());
+        show_alerts(&ctx);
+        assert!(with_dialogs(&ctx, |dialogs| dialogs.pending.is_empty()));
     }
 }

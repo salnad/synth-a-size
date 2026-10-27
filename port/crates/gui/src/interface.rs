@@ -223,7 +223,8 @@ pub trait EditorModel: Send + Sync + 'static {
     }
 
     /// `SynthBase::loadFromFile`: plays the preset at `path`. The error is
-    /// for the user.
+    /// upstream's reason for the user ("Preset file is corrupted.", "Preset
+    /// was created with a newer version.", or empty for a missing file).
     fn load_preset_file(&self, path: &Path) -> Result<(), String> {
         let _ = path;
         Err("there is no synth to load it into".to_string())
