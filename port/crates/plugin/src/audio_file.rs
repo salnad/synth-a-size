@@ -133,21 +133,26 @@ pub fn author_from_wavetable_string(data: &str) -> String {
 /// WAV with the port's reader, the other formats with symphonia.
 /// `None` when it can't be read.
 pub fn read_audio(bytes: &[u8], extension: &str) -> Option<Audio> {
-    read_audio_channels(bytes, extension, 1)?.into_first()
+    // The wavetable import takes the whole file, as upstream's
+    // `loadAudioFile` reads `lengthInSamples`.
+    read_audio_channels(bytes, extension, 1, usize::MAX)?.into_first()
 }
 
 /// [`read_audio`]'s reading of up to `max_channels` channels, the first
-/// ones in the file (a sample's left and right).
+/// ones in the file (a sample's left and right), and of at most
+/// `max_frames` frames: reading stops there, as JUCE's `read` of
+/// `min(length, kMaxFileSamples)` does.
 pub fn read_audio_channels(
     bytes: &[u8],
     extension: &str,
     max_channels: usize,
+    max_frames: usize,
 ) -> Option<AudioChannels> {
     let extension = extension.to_ascii_lowercase();
     match extension.as_str() {
-        "wav" | "bwf" => read_wav_channels(bytes, max_channels),
+        "wav" | "bwf" => read_wav_channels(bytes, max_channels, max_frames),
         _ if AUDIO_EXTENSIONS.contains(&extension.as_str()) => {
-            decode(bytes.to_vec(), &extension, max_channels)
+            decode(bytes.to_vec(), &extension, max_channels, max_frames)
         }
         _ => None,
     }
@@ -157,7 +162,12 @@ pub fn read_audio_channels(
 /// the contents, and keeps the first `max_channels` channels. Integer
 /// samples convert as JUCE's readers do (exact powers of two); see D23 for
 /// the lossy codecs.
-fn decode(bytes: Vec<u8>, extension: &str, max_channels: usize) -> Option<AudioChannels> {
+fn decode(
+    bytes: Vec<u8>,
+    extension: &str,
+    max_channels: usize,
+    max_frames: usize,
+) -> Option<AudioChannels> {
     use symphonia::core::codecs::audio::AudioDecoderOptions;
     use symphonia::core::errors::Error;
     use symphonia::core::formats::probe::Hint;
@@ -186,7 +196,8 @@ fn decode(bytes: Vec<u8>, extension: &str, max_channels: usize) -> Option<AudioC
     let mut kept: Vec<Vec<f32>> = Vec::new();
     let mut sample_rate = parameters.sample_rate;
     let mut interleaved: Vec<f32> = Vec::new();
-    loop {
+    let mut frames = 0usize;
+    while frames < max_frames {
         let packet = match format.next_packet() {
             Ok(Some(packet)) => packet,
             Ok(None) => break,
@@ -202,11 +213,19 @@ fn decode(bytes: Vec<u8>, extension: &str, max_channels: usize) -> Option<AudioC
                 interleaved.clear();
                 decoded.copy_to_vec_interleaved(&mut interleaved);
                 kept.resize_with(channels.min(max_channels).max(kept.len()), Vec::new);
+                let taken = (interleaved.len() / channels).min(max_frames - frames);
                 for (channel, samples) in kept.iter_mut().enumerate().take(channels) {
                     // No input may abort the process: refuse what doesn't fit.
-                    samples.try_reserve(interleaved.len() / channels).ok()?;
-                    samples.extend(interleaved.iter().skip(channel).step_by(channels));
+                    samples.try_reserve(taken).ok()?;
+                    samples.extend(
+                        interleaved
+                            .iter()
+                            .skip(channel)
+                            .step_by(channels)
+                            .take(taken),
+                    );
                 }
+                frames += taken;
             }
             // A damaged packet is skipped, as symphonia's players do.
             Err(Error::DecodeError(_)) => continue,
@@ -266,11 +285,16 @@ fn chunk_header_at(bytes: &[u8], position: usize) -> bool {
 /// `1 / (1 + max)` (8-bit unsigned centred on 128), floats as they are.
 /// `None` when it isn't a WAV file this reader handles.
 pub fn read_wav(bytes: &[u8]) -> Option<Audio> {
-    read_wav_channels(bytes, 1)?.into_first()
+    read_wav_channels(bytes, 1, usize::MAX)?.into_first()
 }
 
-/// [`read_wav`]'s reading of up to `max_channels` channels.
-fn read_wav_channels(bytes: &[u8], max_channels: usize) -> Option<AudioChannels> {
+/// [`read_wav`]'s reading of up to `max_channels` channels and
+/// `max_frames` frames.
+fn read_wav_channels(
+    bytes: &[u8],
+    max_channels: usize,
+    max_frames: usize,
+) -> Option<AudioChannels> {
     if bytes.get(0..4) != Some(b"RIFF") || bytes.get(8..12) != Some(b"WAVE") {
         return None;
     }
@@ -338,6 +362,7 @@ fn read_wav_channels(bytes: &[u8], max_channels: usize) -> Option<AudioChannels>
             present_frames
         }
     };
+    let frames = frames.min(max_frames);
     let zeros = [0u8; 8];
     let sample = |frame: usize, channel: usize| -> &[u8] {
         let at = frame * frame_size + channel * bytes_per_sample;
@@ -428,15 +453,37 @@ mod tests {
             }
         }
         let file = riff(&[(b"fmt ", fmt(FORMAT_PCM, 3, 44_100, 16)), (b"data", data)]);
-        let audio = read_audio_channels(&file, "wav", 2).unwrap();
+        let audio = read_audio_channels(&file, "wav", 2, usize::MAX).unwrap();
         assert_eq!(audio.channels, [vec![0.5, 0.0], vec![-0.5, 0.25]]);
         let mono = riff(&[
             (b"fmt ", fmt(FORMAT_PCM, 1, 44_100, 16)),
             (b"data", 16_384i16.to_le_bytes().to_vec()),
         ]);
         assert_eq!(
-            read_audio_channels(&mono, "WAV", 2).unwrap().channels,
+            read_audio_channels(&mono, "WAV", 2, usize::MAX)
+                .unwrap()
+                .channels,
             [vec![0.5]]
+        );
+    }
+
+    /// Reading stops at `max_frames`, before more is held.
+    #[test]
+    fn a_wav_read_stops_at_max_frames() {
+        let mut data = Vec::new();
+        for frame in 0..5i16 {
+            data.extend_from_slice(&(frame * 4_096).to_le_bytes());
+            data.extend_from_slice(&(-frame * 4_096).to_le_bytes());
+        }
+        let file = riff(&[(b"fmt ", fmt(FORMAT_PCM, 2, 44_100, 16)), (b"data", data)]);
+        let audio = read_audio_channels(&file, "wav", 2, 3).unwrap();
+        assert_eq!(
+            audio.channels,
+            [vec![0.0, 0.125, 0.25], vec![0.0, -0.125, -0.25]]
+        );
+        assert_eq!(
+            read_audio_channels(&file, "wav", 2, 9).unwrap().channels[0].len(),
+            5
         );
     }
 
@@ -453,14 +500,17 @@ mod tests {
         // Declare two frames where one is present.
         let at = file.len() - 4 - 4;
         file[at..at + 4].copy_from_slice(&8u32.to_le_bytes());
-        let audio = read_audio_channels(&file, "wav", 2).unwrap();
+        let audio = read_audio_channels(&file, "wav", 2, usize::MAX).unwrap();
         assert_eq!(audio.channels, [vec![0.5, 0.0], vec![-0.5, 0.0]]);
         for bits in [0u16, 72] {
             let file = riff(&[
                 (b"fmt ", fmt(FORMAT_PCM, 2, 44_100, bits)),
                 (b"data", vec![0; 32]),
             ]);
-            assert!(read_audio_channels(&file, "wav", 2).is_none(), "{bits}");
+            assert!(
+                read_audio_channels(&file, "wav", 2, usize::MAX).is_none(),
+                "{bits}"
+            );
         }
     }
 

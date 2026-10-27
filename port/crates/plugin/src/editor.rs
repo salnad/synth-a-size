@@ -360,18 +360,17 @@ impl EditorModel for PluginModel {
             .extension()
             .map(|extension| extension.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let Some(audio) = audio_file::read_audio_channels(&bytes, &extension, 2) else {
+        let Some(audio) = audio_file::read_audio_channels(&bytes, &extension, 2, MAX_FILE_SAMPLES)
+        else {
             return false;
         };
         let mut channels = audio.channels.into_iter();
         let Some(mut left) = channels.next() else {
             return false;
         };
-        let mut right = channels.next();
-        left.truncate(MAX_FILE_SAMPLES);
-        match &mut right {
-            Some(right) => right.truncate(MAX_FILE_SAMPLES),
-            None => left.truncate(MAX_MONO_SAMPLES),
+        let right = channels.next();
+        if right.is_none() {
+            left.truncate(MAX_MONO_SAMPLES);
         }
         let name = path
             .file_stem()

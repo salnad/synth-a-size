@@ -161,7 +161,7 @@ impl EditorModel for Synth {
     fn load_sample_file(&self, path: &Path) -> bool {
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
         self.calls.lock().unwrap().push(format!("sample {name}"));
-        true
+        name != "Broken.wav"
     }
 
     fn favourites(&self) -> Vec<PathBuf> {
@@ -1420,4 +1420,23 @@ fn the_sample_name_opens_the_browser_and_the_arrows_step() {
     assert_eq!(calls(&fixture), ["sample Bank Loop.wav"]);
     click(&mut harness, centre(section.preset_selector.previous));
     assert_eq!(calls(&fixture), ["sample Pad.flac"]);
+}
+
+/// A sample that doesn't read becomes the current file all the same, as
+/// `SampleSection::loadFile` sets the last browsed file before it reads, so
+/// the arrows step on past it.
+#[test]
+fn the_sample_arrows_step_past_a_file_that_doesnt_read() {
+    let fixture = Fixture::new();
+    let data = sample_data(&fixture, "samples-broken");
+    std::fs::write(data.0.join("Samples/Broken.wav"), "").unwrap();
+    let mut harness = fixture.harness();
+    let (section, _) = sample_browser(&fixture);
+    let next = centre(section.preset_selector.next);
+    click(&mut harness, next);
+    assert_eq!(calls(&fixture), ["sample Bank Loop.wav"]);
+    click(&mut harness, next);
+    assert_eq!(calls(&fixture), ["sample Broken.wav"]);
+    click(&mut harness, next);
+    assert_eq!(calls(&fixture), ["sample Hit.wav"]);
 }
