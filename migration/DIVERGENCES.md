@@ -1038,8 +1038,10 @@ has its own decision record.
   fast-math build folds `FileSource`'s seed (A13), so macOS official and
   no-fast-math differ there by construction, and JSON integers are exact.
   - The step reports the difference with both values and does not gate
-    it. It matches only an integer change at that exact path. The rest of
-    the case's outputs, and every other case, stay fully under the check.
+    it. It matches only that exact path, and only the pinned values
+    (official 209652480, no-fast-math 209652560); any change to either
+    value fails. The rest of the case's outputs, and every other case,
+    stay fully under the check.
   - The port is still compared exactly against the official seed.
   - See `migration/corpus/macos_justify_exceptions.json`,
     `run_corpus.py compare --justify-exceptions` and

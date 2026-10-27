@@ -574,7 +574,9 @@ class CommittedJustifyExceptions(unittest.TestCase):
         self.assertEqual(list(exceptions), [("wavetable/edit/add_sources", "saved.json")])
         entries = exceptions[("wavetable/edit/add_sources", "saved.json")]
         self.assertEqual(list(entries), ["$.groups[2].components[0].random_seed"])
-        self.assertEqual(entries["$.groups[2].components[0].random_seed"]["approved"], "Salil, 2026-10-27")
+        entry = entries["$.groups[2].components[0].random_seed"]
+        self.assertEqual((entry["official"], entry["nofastmath"]), (209652480, 209652560))
+        self.assertEqual(entry["approved"], "Salil, 2026-10-27")
 
 
 class Selection(unittest.TestCase):
@@ -1060,8 +1062,16 @@ class ScratchRepo(unittest.TestCase):
         exceptions = os.path.join(self.tmp.name, "exceptions.json")
         rc.write_json(exceptions, {"description": "test", "exceptions": [{
             "case": "filters/test/a", "artifact": "saved.json", "path": self.SEED,
-            "cites": "A13", "approved": "Salil, 2026-10-27"}]})
+            "official": 209652480, "nofastmath": 209652560, "cites": "A13", "approved": "Salil, 2026-10-27"}]})
         return exceptions
+
+    def fake_diff(self):
+        """These cases only compare saved.json; CI's Repo checks job has no audio-diff binary."""
+        path = os.path.join(self.tmp.name, "fake-audio-diff")
+        with open(path, "w") as handle:
+            handle.write("#!/bin/sh\nexit 2\n")
+        os.chmod(path, 0o755)
+        return path
 
     def seed_tree(self, name, saved, identity=None):
         tree = os.path.join(self.tmp.name, name)
@@ -1081,8 +1091,8 @@ class ScratchRepo(unittest.TestCase):
         return {c: document(seed if c == "a" or seed_b is None else seed_b) for c in cases}
 
     def justify(self, official, nofastmath, exceptions, *extra):
-        return self.run_main("compare", official, nofastmath, "--only", "filters/test",
-                             "--justify-nofastmath", "--justify-exceptions", exceptions, *extra)
+        return self.run_main("compare", official, nofastmath, "--only", "filters/test", "--audio-diff",
+                             self.fake_diff(), "--justify-nofastmath", "--justify-exceptions", exceptions, *extra)
 
     def test_justify_exception_reports_the_seed_and_does_not_gate_it(self):
         exceptions = self.write_seed_case()
@@ -1094,7 +1104,8 @@ class ScratchRepo(unittest.TestCase):
         self.assertIn("%s: official 209652480, no-fast-math 209652560 (excepted, not gated: A13; approved "
                       "Salil, 2026-10-27)" % self.SEED, output)
         # Without the list, the same trees fail: the exception is the only reason it passes.
-        code, output = self.run_main("compare", official, proxy, "--only", "filters/test", "--justify-nofastmath")
+        code, output = self.run_main("compare", official, proxy, "--only", "filters/test", "--audio-diff",
+                                     self.fake_diff(), "--justify-nofastmath")
         self.assertEqual(code, 1, output)
         self.assertIn("FAIL  filters/test/a:artifact/saved.json (json bound)", output)
 
@@ -1134,6 +1145,19 @@ class ScratchRepo(unittest.TestCase):
         self.assertEqual(code, 1, output)
         self.assertIn("missing in the port", output)
 
+    def test_justify_exception_holds_only_for_the_pinned_values(self):
+        exceptions = self.write_seed_case()
+        for name, official_seed, proxy_seed in (("official-moved", 209652496, 209652560),
+                                                ("nofastmath-moved", 209652480, 209652576),
+                                                ("swapped", 209652560, 209652480)):
+            official = self.seed_tree("ref-" + name, self.saved(official_seed, seed_b=209652480))
+            proxy = self.seed_tree("proxy-" + name, self.saved(proxy_seed, seed_b=209652480))
+            code, output = self.justify(official, proxy, exceptions)
+            self.assertEqual(code, 1, output)
+            self.assertIn("FAIL  filters/test/a:artifact/saved.json (json bound)", output)
+            self.assertIn("%s: reference %d, port %d (not the excepted official 209652480, no-fast-math "
+                          "209652560)" % (self.SEED, official_seed, proxy_seed), output)
+
     def test_justify_exception_is_macos_justification_only(self):
         exceptions = self.write_seed_case()
         x86 = self.seed_tree("ref-x86", self.saved(209652480), IDENTITY)
@@ -1142,18 +1166,20 @@ class ScratchRepo(unittest.TestCase):
         self.assertEqual(code, 2, output)
         self.assertIn("for the macOS justification step only", output)
         official = self.seed_tree("ref", self.saved(209652480))
-        code, output = self.run_main("compare", official, proxy, "--only", "filters/test",
-                                     "--justify-exceptions", exceptions)
+        code, output = self.run_main("compare", official, proxy, "--only", "filters/test", "--audio-diff",
+                                     self.fake_diff(), "--justify-exceptions", exceptions)
         self.assertEqual(code, 2, output)
         self.assertIn("only applies to --justify-nofastmath", output)
 
     def test_justify_exception_list_is_strict(self):
         self.write_seed_case()
         modules = rc.load_modules()
-        entry = {"case": "filters/test/a", "artifact": "saved.json", "path": self.SEED, "cites": "A13",
-                 "approved": "Salil, 2026-10-27"}
+        entry = {"case": "filters/test/a", "artifact": "saved.json", "path": self.SEED, "official": 209652480,
+                 "nofastmath": 209652560, "cites": "A13", "approved": "Salil, 2026-10-27"}
         bad = [dict(entry, case="filters/test/nope"), dict(entry, artifact="other.json"),
-               dict(entry, path="groups[2]"), dict(entry, cites=""), {k: v for k, v in entry.items() if k != "cites"}]
+               dict(entry, path="groups[2]"), dict(entry, cites=""), {k: v for k, v in entry.items() if k != "cites"},
+               {k: v for k, v in entry.items() if k != "nofastmath"}, dict(entry, official="209652480"),
+               dict(entry, official=True), dict(entry, nofastmath=209652480.0), dict(entry, nofastmath=209652480)]
         for index, broken in enumerate(bad):
             path = os.path.join(self.tmp.name, "bad%d.json" % index)
             rc.write_json(path, {"description": "x", "exceptions": [broken]})

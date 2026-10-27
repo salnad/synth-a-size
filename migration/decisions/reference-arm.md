@@ -225,8 +225,9 @@ achievable on arm64.
    justification step ("proxy must pass") therefore fails on such cases
    (`wavetable/edit/add_sources:artifact/saved.json`) whatever the port
    does. The owner approved one exception for that step (Salil,
-   2026-10-27): that case's `$.groups[2].components[0].random_seed` is
-   reported with both values and not gated
+   2026-10-27): that case's `$.groups[2].components[0].random_seed`,
+   only as official 209652480 vs no-fast-math 209652560, is reported with
+   both values and not gated
    (`migration/corpus/macos_justify_exceptions.json`; DIVERGENCES.md,
    "Verification exceptions"). It is scoped to this seed only and sets no
    precedent for A11 or anything else.

@@ -933,6 +933,7 @@ def compare_module_case(args, case, ref_dir, test_dir, reports, bit_exact, excep
 
 
 JUSTIFY_EXCEPTION_KEYS = ("case", "artifact", "path", "cites", "approved")
+JUSTIFY_EXCEPTION_VALUES = ("official", "nofastmath")
 EXCEPTED_DIFFERENCE = re.compile(r"^(.*): reference (-?\d+), port (-?\d+)$")
 
 
@@ -940,8 +941,9 @@ def load_justify_exceptions(path, modules):
     """The macOS no-fast-math justification step's exception list
     (migration/corpus/macos_justify_exceptions.json, owner-approved; see
     DIVERGENCES.md, "Verification exceptions"), as {(case id, artifact):
-    {json path: entry}}. Each entry excepts one integer value difference at
-    one exact JSON path of one declared json artifact of one regular case."""
+    {json path: entry}}. Each entry excepts one integer difference at one
+    exact JSON path of one declared json artifact of one regular case, and
+    only between its two pinned values (official, nofastmath)."""
     data = read_json_strict(path)
     if not isinstance(data, dict) or set(data) != {"description", "exceptions"} \
             or not isinstance(data["exceptions"], list):
@@ -950,9 +952,13 @@ def load_justify_exceptions(path, modules):
     result = {}
     for index, entry in enumerate(data["exceptions"]):
         where = "%s: exceptions[%d]" % (path, index)
-        if not isinstance(entry, dict) or set(entry) != set(JUSTIFY_EXCEPTION_KEYS) \
-                or not all(isinstance(entry[k], str) and entry[k] for k in JUSTIFY_EXCEPTION_KEYS):
-            raise CaseError("%s: needs exactly the non-empty strings %s" % (where, ", ".join(JUSTIFY_EXCEPTION_KEYS)))
+        if not isinstance(entry, dict) or set(entry) != set(JUSTIFY_EXCEPTION_KEYS + JUSTIFY_EXCEPTION_VALUES) \
+                or not all(isinstance(entry[k], str) and entry[k] for k in JUSTIFY_EXCEPTION_KEYS) \
+                or not all(type(entry[k]) is int for k in JUSTIFY_EXCEPTION_VALUES):
+            raise CaseError("%s: needs exactly the non-empty strings %s and the integers %s"
+                            % (where, ", ".join(JUSTIFY_EXCEPTION_KEYS), ", ".join(JUSTIFY_EXCEPTION_VALUES)))
+        if entry["official"] == entry["nofastmath"]:
+            raise CaseError("%s: official and nofastmath must differ" % where)
         case = by_id.get(entry["case"])
         if case is None:
             raise CaseError("%s: %s is not a loaded module case" % (where, entry["case"]))
@@ -971,13 +977,19 @@ def load_justify_exceptions(path, modules):
 
 def split_excepted(problems, excepted_paths):
     """(remaining problems, [(entry, official, nofastmath)]): a problem is
-    excepted only if it is an integer value difference at exactly a listed
-    path. A missing key, a type change or any other path stays a problem."""
+    excepted only if it is an integer difference at exactly a listed path,
+    between exactly that entry's pinned official and nofastmath values. A
+    missing key, a type change, any other value or any other path stays a
+    problem."""
     remaining, excepted = [], []
     for problem in problems:
         match = EXCEPTED_DIFFERENCE.match(problem)
-        if match and match.group(1) in excepted_paths:
-            excepted.append((excepted_paths[match.group(1)], match.group(2), match.group(3)))
+        entry = excepted_paths.get(match.group(1)) if match else None
+        if entry and (int(match.group(2)), int(match.group(3))) == (entry["official"], entry["nofastmath"]):
+            excepted.append((entry, match.group(2), match.group(3)))
+        elif entry:
+            remaining.append("%s (not the excepted official %d, no-fast-math %d)"
+                             % (problem, entry["official"], entry["nofastmath"]))
         else:
             remaining.append(problem)
     return remaining, excepted

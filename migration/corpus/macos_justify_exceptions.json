@@ -1,10 +1,12 @@
 {
-  "description": "Exceptions to the macOS no-fast-math justification step only (justify_nofastmath_summary.sh: compare <official> <nofastmath> --justify-nofastmath on the macOS trees). Each entry is one integer value difference at one exact JSON path of one case's json artifact, caused by a documented fast-math-only upstream difference. It is reported with both values and not gated. The port's own parity against the official reference is unaffected. Owner-approved; see migration/DIVERGENCES.md, \"Verification exceptions\".",
+  "description": "Exceptions to the macOS no-fast-math justification step only (justify_nofastmath_summary.sh: compare <official> <nofastmath> --justify-nofastmath on the macOS trees). Each entry is one integer difference at one exact JSON path of one case's json artifact, between exactly its pinned official and nofastmath values, caused by a documented fast-math-only upstream difference. It is reported with both values and not gated. The port's own parity against the official reference is unaffected. Owner-approved; see migration/DIVERGENCES.md, \"Verification exceptions\".",
   "exceptions": [
     {
       "case": "wavetable/edit/add_sources",
       "artifact": "saved.json",
       "path": "$.groups[2].components[0].random_seed",
+      "official": 209652480,
+      "nofastmath": 209652560,
       "cites": "A13 (decisions/reference-arm.md): Apple clang's fast-math fold of FileSource's seed",
       "approved": "Salil, 2026-10-27"
     }
