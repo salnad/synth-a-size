@@ -567,6 +567,16 @@ class ParkRules(unittest.TestCase):
                           known, rc.read_allowlist(ledger_files), ledger_files)
 
 
+class CommittedJustifyExceptions(unittest.TestCase):
+    def test_exactly_the_approved_seed(self):
+        path = os.path.join(rc.CORPUS, "macos_justify_exceptions.json")
+        exceptions = rc.load_justify_exceptions(path, rc.load_modules())
+        self.assertEqual(list(exceptions), [("wavetable/edit/add_sources", "saved.json")])
+        entries = exceptions[("wavetable/edit/add_sources", "saved.json")]
+        self.assertEqual(list(entries), ["$.groups[2].components[0].random_seed"])
+        self.assertEqual(entries["$.groups[2].components[0].random_seed"]["approved"], "Salil, 2026-10-27")
+
+
 class Selection(unittest.TestCase):
     # N5: --only matched substrings.
     def test_only_matches_exact_ids_or_path_prefixes(self):
@@ -1036,6 +1046,123 @@ class ScratchRepo(unittest.TestCase):
                                      "--only", "filters/test/morph", "--justify-nofastmath")
         self.assertEqual(code, 2, output)
         self.assertIn("NOT justified", output)
+
+    # The macOS justification step's exception list (owner approval 2026-10-27,
+    # A13): one integer at one exact JSON path of one case is reported with
+    # both values and not gated; everything else stays under the check.
+    MACOS = dict(IDENTITY, arch="aarch64", compiler="Apple LLVM 17.0.0", glibc=None)
+    SEED = "$.groups[2].components[0].random_seed"
+
+    def write_seed_case(self):
+        rc.write_json(os.path.join(rc.MODULE_CASES, "filters", "test.json"), {
+            "module": "filter", "artifacts": {"saved.json": "json"},
+            "cases": {"a": {"num_samples": 4}, "b": {"num_samples": 4}}})
+        exceptions = os.path.join(self.tmp.name, "exceptions.json")
+        rc.write_json(exceptions, {"description": "test", "exceptions": [{
+            "case": "filters/test/a", "artifact": "saved.json", "path": self.SEED,
+            "cites": "A13", "approved": "Salil, 2026-10-27"}]})
+        return exceptions
+
+    def seed_tree(self, name, saved, identity=None):
+        tree = os.path.join(self.tmp.name, name)
+        for case, document in saved.items():
+            case_dir = os.path.join(tree, "modules", "filters", "test", case)
+            os.makedirs(case_dir, exist_ok=True)
+            with open(os.path.join(case_dir, "artifact_saved.json"), "w") as handle:
+                json.dump(document, handle)
+            rc.write_json(os.path.join(case_dir, "capture.json"),
+                          {"build": dict(identity or self.MACOS), "outputs": {}})
+        return tree
+
+    @staticmethod
+    def saved(seed, gain=0.5, cases=("a", "b"), seed_b=None):
+        def document(value):
+            return {"gain": gain, "groups": [{}, {}, {"components": [{"random_seed": value, "id": 7}]}]}
+        return {c: document(seed if c == "a" or seed_b is None else seed_b) for c in cases}
+
+    def justify(self, official, nofastmath, exceptions, *extra):
+        return self.run_main("compare", official, nofastmath, "--only", "filters/test",
+                             "--justify-nofastmath", "--justify-exceptions", exceptions, *extra)
+
+    def test_justify_exception_reports_the_seed_and_does_not_gate_it(self):
+        exceptions = self.write_seed_case()
+        official = self.seed_tree("ref", self.saved(209652480))
+        proxy = self.seed_tree("proxy", self.saved(209652560, seed_b=209652480))
+        code, output = self.justify(official, proxy, exceptions)
+        self.assertEqual(code, 0, output)
+        self.assertIn("pass  filters/test/a:artifact/saved.json (json bound; 1 excepted difference)", output)
+        self.assertIn("%s: official 209652480, no-fast-math 209652560 (excepted, not gated: A13; approved "
+                      "Salil, 2026-10-27)" % self.SEED, output)
+        # Without the list, the same trees fail: the exception is the only reason it passes.
+        code, output = self.run_main("compare", official, proxy, "--only", "filters/test", "--justify-nofastmath")
+        self.assertEqual(code, 1, output)
+        self.assertIn("FAIL  filters/test/a:artifact/saved.json (json bound)", output)
+
+    def test_justify_exception_other_path_in_the_file_still_fails(self):
+        exceptions = self.write_seed_case()
+        official = self.seed_tree("ref", self.saved(209652480))
+        for name, proxy_saved in (
+                ("gain", self.saved(209652560, gain=0.75)),
+                ("sibling", {c: {"gain": 0.5, "groups": [{}, {}, {"components": [{"random_seed": 209652560,
+                                                                                    "id": 8}]}]}
+                             for c in ("a", "b")})):
+            proxy = self.seed_tree("proxy-" + name, proxy_saved)
+            code, output = self.justify(official, proxy, exceptions)
+            self.assertEqual(code, 1, output)
+            self.assertIn("FAIL  filters/test/a:artifact/saved.json (json bound; 1 excepted difference)", output)
+
+    def test_justify_exception_is_scoped_to_its_case(self):
+        exceptions = self.write_seed_case()
+        official = self.seed_tree("ref", self.saved(209652480))
+        proxy = self.seed_tree("proxy", self.saved(209652480, seed_b=209652560))
+        code, output = self.justify(official, proxy, exceptions)
+        self.assertEqual(code, 1, output)
+        self.assertIn("FAIL  filters/test/b:artifact/saved.json (json bound)", output)
+        self.assertIn("%s: reference 209652480, port 209652560" % self.SEED, output)
+        self.assertIn("excepted, but official and no-fast-math agree here (exception unused)", output)
+
+    def test_justify_exception_only_covers_an_integer_value_change(self):
+        exceptions = self.write_seed_case()
+        official = self.seed_tree("ref", self.saved(209652480))
+        for name, value in (("string", "209652560"), ("float", 209652560.5)):
+            proxy = self.seed_tree("proxy-" + name, self.saved(value, seed_b=209652480))
+            code, output = self.justify(official, proxy, exceptions)
+            self.assertEqual(code, 1, output)
+        missing = self.saved(209652480)
+        del missing["a"]["groups"][2]["components"][0]["random_seed"]
+        code, output = self.justify(official, self.seed_tree("proxy-missing", missing), exceptions)
+        self.assertEqual(code, 1, output)
+        self.assertIn("missing in the port", output)
+
+    def test_justify_exception_is_macos_justification_only(self):
+        exceptions = self.write_seed_case()
+        x86 = self.seed_tree("ref-x86", self.saved(209652480), IDENTITY)
+        proxy = self.seed_tree("proxy-x86", self.saved(209652560, seed_b=209652480), IDENTITY)
+        code, output = self.justify(x86, proxy, exceptions)
+        self.assertEqual(code, 2, output)
+        self.assertIn("for the macOS justification step only", output)
+        official = self.seed_tree("ref", self.saved(209652480))
+        code, output = self.run_main("compare", official, proxy, "--only", "filters/test",
+                                     "--justify-exceptions", exceptions)
+        self.assertEqual(code, 2, output)
+        self.assertIn("only applies to --justify-nofastmath", output)
+
+    def test_justify_exception_list_is_strict(self):
+        self.write_seed_case()
+        modules = rc.load_modules()
+        entry = {"case": "filters/test/a", "artifact": "saved.json", "path": self.SEED, "cites": "A13",
+                 "approved": "Salil, 2026-10-27"}
+        bad = [dict(entry, case="filters/test/nope"), dict(entry, artifact="other.json"),
+               dict(entry, path="groups[2]"), dict(entry, cites=""), {k: v for k, v in entry.items() if k != "cites"}]
+        for index, broken in enumerate(bad):
+            path = os.path.join(self.tmp.name, "bad%d.json" % index)
+            rc.write_json(path, {"description": "x", "exceptions": [broken]})
+            with self.assertRaises(rc.CaseError):
+                rc.load_justify_exceptions(path, modules)
+        path = os.path.join(self.tmp.name, "dup.json")
+        rc.write_json(path, {"description": "x", "exceptions": [entry, entry]})
+        with self.assertRaises(rc.CaseError):
+            rc.load_justify_exceptions(path, modules)
 
     def test_nofastmath_hashes_use_their_own_identity(self):
         self.write_morph_case()
