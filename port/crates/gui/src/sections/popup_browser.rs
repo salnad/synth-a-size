@@ -10,8 +10,9 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use egui::{Key, Sense};
+use sas_common::line_generator::LineGenerator;
 use sas_engine::sas_oscillators::sas_wavetable::creator::AudioFileLoadStyle;
-use sas_preset::user_folders::{self, Kind, WAVETABLE_EXTENSION};
+use sas_preset::user_folders::{self, Kind, LFO_EXTENSION, WAVETABLE_EXTENSION};
 
 use super::selection_list::{Selection, SelectionEvent, SelectionList};
 use super::Panel;
@@ -34,11 +35,16 @@ const TOP_HEIGHT: f32 = 38.0;
 /// `vital::kWavetableExtensionsList`, without the dots.
 pub const WAVETABLE_EXTENSIONS: &[&str] = &[WAVETABLE_EXTENSION, "wav", "flac"];
 
+/// The LFO browser's `"*." + vital::kLfoExtension`.
+pub const LFO_EXTENSIONS: &[&str] = &[LFO_EXTENSION];
+
 /// The section a browser chooses a file for (`owner_`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BrowserOwner {
     /// An oscillator's wavetable (`OscillatorSection::textMouseDown`).
     Oscillator(usize),
+    /// An LFO's shape (`LfoSection::textMouseDown`).
+    Lfo(usize),
 }
 
 impl BrowserOwner {
@@ -46,6 +52,7 @@ impl BrowserOwner {
     pub fn kind(self) -> Kind {
         match self {
             BrowserOwner::Oscillator(_) => Kind::Wavetables,
+            BrowserOwner::Lfo(_) => Kind::Lfos,
         }
     }
 
@@ -53,6 +60,7 @@ impl BrowserOwner {
     pub fn extensions(self) -> &'static [&'static str] {
         match self {
             BrowserOwner::Oscillator(_) => WAVETABLE_EXTENSIONS,
+            BrowserOwner::Lfo(_) => LFO_EXTENSIONS,
         }
     }
 }
@@ -412,6 +420,31 @@ pub fn load_wavetable_file(model: &dyn EditorModel, oscillator: usize, path: &Pa
         data.set("name", name);
     }
     model.load_wavetable_json(oscillator, &data.dump())
+}
+
+/// `LfoSection::loadFile`: the file's shape, named after the file and
+/// remembering it (`setName`, `setLastBrowsedFile`), into LFO `lfo`.
+/// Returns false, changing nothing, when the file can't be read as a shape
+/// (upstream catches the JSON exception and returns).
+pub fn load_lfo_file(model: &dyn EditorModel, lfo: usize, path: &Path) -> bool {
+    let Some(data) = std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| sas_common::json::parse(&text).ok())
+    else {
+        return false;
+    };
+    let mut line = LineGenerator::new(LineGenerator::DEFAULT_RESOLUTION);
+    if line.from_json(&data).is_err() {
+        return false;
+    }
+    let name = path
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    line.set_name(&name);
+    line.set_last_browsed_file(&path.to_string_lossy());
+    line.render();
+    model.set_lfo_shape(lfo, line)
 }
 
 #[cfg(test)]

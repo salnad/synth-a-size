@@ -136,6 +136,8 @@ struct Synth {
     midi_forwarded: Mutex<Vec<(String, f32)>>,
     /// The LFO shapes the editor set.
     lfos: Mutex<HashMap<usize, LineGenerator>>,
+    /// The user data folder, for the browsers and the save section.
+    data_directory: Mutex<Option<std::path::PathBuf>>,
     /// Wavetable loads and resets the editor asked for.
     wavetable_edits: Mutex<Vec<String>>,
     /// The "hz_frequency" setting.
@@ -186,6 +188,7 @@ impl Synth {
             midi_moved: Mutex::new(Vec::new()),
             midi_forwarded: Mutex::new(Vec::new()),
             lfos: Mutex::default(),
+            data_directory: Mutex::default(),
             wavetable_edits: Mutex::new(Vec::new()),
             hz: AtomicBool::new(false),
             sample: Mutex::default(),
@@ -230,6 +233,10 @@ impl EditorModel for Synth {
     fn set_lfo_shape(&self, index: usize, line: LineGenerator) -> bool {
         self.lfos.lock().unwrap().insert(index, line);
         true
+    }
+
+    fn data_directory(&self) -> Option<std::path::PathBuf> {
+        self.data_directory.lock().unwrap().clone()
     }
 
     fn hz_frequency_display(&self) -> bool {
@@ -2486,6 +2493,7 @@ fn painting_draws_the_pattern_into_a_grid_cell() {
 
 #[test]
 fn the_lfo_menu_flips_the_shape() {
+    sas_gui::controls::line_editor::set_clipboard_reader(|| None);
     let fixture = Fixture::new();
     let mut harness = fixture.harness();
     let editor = lfo_layout(&fixture).editor;
@@ -2500,8 +2508,17 @@ fn the_lfo_menu_flips_the_shape() {
         (menu.items.clone(), menu.position)
     };
     let names: Vec<&str> = items.iter().map(|item| item.name.as_str()).collect();
-    assert_eq!(names, ["Copy", "Flip Horizontal", "Flip Vertical"]);
-    let row = Pos2::new(position.x + 20.0, position.y + 12.0 + 24.0 * 2.0);
+    assert_eq!(
+        names,
+        [
+            "Copy",
+            "Save to LFOs",
+            "Initialize",
+            "Flip Horizontal",
+            "Flip Vertical"
+        ]
+    );
+    let row = Pos2::new(position.x + 20.0, position.y + 12.0 + 24.0 * 4.0);
     harness.event(Event::PointerMoved(row));
     harness.step();
     click(&mut harness, row);
@@ -4372,4 +4389,167 @@ fn with_the_popup_browser_open_a_click_at_the_logo_closes_it_not_the_drawer() {
     assert!(!fixture.interface.borrow().drawer_open());
     assert!(!panel.borrow().is_open());
     assert!(shows(&harness, "Chat"));
+}
+
+/// A data folder with LFO shapes, removed when dropped.
+struct LfoData(std::path::PathBuf);
+
+impl Drop for LfoData {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// A shape's JSON: a ramp up, named `name`.
+fn ramp_json(name: &str) -> String {
+    let mut line = LineGenerator::new(LineGenerator::DEFAULT_RESOLUTION);
+    line.init_saw_up();
+    line.set_name(name);
+    line.to_json().dump()
+}
+
+fn lfo_data(fixture: &Fixture, tag: &str) -> LfoData {
+    let root = std::env::temp_dir().join(format!("sas-lfo-browser-{tag}-{}", std::process::id()));
+    for file in [
+        "LFOs/Wobble.vitallfo",
+        "LFOs/Ramp 2.vitallfo",
+        "Bank/LFOs/Bank Shape.vitallfo",
+    ] {
+        let path = root.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, ramp_json("Inside")).unwrap();
+    }
+    *fixture.synth.data_directory.lock().unwrap() = Some(root.clone());
+    LfoData(root)
+}
+
+/// LFO 1's popup browser: 500 × 250 above its section, its right edge at
+/// the name's (`LfoSection::textMouseDown`).
+fn lfo_browser(fixture: &Fixture) -> sas_gui::sections::popup_browser::PopupBrowserLayout {
+    let lfo = lfo_layout(fixture);
+    let browser = Rect::new(
+        lfo.preset_selector.bounds.right() - 500,
+        lfo.bounds.y - 250,
+        500,
+        250,
+    );
+    let interface = fixture.interface.borrow();
+    let scope = section_scope(interface.skin(), sas_gui::sections::popup_browser::SKIN);
+    let padding = scope.value(sas_gui::skin::ValueId::Padding);
+    sas_gui::sections::popup_browser::PopupBrowserLayout::new(1.0, padding, browser)
+}
+
+fn popup_files(fixture: &Fixture) -> Vec<String> {
+    let rows = fixture.interface.borrow().popup_browser_rows();
+    rows.map(|(_, files)| {
+        files
+            .iter()
+            .filter_map(|row| match row {
+                sas_gui::sections::selection_list::Selection::Path(path) => {
+                    Some(path.file_stem().unwrap().to_string_lossy().into_owned())
+                }
+                _ => None,
+            })
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+/// A press on LFO 1's name opens the popup browser for the user's LFOs;
+/// a file chosen in it loads named after the file (`LfoSection::loadFile`).
+#[test]
+fn the_lfo_name_opens_the_browser_and_a_shape_loads() {
+    let fixture = Fixture::new();
+    let _data = lfo_data(&fixture, "open");
+    let mut harness = fixture.harness();
+    click(
+        &mut harness,
+        centre(lfo_layout(&fixture).preset_selector.text),
+    );
+    assert_eq!(popup_files(&fixture), ["Bank Shape", "Ramp 2", "Wobble"]);
+    let files = lfo_browser(&fixture).files;
+    let row = Pos2::new(
+        files.x as f32 + files.width as f32 / 2.0,
+        (files.y + 24 * 2 + 12) as f32,
+    );
+    click(&mut harness, row);
+    assert_eq!(lfo_1_shape(&fixture).name(), "Wobble");
+}
+
+/// The arrows load the LFO after or before the current one among the
+/// user's (`nextClicked`, `getShiftedFile`).
+#[test]
+fn the_lfo_arrows_step_through_the_users_shapes() {
+    let fixture = Fixture::new();
+    let _data = lfo_data(&fixture, "arrows");
+    let mut harness = fixture.harness();
+    let preset = lfo_layout(&fixture).preset_selector;
+    click(&mut harness, centre(preset.next));
+    assert_eq!(lfo_1_shape(&fixture).name(), "Bank Shape");
+    click(&mut harness, centre(preset.next));
+    assert_eq!(lfo_1_shape(&fixture).name(), "Ramp 2");
+    click(&mut harness, centre(preset.previous));
+    assert_eq!(lfo_1_shape(&fixture).name(), "Bank Shape");
+}
+
+/// Opens LFO 1's menu and chooses row `row`.
+fn choose_lfo_menu_row(harness: &mut Harness, fixture: &Fixture, row: usize) {
+    let at = lfo_point(lfo_layout(fixture).editor, 0.7, 0.9);
+    harness.event(Event::PointerMoved(at));
+    harness.step();
+    press(harness, at, PointerButton::Secondary, Modifiers::NONE);
+    release(harness, at, PointerButton::Secondary, Modifiers::NONE);
+    let position = {
+        let interface = fixture.interface.borrow();
+        interface
+            .overlay()
+            .menu
+            .as_ref()
+            .expect("the LFO menu")
+            .position
+    };
+    let pos = Pos2::new(position.x + 20.0, position.y + 12.0 + 24.0 * row as f32);
+    harness.event(Event::PointerMoved(pos));
+    harness.step();
+    click(harness, pos);
+    for _ in 0..2 {
+        harness.step();
+    }
+}
+
+/// "Save to LFOs" opens the save section for the shape, which writes it
+/// with its name and author into the user's LFOs folder
+/// (`FullInterface::saveLfo`); Initialize makes the shape linear.
+#[test]
+fn the_lfo_menu_saves_and_initializes_the_shape() {
+    sas_gui::controls::line_editor::set_clipboard_reader(|| None);
+    let fixture = Fixture::new();
+    let data = lfo_data(&fixture, "save");
+    let mut harness = fixture.harness();
+    choose_lfo_menu_row(&mut harness, &fixture, 1);
+    harness.event(Event::Text("My Shape".to_string()));
+    harness.step();
+    harness.step();
+    key(&mut harness, Key::Enter);
+    let written = std::fs::read_to_string(data.0.join("LFOs/My Shape.vitallfo")).unwrap();
+    assert!(written.contains(r#""name":"My Shape""#), "{written}");
+    assert!(written.contains(r#""num_points":3"#), "{written}");
+
+    choose_lfo_menu_row(&mut harness, &fixture, 2);
+    assert_eq!(lfo_1_shape(&fixture).num_points(), 2);
+}
+
+/// Paste shows when the clipboard holds a shape, and loads it.
+#[test]
+fn the_lfo_menu_pastes_a_shape() {
+    fn clipboard() -> Option<String> {
+        Some(ramp_json("Pasted"))
+    }
+    sas_gui::controls::line_editor::set_clipboard_reader(clipboard);
+    assert!(sas_gui::controls::line_editor::pasted_shape("not json").is_none());
+    assert!(sas_gui::controls::line_editor::pasted_shape(r#"{"num_points":2}"#).is_none());
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    choose_lfo_menu_row(&mut harness, &fixture, 1);
+    assert_eq!(lfo_1_shape(&fixture).name(), "Pasted");
 }

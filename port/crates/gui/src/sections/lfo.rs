@@ -10,7 +10,11 @@
 //! LFO browser comes later. The sync
 //! selector is the shared `TempoSelector`.
 
-use super::{MenuOwner, Panel};
+use std::path::{Path as FsPath, PathBuf};
+
+use sas_preset::user_folders::{self, Kind};
+
+use super::{popup_browser, MenuOwner, Panel};
 use crate::colour::Colour;
 use crate::controls::icon::fill_path;
 use crate::controls::line_editor::{
@@ -22,6 +26,7 @@ use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
 use crate::controls::slider::{Placement, Slider, SliderStyle};
 use crate::controls::tempo::{self, TempoSelector};
 use crate::fonts::Face;
+use crate::interface::EditorModel;
 use crate::layout::{PresetSelectorLayout, Rect};
 use crate::local;
 use crate::paint::PixelPainter;
@@ -260,7 +265,18 @@ pub struct LfoSection {
     editor: LineEditor,
     grid_size_x: Slider,
     grid_size_y: Slider,
+    /// `current_file_`: the LFO file last loaded from the browser or the
+    /// arrows.
+    current_file: std::cell::RefCell<Option<PathBuf>>,
+    /// The popup browser this section asked for since the last call: its
+    /// bounds and the section's (`textMouseDown`).
+    browse_request: std::cell::RefCell<Option<(Rect, Rect)>>,
 }
+
+/// `textMouseDown`'s `kBrowserWidth` and `kBrowserHeight`, before the size
+/// ratio.
+const BROWSER_WIDTH: f32 = 500.0;
+const BROWSER_HEIGHT: f32 = 250.0;
 
 /// `LfoSection`'s grid size sliders.
 fn grid_slider(name: &'static str, prefix: &'static str) -> Slider {
@@ -282,6 +298,8 @@ impl LfoSection {
         let names = NAMES[index];
         LfoSection {
             index,
+            current_file: std::cell::RefCell::new(None),
+            browse_request: std::cell::RefCell::new(None),
             names,
             sync: TempoSelector::new(names.sync),
             frequency: Slider::new(names.frequency, SliderStyle::Text),
@@ -438,10 +456,75 @@ impl LfoSection {
             shape: Shape::Next,
             colours: ui_colours,
         };
-        panel.shape_button(("lfo prev", self.index), prev, preset.previous);
-        panel.shape_button(("lfo next", self.index), next, preset.next);
+        let mut shift = 0;
+        if panel
+            .shape_button(("lfo prev", self.index), prev, preset.previous)
+            .clicked
+        {
+            shift = -1;
+        }
+        if panel
+            .shape_button(("lfo next", self.index), next, preset.next)
+            .clicked
+        {
+            shift = 1;
+        }
+        if shift != 0 {
+            // prevClicked and nextClicked: getShiftedFile among the user's
+            // LFOs (no added folders).
+            let model = panel.host.model();
+            let directories = user_folders::root(model.data_directory().as_deref())
+                .map(|root| user_folders::directories(&root, Kind::Lfos))
+                .unwrap_or_default();
+            let files = user_folders::files_of_type(&directories, popup_browser::LFO_EXTENSIONS);
+            let current = self.current_file();
+            if let Some(file) = user_folders::shifted_file(files, current.as_deref(), shift) {
+                self.load_file(model, &file);
+            }
+        }
+        // textMouseDown: the browser above the section, its right edge at
+        // the name's.
+        let text = panel.pixels.rect(preset.text.into());
+        let response = panel.ui.interact(
+            text,
+            panel.ui.scope_id().with(("lfo name", self.index)),
+            egui::Sense::click(),
+        );
+        if response.hovered() && panel.ui.input(|input| input.pointer.primary_pressed()) {
+            let ratio = panel.scope.size_ratio();
+            let (width, height) = (
+                (BROWSER_WIDTH * ratio) as i32,
+                (BROWSER_HEIGHT * ratio) as i32,
+            );
+            let browser = Rect::new(
+                preset.bounds.right() - width,
+                layout.bounds.y - height,
+                width,
+                height,
+            );
+            *self.browse_request.borrow_mut() = Some((browser, layout.bounds));
+        }
 
         self.show_editor(panel, layout);
+    }
+
+    /// `getCurrentFile`.
+    pub fn current_file(&self) -> Option<PathBuf> {
+        self.current_file.borrow().clone()
+    }
+
+    /// `loadFile`: loads the shape in `file` and keeps it as the current
+    /// file, if it reads.
+    pub fn load_file(&self, model: &dyn EditorModel, file: &FsPath) {
+        if popup_browser::load_lfo_file(model, self.index, file) {
+            *self.current_file.borrow_mut() = Some(file.to_path_buf());
+        }
+    }
+
+    /// The popup browser asked for since the last call: the browser's
+    /// bounds and the section's.
+    pub fn take_browse_request(&self) -> Option<(Rect, Rect)> {
+        self.browse_request.borrow_mut().take()
     }
 
     /// The editor and the controls that set it up: the grid sizes, paint
