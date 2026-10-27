@@ -39,6 +39,9 @@ controls are sliders and toggles
   filter style (Low Pass, Band Pass, High Pass, Comb) and the toggles
   (NORMALIZE, X and Y Asymmetric) write the modifier and commit at once.
   Nothing is written to the host.
+- **D34**: the style selector shows the modifier's style once a keyframe
+  is selected, where upstream's keeps the text it was last drawn with
+  (approved by the coordinator, 2026-10-27).
 - Shared with #194, identically: `Format::unassigned_decimal_places`
   and `just_text_toggle`.
 
