@@ -25,7 +25,7 @@ use egui::{Modifiers, Pos2, Sense};
 use sas_common::line_generator::LineGenerator;
 use sas_common::scalar::power_scale;
 
-use crate::controls::slider::{DOUBLE_CLICK_TIMEOUT, MULTIPLE_CLICK_DISTANCE};
+use crate::controls::clicks::Clicks;
 use crate::layout::Rect;
 use crate::paint::{PixelPainter, RectF};
 use crate::popup::{Menu, MenuItem};
@@ -120,10 +120,10 @@ struct LineState {
     temporary_paint: bool,
     last: (f32, f32),
     mouse_down: bool,
-    /// The last press's time and place, for JUCE's double-click rules.
-    last_press: Option<(f64, Pos2)>,
-    /// This press is a double click's second, acted on at its release.
-    double_click: bool,
+    /// The recent presses, for JUCE's double-click rules, and whether the
+    /// popup-menu button is down on the editor.
+    clicks: Clicks,
+    secondary_down: bool,
 }
 
 impl Default for LineState {
@@ -140,8 +140,8 @@ impl Default for LineState {
             temporary_paint: false,
             last: (0.0, 0.0),
             mouse_down: false,
-            last_press: None,
-            double_click: false,
+            clicks: Clicks::default(),
+            secondary_down: false,
         }
     }
 }
@@ -678,6 +678,18 @@ impl LineEditor {
         let primary_down = panel
             .ui
             .input(|input| input.pointer.button_down(egui::PointerButton::Primary));
+        // A press with the popup-menu button ends a run of clicks.
+        let secondary_down = response.is_pointer_button_down_on()
+            && panel
+                .ui
+                .input(|input| input.pointer.button_down(egui::PointerButton::Secondary));
+        if let (true, false, Some(pos)) = (secondary_down, state.secondary_down, pointer) {
+            let now = panel.ui.input(|input| input.time);
+            state
+                .clicks
+                .press(now, pos, egui::PointerButton::Secondary, modifiers);
+        }
+        state.secondary_down = secondary_down;
         if response.hovered() || state.dragging || state.painting_down {
             state.temporary_paint = modifiers.command;
         } else {
@@ -722,14 +734,12 @@ impl LineEditor {
                 state.mouse_down = true;
                 // JUCE's multiple-click rules, as Slider uses them.
                 let now = panel.ui.input(|input| input.time);
-                let double_click = starting
-                    && state.last_press.is_some_and(|(time, at)| {
-                        now - time < DOUBLE_CLICK_TIMEOUT
-                            && (pos.x - at.x).abs() < MULTIPLE_CLICK_DISTANCE
-                            && (pos.y - at.y).abs() < MULTIPLE_CLICK_DISTANCE
-                    });
                 if starting {
-                    state.last_press = Some((now, pos));
+                    state
+                        .clicks
+                        .press(now, pos, egui::PointerButton::Primary, modifiers);
+                } else {
+                    state.clicks.drag(pos);
                 }
                 if painting {
                     if starting || p != state.last {
@@ -760,7 +770,6 @@ impl LineEditor {
                             state.dragging = true;
                         }
                     }
-                    state.double_click = double_click;
                 } else if state.dragging && p != state.last {
                     // drawDrag.
                     if state.active_point >= 0 {
@@ -788,8 +797,10 @@ impl LineEditor {
                 state.last = p;
             }
         } else {
-            // mouseDoubleClick comes after the second click's mouseUp.
-            if state.mouse_down && state.double_click && !painting {
+            // mouseDoubleClick comes after the second click's mouseUp, for a
+            // second press that neither dragged nor was held.
+            let now = panel.ui.input(|input| input.time);
+            if state.mouse_down && state.clicks.count(now) >= 2 && !painting {
                 if let Some(pos) = pointer {
                     let p = local(pos);
                     changed |= double_click_at(&mut line, p, size, size_ratio, modifiers.shift);
@@ -797,7 +808,6 @@ impl LineEditor {
                     state.active_power = -1;
                 }
             }
-            state.double_click = false;
             state.dragging = false;
             state.painting_down = false;
             state.mouse_down = false;

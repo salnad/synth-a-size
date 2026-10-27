@@ -38,7 +38,6 @@ const SLOW_DRAG_MULTIPLIER: f32 = 0.1;
 const LINEAR_WIDTH_PERCENT: f32 = 0.26;
 const LINEAR_HANDLE_PERCENT: f32 = 1.2;
 use super::clicks::Clicks;
-pub(crate) use super::clicks::{DOUBLE_CLICK_TIMEOUT, MULTIPLE_CLICK_DISTANCE};
 /// How many frames a released slider keeps drawing its own value while
 /// the host catches up with the last set (a few in CLAP).
 const HOLD_FRAMES: u8 = 10;

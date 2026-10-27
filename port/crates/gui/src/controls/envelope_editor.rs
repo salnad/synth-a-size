@@ -18,8 +18,8 @@ use egui::{Pos2, Sense};
 use sas_common::scalar::power_scale;
 use sas_preset::ParamInfo;
 
+use crate::controls::clicks::Clicks;
 use crate::controls::format::{self, Format};
-use crate::controls::slider::{DOUBLE_CLICK_TIMEOUT, MULTIPLE_CLICK_DISTANCE};
 use crate::fonts::Face;
 use crate::host::Host;
 use crate::layout::Rect;
@@ -354,10 +354,8 @@ struct EditorState {
     /// A drag's host gestures are open (from its first move).
     gesture: bool,
     last: Pos2,
-    /// The last press's time and place, for JUCE's double-click rules.
-    last_press: Option<(f64, Pos2)>,
-    /// This press is a double click's second, acted on at its release.
-    double_click: bool,
+    /// The recent presses, for JUCE's double-click rules.
+    clicks: Clicks,
     values: Values,
     holding: u32,
 }
@@ -370,8 +368,7 @@ impl Default for EditorState {
             mouse_down: false,
             gesture: false,
             last: Pos2::ZERO,
-            last_press: None,
-            double_click: false,
+            clicks: Clicks::default(),
             values: Values::default(),
             holding: 0,
         }
@@ -507,19 +504,25 @@ impl EnvelopeEditor {
         if down && !state.mouse_down {
             // mouseDown, and mouseDoubleClick on a second press within
             // JUCE's limits.
-            let now = panel.ui.input(|input| input.time);
-            let pos = pointer.unwrap_or_default();
-            let double_click = state.last_press.is_some_and(|(time, at)| {
-                now - time < DOUBLE_CLICK_TIMEOUT
-                    && (pos.x - at.x).abs() < MULTIPLE_CLICK_DISTANCE
-                    && (pos.y - at.y).abs() < MULTIPLE_CLICK_DISTANCE
+            let (now, modifiers, secondary) = panel.ui.input(|input| {
+                (
+                    input.time,
+                    input.modifiers,
+                    input.pointer.button_down(egui::PointerButton::Secondary),
+                )
             });
+            let pos = pointer.unwrap_or_default();
+            let button = if secondary {
+                egui::PointerButton::Secondary
+            } else {
+                egui::PointerButton::Primary
+            };
             state.mouse_down = true;
             state.last = pos;
-            state.last_press = Some((now, pos));
-            state.double_click = double_click;
+            state.clicks.press(now, pos, button, modifiers);
         } else if down {
             if let Some(pos) = pointer {
+                state.clicks.drag(pos);
                 if pos != state.last {
                     // The gestures open with the first move, so a click
                     // sends none.
@@ -541,10 +544,10 @@ impl EnvelopeEditor {
                     host.end(target(&names));
                 }
             }
-            // mouseDoubleClick comes after the second click's mouseUp, so
-            // a drag on that press moves the power first.
-            if state.double_click {
-                state.double_click = false;
+            // mouseDoubleClick comes after the second click's mouseUp, for a
+            // second press that neither dragged nor was held.
+            let now = panel.ui.input(|input| input.time);
+            if state.clicks.count(now) >= 2 {
                 self.straighten_power(host, &mut state);
             }
         }

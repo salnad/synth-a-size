@@ -2854,11 +2854,11 @@ fn save_appears_once_the_editor_can_save() {
     assert!(!view.borrow_mut().take_save_request());
 }
 
-/// A double click whose second press drags: the drag bends the power in
-/// its gesture, and the straightening follows at the release, in its own
-/// (`mouseDoubleClick` after `mouseUp`).
+/// JUCE's click count (`isLongPressOrDrag`): a second press that drags
+/// bends the power in one gesture and isn't a double click, so nothing
+/// straightens it; a second press held over 0.3 s isn't one either.
 #[test]
-fn a_double_click_straightens_after_the_second_presss_drag() {
+fn a_dragged_or_held_second_press_doesnt_straighten_a_power() {
     let fixture = Fixture::new();
     let mut harness = fixture.harness();
     fixture.synth.set("env_1_attack", 1.0);
@@ -2881,16 +2881,35 @@ fn a_double_click_straightens_after_the_second_presss_drag() {
         dot + egui::vec2(0.0, -10.0),
         Modifiers::NONE,
     );
-    assert_eq!(fixture.synth.value("env_1_attack_power"), 0.0);
+    let bent = fixture.synth.value("env_1_attack_power");
+    assert_ne!(bent, 3.0);
+    assert_ne!(bent, 0.0);
     let log = fixture.take_log();
-    let ends: Vec<usize> = log
+    let begins = log
         .iter()
-        .enumerate()
-        .filter(|(_, entry)| *entry == "end env_1_attack_power")
-        .map(|(i, _)| i)
-        .collect();
-    assert_eq!(ends.len(), 2, "{log:?}");
-    assert_eq!(log[ends[0] + 1], "begin env_1_attack_power", "{log:?}");
+        .filter(|entry| *entry == "begin env_1_attack_power")
+        .count();
+    assert_eq!(begins, 1, "{log:?}");
+
+    for _ in 0..30 {
+        harness.step();
+    }
+    let (editor, shape) = envelope_shape(&fixture);
+    let dot = editor_point(
+        editor,
+        &shape,
+        (shape.delay_x + shape.attack_x) / 2.0,
+        shape.attack_value(0.5),
+    );
+    harness.event(Event::PointerMoved(dot));
+    harness.step();
+    click(&mut harness, dot);
+    press(&mut harness, dot, PointerButton::Primary, Modifiers::NONE);
+    for _ in 0..20 {
+        harness.step();
+    }
+    release(&mut harness, dot, PointerButton::Primary, Modifiers::NONE);
+    assert_eq!(fixture.synth.value("env_1_attack_power"), bent);
 }
 
 /// Dragging the magnifying glass up zooms in: the same drag of the attack
@@ -4574,4 +4593,109 @@ fn the_lfo_menu_pastes_a_shape() {
     let mut harness = fixture.harness();
     choose_lfo_menu_row(&mut harness, &fixture, 1);
     assert_eq!(lfo_1_shape(&fixture).name(), "Pasted");
+}
+
+/// The magnifying glass's double click fits the envelope
+/// (`DragMagnifyingGlass::mouseDoubleClick`), but a second press that is
+/// held, or that drags, isn't a double click (`isLongPressOrDrag`), and a
+/// right press between the clicks ends their run.
+#[test]
+fn the_magnifying_glass_resets_only_on_a_real_double_click() {
+    let attack_after = |second: &dyn Fn(&mut Harness, Pos2)| {
+        let fixture = Fixture::new();
+        let mut harness = fixture.harness();
+        let glass = {
+            let m = modulation_layout(&fixture);
+            let interface = fixture.interface.borrow();
+            EnvelopeLayout::new(&section_scope(interface.skin(), envelope::SKIN), m.envelope)
+                .magnifying_glass
+        };
+        let at = centre(glass);
+        drag(
+            &mut harness,
+            at,
+            at + egui::vec2(0.0, -60.0),
+            Modifiers::NONE,
+        );
+        for _ in 0..30 {
+            harness.step();
+        }
+        click(&mut harness, at);
+        second(&mut harness, at);
+        let (editor, shape) = envelope_shape(&fixture);
+        let start = editor_point(editor, &shape, shape.attack_x, 0.0);
+        harness.event(Event::PointerMoved(start));
+        harness.step();
+        drag(
+            &mut harness,
+            start,
+            start + egui::vec2(20.0, 0.0),
+            Modifiers::NONE,
+        );
+        fixture.synth.value("env_1_attack")
+    };
+    let waited = attack_after(&|harness, _| {
+        for _ in 0..30 {
+            harness.step();
+        }
+    });
+    let double_clicked = attack_after(&|harness, at| click(harness, at));
+    let held = attack_after(&|harness, at| {
+        press(harness, at, PointerButton::Primary, Modifiers::NONE);
+        for _ in 0..20 {
+            harness.step();
+        }
+        release(harness, at, PointerButton::Primary, Modifiers::NONE);
+    });
+    let dragged = attack_after(&|harness, at| {
+        // Sideways, so the zoom stays.
+        drag(harness, at, at + egui::vec2(6.0, 0.0), Modifiers::NONE);
+    });
+    // A right press between the clicks ends the run: JUCE's presses chain
+    // only with the same buttons.
+    let right_between = attack_after(&|harness, at| {
+        press(harness, at, PointerButton::Secondary, Modifiers::NONE);
+        release(harness, at, PointerButton::Secondary, Modifiers::NONE);
+        click(harness, at);
+    });
+    assert_ne!(
+        double_clicked, waited,
+        "the double click didn't fit the envelope"
+    );
+    assert_eq!(held, waited);
+    assert_eq!(dragged, waited);
+    assert_eq!(right_between, waited);
+}
+
+/// A second press on empty space in the LFO editor that drags, or is held,
+/// isn't a double click, so it adds no point (`isLongPressOrDrag`); a quick
+/// second click does.
+#[test]
+fn a_dragged_or_held_second_press_adds_no_lfo_point() {
+    let points_after = |second: &dyn Fn(&mut Harness, Pos2)| {
+        let fixture = Fixture::new();
+        let mut harness = fixture.harness();
+        let editor = lfo_layout(&fixture).editor;
+        let empty = lfo_point(editor, 0.25, 0.9);
+        harness.event(Event::PointerMoved(empty));
+        harness.step();
+        click(&mut harness, empty);
+        second(&mut harness, empty);
+        fixture.synth.lfo_shape(0).map(|line| line.num_points())
+    };
+    let dragged = points_after(&|harness, at| {
+        drag(harness, at, at + egui::vec2(8.0, 0.0), Modifiers::NONE);
+    });
+    let held = points_after(&|harness, at| {
+        press(harness, at, PointerButton::Primary, Modifiers::NONE);
+        for _ in 0..20 {
+            harness.step();
+        }
+        release(harness, at, PointerButton::Primary, Modifiers::NONE);
+    });
+    let double_clicked = points_after(&|harness, at| click(harness, at));
+    // Neither sets a shape at all.
+    assert_eq!(dragged, None);
+    assert_eq!(held, None);
+    assert_eq!(double_clicked, Some(4));
 }
