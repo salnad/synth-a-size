@@ -458,3 +458,19 @@ fn reset_reaches_the_engine() {
         Some(&Call::Reset)
     );
 }
+
+#[test]
+fn the_host_tempo_is_kept_for_work_off_the_audio_thread() {
+    let mut harness = Harness::new();
+    assert_eq!(harness.params().host_tempo(), 120.0);
+    let at_140 = Transport {
+        tempo: Some(140.0),
+        playing: false,
+        pos_beats: None,
+    };
+    harness.run(32, at_140, vec![]);
+    assert_eq!(harness.params().host_tempo(), 140.0);
+    // A block without a tempo keeps the last one.
+    harness.run(32, Transport::default(), vec![]);
+    assert_eq!(harness.params().host_tempo(), 140.0);
+}

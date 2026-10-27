@@ -21,6 +21,7 @@ use sas_preset::{GuiConnection, InitContent, PresetState, SampleState, SaveInfo,
 use crate::chat::PluginChat;
 use crate::midi_learn::MidiLearn;
 use crate::params::SynthParams;
+use crate::resynthesis::{Job, Resynthesizer};
 use crate::state;
 
 /// The editor's view of one plugin instance.
@@ -44,6 +45,7 @@ pub struct PluginModel {
     active_file: Mutex<Option<PathBuf>>,
     /// The host connection, once the editor has opened.
     gui: Mutex<Option<GuiContext>>,
+    resynthesizer: Resynthesizer,
 }
 
 impl PluginModel {
@@ -64,6 +66,7 @@ impl PluginModel {
         let data_directory = midi_learn
             .config_file()
             .and_then(crate::config::data_directory);
+        let resynthesizer = Resynthesizer::new(edits.clone());
         PluginModel {
             params,
             keyboard,
@@ -76,7 +79,14 @@ impl PluginModel {
             data_directory: Mutex::new(data_directory),
             active_file: Mutex::new(None),
             gui: Mutex::new(None),
+            resynthesizer,
         }
+    }
+
+    /// Waits until every resynthesis started has loaded its wavetable
+    /// (tests).
+    pub fn wait_for_resynthesis(&self) {
+        self.resynthesizer.wait_idle();
     }
 }
 
@@ -285,6 +295,19 @@ impl EditorModel for PluginModel {
         creator.init();
         // A full queue drops the reset, like the other editor edits.
         let _ = edits.set_wavetable(oscillator, creator);
+    }
+
+    fn resynthesize_to_wavetable(&self, oscillator: usize) {
+        let state = self.params.preset_state();
+        if oscillator >= state.wavetables.len() {
+            return;
+        }
+        self.resynthesizer.start(Job {
+            oscillator,
+            state,
+            sample_rate: self.params.sample_rate().round() as i32,
+            bpm: self.params.host_tempo(),
+        });
     }
 
     fn with_sample(&self, f: &mut dyn FnMut(&SampleState)) {

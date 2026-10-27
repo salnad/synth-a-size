@@ -367,6 +367,13 @@ impl EditorModel for Synth {
             .push(format!("disconnect {source} {destination}"));
         Some(slot)
     }
+
+    fn resynthesize_to_wavetable(&self, oscillator: usize) {
+        self.wavetable_edits
+            .lock()
+            .unwrap()
+            .push(format!("resynthesize {oscillator}"));
+    }
 }
 
 /// The host: logs gestures and sets values.
@@ -2634,7 +2641,7 @@ fn the_wavetable_menu_offers_paste_only_for_wavetable_json() {
     let mut harness = wavetable_harness(&fixture, &overlay, &view);
     assert_eq!(
         open_wavetable_menu(&mut harness, &overlay),
-        ["Copy", "", "Initialize"]
+        ["Copy", "", "Initialize", "Resynthesize Preset to Wavetable"]
     );
     // A right-click is no drag: nothing reaches the host.
     assert!(fixture.take_log().is_empty());
@@ -2644,7 +2651,7 @@ fn the_wavetable_menu_offers_paste_only_for_wavetable_json() {
     harness.step();
     assert_eq!(
         open_wavetable_menu(&mut harness, &overlay),
-        ["Copy", "", "Initialize"]
+        ["Copy", "", "Initialize", "Resynthesize Preset to Wavetable"]
     );
     overlay.borrow_mut().menu = None;
 
@@ -2653,7 +2660,13 @@ fn the_wavetable_menu_offers_paste_only_for_wavetable_json() {
     harness.step();
     assert_eq!(
         open_wavetable_menu(&mut harness, &overlay),
-        ["Copy", "Paste", "", "Initialize"]
+        [
+            "Copy",
+            "Paste",
+            "",
+            "Initialize",
+            "Resynthesize Preset to Wavetable"
+        ]
     );
     assert!(wavetable_3d::is_wavetable_json(PASTED));
 }
@@ -2704,7 +2717,13 @@ fn save_appears_once_the_editor_can_save() {
     let mut harness = wavetable_harness(&fixture, &overlay, &view);
     assert_eq!(
         open_wavetable_menu(&mut harness, &overlay),
-        ["Save to Wavetables", "Copy", "", "Initialize"]
+        [
+            "Save to Wavetables",
+            "Copy",
+            "",
+            "Initialize",
+            "Resynthesize Preset to Wavetable"
+        ]
     );
     choose_wavetable_row(&mut harness, 0);
     assert!(view.borrow_mut().take_save_request());
@@ -3540,4 +3559,21 @@ fn a_double_click_needs_the_same_button_twice() {
     click_with(&mut harness, PointerButton::Middle);
     click_with(&mut harness, PointerButton::Middle);
     assert_eq!(fixture.synth.value("portamento_time"), default);
+}
+
+#[test]
+fn resynthesizing_reaches_the_model() {
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let view = RefCell::new(Wavetable3d::new(0));
+    view.borrow_mut().set_clipboard_reader(empty_clipboard);
+    let mut harness = wavetable_harness(&fixture, &overlay, &view);
+    open_wavetable_menu(&mut harness, &overlay);
+    choose_wavetable_row(&mut harness, 3);
+    assert_eq!(
+        *fixture.synth.wavetable_edits.lock().unwrap(),
+        ["resynthesize 0"]
+    );
+    // The render's result arrives through the model; nothing reaches the host.
+    assert!(fixture.take_log().is_empty());
 }

@@ -615,6 +615,44 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
 - **Approved:** coordinator, relaying UI Reviewer's and Graph Reviewer's
   reviews of #137.
 
+### D22. "Resynthesize Preset to Wavetable" renders a fresh synth on a worker thread
+
+- **Differs:** which engine renders the patch for the wavetable view's
+  "Resynthesize Preset to Wavetable", and on which thread.
+- **Upstream:** `SynthBase::renderAudioForResynthesis`
+  (`vital/src/common/synth_base.cpp`) takes the audio lock and renders on
+  the GUI thread with the playing engine. `allSoundsOff` kills the voices
+  and hard-resets the effect chain and decimator, then 1 s of running in
+  (`correctToTime` from -1 s, 64-sample blocks), note 16 at velocity 0.7
+  for 4 s, the left channel normalized to its peak (at least 0.01), and
+  `allSoundsOff` again. The engine keeps everything else it had:
+  - its random generators where the session left them;
+  - its host tempo for tempo-synced modulators and effects;
+  - the state of global modulators.
+
+  The GUI and the audio both stop until the render is done.
+- **Port:** the same render, step for step
+  (`port/crates/plugin/src/resynthesis.rs`), on a fresh synth built from
+  the current patch and its live controls, on a thread of its own with its
+  own seed counter restarted at 0. It runs at the host's tempo from the
+  last block that reported one (120 BPM before any did), so tempo-synced
+  patches render as upstream's would. The result loads
+  through the edit bus like any wavetable edit, so the editor and the
+  audio keep running and the table changes when the render is done (about
+  half a second). The creator step is upstream's: pitched audio with wave
+  blending, named "Resynthesize", window one period of the note.
+- **Why:** the audio thread's engine can't be locked or rendered from the
+  GUI thread here, and rendering on it would stop the host's audio. A
+  fresh synth from rest with fixed seeds also makes the result depend
+  only on the patch.
+- **Audible differences:** patches with randomness (random LFOs, random
+  unison phases, the noise sample's position) get the fresh synth's draws
+  rather than the session's. Other patches render as upstream's do. Before
+  the host has reported a tempo, the render uses 120 BPM, upstream's
+  default.
+- **Approved:** coordinator (render off the GUI thread, seed isolation,
+  record the differences); Graph Reviewer reviews on the resynthesis PR.
+
 ### D24. The user data folder: one default root, and a menu item to choose it
 
 - **Differs:** where the user's presets, wavetables, samples and LFOs live
