@@ -71,3 +71,49 @@ fn bars_fade_over_two_pixels_along_and_one_across() {
     assert_eq!(green(9, 14), 0);
     assert_eq!(green(20, 18), 0);
 }
+
+/// Upstream draws each component in its own viewport, so a knob's centre
+/// column interpolates to x = 0 exactly and `atan(x, -y)` puts it on the
+/// right of the value's split (π, not −π). The port's quads share one
+/// viewport; wherever a knob sits in it, its centre column still has to
+/// fall on the right.
+#[test]
+fn a_knobs_centre_column_is_on_the_right_wherever_it_sits() {
+    const WIDTH: u32 = 1400;
+    const SIZE: f32 = 41.0;
+    let lefts: Vec<f32> = (0..30)
+        .map(|i| 100.0 + 41.0 * i as f32 + i as f32)
+        .collect();
+    let quads = lefts.clone();
+    let image = render(WIDTH, 60, move || {
+        let mut batch = QuadBatch::new();
+        for &left in &quads {
+            let mut quad = Quad::new(
+                QuadKind::ModulationKnob,
+                RectF::new(left, 10.0, SIZE, SIZE),
+                Colour(0xffff0000),
+            );
+            quad.alt_color = Colour(0xff00ff00);
+            quad.shader_values[0] = 0.0;
+            batch.push(quad);
+        }
+        batch
+    });
+    let pixel = |x: usize, y: usize| {
+        let at = 4 * (WIDTH as usize * y + x);
+        (image[at], image[at + 1])
+    };
+    let mut misses = Vec::new();
+    for left in lefts {
+        let centre = (left + 20.0) as usize;
+        // Above the centre and inside the arc.
+        for y in 20..28 {
+            if pixel(centre, y) != (0, 255) {
+                misses.push((centre, y, pixel(centre, y)));
+            }
+        }
+        assert_eq!(pixel(centre - 1, 24), (255, 0), "left of {centre}");
+        assert_eq!(pixel(centre + 1, 24), (0, 255), "right of {centre}");
+    }
+    assert!(misses.is_empty(), "{misses:?}");
+}

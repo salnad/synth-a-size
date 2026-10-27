@@ -25,6 +25,8 @@ struct Instance {
     // `setCoordinates`: the bottom left corner's coordinates and their
     // extent across the quad.
     @location(10) coordinates: vec4<f32>,
+    // The quad in viewport pixels: left, bottom (from the top), w, h.
+    @location(11) rect: vec4<f32>,
 };
 
 struct Varyings {
@@ -39,6 +41,10 @@ struct Varyings {
     @location(7) @interpolate(flat) background_color: vec4<f32>,
     @location(8) @interpolate(flat) params: vec4<f32>,
     @location(9) @interpolate(flat) params2: vec4<f32>,
+    @location(10) @interpolate(flat) rect: vec4<f32>,
+    @location(11) @interpolate(flat) frame: vec4<f32>,
+    // Pixels from the quad's left and bottom edges.
+    @location(12) offset: vec2<f32>,
 };
 
 const KIND_COLOR: u32 = 0u;
@@ -82,6 +88,9 @@ fn vs_main(@builtin(vertex_index) vertex: u32, instance: Instance) -> Varyings {
     );
     out.dimensions = instance.dimensions;
     out.coordinates = instance.coordinates.xy + unit * instance.coordinates.zw;
+    out.rect = instance.rect;
+    out.frame = instance.coordinates;
+    out.offset = unit * instance.rect.zw;
     out.shader_values = instance.shader_values;
     out.color = instance.color;
     out.alt_color = instance.alt_color;
@@ -333,8 +342,28 @@ fn bar(v: Varyings) -> vec4<f32> {
     return color;
 }
 
+// Upstream draws each component in its own viewport, where a quad's
+// vertices are exact and the coordinates at its centre interpolate to
+// exactly 0. Here quads share a larger viewport and their vertices carry
+// rounding, so the coordinates are rebuilt from the pixel centre (a half
+// pixel off the viewport's grid: egui starts a callback's viewport on a
+// whole pixel) and measured from the quad's centre. Shaders that take atan
+// of them (rotary sliders, modulation knobs) then split their centre line
+// the same way.
+fn exact_coordinates(v: Varyings) -> vec2<f32> {
+    let left = v.rect.x;
+    let bottom = v.rect.y;
+    let size = v.rect.zw;
+    let x = floor(v.offset.x + left) + 0.5 - left;
+    let y = bottom - floor(bottom - v.offset.y) - 0.5;
+    let from_centre = (vec2<f32>(x, y) - 0.5 * size) / size;
+    return (v.frame.xy + 0.5 * v.frame.zw) + from_centre * v.frame.zw;
+}
+
 @fragment
-fn fs_main(v: Varyings) -> @location(0) vec4<f32> {
+fn fs_main(varyings: Varyings) -> @location(0) vec4<f32> {
+    var v = varyings;
+    v.coordinates = exact_coordinates(varyings);
     let kind = u32(v.params2.z);
     switch kind {
         case KIND_FADE_SQUARE: { return fade_square(v); }

@@ -207,6 +207,12 @@ impl Quad {
             ],
             params2: [self.max_arc, alpha_mult, self.kind as u32 as f32, 0.0],
             coordinates: self.coordinates,
+            rect: [
+                self.rect.x,
+                self.rect.y + self.rect.height,
+                self.rect.width,
+                self.rect.height,
+            ],
         }
     }
 }
@@ -235,9 +241,10 @@ struct Instance {
     params: [f32; 4],
     params2: [f32; 4],
     coordinates: [f32; 4],
+    rect: [f32; 4],
 }
 
-const INSTANCE_FLOATS: usize = 4 + 2 + 4 * 9;
+const INSTANCE_FLOATS: usize = 4 + 2 + 4 * 10;
 
 impl Instance {
     fn write(&self, out: &mut Vec<f32>) {
@@ -253,6 +260,7 @@ impl Instance {
             &self.params,
             &self.params2,
             &self.coordinates,
+            &self.rect,
         ] {
             out.extend_from_slice(values);
         }
@@ -364,6 +372,7 @@ impl QuadPipeline {
         for (location, format) in [
             float4,
             wgpu::VertexFormat::Float32x2,
+            float4,
             float4,
             float4,
             float4,
@@ -575,6 +584,7 @@ mod tests {
             assert!((actual - expected).abs() < 1e-6, "{:?}", instance.position);
         }
         assert_eq!(instance.dimensions, [40.0, 20.0]);
+        assert_eq!(instance.rect, [100.0, 70.0, 40.0, 20.0]);
     }
 
     #[test]
