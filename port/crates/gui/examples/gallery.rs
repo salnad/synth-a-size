@@ -23,6 +23,7 @@ use sas_engine::keyboard::keyboard;
 use sas_engine::midi_file::{read_midi_file, TimedMessage};
 use sas_engine::sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
+use sas_engine::sas_oscillators::RandomValues;
 use sas_engine::synth::{render, RenderSettings, Synth};
 use sas_engine::telemetry::Telemetry;
 use sas_gui::sections::wavetable_edit::KeyframeRef;
@@ -82,6 +83,11 @@ impl Live {
         if frames == 0 {
             return None;
         }
+        // ref-gui builds one engine per process, and the first engine of a
+        // process takes a seed for RandomValues: take it for every view's
+        // engine, or each one after the first starts its random sources a
+        // seed early.
+        RandomValues::reset_process_state();
         let mut synth = Synth::new();
         synth.load_preset(state);
         let settings = RenderSettings {

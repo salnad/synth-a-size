@@ -61,12 +61,63 @@ struct OscilloscopeMemory {
     last_played_note: f32,
     last_num_pressed: i32,
     reset_period: f32,
-    input_offset: i32,
+    /// `memory_input_offset_`, a float: the fraction a window's reset leaves
+    /// carries over to the next window's start.
+    input_offset: f32,
     index: i32,
     /// `oscilloscope_memory_`: the last complete window.
     memory: Box<[PolyFloat]>,
     /// `oscilloscope_memory_write_`: the window being filled.
     write: Box<[PolyFloat]>,
+}
+
+impl OscilloscopeMemory {
+    /// The oscilloscope part of `updateMemoryOutput` for a block of
+    /// `samples` frames, `audio(i)` being frame `i`.
+    fn update(
+        &mut self,
+        samples: usize,
+        audio: impl Fn(usize) -> PolyFloat,
+        last_played: f32,
+        num_pressed: i32,
+        sample_rate: i32,
+    ) {
+        let last_played = utils::clamp(last_played, OUTPUT_WINDOW_MIN_NOTE, OUTPUT_WINDOW_MAX_NOTE);
+        let output_inc = (sample_rate / OSCILLOSCOPE_MEMORY_SAMPLE_RATE).max(1);
+        let oscilloscope_samples = OSCILLOSCOPE_SAMPLES as i32;
+
+        if last_played != 0.0
+            && (self.last_played_note != last_played || num_pressed > self.last_num_pressed)
+        {
+            self.last_played_note = last_played;
+            let frequency = utils::midi_note_to_frequency(self.last_played_note);
+            let period = sample_rate as f32 / frequency;
+            let window_length = output_inc * OSCILLOSCOPE_MEMORY_RESOLUTION as i32;
+            self.reset_period = period;
+            while self.reset_period < window_length as f32 {
+                self.reset_period += self.reset_period;
+            }
+            self.reset_period = self.reset_period.min(2.0 * window_length as f32);
+            self.index = 0;
+            self.memory.copy_from_slice(&self.write);
+        }
+        self.last_num_pressed = num_pressed;
+
+        while self.input_offset < samples as f32 {
+            // `iclamp(memory_input_offset_, ...)`: the float truncated to int.
+            let input_index = (self.input_offset as i32).clamp(0, samples as i32);
+            self.index = self.index.clamp(0, oscilloscope_samples - 1);
+            self.write[self.index as usize] = audio(input_index as usize);
+            self.index += 1;
+            if (self.index * output_inc) as f32 >= self.reset_period {
+                self.input_offset += self.reset_period - (self.index * output_inc) as f32;
+                self.index = 0;
+                self.memory.copy_from_slice(&self.write);
+            }
+            self.input_offset += output_inc as f32;
+        }
+        self.input_offset -= samples as f32;
+    }
 }
 
 impl Default for OscilloscopeMemory {
@@ -75,7 +126,7 @@ impl Default for OscilloscopeMemory {
             last_played_note: 0.0,
             last_num_pressed: 0,
             reset_period: OSCILLOSCOPE_MEMORY_RESOLUTION as f32,
-            input_offset: 0,
+            input_offset: 0.0,
             index: 0,
             memory: vec![PolyFloat::zero(); OSCILLOSCOPE_SAMPLES].into_boxed_slice(),
             write: vec![PolyFloat::zero(); OSCILLOSCOPE_SAMPLES].into_boxed_slice(),
@@ -781,45 +832,14 @@ impl Synth {
 
         let (last_played, num_pressed) = self
             .with_engine(|engine| (engine.last_active_note(), engine.num_pressed_notes() as i32));
-        let last_played = utils::clamp(last_played, OUTPUT_WINDOW_MIN_NOTE, OUTPUT_WINDOW_MAX_NOTE);
         let sample_rate = self.engine.sample_rate();
-        let output_inc = (sample_rate / OSCILLOSCOPE_MEMORY_SAMPLE_RATE).max(1);
-        let oscilloscope_samples = OSCILLOSCOPE_SAMPLES as i32;
-        let memory = &mut self.oscilloscope;
-
-        if last_played != 0.0
-            && (memory.last_played_note != last_played || num_pressed > memory.last_num_pressed)
-        {
-            memory.last_played_note = last_played;
-            let frequency = utils::midi_note_to_frequency(memory.last_played_note);
-            let period = sample_rate as f32 / frequency;
-            let window_length = output_inc * OSCILLOSCOPE_MEMORY_RESOLUTION as i32;
-            memory.reset_period = period;
-            while memory.reset_period < window_length as f32 {
-                memory.reset_period += memory.reset_period;
-            }
-            memory.reset_period = memory.reset_period.min(2.0 * window_length as f32);
-            memory.index = 0;
-            memory.memory.copy_from_slice(&memory.write);
-        }
-        memory.last_num_pressed = num_pressed;
-
-        while memory.input_offset < samples as i32 {
-            let input_index = memory.input_offset.clamp(0, samples as i32);
-            memory.index = memory.index.clamp(0, oscilloscope_samples - 1);
-            memory.write[memory.index as usize] = output.at(input_index as usize);
-            memory.index += 1;
-            if (memory.index * output_inc) as f32 >= memory.reset_period {
-                // `int += float`: the sum in float, truncated.
-                memory.input_offset = (memory.input_offset as f32
-                    + (memory.reset_period - (memory.index * output_inc) as f32))
-                    as i32;
-                memory.index = 0;
-                memory.memory.copy_from_slice(&memory.write);
-            }
-            memory.input_offset += output_inc;
-        }
-        memory.input_offset -= samples as i32;
+        self.oscilloscope.update(
+            samples,
+            |i| output.at(i),
+            last_played,
+            num_pressed,
+            sample_rate,
+        );
     }
 
     /// Copies what the equalizer wrote this block into the editor's copy of
@@ -1005,5 +1025,33 @@ mod tests {
         };
         synth.load_preset(&preset);
         assert_eq!(synth.sample_state(), preset.sample);
+    }
+
+    #[test]
+    fn oscilloscope_windows_start_a_whole_reset_period_apart() {
+        // Middle C at 44.1 kHz: a 168.56-sample period, doubled to 1348.5
+        // to cover the 1024-sample window. Each window's reset leaves half a
+        // sample over, which the next window's start keeps.
+        let mut memory = OscilloscopeMemory::default();
+        let mut starts = Vec::new();
+        for block in 0..1000 {
+            let base = block * 128;
+            memory.update(128, |i| PolyFloat::splat((base + i) as f32), 60.0, 1, 44100);
+            let start = memory.memory[0].get(0);
+            if starts.last() != Some(&start) {
+                starts.push(start);
+            }
+        }
+        let period = memory.reset_period;
+        assert!((period - 1348.5).abs() < 0.1, "{period}");
+        assert!(starts.len() > 90, "{} windows", starts.len());
+        for (k, start) in starts.iter().enumerate().skip(1) {
+            let elapsed = start - starts[1];
+            let expected = (k - 1) as f32 * period;
+            assert!(
+                (elapsed - expected).abs() < 1.0,
+                "window {k} starts {elapsed} samples after the first, not {expected}"
+            );
+        }
     }
 }
