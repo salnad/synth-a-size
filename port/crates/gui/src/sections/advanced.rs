@@ -510,7 +510,8 @@ fn show_output(
     let mut spectrogram = Spectrogram::default();
     if let Some(telemetry) = panel.host.model().telemetry() {
         spectrogram.sample_rate = telemetry.read(|snapshot| snapshot.sample_rate);
-        analysis.update(&spectrogram, telemetry.audio_memory());
+        let frame = panel.ui.ctx().cumulative_frame_nr();
+        analysis.update_once(&spectrogram, telemetry.audio_memory(), frame);
     }
     spectrogram.paint_background(pixels, &scope, l.spectrogram);
     let colours = (

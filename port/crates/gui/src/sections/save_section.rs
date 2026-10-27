@@ -9,7 +9,7 @@
 use std::path::{Path, PathBuf};
 
 use egui::Sense;
-use sas_preset::user_folders::{Kind, PRESET_EXTENSION, WAVETABLE_EXTENSION};
+use sas_preset::user_folders::{Kind, LFO_EXTENSION, PRESET_EXTENSION, WAVETABLE_EXTENSION};
 
 use super::Panel;
 use crate::controls::button::SynthButton;
@@ -269,6 +269,19 @@ impl SaveTarget {
         })
     }
 
+    /// `FullInterface::saveLfo`: a `.vitallfo` in the user's LFOs folder,
+    /// made if missing (`getUserLfoDirectory`), from the shape's JSON.
+    pub fn lfo(model: &dyn EditorModel, data: String) -> Option<SaveTarget> {
+        let folder = user_folder(model, Kind::Lfos)?;
+        let _ = std::fs::create_dir_all(&folder);
+        Some(SaveTarget::File {
+            file_type: "LFO",
+            extension: LFO_EXTENSION,
+            folder,
+            data,
+        })
+    }
+
     fn is_preset(&self) -> bool {
         matches!(self, SaveTarget::Preset)
     }
@@ -421,6 +434,9 @@ impl SaveSection {
             let style = TextStyle {
                 font_size: layout.editor_font_size,
                 colour: ColorId::PresetText,
+                centred: false,
+                hide_prompt: false,
+                mono: false,
             };
             // fillTextEditorBackground, under each field.
             text_editor::paint_background(panel.pixels, &scope, layout.name);

@@ -9,14 +9,18 @@
 //! dropping a file come later.
 
 use std::cell::RefCell;
+use std::path::{Path, PathBuf};
 
-use super::{MenuOwner, Panel};
+use sas_preset::user_folders::{self, Kind};
+
+use super::{popup_browser, MenuOwner, Panel};
 use crate::controls::button::SynthButton;
 use crate::controls::paths::Icon;
 use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
 use crate::controls::slider::{Slider, SliderStyle};
 use crate::controls::transpose_quantize::{self, QuantizeColours};
 use crate::fonts::Face;
+use crate::interface::EditorModel;
 use crate::layout::{PresetSelectorLayout, Rect};
 use crate::paint::PixelPainter;
 use crate::paint::RectF;
@@ -184,6 +188,37 @@ pub struct SampleSection {
     pan: Slider,
     /// The viewer's peaks and the content revision they were read at.
     peaks: RefCell<Option<(u64, Vec<f32>)>>,
+    /// The sample file last loaded from the browser or the arrows (the
+    /// sample's `getLastBrowsedFile`).
+    current_file: RefCell<Option<PathBuf>>,
+    /// The popup browser this section asked for since the last call: its
+    /// bounds and the section's (`textMouseDown`).
+    browse_request: RefCell<Option<(Rect, Rect)>>,
+}
+
+/// `textMouseDown`'s `kBrowserWidth` and `kBrowserHeight`, before the size
+/// ratio.
+const BROWSER_WIDTH: f32 = 450.0;
+const BROWSER_HEIGHT: f32 = 300.0;
+
+impl SampleSection {
+    /// The sample file last loaded from the browser or the arrows.
+    pub fn current_file(&self) -> Option<PathBuf> {
+        self.current_file.borrow().clone()
+    }
+
+    /// `loadFile`: loads `file` as the sample and keeps it as the current
+    /// file (`setLastBrowsedFile`, before the read).
+    pub fn load_file(&self, model: &dyn EditorModel, file: &Path) {
+        *self.current_file.borrow_mut() = Some(file.to_path_buf());
+        model.load_sample_file(file);
+    }
+
+    /// The popup browser asked for since the last call: the browser's
+    /// bounds and the section's.
+    pub fn take_browse_request(&self) -> Option<(Rect, Rect)> {
+        self.browse_request.borrow_mut().take()
+    }
 }
 
 impl Default for SampleSection {
@@ -204,6 +239,8 @@ impl Default for SampleSection {
             level: Slider::new("sample_level", SliderStyle::Rotary),
             pan: Slider::new("sample_pan", SliderStyle::Rotary).bipolar(),
             peaks: RefCell::new(None),
+            current_file: RefCell::new(None),
+            browse_request: RefCell::new(None),
         }
     }
 }
@@ -309,22 +346,65 @@ impl SampleSection {
             preset.text_size,
             panel.scope.color(ColorId::PresetText),
         );
-        panel.shape_button(
-            "sample prev",
-            ShapeButton {
-                shape: Shape::Prev,
-                colours: ui_colours,
-            },
-            preset.previous,
+        let mut shift = 0;
+        if panel
+            .shape_button(
+                "sample prev",
+                ShapeButton {
+                    shape: Shape::Prev,
+                    colours: ui_colours,
+                },
+                preset.previous,
+            )
+            .clicked
+        {
+            shift = -1;
+        }
+        if panel
+            .shape_button(
+                "sample next",
+                ShapeButton {
+                    shape: Shape::Next,
+                    colours: ui_colours,
+                },
+                preset.next,
+            )
+            .clicked
+        {
+            shift = 1;
+        }
+        if shift != 0 {
+            // prevClicked and nextClicked: getShiftedFile among the user's
+            // samples.
+            let model = host.model();
+            // getShiftedFile: the user's folders, then the added ones.
+            let mut directories = user_folders::root(model.data_directory().as_deref())
+                .map(|root| user_folders::directories(&root, Kind::Samples))
+                .unwrap_or_default();
+            directories.extend(model.additional_folders(Kind::Samples));
+            let files = user_folders::files_of_type(&directories, popup_browser::SAMPLE_EXTENSIONS);
+            let current = self.current_file();
+            if let Some(file) = user_folders::shifted_file(files, current.as_deref(), shift) {
+                self.load_file(model, &file);
+            }
+        }
+        // textMouseDown: the browser right of the name, level with it.
+        let text = panel.pixels.rect(preset.text.into());
+        let response = panel.ui.interact(
+            text,
+            panel.ui.scope_id().with("sample name"),
+            egui::Sense::click(),
         );
-        panel.shape_button(
-            "sample next",
-            ShapeButton {
-                shape: Shape::Next,
-                colours: ui_colours,
-            },
-            preset.next,
-        );
+        if response.hovered() && panel.ui.input(|input| input.pointer.primary_pressed()) {
+            let ratio = panel.scope.size_ratio();
+            let browser = Rect::new(
+                preset.bounds.right(),
+                preset.bounds.y,
+                (BROWSER_WIDTH * ratio) as i32,
+                (BROWSER_HEIGHT * ratio) as i32,
+            );
+            *self.browse_request.borrow_mut() = Some((browser, layout.bounds));
+        }
 
         let destination =
             (host.value("sample_destination") as usize).min(DESTINATION_NAMES.len() - 1);

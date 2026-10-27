@@ -1,5 +1,5 @@
 {
-  "description": "Views rendered from upstream's interface by migration/scripts/gui_reference.py frames, and from the port's editor by sas-gui's gallery test, for side-by-side comparison. A preset, when given, is a path from the repository root to authored content (never a factory preset). effects_scroll scrolls the effects column down that many pixels, kept within the column. overlay opens the preset browser (\"preset_browser\"), the save section for a preset (\"save_section\") or the popup browser for oscillator 1's wavetables (\"popup_browser\") over the tab, or oscillator 1's wavetable editor (\"wavetable_editor\") in place of the interface. midi (an authored file in migration/corpus/midi/) and seconds run the engine before the frame, on both sides, at 44.1 kHz and 120 BPM in 64-sample blocks; animate draws the animated views from it (it needs midi, or seconds above 0).",
+  "description": "Views rendered from upstream's interface by migration/scripts/gui_reference.py frames, and from the port's editor by sas-gui's gallery test, for side-by-side comparison. A preset, when given, is a path from the repository root to authored content (never a factory preset). effects_scroll scrolls the effects column down that many pixels, kept within the column. overlay opens the preset browser (\"preset_browser\"), the save section for a preset (\"save_section\") or the popup browser for oscillator 1's wavetables (\"popup_browser\") over the tab, or oscillator 1's wavetable editor (\"wavetable_editor\") in place of the interface; with the editor, wavetable_select (\"group:component[:keyframe]\", zero-based) selects that keyframe in its organizer, as a click does. midi (an authored file in migration/corpus/midi/) and seconds run the engine before the frame, on both sides, at 44.1 kHz and 120 BPM in 64-sample blocks; animate draws the animated views from it (it needs midi, or seconds above 0).",
   "views": [
     { "name": "init_voice", "tab": "voice" },
     { "name": "init_effects", "tab": "effects" },
@@ -15,11 +15,21 @@
     { "name": "modulations", "tab": "voice", "preset": "migration/corpus/gui/presets/modulations.vital", "seconds": 0.05, "animate": true },
     { "name": "modulations_many", "tab": "voice", "preset": "migration/corpus/gui/presets/modulations_many.vital", "seconds": 0.05, "animate": true },
     { "name": "modulations_matrix", "tab": "matrix", "preset": "migration/corpus/gui/presets/modulations.vital" },
+    { "name": "modulations_matrix_live", "tab": "matrix", "preset": "migration/corpus/gui/presets/modulations.vital", "midi": "migration/corpus/midi/chord_progression.mid", "seconds": 1, "animate": true },
+    { "name": "modulations_live", "tab": "voice", "preset": "migration/corpus/gui/presets/modulations.vital", "midi": "migration/corpus/midi/chord_progression.mid", "seconds": 1, "animate": true },
     { "name": "modulations_aux", "tab": "voice", "preset": "migration/corpus/gui/presets/modulations_aux.vital", "seconds": 0.05, "animate": true },
     { "name": "preset_browser", "tab": "voice", "overlay": "preset_browser" },
     { "name": "save_section", "tab": "voice", "overlay": "save_section" },
     { "name": "all_effects_live", "tab": "effects", "preset": "migration/corpus/gui/presets/all_effects.vital", "midi": "migration/corpus/midi/chord_progression.mid", "seconds": 2, "animate": true },
     { "name": "wavetable_editor", "tab": "voice", "overlay": "wavetable_editor" },
-    { "name": "popup_browser", "tab": "voice", "overlay": "popup_browser" }
+    { "name": "popup_browser", "tab": "voice", "overlay": "popup_browser" },
+    { "name": "wavetable_editor_groups", "tab": "voice", "preset": "migration/corpus/gui/presets/wavetable_groups.vital", "overlay": "wavetable_editor" },
+    { "name": "wavetable_editor_select", "tab": "voice", "preset": "migration/corpus/gui/presets/wavetable_groups.vital", "overlay": "wavetable_editor", "wavetable_select": "1:0:1" },
+    { "name": "wavetable_editor_phase", "tab": "voice", "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:1" },
+    { "name": "wavetable_editor_window", "tab": "voice", "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:2" },
+    { "name": "wavetable_editor_frequency_filter", "tab": "voice", "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:3" },
+    { "name": "wavetable_editor_slew_limiter", "tab": "voice", "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:4" },
+    { "name": "wavetable_editor_wave_folder", "tab": "voice", "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:5" },
+    { "name": "wavetable_editor_wave_warp", "tab": "voice", "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:6" }
   ]
 }

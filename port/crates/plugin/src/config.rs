@@ -180,6 +180,29 @@ pub fn save_data_directory(path: &Path, folder: &Path) -> std::io::Result<()> {
     save_json_to_config(path, &data)
 }
 
+/// `LoadSave::loadWindowSize`'s `kMinWindowSize`.
+pub const MIN_WINDOW_SIZE: f32 = 0.25;
+
+/// `LoadSave::loadWindowSize`: the config's `"window_size"`, the editor's
+/// width as a share of 1400, at least [`MIN_WINDOW_SIZE`]; 1 if unset.
+pub fn window_size(path: &Path) -> f32 {
+    match read_config(path).get("window_size").map(Value::to_f64) {
+        Ok(Ok(size)) => (size as f32).max(MIN_WINDOW_SIZE),
+        _ => 1.0,
+    }
+}
+
+/// `LoadSave::saveWindowSize`: rewrites the config's `"window_size"`,
+/// keeping every other key.
+pub fn save_window_size(path: &Path, window_size: f32) -> std::io::Result<()> {
+    let mut data = read_config(path);
+    if !data.is_null() && !data.is_object() {
+        data = Value::Null;
+    }
+    data.set("window_size", f64::from(window_size));
+    save_json_to_config(path, &data)
+}
+
 /// `LoadSave::getAuthor`: the config's `"author"`, empty if unset.
 pub fn author(path: &Path) -> String {
     read_config(path)
@@ -197,6 +220,43 @@ pub fn save_author(path: &Path, author: &str) -> std::io::Result<()> {
         data = Value::Null;
     }
     data.set("author", author.to_string());
+    save_json_to_config(path, &data)
+}
+
+/// `LoadSave::kAdditionalWavetableFoldersName` and
+/// `kAdditionalSampleFoldersName`: the config keys of the folders added to
+/// the wavetable and sample browsers.
+pub const WAVETABLE_FOLDERS: &str = "wavetable_folders";
+pub const SAMPLE_FOLDERS: &str = "sample_folders";
+
+/// `LoadSave::getAdditionalFolders`: the folders under `name`, in the order
+/// they were added.
+pub fn additional_folders(path: &Path, name: &str) -> Vec<PathBuf> {
+    match read_config(path).get(name) {
+        Ok(Value::Array(folders)) => folders
+            .iter()
+            .filter_map(|folder| folder.to_str().ok().map(PathBuf::from))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// `LoadSave::saveAdditionalFolders`: rewrites the config's `name` with
+/// `folders`, keeping every other key.
+pub fn save_additional_folders(
+    path: &Path,
+    name: &str,
+    folders: &[PathBuf],
+) -> std::io::Result<()> {
+    let mut data = read_config(path);
+    if !data.is_null() && !data.is_object() {
+        data = Value::Null;
+    }
+    let folders = folders
+        .iter()
+        .map(|folder| Value::from(folder.to_string_lossy().into_owned()))
+        .collect();
+    data.set(name, Value::Array(folders));
     save_json_to_config(path, &data)
 }
 
@@ -375,6 +435,36 @@ mod tests {
 
     /// Favourites are the keys of an object in their own file beside the
     /// config, added and removed one at a time.
+    #[test]
+    fn additional_folders_round_trip() {
+        let dir = std::env::temp_dir().join(format!("sas-config-folders-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        save_author(&path, "Someone").unwrap();
+        assert!(additional_folders(&path, WAVETABLE_FOLDERS).is_empty());
+        let folders = [PathBuf::from("/b/Tables"), PathBuf::from("/a/More")];
+        save_additional_folders(&path, WAVETABLE_FOLDERS, &folders).unwrap();
+        assert_eq!(additional_folders(&path, WAVETABLE_FOLDERS), folders);
+        assert!(additional_folders(&path, SAMPLE_FOLDERS).is_empty());
+        assert_eq!(author(&path), "Someone");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn window_size_round_trip() {
+        let dir = std::env::temp_dir().join(format!("sas-config-window-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        assert_eq!(window_size(&path), 1.0);
+        save_author(&path, "Someone").unwrap();
+        save_window_size(&path, 1.5).unwrap();
+        assert_eq!(window_size(&path), 1.5);
+        assert_eq!(author(&path), "Someone");
+        save_window_size(&path, 0.1).unwrap();
+        assert_eq!(window_size(&path), MIN_WINDOW_SIZE);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn favourites_round_trip() {
         let folder = std::env::temp_dir().join(format!("sas-favourites-{}", std::process::id()));

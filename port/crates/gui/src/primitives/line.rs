@@ -50,6 +50,15 @@ fn normalize(x: f32, y: f32) -> (f32, f32) {
     (x * inverse, y * inverse)
 }
 
+/// A renderer's boosts and its backward-boost state, kept from one frame
+/// to the next by a component that rebuilds its renderer each frame.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Boosts {
+    pub left: Vec<f32>,
+    pub right: Vec<f32>,
+    pub last_negative: bool,
+}
+
 /// One `OpenGlLineRenderer`.
 #[derive(Clone, Debug)]
 pub struct LineRenderer {
@@ -134,8 +143,59 @@ impl LineRenderer {
         self.boost_left[index]
     }
 
+    /// `setBoostLeft`.
+    pub fn set_boost_left(&mut self, index: usize, value: f32) {
+        self.boost_left[index] = value;
+    }
+
     pub fn any_boost_value(&self) -> bool {
         self.any_boost_value
+    }
+
+    /// The boosts, to carry to the next frame's renderer.
+    pub fn boosts(&self) -> Boosts {
+        Boosts {
+            left: self.boost_left.clone(),
+            right: self.boost_right.clone(),
+            last_negative: self.last_negative_boost,
+        }
+    }
+
+    /// Takes the boosts a previous frame's renderer left (all zero when
+    /// `boosts` is empty or the wrong size).
+    pub fn set_boosts(&mut self, boosts: &Boosts) {
+        let fits = boosts.left.len() == self.num_points && boosts.right.len() == self.num_points;
+        if fits {
+            self.boost_left.copy_from_slice(&boosts.left);
+            self.boost_right.copy_from_slice(&boosts.right);
+        } else {
+            self.boost_left.fill(0.0);
+            self.boost_right.fill(0.0);
+        }
+        self.last_negative_boost = boosts.last_negative;
+        self.any_boost_value = self
+            .boost_left
+            .iter()
+            .chain(&self.boost_right)
+            .any(|&boost| boost != 0.0);
+    }
+
+    /// `setBoostLeft` / `setBoostRight` at `index`.
+    pub fn set_boost_at(&mut self, left: bool, index: usize, value: f32) {
+        if left {
+            self.boost_left[index] = value;
+        } else {
+            self.boost_right[index] = value;
+        }
+    }
+
+    /// `boostLeftAt` / `boostRightAt`.
+    pub fn boost_at(&self, left: bool, index: usize) -> f32 {
+        if left {
+            self.boost_left[index]
+        } else {
+            self.boost_right[index]
+        }
     }
 
     /// `setFillColors`.

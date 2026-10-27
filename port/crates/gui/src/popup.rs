@@ -24,6 +24,8 @@ const POPUP_HEIGHT: f32 = 24.0;
 const ROW_HEIGHT: f32 = 24.0;
 /// `PopupList::getBrowseWidth`'s `kMinWidth`.
 const MIN_LIST_WIDTH: f32 = 150.0;
+/// `PopupList::kScrollBarWidth`.
+const SCROLL_BAR_WIDTH: f32 = 15.0;
 
 /// The skin sections the popups draw with.
 const POPUP_SECTIONS: &[Section] = &[Section::PopupBrowser];
@@ -288,10 +290,41 @@ impl<T> Menu<T> {
 }
 
 /// One left-hand row of a [`DualMenu`] and the right-hand rows it shows.
+/// Without items it is chosen itself, with `id`; with `id` -1 and no name
+/// it is a divider (`PopupItems` with no sub-items).
 #[derive(Clone, Debug, PartialEq)]
 pub struct DualMenuGroup {
+    pub id: i32,
     pub name: String,
     pub items: Vec<MenuItem>,
+}
+
+impl DualMenuGroup {
+    /// A named group of `items`.
+    pub fn new(name: impl Into<String>, items: Vec<MenuItem>) -> DualMenuGroup {
+        DualMenuGroup {
+            id: 0,
+            name: name.into(),
+            items,
+        }
+    }
+
+    /// A left-hand row chosen by itself.
+    pub fn item(id: i32, name: impl Into<String>) -> DualMenuGroup {
+        DualMenuGroup {
+            id,
+            name: name.into(),
+            items: Vec::new(),
+        }
+    }
+
+    pub fn divider() -> DualMenuGroup {
+        DualMenuGroup::item(-1, "")
+    }
+
+    fn is_divider(&self) -> bool {
+        self.id < 0 && self.items.is_empty()
+    }
 }
 
 /// An open `DualPopupSelector`: groups on the left, the selected group's
@@ -300,7 +333,9 @@ pub struct DualMenuGroup {
 #[derive(Clone, Debug, PartialEq)]
 pub struct DualMenu<T> {
     pub groups: Vec<DualMenuGroup>,
-    pub left_selected: usize,
+    /// The selected group, if any (`showSelections` selects none when no
+    /// item is marked).
+    pub left_selected: Option<usize>,
     pub right_selected: usize,
     /// Where it was asked for, in pixels.
     pub position: Pos2,
@@ -308,12 +343,15 @@ pub struct DualMenu<T> {
     pub width: i32,
     pub owner: T,
     pub shown: bool,
+    /// The right-hand list's scroll position and bar (`PopupList`'s
+    /// `view_position_` and `scroll_bar_`).
+    pub right_scroll: crate::controls::scroll_bar::ScrollBar,
 }
 
 impl<T> DualMenu<T> {
     pub fn new(
         groups: Vec<DualMenuGroup>,
-        left_selected: usize,
+        left_selected: Option<usize>,
         right_selected: usize,
         position: Pos2,
         width: i32,
@@ -327,6 +365,7 @@ impl<T> DualMenu<T> {
             width,
             owner,
             shown: false,
+            right_scroll: Default::default(),
         }
     }
 
@@ -398,21 +437,51 @@ impl<T> DualMenu<T> {
                 (pos.y - pixels.area().min.y) * pixels.pixels_per_point(),
             )
         };
-        let row_in = |list: Rect, count: usize, pos: Pos2| -> Option<usize> {
+        let right_items = self
+            .left_selected
+            .map(|index| self.groups[index].items.clone())
+            .unwrap_or_default();
+        // PopupList: the right list scrolls when its rows are taller than
+        // it, with a scroll bar at its right edge.
+        let scroll_bar_width = (SCROLL_BAR_WIDTH * top.size_ratio()) as i32;
+        let scroll_bar = Rect::new(
+            right.right() - scroll_bar_width,
+            right.y,
+            scroll_bar_width,
+            right.height,
+        );
+        let total = (row_height as usize * right_items.len()) as f32;
+        self.right_scroll.handle(
+            ui,
+            pixels,
+            ui.scope_id().with("dual popup selector right"),
+            right,
+            scroll_bar,
+            total,
+            right.height as f32,
+            pixels.pixels_per_point(),
+        );
+        let view = self.right_scroll.position;
+        let row_in = |list: Rect, count: usize, offset: f32, pos: Pos2| -> Option<usize> {
             let (px, py) = to_pixels(pos);
-            if px < list.x as f32 || px > list.right() as f32 {
+            if px < list.x as f32
+                || px > list.right() as f32
+                || py < list.y as f32
+                || py > list.bottom() as f32
+            {
                 return None;
             }
-            let row = ((py - list.y as f32) / row_height as f32).floor() as i32;
+            let row = ((py - list.y as f32 + offset) / row_height as f32).floor() as i32;
             (row >= 0 && (row as usize) < count).then_some(row as usize)
         };
-        let right_items = self.groups[self.left_selected].items.clone();
+        // PopupList::getRowFromPosition: a divider is no row.
         let hover_left = pointer
             .filter(|_| response.hovered())
-            .and_then(|p| row_in(left, self.groups.len(), p));
+            .and_then(|p| row_in(left, self.groups.len(), 0.0, p))
+            .filter(|&row| !self.groups[row].is_divider());
         let hover_right = pointer
             .filter(|_| response.hovered())
-            .and_then(|p| row_in(right, right_items.len(), p));
+            .and_then(|p| row_in(right, right_items.len(), view, p));
 
         let mut quads = QuadBatch::new();
         let mut body = Quad::new(
@@ -447,28 +516,37 @@ impl<T> DualMenu<T> {
         // the lighten colour, then the selection.
         let highlight = scope.color(ColorId::WidgetPrimary1).darker(0.8);
         let lighten = scope.color(ColorId::LightenScreen);
-        let row_rect = |list: Rect, row: usize| {
+        let row_rect = |list: Rect, row: usize, offset: f32| {
             RectF::new(
                 list.x as f32,
-                (list.y + row as i32 * row_height) as f32,
+                (list.y + row as i32 * row_height) as f32 - offset,
                 list.width as f32,
                 row_height as f32,
             )
         };
-        for (list, hovered, selected) in [
-            (left, hover_left, Some(self.left_selected)),
+        for (list, hovered, selected, offset) in [
+            (left, hover_left, self.left_selected, 0.0),
             (
                 right,
                 hover_right,
                 Some(self.right_selected).filter(|&r| r < right_items.len()),
+                view,
             ),
         ] {
             let mut rows = QuadBatch::additive();
             if let Some(row) = hovered {
-                rows.push(Quad::new(QuadKind::Color, row_rect(list, row), lighten));
+                rows.push(Quad::new(
+                    QuadKind::Color,
+                    row_rect(list, row, offset),
+                    lighten,
+                ));
             }
             if let Some(row) = selected {
-                rows.push(Quad::new(QuadKind::Color, row_rect(list, row), highlight));
+                rows.push(Quad::new(
+                    QuadKind::Color,
+                    row_rect(list, row, offset),
+                    highlight,
+                ));
             }
             rows.paint(pixels, RectF::from(list));
         }
@@ -476,36 +554,69 @@ impl<T> DualMenu<T> {
         let padding = row_height / 4;
         let text_colour = scope.color(ColorId::TextComponentText);
         let font_size = row_height as f32 * 0.55;
-        let names_left: Vec<&str> = self.groups.iter().map(|g| g.name.as_str()).collect();
-        let names_right: Vec<&str> = right_items.iter().map(|i| i.name.as_str()).collect();
-        for (list, names) in [(left, names_left), (right, names_right)] {
-            for (index, name) in names.iter().enumerate() {
-                let row = Rect::new(
-                    list.x + padding,
-                    list.y + row_height * index as i32,
-                    list.width - 2 * padding,
-                    row_height,
-                );
-                let style = (Face::Light, font_size, text_colour);
-                pixels.text_line(name, row, style, Justify::Left, Overflow::Ellipsis);
-            }
+        let names_left: Vec<(&str, bool)> = self
+            .groups
+            .iter()
+            .map(|g| (g.name.as_str(), g.is_divider()))
+            .collect();
+        let names_right: Vec<(&str, bool)> = right_items
+            .iter()
+            .map(|i| (i.name.as_str(), false))
+            .collect();
+        for (list, names, offset) in [(left, names_left, 0), (right, names_right, view as i32)] {
+            pixels.with_clip(RectF::from(list), |clipped| {
+                for (index, (name, divider)) in names.iter().enumerate() {
+                    let y = list.y + row_height * index as i32 - offset;
+                    if *divider {
+                        // PopupList::redoImage: a line across the middle.
+                        let middle = (row_height as f32 * (index as f32 + 0.5)) as i32 - offset;
+                        clipped.fill_rect(
+                            Rect::new(
+                                list.x + padding,
+                                list.y + middle,
+                                list.width - 2 * padding,
+                                1,
+                            ),
+                            lighten,
+                        );
+                        continue;
+                    }
+                    let row = Rect::new(list.x + padding, y, list.width - 2 * padding, row_height);
+                    let style = (Face::Light, font_size, text_colour);
+                    clipped.text_line(name, row, style, Justify::Left, Overflow::Ellipsis);
+                }
+            });
         }
+        self.right_scroll
+            .paint(pixels, &scope, scroll_bar, total, right.height as f32);
 
         if response.drag_stopped() || response.clicked() {
             if let Some(pos) = pointer {
-                if let Some(row) = row_in(left, self.groups.len(), pos) {
+                if let Some(row) = row_in(left, self.groups.len(), 0.0, pos) {
+                    if self.groups[row].is_divider() {
+                        return MenuOutcome::Open;
+                    }
+                    if self.groups[row].items.is_empty() {
+                        // newSelection with no sub-items: the row itself.
+                        self.left_selected = Some(row);
+                        self.right_scroll = Default::default();
+                        return MenuOutcome::Selected(self.groups[row].id);
+                    }
                     let items = &self.groups[row].items;
                     let keep = self.right_selected < items.len()
                         && self.right_selected < right_items.len()
                         && items[self.right_selected].name == right_items[self.right_selected].name;
-                    self.left_selected = row;
+                    if Some(row) != self.left_selected {
+                        self.right_scroll = Default::default();
+                    }
+                    self.left_selected = Some(row);
                     if !keep {
                         self.right_selected = 0;
                     }
                     if let Some(item) = self.groups[row].items.get(self.right_selected) {
                         return MenuOutcome::Selected(item.id);
                     }
-                } else if let Some(row) = row_in(right, right_items.len(), pos) {
+                } else if let Some(row) = row_in(right, right_items.len(), view, pos) {
                     self.right_selected = row;
                     return MenuOutcome::Selected(right_items[row].id);
                 }

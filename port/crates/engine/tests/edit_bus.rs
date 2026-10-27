@@ -10,7 +10,8 @@ use sas_common::LineGenerator;
 use sas_dsp_core::ProcessorRef;
 use sas_engine::document::PresetDocument;
 use sas_engine::edit_bus::{
-    EditBus, EditError, EditTarget, PreparedWavetable, EDIT_QUEUE_CAPACITY,
+    EditBus, EditConsumer, EditError, EditHandle, EditTarget, PreparedWavetable,
+    EDIT_QUEUE_CAPACITY, END_AUDITION_RESERVE,
 };
 use sas_engine::sound_engine::SoundEngine;
 use sas_engine::synth::Synth;
@@ -34,6 +35,8 @@ const DRAG: SlotValues = SlotValues {
 enum Call {
     Connect(String, String),
     Disconnect(String, String),
+    ConnectSlot(usize, String, String),
+    DisconnectSlot(usize, String, String),
     Lfo(usize, String),
     LineMapping(usize, String),
     Values(usize, SlotValues),
@@ -61,6 +64,17 @@ impl EditTarget for Recorder {
     fn disconnect_modulation(&mut self, source: &str, destination: &str) {
         self.0
             .push(Call::Disconnect(source.into(), destination.into()));
+    }
+    fn connect_slot(&mut self, slot: usize, source: &str, destination: &str) {
+        self.0
+            .push(Call::ConnectSlot(slot, source.into(), destination.into()));
+    }
+    fn disconnect_slot(&mut self, slot: usize, source: &str, destination: &str) {
+        self.0.push(Call::DisconnectSlot(
+            slot,
+            source.into(),
+            destination.into(),
+        ));
     }
     fn set_lfo_shape(&mut self, lfo: usize, line: &mut LineGenerator) {
         self.0.push(Call::Lfo(lfo, line.name().to_string()));
@@ -460,10 +474,12 @@ fn save_info_changes_only_the_mirror() {
 fn a_full_queue_refuses_without_changing_the_mirror() {
     let (edits, mut consumer) = EditBus::new(init_document());
     let lfo = |i: usize| named_line(&format!("lfo {i}"));
-    for i in 0..EDIT_QUEUE_CAPACITY - 1 {
+    // Edits leave the entries reserved for ending wavetable drags.
+    let edits_room = EDIT_QUEUE_CAPACITY - END_AUDITION_RESERVE;
+    for i in 0..edits_room - 1 {
         edits.set_lfo_shape(i % 8, lfo(i)).unwrap();
     }
-    assert_eq!(edits.capacity_remaining(), 1);
+    assert_eq!(edits.capacity_remaining(), 1 + END_AUDITION_RESERVE);
     assert_eq!(edits.set_lfo_shape(0, lfo(999)), Err(EditError::QueueFull));
     let result = edits.batch(|batch| {
         batch.set_sample(named_sample("too much"))?;
@@ -472,7 +488,7 @@ fn a_full_queue_refuses_without_changing_the_mirror() {
     assert_eq!(result, Err(EditError::QueueFull));
     edits.with_document(|document| {
         assert_eq!(document.state.sample.name, "White Noise");
-        let last = (0..EDIT_QUEUE_CAPACITY - 1).filter(|i| i % 8 == 1).max();
+        let last = (0..edits_room - 1).filter(|i| i % 8 == 1).max();
         assert_eq!(
             document.state.lfos[1].name(),
             format!("lfo {}", last.unwrap())
@@ -856,7 +872,8 @@ fn drawn_creator() -> WavetableCreator {
 
 /// `set_wavetable_frame` renders only the drawn frame (upstream's
 /// `render(position)`) into the shared table and sends it to the engine,
-/// which writes it over that frame; the document takes the creator.
+/// which writes it over that frame. It is an audition: the document keeps
+/// its creator and the revision doesn't move.
 #[test]
 fn a_drawn_frame_reaches_the_engine_and_the_shared_table() {
     let _rng = ENGINE_RNG.lock().unwrap_or_else(|p| p.into_inner());
@@ -869,16 +886,21 @@ fn a_drawn_frame_reaches_the_engine_and_the_shared_table() {
     let creator = drawn_creator();
     let mut expected = (*before).clone();
     creator.clone().render_frame(&mut expected, 3);
-    edits.set_wavetable_frame(0, creator.clone(), 3).unwrap();
+    let revision = edits.revision();
+    let token = edits.audition_token(0).unwrap();
+    assert!(edits
+        .set_wavetable_frame(0, creator.clone(), 3, token)
+        .unwrap());
     let shared = edits.wavetable(0).unwrap();
     assert_eq!(shared.frame(3), expected.frame(3));
     assert_ne!(shared.frame(3), before.frame(3));
     assert_eq!(shared.frame(2), before.frame(2));
     assert_eq!(shared.num_frames(), before.num_frames());
+    assert_eq!(edits.revision(), revision);
     edits.with_document(|document| {
         assert_eq!(
             document.state.wavetables[0].to_json().dump(),
-            creator.to_json().dump()
+            corpus_wavetable().to_json().dump()
         );
     });
 
@@ -903,15 +925,23 @@ fn drawn_frames_coalesce_and_keep_their_order() {
     recorder.0.clear();
 
     let creator = drawn_creator();
-    edits.set_wavetable_frame(1, creator.clone(), 2).unwrap();
-    edits.set_wavetable_frame(1, creator.clone(), 5).unwrap();
+    let token = edits.audition_token(1).unwrap();
+    assert!(edits
+        .set_wavetable_frame(1, creator.clone(), 2, token)
+        .unwrap());
+    assert!(edits
+        .set_wavetable_frame(1, creator.clone(), 5, token)
+        .unwrap());
     consumer.drain(&mut recorder);
     let first = edits.wavetable(1).unwrap().frame(5).unwrap().wave[0];
     assert_eq!(recorder.0, vec![Call::Frame(1, 5, first)]);
 
     recorder.0.clear();
     edits.set_wavetable(1, corpus_wavetable()).unwrap();
-    edits.set_wavetable_frame(1, creator.clone(), 4).unwrap();
+    let token = edits.audition_token(1).unwrap();
+    assert!(edits
+        .set_wavetable_frame(1, creator.clone(), 4, token)
+        .unwrap());
     let drawn = edits.wavetable(1).unwrap().frame(4).unwrap().wave[0];
     let frames = edits.wavetable(1).unwrap().num_frames();
     edits.set_wavetable(1, corpus_wavetable()).unwrap();
@@ -925,38 +955,420 @@ fn drawn_frames_coalesce_and_keep_their_order() {
 }
 
 /// A restore drops a frame queued before it; a frame past the table's last
-/// changes only the creator; bad indices change nothing.
+/// changes nothing; bad indices change nothing.
 #[test]
 fn drawn_frames_respect_restores_and_bounds() {
     let (edits, mut consumer) = EditBus::new(init_document());
     let mut recorder = Recorder::default();
-    edits.set_wavetable_frame(0, drawn_creator(), 0).unwrap();
+    let token = edits.audition_token(0).unwrap();
+    assert!(edits
+        .set_wavetable_frame(0, drawn_creator(), 0, token)
+        .unwrap());
     edits.begin_restore(init_document());
     consumer.drain(&mut recorder);
     assert_eq!(recorder.0, vec![Call::Load(String::new())]);
 
     recorder.0.clear();
     let revision = edits.revision();
+    let init = edits.with_document(|document| document.state.wavetables[0].to_json().dump());
     // The init table has one frame.
-    edits.set_wavetable_frame(0, drawn_creator(), 100).unwrap();
-    assert!(edits.revision() > revision);
+    let token = edits.audition_token(0).unwrap();
+    assert!(edits
+        .set_wavetable_frame(0, drawn_creator(), 100, token)
+        .unwrap());
+    assert_eq!(edits.revision(), revision);
     consumer.drain(&mut recorder);
     assert!(recorder.0.is_empty());
     edits.with_document(|document| {
-        assert_eq!(
-            document.state.wavetables[0].to_json().dump(),
-            drawn_creator().to_json().dump()
-        );
+        assert_eq!(document.state.wavetables[0].to_json().dump(), init);
     });
 
     let revision = edits.revision();
     assert_eq!(
-        edits.set_wavetable_frame(3, drawn_creator(), 0),
+        edits.set_wavetable_frame(3, drawn_creator(), 0, token),
         Err(EditError::BadIndex(3))
     );
     assert_eq!(
-        edits.set_wavetable_frame(0, drawn_creator(), 257),
+        edits.set_wavetable_frame(0, drawn_creator(), 257, token),
         Err(EditError::BadIndex(257))
     );
     assert_eq!(edits.revision(), revision);
+}
+
+/// Whether two tables hold the same frames.
+fn same_frames(
+    a: &sas_oscillators::sas_wavetable::Wavetable,
+    b: &sas_oscillators::sas_wavetable::Wavetable,
+) -> bool {
+    a.num_frames() == b.num_frames() && (0..a.num_frames()).all(|i| a.frame(i) == b.frame(i))
+}
+
+/// A drawn frame or end of audition for a drag that has since been
+/// committed, or from before a restore, changes nothing, so neither can
+/// replace the committed table.
+#[test]
+fn stale_auditions_change_nothing() {
+    let (edits, mut consumer) = EditBus::new(init_document());
+    let mut recorder = Recorder::default();
+    edits.set_wavetable(2, corpus_wavetable()).unwrap();
+    consumer.drain(&mut recorder);
+    recorder.0.clear();
+
+    let token = edits.audition_token(2).unwrap();
+    edits.set_wavetable(2, corpus_wavetable()).unwrap();
+    let committed = edits.wavetable(2).unwrap();
+    consumer.drain(&mut recorder);
+    recorder.0.clear();
+    assert!(!edits
+        .set_wavetable_frame(2, drawn_creator(), 3, token)
+        .unwrap());
+    assert!(!edits.end_audition(2, token).unwrap());
+    assert!(std::sync::Arc::ptr_eq(
+        &edits.wavetable(2).unwrap(),
+        &committed
+    ));
+    consumer.drain(&mut recorder);
+    assert!(recorder.0.is_empty());
+
+    // Another oscillator's commit doesn't make it stale.
+    let token = edits.audition_token(2).unwrap();
+    edits.set_wavetable(1, corpus_wavetable()).unwrap();
+    assert!(edits
+        .set_wavetable_frame(2, drawn_creator(), 3, token)
+        .unwrap());
+
+    let token = edits.audition_token(2).unwrap();
+    edits.begin_restore(init_document());
+    consumer.drain(&mut recorder);
+    recorder.0.clear();
+    let revision = edits.revision();
+    assert!(!edits
+        .set_wavetable_frame(2, drawn_creator(), 0, token)
+        .unwrap());
+    assert!(!edits.end_audition(2, token).unwrap());
+    consumer.drain(&mut recorder);
+    assert!(recorder.0.is_empty());
+    // The new preset's table is the document's, drawn and played.
+    let init = PreparedWavetable::render(init_document().state.wavetables[2].clone()).unwrap();
+    assert!(same_frames(&edits.wavetable(2).unwrap(), init.wavetable()));
+    assert_eq!(edits.revision(), revision);
+
+    assert_eq!(edits.audition_token(3), Err(EditError::BadIndex(3)));
+}
+
+/// `end_audition` after a drag that isn't committed: the shared and engine
+/// tables are the document's creator again, the drag's token goes stale so
+/// a late frame changes nothing, and the synth plays bit for bit as one
+/// that only ever had the committed table; the document and revision stay.
+#[test]
+fn ending_an_audition_plays_the_document_again() {
+    let _rng = ENGINE_RNG.lock().unwrap_or_else(|p| p.into_inner());
+    let mut committed = fresh_synth();
+    let (edits, mut consumer) = EditBus::new(init_document());
+    edits.set_wavetable(0, corpus_wavetable()).unwrap();
+    consumer.drain(&mut committed);
+    let expected = render(&mut committed, &[]);
+
+    let mut synth = fresh_synth();
+    let (edits, mut consumer) = EditBus::new(init_document());
+    edits.set_wavetable(0, corpus_wavetable()).unwrap();
+    consumer.drain(&mut synth);
+    let before = edits.wavetable(0).unwrap();
+    let revision = edits.revision();
+    let token = edits.audition_token(0).unwrap();
+    assert!(edits
+        .set_wavetable_frame(0, drawn_creator(), 9, token)
+        .unwrap());
+    consumer.drain(&mut synth);
+    assert!(!same_frames(&edits.wavetable(0).unwrap(), &before));
+
+    assert!(edits.end_audition(0, token).unwrap());
+    consumer.drain(&mut synth);
+    let shared = edits.wavetable(0).unwrap();
+    let engine = with_svh(&synth, |svh| svh.wavetable(0));
+    assert_eq!(table_bits(&shared), table_bits(&before));
+    assert_eq!(table_bits(&engine.borrow()), table_bits(&before));
+    assert_eq!(edits.revision(), revision);
+    edits.with_document(|document| {
+        assert_eq!(
+            document.state.wavetables[0].to_json().dump(),
+            corpus_wavetable().to_json().dump()
+        );
+    });
+
+    // The drag's token is stale now: a late frame from it changes nothing.
+    assert!(!edits
+        .set_wavetable_frame(0, drawn_creator(), 9, token)
+        .unwrap());
+    assert!(!edits.end_audition(0, token).unwrap());
+    consumer.drain(&mut synth);
+    assert_eq!(
+        table_bits(&edits.wavetable(0).unwrap()),
+        table_bits(&before)
+    );
+    assert_eq!(table_bits(&engine.borrow()), table_bits(&before));
+
+    let actual = render(&mut synth, &[]);
+    assert!(expected.iter().any(|&sample| sample != 0.0));
+    assert!(
+        expected
+            .iter()
+            .zip(&actual)
+            .all(|(a, b)| a.to_bits() == b.to_bits()),
+        "the ended audition plays differently from the committed table"
+    );
+    edits.collect_retired();
+    assert_eq!(edits.leaked_payloads(), 0);
+}
+
+/// Every frame's waveform, as bits.
+fn table_bits(table: &sas_oscillators::sas_wavetable::Wavetable) -> Vec<u32> {
+    (0..table.num_frames())
+        .flat_map(|i| table.frame(i).unwrap().wave.map(f32::to_bits))
+        .collect()
+}
+
+/// A matrix row choosing its slot's route (`ModulationMatrixRow::
+/// sliderValueChanged`): the old route goes and the new one takes the same
+/// slot in one batch, with the slot's controls left alone. A route may repeat
+/// another slot's; one to the slot's own amount is refused.
+#[test]
+fn a_matrix_row_rewires_its_own_slot_in_one_step() {
+    let (edits, mut consumer) = EditBus::new(init_document());
+    let routes = |edits: &EditHandle| {
+        edits.with_document(|document| {
+            document
+                .state
+                .modulations()
+                .iter()
+                .enumerate()
+                .filter(|(_, slot)| !slot.is_free())
+                .map(|(index, slot)| (index, slot.source.clone(), slot.destination.clone()))
+                .collect::<Vec<_>>()
+        })
+    };
+    let amount = |edits: &EditHandle| {
+        edits.with_document(|document| document.state.value("modulation_4_amount"))
+    };
+    let before = amount(&edits);
+    let drained = |consumer: &mut EditConsumer| {
+        let mut recorder = Recorder::default();
+        consumer.drain(&mut recorder);
+        recorder.0
+    };
+
+    assert_eq!(
+        edits.set_slot_route(3, Some(("lfo_1", "osc_1_level"))),
+        Ok(true)
+    );
+    assert_eq!(
+        drained(&mut consumer),
+        [Call::ConnectSlot(3, "lfo_1".into(), "osc_1_level".into())]
+    );
+    assert_eq!(
+        edits.set_slot_route(3, Some(("lfo_2", "osc_1_level"))),
+        Ok(true)
+    );
+    assert_eq!(
+        drained(&mut consumer),
+        [
+            Call::DisconnectSlot(3, "lfo_1".into(), "osc_1_level".into()),
+            Call::ConnectSlot(3, "lfo_2".into(), "osc_1_level".into()),
+        ]
+    );
+    assert_eq!(
+        edits.set_slot_route(5, Some(("lfo_2", "osc_1_level"))),
+        Ok(true)
+    );
+    drained(&mut consumer);
+    assert_eq!(
+        routes(&edits),
+        [
+            (3, "lfo_2".into(), "osc_1_level".into()),
+            (5, "lfo_2".into(), "osc_1_level".into()),
+        ]
+    );
+    assert_eq!(amount(&edits), before);
+
+    assert_eq!(
+        edits.set_slot_route(3, Some(("lfo_1", "modulation_4_amount"))),
+        Ok(false)
+    );
+    assert_eq!(
+        drained(&mut consumer),
+        [Call::DisconnectSlot(
+            3,
+            "lfo_2".into(),
+            "osc_1_level".into()
+        )]
+    );
+    assert_eq!(edits.set_slot_route(5, None), Ok(false));
+    assert_eq!(
+        drained(&mut consumer),
+        [Call::DisconnectSlot(
+            5,
+            "lfo_2".into(),
+            "osc_1_level".into()
+        )]
+    );
+    assert!(routes(&edits).is_empty());
+    assert_eq!(edits.set_slot_route(64, None), Err(EditError::BadIndex(64)));
+    assert_eq!(
+        edits.set_slot_route(0, Some(("no_such_source", "osc_1_level"))),
+        Err(EditError::UnknownSource("no_such_source".into()))
+    );
+}
+
+/// A row's rewire plays as upstream's engine would after
+/// `disconnectModulation` and `connectModulation` of the same slot, which
+/// the port's `disconnect_modulation` and `connect_modulation` give here (the
+/// freed slot is the first free one), with the slot's amount kept.
+#[test]
+fn a_rewired_slot_plays_like_a_disconnect_and_connect() {
+    let _rng = ENGINE_RNG.lock().unwrap_or_else(|p| p.into_inner());
+    #[derive(Clone, Copy, PartialEq)]
+    enum Change {
+        None,
+        OverBus,
+        InPlace,
+    }
+    let play = |change: Change| {
+        let mut synth = fresh_synth();
+        let (edits, mut consumer) = EditBus::new(init_document());
+        edits
+            .set_slot_route(0, Some(("lfo_1", "osc_1_level")))
+            .unwrap();
+        consumer.drain(&mut synth);
+        synth.set_control("modulation_1_amount", -0.8);
+        let mut out = Vec::new();
+        let (mut left, mut right) = (vec![0.0; 64], vec![0.0; 64]);
+        let mut seconds = 0.0;
+        for block in 0..300 {
+            if block == 150 {
+                match change {
+                    Change::None => {}
+                    Change::OverBus => {
+                        edits
+                            .set_slot_route(0, Some(("env_1", "osc_1_level")))
+                            .unwrap();
+                        consumer.drain(&mut synth);
+                    }
+                    Change::InPlace => {
+                        synth.disconnect_modulation("lfo_1", "osc_1_level");
+                        synth.connect_modulation("env_1", "osc_1_level");
+                    }
+                }
+            }
+            let midi: &[(usize, [u8; 3])] = if block == 0 {
+                &[(3, [0x90, 48, 100])]
+            } else {
+                &[]
+            };
+            synth.render_block(&mut left, &mut right, midi, &mut seconds, 44100);
+            out.extend(left.iter().zip(&right).flat_map(|(l, r)| [*l, *r]));
+        }
+        out
+    };
+    let (unchanged, bus, in_place) = (
+        play(Change::None),
+        play(Change::OverBus),
+        play(Change::InPlace),
+    );
+    assert!(bus.iter().any(|sample| *sample != 0.0));
+    assert!(bus != unchanged, "the rewire is not heard");
+    assert!(bus == in_place, "the rewire plays differently");
+}
+
+/// `end_audition` can't be starved: other edits, drawn frames and commits
+/// leave [`END_AUDITION_RESERVE`] entries free, so every oscillator's drag
+/// can still end once the queue is otherwise full; an end with nothing
+/// auditioned queues nothing.
+#[test]
+fn ending_auditions_has_room_whatever_else_is_queued() {
+    let (edits, mut consumer) = EditBus::new(init_document());
+    for oscillator in 0..3 {
+        edits.set_wavetable(oscillator, corpus_wavetable()).unwrap();
+    }
+    let mut recorder = Recorder::default();
+    consumer.drain(&mut recorder);
+    let committed: Vec<_> = (0..3).map(|i| edits.wavetable(i).unwrap()).collect();
+    let tokens: Vec<_> = (0..3).map(|i| edits.audition_token(i).unwrap()).collect();
+    for (oscillator, &token) in tokens.iter().enumerate() {
+        assert!(edits
+            .set_wavetable_frame(oscillator, drawn_creator(), 2, token)
+            .unwrap());
+    }
+
+    // Fill the queue with other edits until they're refused.
+    let mut i = 0;
+    while edits
+        .set_lfo_shape(i % 8, named_line(&format!("lfo {i}")))
+        .is_ok()
+    {
+        i += 1;
+    }
+    // Then with drawn frames, which take one entry, until they are too.
+    while edits
+        .set_wavetable_frame(0, drawn_creator(), 3, tokens[0])
+        .is_ok()
+    {}
+    assert_eq!(edits.capacity_remaining(), END_AUDITION_RESERVE);
+    assert_eq!(
+        edits.set_wavetable(0, corpus_wavetable()),
+        Err(EditError::QueueFull)
+    );
+
+    // Each drag ends in the reserved room.
+    for (oscillator, &token) in tokens.iter().enumerate() {
+        assert_eq!(edits.end_audition(oscillator, token), Ok(true));
+        assert!(same_frames(
+            &edits.wavetable(oscillator).unwrap(),
+            &committed[oscillator]
+        ));
+    }
+    // A drag with nothing drawn since: no entry, and its token goes stale.
+    let remaining = edits.capacity_remaining();
+    let token = edits.audition_token(1).unwrap();
+    assert_eq!(edits.end_audition(1, token), Ok(true));
+    assert_eq!(edits.capacity_remaining(), remaining);
+    assert!(!edits
+        .set_wavetable_frame(1, drawn_creator(), 2, token)
+        .unwrap());
+
+    recorder.0.clear();
+    consumer.drain(&mut recorder);
+    let swaps: Vec<_> = recorder
+        .0
+        .iter()
+        .filter(|call| matches!(call, Call::Wavetable(..)))
+        .collect();
+    assert_eq!(swaps.len(), 3, "{:?}", recorder.0);
+    edits.collect_retired();
+    assert_eq!(edits.leaked_payloads(), 0);
+}
+
+/// A batch that fails after setting a wavetable puts back the
+/// oscillator's commit count and audition, so a drag auditioning before it
+/// can still draw and end.
+#[test]
+fn a_failed_batch_keeps_a_drags_audition() {
+    let (edits, mut consumer) = EditBus::new(init_document());
+    edits.set_wavetable(0, corpus_wavetable()).unwrap();
+    let mut recorder = Recorder::default();
+    consumer.drain(&mut recorder);
+    let committed = edits.wavetable(0).unwrap();
+    let token = edits.audition_token(0).unwrap();
+    assert!(edits
+        .set_wavetable_frame(0, drawn_creator(), 2, token)
+        .unwrap());
+    let prepared = PreparedWavetable::render(corpus_wavetable()).unwrap();
+    let result = edits.batch(|batch| {
+        batch.set_prepared_wavetable(0, prepared)?;
+        batch.connect_modulation("nothing", "filter_1_cutoff", DRAG)
+    });
+    assert!(matches!(result, Err(EditError::UnknownSource(_))));
+    assert_eq!(edits.audition_token(0), Ok(token));
+    assert!(!same_frames(&edits.wavetable(0).unwrap(), &committed));
+    assert_eq!(edits.end_audition(0, token), Ok(true));
+    assert!(same_frames(&edits.wavetable(0).unwrap(), &committed));
 }

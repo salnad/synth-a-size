@@ -112,6 +112,82 @@ def line_fold_wavetable():
     }
 
 
+def wavetable_groups():
+    """Three groups of line sources and modifiers, so the wavetable editor's
+    component list scrolls and its organizer shows rows of keyframes."""
+    square = [(0.0, 0.0), (0.5, 0.0), (0.5, 1.0), (1.0, 1.0)]
+    triangle = [(0.0, 0.5), (0.25, 0.0), (0.75, 1.0), (1.0, 0.5)]
+    ramp = [(0.0, 1.0), (1.0, 0.0)]
+
+    def source(keyframes):
+        return {
+            "type": "Line Source",
+            "num_points": len(keyframes[0][1]),
+            "interpolation_style": 1,
+            "keyframes": [{"position": position, "pull_power": 0.0, "line": line(points)}
+                          for position, points in keyframes],
+        }
+
+    return {
+        "name": "corpus groups",
+        "author": AUTHOR,
+        "version": SYNTH_VERSION,
+        "full_normalize": True,
+        "remove_all_dc": True,
+        "groups": [
+            {"components": [
+                source([(0, square), (128, square)]),
+                {"type": "Wave Folder", "interpolation_style": 1,
+                 "keyframes": [{"position": 0, "fold_boost": 1.0}, {"position": 256, "fold_boost": 2.5}]},
+            ]},
+            {"components": [source([(64, triangle), (192, triangle)])]},
+            {"components": [
+                source([(32, ramp)]),
+                {"type": "Slew Limiter", "interpolation_style": 1,
+                 "keyframes": [{"position": 0, "up_run_rise": 0.0, "down_run_rise": 0.3},
+                               {"position": 200, "up_run_rise": 0.5, "down_run_rise": 0.01}]},
+                {"type": "Wave Warp", "interpolation_style": 1, "horizontal_asymmetric": False,
+                 "vertical_asymmetric": False,
+                 "keyframes": [{"position": 96, "horizontal_power": 2.0, "vertical_power": 0.0}]},
+            ]},
+        ],
+    }
+
+
+def wavetable_modifiers():
+    """One group with a line source and every modifier with an overlay, each
+    set away from its defaults, for the wavetable editor's modifier overlays
+    (ref-gui --wavetable-select)."""
+    triangle = [(0.0, 0.5), (0.25, 0.0), (0.75, 1.0), (1.0, 0.5)]
+    return {
+        "name": "corpus modifiers",
+        "author": AUTHOR,
+        "version": SYNTH_VERSION,
+        "full_normalize": True,
+        "remove_all_dc": True,
+        "groups": [
+            {"components": [
+                {"type": "Line Source", "num_points": len(triangle), "interpolation_style": 1,
+                 "keyframes": [{"position": 0, "pull_power": 0.0, "line": line(triangle)}]},
+                {"type": "Phase Shift", "interpolation_style": 1, "style": 1,
+                 "keyframes": [{"position": 0, "phase": 0.25, "mix": 0.75},
+                               {"position": 128, "phase": 0.5, "mix": 1.0}]},
+                {"type": "Wave Window", "interpolation_style": 1, "window_shape": 1,
+                 "keyframes": [{"position": 0, "left_position": 0.1, "right_position": 0.85}]},
+                {"type": "Frequency Filter", "interpolation_style": 1, "style": 1, "normalize": True,
+                 "keyframes": [{"position": 0, "cutoff": 6.5, "shape": 0.3}]},
+                {"type": "Slew Limiter", "interpolation_style": 1,
+                 "keyframes": [{"position": 0, "up_run_rise": 0.2, "down_run_rise": 0.6}]},
+                {"type": "Wave Folder", "interpolation_style": 1,
+                 "keyframes": [{"position": 0, "fold_boost": 3.0}]},
+                {"type": "Wave Warp", "interpolation_style": 1, "horizontal_asymmetric": True,
+                 "vertical_asymmetric": False,
+                 "keyframes": [{"position": 0, "horizontal_power": 4.0, "vertical_power": -2.5}]},
+            ]},
+        ],
+    }
+
+
 # Control values of the enumerated parameters the feature-stacking presets use.
 DISTORTION = {
     "sync": 1, "formant": 2, "quantize": 3, "bend": 4, "squeeze": 5, "pulse": 6,
@@ -1383,6 +1459,20 @@ GUI_PRESETS = {
             ("lfo_1", "osc_1_level", 0.0),
             ("env_2", "modulation_1_amount", 0.3),
         ),
+    ),
+    "wavetable_groups": preset(
+        "wavetable groups",
+        "Oscillator 1's wavetable in three groups of sources and modifiers, so the wavetable editor's "
+        "component list scrolls and its organizer shows several rows of keyframes.",
+        {},
+        wavetables=[wavetable_groups()],
+    ),
+    "wavetable_modifiers": preset(
+        "wavetable modifiers",
+        "Oscillator 1's wavetable as a line source and every modifier with an overlay, for the wavetable "
+        "editor's modifier overlays.",
+        {},
+        wavetables=[wavetable_modifiers()],
     ),
 }
 

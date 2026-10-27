@@ -162,6 +162,9 @@ fn producer(edits: EditHandle, stop: Arc<AtomicBool>, routing: bool) -> usize {
             } else {
                 retry(|| edits.disconnect_modulation(source, destination));
             }
+            // A matrix row rewiring its own slot.
+            let rewire = (count % 3 != 0).then_some(routes[(count + 1) % routes.len()]);
+            retry(|| edits.set_slot_route(40, rewire));
             if count % 25 == 0 {
                 retry(|| {
                     edits.batch(|batch| {
@@ -186,7 +189,18 @@ fn producer(edits: EditHandle, stop: Arc<AtomicBool>, routing: bool) -> usize {
         if count % 4 == 1 {
             // Drawing on a wavetable: one frame at a time.
             let creator = wavetables[count % wavetables.len()].clone();
-            retry(|| edits.set_wavetable_frame(count % 3, creator.clone(), (count * 7) % 257));
+            retry(|| {
+                let token = edits.audition_token(count % 3)?;
+                edits.set_wavetable_frame(count % 3, creator.clone(), (count * 7) % 257, token)
+            });
+        }
+        if count % 80 == 21 {
+            // A drag that isn't committed.
+            let oscillator = (count / 80) % 3;
+            retry(|| {
+                let token = edits.audition_token(oscillator)?;
+                edits.end_audition(oscillator, token)
+            });
         }
         if count % 60 == 0 {
             let sample = SampleState {

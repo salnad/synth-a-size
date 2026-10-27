@@ -10,18 +10,25 @@
 //! LFO browser comes later. The sync
 //! selector is the shared `TempoSelector`.
 
-use super::{MenuOwner, Panel};
+use std::path::{Path as FsPath, PathBuf};
+
+use sas_preset::user_folders::{self, Kind, LFO_EXTENSION};
+
+use super::{popup_browser, MenuOwner, Panel};
 use crate::colour::Colour;
+use crate::controls::file_dialog::{self, FileRequest};
 use crate::controls::icon::fill_path;
 use crate::controls::line_editor::{
-    paint_pattern as line_paint_pattern, LineEditor, LineSettings, PAINT_PATTERN_NAMES,
+    paint_pattern as line_paint_pattern, LineEditor, LineEditorEvent, LineSettings, LineTarget,
+    PAINT_PATTERN_NAMES,
 };
 use crate::controls::path::{Path, Transform};
 use crate::controls::paths::Icon;
 use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
-use crate::controls::slider::{Placement, Slider, SliderStyle};
+use crate::controls::slider::{Placement, Slider, SliderStyle, Wheel};
 use crate::controls::tempo::{self, TempoSelector};
 use crate::fonts::Face;
+use crate::interface::{self, EditorModel};
 use crate::layout::{PresetSelectorLayout, Rect};
 use crate::local;
 use crate::paint::PixelPainter;
@@ -260,13 +267,27 @@ pub struct LfoSection {
     editor: LineEditor,
     grid_size_x: Slider,
     grid_size_y: Slider,
+    /// `current_file_`: the LFO file last loaded from the browser or the
+    /// arrows.
+    current_file: std::cell::RefCell<Option<PathBuf>>,
+    /// The popup browser this section asked for since the last call: its
+    /// bounds and the section's (`textMouseDown`).
+    browse_request: std::cell::RefCell<Option<(Rect, Rect)>>,
 }
 
+/// `textMouseDown`'s `kBrowserWidth` and `kBrowserHeight`, before the size
+/// ratio.
+const BROWSER_WIDTH: f32 = 500.0;
+const BROWSER_HEIGHT: f32 = 250.0;
+
 /// `LfoSection`'s grid size sliders.
-fn grid_slider(name: &'static str, prefix: &'static str) -> Slider {
-    let mut slider = Slider::new(name, SliderStyle::Text)
-        .sensitivity(0.2)
-        .popup_prefix(prefix);
+/// `prefix` is the popup's (`setPopupPrefix`): the LFO sections set one,
+/// the Matrix's remap editor doesn't.
+pub(crate) fn grid_slider(name: &'static str, prefix: Option<&'static str>) -> Slider {
+    let mut slider = Slider::new(name, SliderStyle::Text).sensitivity(0.2);
+    if let Some(prefix) = prefix {
+        slider = slider.popup_prefix(prefix);
+    }
     slider.text_component_offset = Some(0.0);
     slider.text_height_percentage = 0.6;
     slider
@@ -282,6 +303,8 @@ impl LfoSection {
         let names = NAMES[index];
         LfoSection {
             index,
+            current_file: std::cell::RefCell::new(None),
+            browse_request: std::cell::RefCell::new(None),
             names,
             sync: TempoSelector::new(names.sync),
             frequency: Slider::new(names.frequency, SliderStyle::Text),
@@ -303,9 +326,11 @@ impl LfoSection {
             stereo: Slider::new(names.stereo, SliderStyle::Rotary)
                 .bipolar()
                 .snap_to_value(0.0),
-            editor: LineEditor { lfo: index },
-            grid_size_x: grid_slider(local::GRID_SIZE_X[index], "X Grid"),
-            grid_size_y: grid_slider(local::GRID_SIZE_Y[index], "Y Grid"),
+            editor: LineEditor {
+                target: LineTarget::Lfo(index),
+            },
+            grid_size_x: grid_slider(local::GRID_SIZE_X[index], Some("X Grid")),
+            grid_size_y: grid_slider(local::GRID_SIZE_Y[index], Some("Y Grid")),
         }
     }
 
@@ -438,106 +463,295 @@ impl LfoSection {
             shape: Shape::Next,
             colours: ui_colours,
         };
-        panel.shape_button(("lfo prev", self.index), prev, preset.previous);
-        panel.shape_button(("lfo next", self.index), next, preset.next);
+        let mut shift = 0;
+        if panel
+            .shape_button(("lfo prev", self.index), prev, preset.previous)
+            .clicked
+        {
+            shift = -1;
+        }
+        if panel
+            .shape_button(("lfo next", self.index), next, preset.next)
+            .clicked
+        {
+            shift = 1;
+        }
+        if shift != 0 {
+            // prevClicked and nextClicked: getShiftedFile among the user's
+            // LFOs (no added folders).
+            let model = panel.host.model();
+            let directories = user_folders::root(model.data_directory().as_deref())
+                .map(|root| user_folders::directories(&root, Kind::Lfos))
+                .unwrap_or_default();
+            let files = user_folders::files_of_type(&directories, popup_browser::LFO_EXTENSIONS);
+            let current = self.current_file();
+            if let Some(file) = user_folders::shifted_file(files, current.as_deref(), shift) {
+                self.load_file(model, &file);
+            }
+        }
+        // textMouseDown: the browser above the section, its right edge at
+        // the name's.
+        let text = panel.pixels.rect(preset.text.into());
+        let response = panel.ui.interact(
+            text,
+            panel.ui.scope_id().with(("lfo name", self.index)),
+            egui::Sense::click(),
+        );
+        if response.hovered() && panel.ui.input(|input| input.pointer.primary_pressed()) {
+            let ratio = panel.scope.size_ratio();
+            let (width, height) = (
+                (BROWSER_WIDTH * ratio) as i32,
+                (BROWSER_HEIGHT * ratio) as i32,
+            );
+            let browser = Rect::new(
+                preset.bounds.right() - width,
+                layout.bounds.y - height,
+                width,
+                height,
+            );
+            *self.browse_request.borrow_mut() = Some((browser, layout.bounds));
+        }
 
         self.show_editor(panel, layout);
+    }
+
+    /// `getCurrentFile`.
+    pub fn current_file(&self) -> Option<PathBuf> {
+        self.current_file.borrow().clone()
+    }
+
+    /// `loadFile`: an existing `file` becomes the current file before it's
+    /// read, so the arrows step on past one that doesn't read, and then its
+    /// shape loads.
+    pub fn load_file(&self, model: &dyn EditorModel, file: &FsPath) {
+        if !file.exists() {
+            return;
+        }
+        *self.current_file.borrow_mut() = Some(file.to_path_buf());
+        popup_browser::load_lfo_file(model, self.index, file);
+    }
+
+    /// The popup browser asked for since the last call: the browser's
+    /// bounds and the section's.
+    pub fn take_browse_request(&self) -> Option<(Rect, Rect)> {
+        self.browse_request.borrow_mut().take()
+    }
+
+    /// `importLfo` and `exportLfo`: the menu's choices open a native dialog
+    /// in the user's LFO folder for `.vitallfo` files, and an answer is
+    /// carried out. An imported file loads with the LFO extension, as
+    /// `loadFile(choice.withFileExtension(...))` does. An export writes the
+    /// shape, then names it after the file: the file keeps the shape's
+    /// earlier name, as upstream's does (`stateToJson` before `setName`).
+    fn import_and_export(&self, panel: &mut Panel, import: bool, export: bool) {
+        let ctx = panel.ui.ctx().clone();
+        let model = panel.host.model();
+        let import_id = egui::Id::unique("import lfo").with(self.index);
+        let export_id = egui::Id::unique("export lfo").with(self.index);
+        if import || export {
+            let filters = vec![("LFO".to_string(), vec![LFO_EXTENSION.to_string()])];
+            let (title, id) = if import {
+                ("Import LFO", import_id)
+            } else {
+                ("Export LFO", export_id)
+            };
+            let mut request = if import {
+                FileRequest::open(title, filters)
+            } else {
+                // The chooser starts at the folder, suggesting no name.
+                let mut request = FileRequest::save(title, filters, "");
+                request.file_name = None;
+                request
+            };
+            if let Some(folder) = interface::user_folder(model, Kind::Lfos) {
+                request = request.in_folder(folder);
+            }
+            file_dialog::open(&ctx, id, &request);
+        }
+        if let Some(Some(path)) = file_dialog::take_result(&ctx, import_id) {
+            self.load_file(model, &path.with_extension(LFO_EXTENSION));
+        }
+        if let Some(Some(path)) = file_dialog::take_result(&ctx, export_id) {
+            let name = export_shape(&self.editor.shape(panel), &path);
+            self.editor.set_name(panel, &name);
+        }
     }
 
     /// The editor and the controls that set it up: the grid sizes, paint
     /// and its pattern, smooth, and the shape's name in the strip.
     fn show_editor(&self, panel: &mut Panel, layout: &LfoLayout) {
-        let host = panel.host;
-        let settings = LineSettings {
-            grid_size_x: host.value(local::GRID_SIZE_X[self.index]) as usize,
-            grid_size_y: host.value(local::GRID_SIZE_Y[self.index]) as usize,
-            paint: host.value(local::PAINT[self.index]) != 0.0,
-            paint_pattern: host.value(local::PAINT_PATTERN[self.index]) as usize,
-            phase: self.names.phase,
+        let controls = LineControls {
+            editor: &self.editor,
+            grid_size_x: &self.grid_size_x,
+            grid_size_y: &self.grid_size_y,
+            paint: local::PAINT[self.index],
+            paint_pattern: local::PAINT_PATTERN[self.index],
+            phase: Some(self.names.phase),
+            active: true,
         };
-        let event = self.editor.show(panel, layout.editor, settings);
-        panel.slider(&self.grid_size_x, layout.grid_size_x);
-        panel.slider(&self.grid_size_y, layout.grid_size_y);
-
-        let colours = ShapeColours::icon(&panel.scope);
-        let button = ShapeButton {
-            shape: Shape::None,
-            colours,
+        let layout = LineControlsLayout {
+            editor: layout.editor,
+            grid_size_x: layout.grid_size_x,
+            grid_size_y: layout.grid_size_y,
+            paint: layout.paint,
+            paint_pattern: layout.paint_pattern,
+            smooth: layout.smooth,
+            preset_selector: layout.preset_selector,
         };
-        let toggled = |on: bool| {
-            if on {
-                ShapeColours::icon_on(&panel.scope)
-            } else {
-                colours
-            }
-        };
-        let paint = ShapeButton {
-            shape: Shape::from(Icon::PaintBrush),
-            colours: toggled(event.painting),
-        };
-        let smooth = ShapeButton {
-            shape: Shape::from(Icon::HalfSinCurve),
-            colours: toggled(event.smooth),
-        };
-        if panel
-            .shape_button(("lfo paint", self.index), paint, layout.paint)
-            .clicked
-        {
-            host.set_once(
-                local::PAINT[self.index],
-                if event.painting { 0.0 } else { 1.0 },
-            );
-        }
-        if panel
-            .shape_button(("lfo smooth", self.index), smooth, layout.smooth)
-            .clicked
-        {
-            self.editor.set_smooth(panel, !event.smooth);
-        }
-
-        // PaintPatternSelector: the pattern's shape; a click lists them.
-        if panel
-            .shape_button(
-                ("lfo paint pattern", self.index),
-                button,
-                layout.paint_pattern,
-            )
-            .pressed
-        {
-            let items = PAINT_PATTERN_NAMES
-                .iter()
-                .enumerate()
-                .map(|(i, name)| MenuItem::new(i as i32, *name))
-                .collect();
-            panel.overlay.menu = Some(Menu::new(
-                items,
-                egui::pos2(
-                    layout.paint_pattern.x as f32,
-                    layout.paint_pattern.bottom() as f32,
-                ),
-                MenuOwner::Control {
-                    name: local::PAINT_PATTERN[self.index],
-                    then: None,
-                },
-            ));
-        }
-        paint_pattern_selector(
-            panel,
-            layout.paint_pattern,
-            settings.paint_pattern,
-            event.painting,
-        );
-
-        let preset = layout.preset_selector;
-        let name = self.editor.shape(panel).name().to_string();
-        panel.text_centred(
-            &name,
-            preset.text,
-            Face::Title,
-            preset.text_size,
-            panel.scope.color(ColorId::PresetText),
-        );
+        let event = show_line_controls(panel, &controls, &layout);
+        self.import_and_export(panel, event.import, event.export);
     }
+}
+
+/// A line editor and the controls that set it up (`LfoSection`'s and
+/// `ModulationMatrix`'s): the grid sizes and paint pattern (local
+/// controls), paint, smooth, and the shape's name in the strip.
+pub(crate) struct LineControls<'a> {
+    pub editor: &'a LineEditor,
+    pub grid_size_x: &'a Slider,
+    pub grid_size_y: &'a Slider,
+    pub paint: &'static str,
+    pub paint_pattern: &'static str,
+    /// The LFO's phase control, for "Set Start Point".
+    pub phase: Option<&'static str>,
+    /// `setActive`: drawn in the disabled colours when off.
+    pub active: bool,
+}
+
+/// Where [`show_line_controls`] puts its parts.
+pub(crate) struct LineControlsLayout {
+    pub editor: Rect,
+    pub grid_size_x: Rect,
+    pub grid_size_y: Rect,
+    pub paint: Rect,
+    pub paint_pattern: Rect,
+    pub smooth: Rect,
+    pub preset_selector: PresetSelectorLayout,
+}
+
+/// Shows a line editor and its controls; the section shows the strip's
+/// arrows and handles its browser.
+pub(crate) fn show_line_controls(
+    panel: &mut Panel,
+    controls: &LineControls,
+    layout: &LineControlsLayout,
+) -> LineEditorEvent {
+    let host = panel.host;
+    let editor = controls.editor;
+    let target = editor.target;
+    let settings = LineSettings {
+        grid_size_x: host.value(controls.grid_size_x.name) as usize,
+        grid_size_y: host.value(controls.grid_size_y.name) as usize,
+        paint: host.value(controls.paint) != 0.0,
+        paint_pattern: host.value(controls.paint_pattern) as usize,
+        phase: controls.phase,
+        active: controls.active,
+    };
+    let event = editor.show(panel, layout.editor, settings, None);
+    // lineEditorScrolled: the wheel over the editor moves the paint pattern
+    // while painting, else the X grid.
+    let editor_rect = panel.pixels.rect(layout.editor.into());
+    if panel.ui.rect_contains_pointer(editor_rect) {
+        let (target, bounds) = if event.painting {
+            {
+                // PaintPatternSelector: the pattern's name in its popup.
+                let mut pattern = Slider::new(controls.paint_pattern, SliderStyle::Text);
+                pattern.format.string_lookup = Some(&PAINT_PATTERN_NAMES);
+                (pattern, layout.paint_pattern)
+            }
+        } else {
+            (*controls.grid_size_x, layout.grid_size_x)
+        };
+        let mut value = host.value(target.name);
+        let (wheels, button_down) = panel
+            .ui
+            .input(|input| (Wheel::events(input), input.pointer.any_down()));
+        for wheel in &wheels {
+            if let Some(moved) = target.wheel_value(value, *wheel, button_down) {
+                host.set_once(target.name, moved);
+                value = moved;
+            }
+        }
+        // SynthSlider::mouseWheelMove's showPopup(true).
+        if !wheels.is_empty() {
+            panel.show_value_popup(&target, bounds, value);
+        }
+    }
+    panel.slider(controls.grid_size_x, layout.grid_size_x);
+    panel.slider(controls.grid_size_y, layout.grid_size_y);
+
+    let colours = ShapeColours::icon(&panel.scope);
+    let button = ShapeButton {
+        shape: Shape::None,
+        colours,
+    };
+    let toggled = |on: bool| {
+        if on {
+            ShapeColours::icon_on(&panel.scope)
+        } else {
+            colours
+        }
+    };
+    let paint = ShapeButton {
+        shape: Shape::from(Icon::PaintBrush),
+        colours: toggled(event.painting),
+    };
+    let smooth = ShapeButton {
+        shape: Shape::from(Icon::HalfSinCurve),
+        colours: toggled(event.smooth),
+    };
+    if panel
+        .shape_button(("line paint", target), paint, layout.paint)
+        .clicked
+    {
+        host.set_once(controls.paint, if event.painting { 0.0 } else { 1.0 });
+    }
+    if panel
+        .shape_button(("line smooth", target), smooth, layout.smooth)
+        .clicked
+    {
+        editor.set_smooth(panel, !event.smooth);
+    }
+
+    // PaintPatternSelector: the pattern's shape; a click lists them.
+    if panel
+        .shape_button(("line paint pattern", target), button, layout.paint_pattern)
+        .pressed
+    {
+        let items = PAINT_PATTERN_NAMES
+            .iter()
+            .enumerate()
+            .map(|(i, name)| MenuItem::new(i as i32, *name))
+            .collect();
+        panel.overlay.menu = Some(Menu::new(
+            items,
+            egui::pos2(
+                layout.paint_pattern.x as f32,
+                layout.paint_pattern.bottom() as f32,
+            ),
+            MenuOwner::Control {
+                name: controls.paint_pattern,
+                then: None,
+            },
+        ));
+    }
+    paint_pattern_selector(
+        panel,
+        layout.paint_pattern,
+        settings.paint_pattern,
+        event.painting,
+    );
+
+    let preset = layout.preset_selector;
+    let name = editor.shape(panel).name().to_string();
+    panel.text_centred(
+        &name,
+        preset.text,
+        Face::Title,
+        preset.text_size,
+        panel.scope.color(ColorId::PresetText),
+    );
+    event
 }
 
 /// `PaintPatternSelector::paint`: the pattern filled and outlined, in the
@@ -588,4 +802,38 @@ fn paint_pattern_selector(panel: &mut Panel, bounds: Rect, pattern: usize, activ
         // controls::path doesn't port yet; a round-ended polyline matches.
         pixels.polyline(&points, line_width as f32, stroke);
     });
+}
+
+/// `exportLfo`'s file: `shape` written to `path` with the LFO extension, as
+/// it is (its earlier name included). Returns the name the shape takes, the
+/// file's name.
+fn export_shape(shape: &sas_common::line_generator::LineGenerator, path: &FsPath) -> String {
+    let path = path.with_extension(LFO_EXTENSION);
+    let _ = std::fs::write(&path, shape.to_json().dump());
+    path.file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::*;
+    use sas_common::line_generator::LineGenerator;
+
+    /// The export takes the LFO extension and writes the shape under its
+    /// earlier name; the new name is the file's.
+    #[test]
+    fn an_export_writes_the_shape_before_renaming_it() {
+        let folder = std::env::temp_dir().join(format!("sas-lfo-export-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let mut shape = LineGenerator::new(LineGenerator::DEFAULT_RESOLUTION);
+        shape.init_triangle();
+        shape.set_name("Before");
+        let name = export_shape(&shape, &folder.join("Wobble.txt"));
+        assert_eq!(name, "Wobble");
+        let written =
+            std::fs::read_to_string(folder.join(format!("Wobble.{LFO_EXTENSION}"))).unwrap();
+        assert!(written.contains(r#""name":"Before""#), "{written}");
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
 }

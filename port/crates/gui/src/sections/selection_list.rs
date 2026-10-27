@@ -12,6 +12,7 @@ use egui::{PointerButton, Sense};
 use sas_preset::user_folders::compare_paths;
 
 use super::{MenuOwner, Panel};
+use crate::controls::clicks::DoubleClicks;
 use crate::controls::icon::{self, UpstreamIcon};
 use crate::controls::path::{EndCapStyle, JointStyle, Transform};
 use crate::controls::paths;
@@ -38,6 +39,8 @@ pub enum Selection {
     Favourites,
     /// A folder or file.
     Path(PathBuf),
+    /// The `kAddFolderName` row, last in a list with added folders.
+    AddFolder,
 }
 
 /// What a click chose (`SelectionList::Listener`).
@@ -51,6 +54,10 @@ pub enum SelectionEvent {
     Path(PathBuf),
     /// `doubleClickedSelected`: the selected file, clicked again.
     DoubleClicked(PathBuf),
+    /// `addAdditionalFolder`: the Add Folder row, clicked.
+    AddFolder,
+    /// `removeAdditionalFolder`: an added folder's remove cross, clicked.
+    RemoveFolder(PathBuf),
 }
 
 /// `SelectionList`'s state.
@@ -72,7 +79,17 @@ pub struct SelectionList {
     selected: Option<Selection>,
     /// `hovered_`.
     hovered: Option<usize>,
+    /// `x_area_`: the pointer is over the remove cross's square, left of the
+    /// scroll bar.
+    x_area: bool,
+    /// `additional_roots_`: added folders that exist, in the order added.
+    additional_roots: Vec<PathBuf>,
+    /// A non-empty `additional_roots_name_`: the list takes added folders
+    /// and ends with the Add Folder row.
+    takes_added_folders: bool,
     scroll: ScrollBar,
+    /// The presses, for `mouseDoubleClick` (JUCE's rules).
+    clicks: DoubleClicks,
 }
 
 impl Default for SelectionList {
@@ -88,7 +105,11 @@ impl Default for SelectionList {
             favourites: BTreeSet::new(),
             selected: None,
             hovered: None,
+            x_area: false,
+            additional_roots: Vec::new(),
+            takes_added_folders: false,
             scroll: ScrollBar::default(),
+            clicks: DoubleClicks::default(),
         }
     }
 }
@@ -179,6 +200,38 @@ impl SelectionList {
         self.filter();
     }
 
+    /// `setAdditionalRootsName`: `Some` with the added folders for a list
+    /// that takes them (those that exist are kept), `None` for one that
+    /// doesn't. The rows follow at the next filter.
+    pub fn set_additional_roots(&mut self, roots: Option<Vec<PathBuf>>) {
+        self.takes_added_folders = roots.is_some();
+        self.additional_roots = roots
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|root| root.exists())
+            .collect();
+    }
+
+    /// `getAdditionalFolders`.
+    pub fn additional_roots(&self) -> &[PathBuf] {
+        &self.additional_roots
+    }
+
+    /// `addAdditionalFolder`, once the folder is accepted: listed after the
+    /// others.
+    pub fn add_additional_root(&mut self, root: PathBuf) {
+        self.additional_roots.push(root);
+        self.filter();
+    }
+
+    /// `removeAdditionalFolder`.
+    pub fn remove_additional_root(&mut self, root: &Path) {
+        if let Some(index) = self.additional_roots.iter().position(|added| added == root) {
+            self.additional_roots.remove(index);
+        }
+        self.filter();
+    }
+
     /// The rows as the list shows them.
     pub fn rows(&self) -> &[Selection] {
         &self.filtered
@@ -216,7 +269,7 @@ impl SelectionList {
             rows.push(Selection::All);
             rows.push(Selection::Favourites);
         }
-        for selection in &self.selections {
+        for selection in self.selections.iter().chain(&self.additional_roots) {
             let name = file_stem(selection).to_lowercase();
             if !self
                 .filter_words
@@ -229,6 +282,9 @@ impl SelectionList {
             if self.open_folders.contains_key(selection) {
                 self.add_subfolders(selection, &mut rows);
             }
+        }
+        if self.takes_added_folders {
+            rows.push(Selection::AddFolder);
         }
         self.filtered = rows;
         if let Some(selected) = &self.selected {
@@ -263,7 +319,7 @@ impl SelectionList {
             Selection::All => Some(SelectionEvent::All),
             Selection::Favourites => Some(SelectionEvent::Favourites),
             Selection::Path(path) if path.exists() => Some(SelectionEvent::Path(path)),
-            Selection::Path(_) => None,
+            Selection::Path(_) | Selection::AddFolder => None,
         }
     }
 
@@ -329,6 +385,14 @@ impl SelectionList {
             .map(|pos| row_at(to_pixels(pos).1))
             .filter(|&row| row >= 0 && (row as usize) < self.filtered.len())
             .map(|row| row as usize);
+        // mouseMove's x_area_: the row-high square left of the scroll bar.
+        let x_area_left = bounds.right() as f32 - SCROLL_BAR_WIDTH * ratio - row_height as f32;
+        let in_x_area = |x: f32| x >= x_area_left && x < x_area_left + row_height as f32;
+        self.x_area = panel
+            .ui
+            .input(|input| input.pointer.hover_pos())
+            .filter(|pos| rect.contains(*pos))
+            .is_some_and(|pos| in_x_area(to_pixels(pos).0));
 
         let response = panel
             .ui
@@ -350,9 +414,10 @@ impl SelectionList {
                 .map(to_pixels)
         };
         // mouseDoubleClick: the selected file, clicked again off its star.
-        let double_clicked = response
-            .double_clicked()
-            .then(|| response.interact_pointer_pos())
+        let double_clicked = self
+            .clicks
+            .update(panel.ui, &response)
+            .then(|| panel.ui.input(|input| input.pointer.interact_pos()))
             .flatten()
             .map(to_pixels);
         if let Some((x, y)) = double_clicked {
@@ -370,8 +435,26 @@ impl SelectionList {
             if row >= 0 && (row as usize) < self.filtered.len() {
                 let selection = self.filtered[row as usize].clone();
                 let star_right = row_height + icon_padding(row_height);
-                if x - (bounds.x as f32) < star_right as f32 {
+                let exists = match &selection {
+                    Selection::Path(path) => path.exists(),
+                    Selection::All | Selection::Favourites => true,
+                    Selection::AddFolder => false,
+                };
+                if !exists {
+                    if selection == Selection::AddFolder {
+                        event = Some(SelectionEvent::AddFolder);
+                    }
+                } else if x - (bounds.x as f32) < star_right as f32 {
                     event = self.select_icon(selection, set_favourite);
+                } else if in_x_area(x) {
+                    // A press on the cross's square removes an added folder
+                    // and, on any other row, does nothing.
+                    event = match selection {
+                        Selection::Path(path) if self.additional_roots.contains(&path) => {
+                            Some(SelectionEvent::RemoveFolder(path))
+                        }
+                        _ => None,
+                    };
                 } else {
                     event = self.select(selection);
                 }
@@ -444,6 +527,14 @@ impl SelectionList {
             JointStyle::Curved,
             EndCapStyle::Butt,
         );
+        // The Add Folder row's folder, dashed 4 on and 2 off at the size
+        // ratio (`createDashedStroke`).
+        let dash = scope.size_ratio() / folder_fit.scale;
+        let add_folder_outline = folder.dashed(&[4.0 * dash, 2.0 * dash]).stroked(
+            1.0 / folder_fit.scale,
+            JointStyle::Curved,
+            EndCapStyle::Butt,
+        );
 
         let first = (position / row_height).max(0) as usize;
         let last = ((position + bounds.height) / row_height + 1).max(0) as usize;
@@ -454,6 +545,7 @@ impl SelectionList {
             let name = match selection {
                 Selection::All => "All".to_string(),
                 Selection::Favourites => "Favorites".to_string(),
+                Selection::AddFolder => "Add Folder".to_string(),
                 Selection::Path(path) => {
                     let mut name = file_stem(path);
                     if path.is_dir() && self.passthrough_name == Some(name.as_str()) {
@@ -488,6 +580,11 @@ impl SelectionList {
                     );
                 }
                 Selection::All => {}
+                Selection::AddFolder => {
+                    let at = icon(folder_width, folder_fit, 0.0);
+                    let key = format!("selection add folder {row_height}");
+                    icon::fill_path(&rows, &key, &add_folder_outline, at, icon_unselected);
+                }
                 _ => {
                     let at = icon(star_width, star_fit, 0.0);
                     let key = format!("selection star {row_height}");
@@ -541,6 +638,32 @@ impl SelectionList {
             ));
         }
         highlights.paint(&rows, RectF::from(bounds));
+
+        // The hovered added folder's remove cross, brighter with the pointer
+        // on it (`remove_additional_x_`).
+        if let Some(hovered) = self.hovered {
+            if matches!(&self.filtered[hovered], Selection::Path(path) if self.additional_roots.contains(path))
+            {
+                let cross = RectF::new(
+                    (bounds.right() - row_height - scroll_bar_width) as f32,
+                    (bounds.y + hovered as i32 * row_height - position) as f32,
+                    row_height as f32,
+                    row_height as f32,
+                );
+                let colour = if self.x_area {
+                    ColorId::IconButtonOffHover
+                } else {
+                    ColorId::IconButtonOff
+                };
+                icon::fill_path_to_fit(
+                    &rows,
+                    &format!("selection remove cross {row_height}"),
+                    paths::thick_x(),
+                    cross,
+                    scope.color(colour),
+                );
+            }
+        }
 
         let bar = Rect::new(
             bounds.right() - scroll_bar_width,

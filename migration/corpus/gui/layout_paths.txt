@@ -8,6 +8,10 @@
 # their fixture entries name it; the rest use the init preset. Paths after
 # an "@overlay <name>" line (an overlay gui_reference.py knows) are laid out
 # with it open, until "@overlay none"; their entries name it too.
+# Paths after an "@wavetable-select group:component[:keyframe]" line, under
+# "@overlay wavetable_editor", are laid out with that keyframe selected in
+# the editor's organizer, until "@wavetable-select none"; their entries name
+# it as well.
 
 # G1: the shell.
 header_section
@@ -87,6 +91,17 @@ MODULATION MATRIX/Container/MOD 0/modulation_1_bypass
 MODULATION MATRIX/Container/MOD 1
 MODULATION MATRIX/Container/MOD 63
 MODULATION MATRIX/Container/MOD 63/modulation_64_amount
+MODULATION MATRIX/remap_name
+MODULATION MATRIX/paint
+MODULATION MATRIX/paint_pattern
+MODULATION MATRIX/grid_size_x
+MODULATION MATRIX/grid_size_y
+MODULATION MATRIX/smooth
+MODULATION MATRIX/preset_selector
+MODULATION MATRIX/preset_selector/Text
+MODULATION MATRIX/preset_selector/Prev
+MODULATION MATRIX/preset_selector/Next
+MODULATION MATRIX/modulation_source_1
 effects
 modulation
 extra_mod_section
@@ -358,6 +373,23 @@ oscillator 1/preset_selector/Next
 oscillator 1/Menu
 oscillator 1/Settings
 
+# G5e-3: oscillator 1's Wave Source overlay, as the init preset's selected
+# Wave Source keyframe places it: the overlay, its controls background with
+# the three title texts, the interpolation selector, the grid sizes and their
+# (unpainted) incrementer halves.
+oscillator 1/WAVE SOURCE
+oscillator 1/WAVE SOURCE/background
+oscillator 1/WAVE SOURCE/background/text
+oscillator 1/WAVE SOURCE/background/text#2
+oscillator 1/WAVE SOURCE/background/text#3
+oscillator 1/WAVE SOURCE/Interpolation
+oscillator 1/WAVE SOURCE/wave_source_horizontal_grid
+oscillator 1/WAVE SOURCE/wave_source_vertical_grid
+oscillator 1/WAVE SOURCE/Increment
+oscillator 1/WAVE SOURCE/Increment#2
+oscillator 1/WAVE SOURCE/Increment#3
+oscillator 1/WAVE SOURCE/Increment#4
+
 # The preset browser (laid out while hidden, as FullInterface::resized does).
 preset_browser
 preset_browser/Preset List
@@ -571,3 +603,99 @@ effects/container/PHASER/phaser_feedback
 effects/container/PHASER/phaser_blend
 effects/container/PHASER/phaser_dry_wet
 effects/container/PHASER/phaser_on
+
+# G5e-2: the wavetable editor's component list with three groups of sources
+# and modifiers: the rows past the first and the later groups' add buttons
+# (the paths listed above keep the init preset's).
+@preset migration/corpus/gui/presets/wavetable_groups.vital
+oscillator 1/component list/1
+oscillator 1/component list/1#2
+oscillator 1/component list/2
+oscillator 1/component list/2#2
+oscillator 1/component list/3
+oscillator 1/component list/3#2
+oscillator 1/component list/4
+oscillator 1/component list/4#2
+oscillator 1/component list/5
+oscillator 1/component list/5#2
+oscillator 1/component list/Add Modifier#2
+oscillator 1/component list/Add Modifier#3
+oscillator 1/component list/plus#2
+oscillator 1/component list/plus#3
+
+# G5e-4: oscillator 1's Line Source, Phase Shift and Wave Window overlays,
+# each with its component's keyframe selected: the overlay, its controls
+# background with the three title texts, and the controls (the phase style
+# is upstream's "Harmonic Phase"; the line, phase and window editors aren't
+# named components). The Line Source's grid sizes have incrementer halves,
+# as the Wave Source's do.
+@preset migration/corpus/gui/presets/wavetable_modifiers.vital
+@overlay wavetable_editor
+@wavetable-select 0:0
+oscillator 1/LINE SOURCE
+oscillator 1/LINE SOURCE/background
+oscillator 1/LINE SOURCE/background/text
+oscillator 1/LINE SOURCE/background/text#2
+oscillator 1/LINE SOURCE/background/text#3
+oscillator 1/LINE SOURCE/wave_line_source_pull_power
+oscillator 1/LINE SOURCE/wave_line_source_horizontal_grid
+oscillator 1/LINE SOURCE/wave_line_source_vertical_grid
+oscillator 1/LINE SOURCE/Increment
+oscillator 1/LINE SOURCE/Increment#2
+oscillator 1/LINE SOURCE/Increment#3
+oscillator 1/LINE SOURCE/Increment#4
+@wavetable-select 0:1
+oscillator 1/PHASE SHIFTER
+oscillator 1/PHASE SHIFTER/background
+oscillator 1/PHASE SHIFTER/background/text
+oscillator 1/PHASE SHIFTER/background/text#2
+oscillator 1/PHASE SHIFTER/background/text#3
+oscillator 1/PHASE SHIFTER/Harmonic Phase
+oscillator 1/PHASE SHIFTER/Phase Mix
+@wavetable-select 0:2
+oscillator 1/WAVE WINDOW
+oscillator 1/WAVE WINDOW/background
+oscillator 1/WAVE WINDOW/background/text
+oscillator 1/WAVE WINDOW/background/text#2
+oscillator 1/WAVE WINDOW/background/text#3
+oscillator 1/WAVE WINDOW/Window Shape
+oscillator 1/WAVE WINDOW/Left Position
+oscillator 1/WAVE WINDOW/Right Position
+# G5e-5: the Frequency Filter, Slew Limiter, Wave Folder and Wave Warp
+# overlays, each with its modifier's keyframe selected: the overlay, its
+# controls background with its title texts, and its sliders and toggles.
+@wavetable-select 0:3
+oscillator 1/FREQUENCY FILTER
+oscillator 1/FREQUENCY FILTER/background
+oscillator 1/FREQUENCY FILTER/background/text
+oscillator 1/FREQUENCY FILTER/background/text#2
+oscillator 1/FREQUENCY FILTER/background/text#3
+oscillator 1/FREQUENCY FILTER/Filter Style
+oscillator 1/FREQUENCY FILTER/Frequency Filter Cutoff
+oscillator 1/FREQUENCY FILTER/Frequency Filter Shape
+oscillator 1/FREQUENCY FILTER/NORMALIZE
+@wavetable-select 0:4
+oscillator 1/SLEW LIMITER
+oscillator 1/SLEW LIMITER/background
+oscillator 1/SLEW LIMITER/background/text
+oscillator 1/SLEW LIMITER/background/text#2
+oscillator 1/SLEW LIMITER/up_slew_limit
+oscillator 1/SLEW LIMITER/down_slew_limit
+@wavetable-select 0:5
+oscillator 1/WAVE FOLDER
+oscillator 1/WAVE FOLDER/background
+oscillator 1/WAVE FOLDER/background/text
+oscillator 1/WAVE FOLDER/wave_fold_amount
+@wavetable-select 0:6
+oscillator 1/WAVE WARPER
+oscillator 1/WAVE WARPER/background
+oscillator 1/WAVE WARPER/background/text
+oscillator 1/WAVE WARPER/background/text#2
+oscillator 1/WAVE WARPER/background/text#3
+oscillator 1/WAVE WARPER/background/text#4
+oscillator 1/WAVE WARPER/X Asymmetric
+oscillator 1/WAVE WARPER/wave_warp_horizontal
+oscillator 1/WAVE WARPER/Y Asymmetric
+oscillator 1/WAVE WARPER/wave_warp_vertical
+@wavetable-select none
+@overlay none

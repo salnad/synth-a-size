@@ -98,6 +98,9 @@ const CONTROLS: &[&str] = &[
     "modulation_3_bipolar",
     "modulation_3_stereo",
     "modulation_3_bypass",
+    "modulation_9_stereo",
+    "modulation_10_bypass",
+    "modulation_19_stereo",
     "env_1_delay",
     "env_1_attack",
     "env_1_hold",
@@ -136,6 +139,10 @@ struct Synth {
     midi_forwarded: Mutex<Vec<(String, f32)>>,
     /// The LFO shapes the editor set.
     lfos: Mutex<HashMap<usize, LineGenerator>>,
+    /// The modulation slots' remap curves the editor set.
+    line_mappings: Mutex<HashMap<usize, LineGenerator>>,
+    /// The user data folder, for the browsers and the save section.
+    data_directory: Mutex<Option<std::path::PathBuf>>,
     /// Wavetable loads and resets the editor asked for.
     wavetable_edits: Mutex<Vec<String>>,
     /// The "hz_frequency" setting.
@@ -186,6 +193,8 @@ impl Synth {
             midi_moved: Mutex::new(Vec::new()),
             midi_forwarded: Mutex::new(Vec::new()),
             lfos: Mutex::default(),
+            line_mappings: Mutex::default(),
+            data_directory: Mutex::default(),
             wavetable_edits: Mutex::new(Vec::new()),
             hz: AtomicBool::new(false),
             sample: Mutex::default(),
@@ -230,6 +239,10 @@ impl EditorModel for Synth {
     fn set_lfo_shape(&self, index: usize, line: LineGenerator) -> bool {
         self.lfos.lock().unwrap().insert(index, line);
         true
+    }
+
+    fn data_directory(&self) -> Option<std::path::PathBuf> {
+        self.data_directory.lock().unwrap().clone()
     }
 
     fn hz_frequency_display(&self) -> bool {
@@ -375,6 +388,33 @@ impl EditorModel for Synth {
                 "unipolar"
             }
         ));
+        true
+    }
+
+    fn set_slot_route(&self, slot: usize, route: Option<(&str, &str)>) -> bool {
+        let connected = self
+            .routing
+            .lock()
+            .unwrap()
+            .set_slot_route(slot, route)
+            .unwrap_or(false);
+        self.bus.lock().unwrap().push(match route {
+            Some((source, destination)) => format!("route {slot} {source} {destination}"),
+            None => format!("unroute {slot}"),
+        });
+        connected
+    }
+
+    fn line_mapping(&self, slot: usize) -> Option<LineGenerator> {
+        self.line_mappings.lock().unwrap().get(&slot).cloned()
+    }
+
+    fn set_line_mapping(&self, slot: usize, line: LineGenerator) -> bool {
+        self.bus
+            .lock()
+            .unwrap()
+            .push(format!("line_mapping {slot}"));
+        self.line_mappings.lock().unwrap().insert(slot, line);
         true
     }
 
@@ -2486,6 +2526,7 @@ fn painting_draws_the_pattern_into_a_grid_cell() {
 
 #[test]
 fn the_lfo_menu_flips_the_shape() {
+    sas_gui::controls::line_editor::set_clipboard_reader(|| None);
     let fixture = Fixture::new();
     let mut harness = fixture.harness();
     let editor = lfo_layout(&fixture).editor;
@@ -2500,8 +2541,18 @@ fn the_lfo_menu_flips_the_shape() {
         (menu.items.clone(), menu.position)
     };
     let names: Vec<&str> = items.iter().map(|item| item.name.as_str()).collect();
-    assert_eq!(names, ["Copy", "Flip Horizontal", "Flip Vertical"]);
-    let row = Pos2::new(position.x + 20.0, position.y + 12.0 + 24.0 * 2.0);
+    assert_eq!(
+        names,
+        [
+            "Copy",
+            "Save to LFOs",
+            "Flip Horizontal",
+            "Flip Vertical",
+            "Import LFO",
+            "Export LFO"
+        ]
+    );
+    let row = Pos2::new(position.x + 20.0, position.y + 12.0 + 24.0 * 3.0);
     harness.event(Event::PointerMoved(row));
     harness.step();
     click(&mut harness, row);
@@ -2837,11 +2888,11 @@ fn save_appears_once_the_editor_can_save() {
     assert!(!view.borrow_mut().take_save_request());
 }
 
-/// A double click whose second press drags: the drag bends the power in
-/// its gesture, and the straightening follows at the release, in its own
-/// (`mouseDoubleClick` after `mouseUp`).
+/// JUCE's click count (`isLongPressOrDrag`): a second press that drags
+/// bends the power in one gesture and isn't a double click, so nothing
+/// straightens it; a second press held over 0.3 s isn't one either.
 #[test]
-fn a_double_click_straightens_after_the_second_presss_drag() {
+fn a_dragged_or_held_second_press_doesnt_straighten_a_power() {
     let fixture = Fixture::new();
     let mut harness = fixture.harness();
     fixture.synth.set("env_1_attack", 1.0);
@@ -2864,16 +2915,35 @@ fn a_double_click_straightens_after_the_second_presss_drag() {
         dot + egui::vec2(0.0, -10.0),
         Modifiers::NONE,
     );
-    assert_eq!(fixture.synth.value("env_1_attack_power"), 0.0);
+    let bent = fixture.synth.value("env_1_attack_power");
+    assert_ne!(bent, 3.0);
+    assert_ne!(bent, 0.0);
     let log = fixture.take_log();
-    let ends: Vec<usize> = log
+    let begins = log
         .iter()
-        .enumerate()
-        .filter(|(_, entry)| *entry == "end env_1_attack_power")
-        .map(|(i, _)| i)
-        .collect();
-    assert_eq!(ends.len(), 2, "{log:?}");
-    assert_eq!(log[ends[0] + 1], "begin env_1_attack_power", "{log:?}");
+        .filter(|entry| *entry == "begin env_1_attack_power")
+        .count();
+    assert_eq!(begins, 1, "{log:?}");
+
+    for _ in 0..30 {
+        harness.step();
+    }
+    let (editor, shape) = envelope_shape(&fixture);
+    let dot = editor_point(
+        editor,
+        &shape,
+        (shape.delay_x + shape.attack_x) / 2.0,
+        shape.attack_value(0.5),
+    );
+    harness.event(Event::PointerMoved(dot));
+    harness.step();
+    click(&mut harness, dot);
+    press(&mut harness, dot, PointerButton::Primary, Modifiers::NONE);
+    for _ in 0..20 {
+        harness.step();
+    }
+    release(&mut harness, dot, PointerButton::Primary, Modifiers::NONE);
+    assert_eq!(fixture.synth.value("env_1_attack_power"), bent);
 }
 
 /// Dragging the magnifying glass up zooms in: the same drag of the attack
@@ -4372,4 +4442,1322 @@ fn with_the_popup_browser_open_a_click_at_the_logo_closes_it_not_the_drawer() {
     assert!(!fixture.interface.borrow().drawer_open());
     assert!(!panel.borrow().is_open());
     assert!(shows(&harness, "Chat"));
+}
+
+/// A data folder with LFO shapes, removed when dropped.
+struct LfoData(std::path::PathBuf);
+
+impl Drop for LfoData {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// A shape's JSON: a ramp up, named `name`.
+fn ramp_json(name: &str) -> String {
+    let mut line = LineGenerator::new(LineGenerator::DEFAULT_RESOLUTION);
+    line.init_saw_up();
+    line.set_name(name);
+    line.to_json().dump()
+}
+
+fn lfo_data(fixture: &Fixture, tag: &str) -> LfoData {
+    let root = std::env::temp_dir().join(format!("sas-lfo-browser-{tag}-{}", std::process::id()));
+    for file in [
+        "LFOs/Wobble.vitallfo",
+        "LFOs/Ramp 2.vitallfo",
+        "Bank/LFOs/Bank Shape.vitallfo",
+    ] {
+        let path = root.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, ramp_json("Inside")).unwrap();
+    }
+    *fixture.synth.data_directory.lock().unwrap() = Some(root.clone());
+    LfoData(root)
+}
+
+/// LFO 1's popup browser: 500 × 250 above its section, its right edge at
+/// the name's (`LfoSection::textMouseDown`).
+fn lfo_browser(fixture: &Fixture) -> sas_gui::sections::popup_browser::PopupBrowserLayout {
+    let lfo = lfo_layout(fixture);
+    let browser = Rect::new(
+        lfo.preset_selector.bounds.right() - 500,
+        lfo.bounds.y - 250,
+        500,
+        250,
+    );
+    let interface = fixture.interface.borrow();
+    let scope = section_scope(interface.skin(), sas_gui::sections::popup_browser::SKIN);
+    let padding = scope.value(sas_gui::skin::ValueId::Padding);
+    sas_gui::sections::popup_browser::PopupBrowserLayout::new(1.0, padding, browser)
+}
+
+fn popup_files(fixture: &Fixture) -> Vec<String> {
+    let rows = fixture.interface.borrow().popup_browser_rows();
+    rows.map(|(_, files)| {
+        files
+            .iter()
+            .filter_map(|row| match row {
+                sas_gui::sections::selection_list::Selection::Path(path) => {
+                    Some(path.file_stem().unwrap().to_string_lossy().into_owned())
+                }
+                _ => None,
+            })
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+/// A press on LFO 1's name opens the popup browser for the user's LFOs;
+/// a file chosen in it loads named after the file (`LfoSection::loadFile`).
+#[test]
+fn the_lfo_name_opens_the_browser_and_a_shape_loads() {
+    let fixture = Fixture::new();
+    let _data = lfo_data(&fixture, "open");
+    let mut harness = fixture.harness();
+    click(
+        &mut harness,
+        centre(lfo_layout(&fixture).preset_selector.text),
+    );
+    assert_eq!(popup_files(&fixture), ["Bank Shape", "Ramp 2", "Wobble"]);
+    let files = lfo_browser(&fixture).files;
+    let row = Pos2::new(
+        files.x as f32 + files.width as f32 / 2.0,
+        (files.y + 24 * 2 + 12) as f32,
+    );
+    click(&mut harness, row);
+    assert_eq!(lfo_1_shape(&fixture).name(), "Wobble");
+}
+
+/// The arrows load the LFO after or before the current one among the
+/// user's (`nextClicked`, `getShiftedFile`).
+#[test]
+fn the_lfo_arrows_step_through_the_users_shapes() {
+    let fixture = Fixture::new();
+    let _data = lfo_data(&fixture, "arrows");
+    let mut harness = fixture.harness();
+    let preset = lfo_layout(&fixture).preset_selector;
+    click(&mut harness, centre(preset.next));
+    assert_eq!(lfo_1_shape(&fixture).name(), "Bank Shape");
+    click(&mut harness, centre(preset.next));
+    assert_eq!(lfo_1_shape(&fixture).name(), "Ramp 2");
+    click(&mut harness, centre(preset.previous));
+    assert_eq!(lfo_1_shape(&fixture).name(), "Bank Shape");
+}
+
+/// A file in LFOs/ that doesn't read becomes the current file all the
+/// same, as `loadFile` sets `current_file_` before it parses, so the arrows
+/// step on past it; the shape stays as it was.
+#[test]
+fn the_lfo_arrows_step_past_a_file_that_doesnt_read() {
+    let fixture = Fixture::new();
+    let data = lfo_data(&fixture, "broken");
+    std::fs::write(data.0.join("LFOs/Ramp 2.vitallfo"), "{not json").unwrap();
+    let mut harness = fixture.harness();
+    let preset = lfo_layout(&fixture).preset_selector;
+    click(&mut harness, centre(preset.next));
+    assert_eq!(lfo_1_shape(&fixture).name(), "Bank Shape");
+    click(&mut harness, centre(preset.next));
+    assert_eq!(lfo_1_shape(&fixture).name(), "Bank Shape");
+    click(&mut harness, centre(preset.next));
+    assert_eq!(lfo_1_shape(&fixture).name(), "Wobble");
+    click(&mut harness, centre(preset.previous));
+    assert_eq!(lfo_1_shape(&fixture).name(), "Wobble");
+    click(&mut harness, centre(preset.previous));
+    assert_eq!(lfo_1_shape(&fixture).name(), "Bank Shape");
+}
+
+/// Opens LFO 1's menu and chooses row `row`.
+fn choose_lfo_menu_row(harness: &mut Harness, fixture: &Fixture, row: usize) {
+    let at = lfo_point(lfo_layout(fixture).editor, 0.7, 0.9);
+    harness.event(Event::PointerMoved(at));
+    harness.step();
+    press(harness, at, PointerButton::Secondary, Modifiers::NONE);
+    release(harness, at, PointerButton::Secondary, Modifiers::NONE);
+    let position = {
+        let interface = fixture.interface.borrow();
+        interface
+            .overlay()
+            .menu
+            .as_ref()
+            .expect("the LFO menu")
+            .position
+    };
+    let pos = Pos2::new(position.x + 20.0, position.y + 12.0 + 24.0 * row as f32);
+    harness.event(Event::PointerMoved(pos));
+    harness.step();
+    click(harness, pos);
+    for _ in 0..2 {
+        harness.step();
+    }
+}
+
+/// "Save to LFOs" opens the save section for the shape, which writes it
+/// with its name and author into the user's LFOs folder
+/// (`FullInterface::saveLfo`).
+#[test]
+fn the_lfo_menu_saves_the_shape() {
+    sas_gui::controls::line_editor::set_clipboard_reader(|| None);
+    let fixture = Fixture::new();
+    let data = lfo_data(&fixture, "save");
+    let mut harness = fixture.harness();
+    choose_lfo_menu_row(&mut harness, &fixture, 1);
+    harness.event(Event::Text("My Shape".to_string()));
+    harness.step();
+    harness.step();
+    key(&mut harness, Key::Enter);
+    let written = std::fs::read_to_string(data.0.join("LFOs/My Shape.vitallfo")).unwrap();
+    assert!(written.contains(r#""name":"My Shape""#), "{written}");
+    assert!(written.contains(r#""num_points":3"#), "{written}");
+}
+
+/// Paste shows when the clipboard holds a shape, and loads it.
+#[test]
+fn the_lfo_menu_pastes_a_shape() {
+    fn clipboard() -> Option<String> {
+        Some(ramp_json("Pasted"))
+    }
+    sas_gui::controls::line_editor::set_clipboard_reader(clipboard);
+    assert!(sas_gui::controls::line_editor::pasted_shape("not json").is_none());
+    assert!(sas_gui::controls::line_editor::pasted_shape(r#"{"num_points":2}"#).is_none());
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    choose_lfo_menu_row(&mut harness, &fixture, 1);
+    assert_eq!(lfo_1_shape(&fixture).name(), "Pasted");
+}
+
+/// The magnifying glass's double click fits the envelope
+/// (`DragMagnifyingGlass::mouseDoubleClick`), but a second press that is
+/// held, or that drags, isn't a double click (`isLongPressOrDrag`), and a
+/// right press between the clicks ends their run.
+#[test]
+fn the_magnifying_glass_resets_only_on_a_real_double_click() {
+    let attack_after = |second: &dyn Fn(&mut Harness, Pos2)| {
+        let fixture = Fixture::new();
+        let mut harness = fixture.harness();
+        let glass = {
+            let m = modulation_layout(&fixture);
+            let interface = fixture.interface.borrow();
+            EnvelopeLayout::new(&section_scope(interface.skin(), envelope::SKIN), m.envelope)
+                .magnifying_glass
+        };
+        let at = centre(glass);
+        drag(
+            &mut harness,
+            at,
+            at + egui::vec2(0.0, -60.0),
+            Modifiers::NONE,
+        );
+        for _ in 0..30 {
+            harness.step();
+        }
+        click(&mut harness, at);
+        second(&mut harness, at);
+        let (editor, shape) = envelope_shape(&fixture);
+        let start = editor_point(editor, &shape, shape.attack_x, 0.0);
+        harness.event(Event::PointerMoved(start));
+        harness.step();
+        drag(
+            &mut harness,
+            start,
+            start + egui::vec2(20.0, 0.0),
+            Modifiers::NONE,
+        );
+        fixture.synth.value("env_1_attack")
+    };
+    let waited = attack_after(&|harness, _| {
+        for _ in 0..30 {
+            harness.step();
+        }
+    });
+    let double_clicked = attack_after(&|harness, at| click(harness, at));
+    let held = attack_after(&|harness, at| {
+        press(harness, at, PointerButton::Primary, Modifiers::NONE);
+        for _ in 0..20 {
+            harness.step();
+        }
+        release(harness, at, PointerButton::Primary, Modifiers::NONE);
+    });
+    let dragged = attack_after(&|harness, at| {
+        // Sideways, so the zoom stays.
+        drag(harness, at, at + egui::vec2(6.0, 0.0), Modifiers::NONE);
+    });
+    // A right press between the clicks ends the run: JUCE's presses chain
+    // only with the same buttons.
+    let right_between = attack_after(&|harness, at| {
+        press(harness, at, PointerButton::Secondary, Modifiers::NONE);
+        release(harness, at, PointerButton::Secondary, Modifiers::NONE);
+        click(harness, at);
+    });
+    assert_ne!(
+        double_clicked, waited,
+        "the double click didn't fit the envelope"
+    );
+    assert_eq!(held, waited);
+    assert_eq!(dragged, waited);
+    assert_eq!(right_between, waited);
+}
+
+/// A second press on empty space in the LFO editor that drags, or is held,
+/// isn't a double click, so it adds no point (`isLongPressOrDrag`); a quick
+/// second click does.
+#[test]
+fn a_dragged_or_held_second_press_adds_no_lfo_point() {
+    let points_after = |second: &dyn Fn(&mut Harness, Pos2)| {
+        let fixture = Fixture::new();
+        let mut harness = fixture.harness();
+        let editor = lfo_layout(&fixture).editor;
+        let empty = lfo_point(editor, 0.25, 0.9);
+        harness.event(Event::PointerMoved(empty));
+        harness.step();
+        click(&mut harness, empty);
+        second(&mut harness, empty);
+        fixture.synth.lfo_shape(0).map(|line| line.num_points())
+    };
+    let dragged = points_after(&|harness, at| {
+        drag(harness, at, at + egui::vec2(8.0, 0.0), Modifiers::NONE);
+    });
+    let held = points_after(&|harness, at| {
+        press(harness, at, PointerButton::Primary, Modifiers::NONE);
+        for _ in 0..20 {
+            harness.step();
+        }
+        release(harness, at, PointerButton::Primary, Modifiers::NONE);
+    });
+    let double_clicked = points_after(&|harness, at| click(harness, at));
+    // Neither sets a shape at all.
+    assert_eq!(dragged, None);
+    assert_eq!(held, None);
+    assert_eq!(double_clicked, Some(4));
+}
+
+/// A Matrix row's selector choice, as its list's selection gives it.
+fn choose_in_matrix(
+    harness: &mut Harness,
+    fixture: &Fixture,
+    slot: usize,
+    destination: bool,
+    name: &str,
+) {
+    use sas_gui::sections::matrix::{destination_names, source_names};
+    let names = if destination {
+        destination_names()
+    } else {
+        source_names()
+    };
+    let id = names
+        .iter()
+        .position(|candidate| *candidate == name)
+        .unwrap() as i32;
+    fixture.interface.borrow_mut().overlay_mut().matrix_choice = Some((slot, destination, id));
+    harness.step();
+}
+
+/// `ModulationSelector`: a press opens its list (the destination's in the
+/// two-column selector). Choosing a source alone connects nothing; choosing
+/// the destination connects the row's own slot, and changing either rewires
+/// that slot, each one engine change and nothing for the host (D18: no
+/// gestures, so nothing in the host's undo history). "-" frees the slot.
+#[test]
+fn a_rows_selectors_rewire_its_own_slot_without_the_host() {
+    use sas_gui::sections::MenuOwner;
+    let fixture = Fixture::new();
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    fixture.take_log();
+    let row = matrix_row(&fixture, 0);
+
+    press(
+        &mut harness,
+        centre(row.source),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    release(
+        &mut harness,
+        centre(row.source),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    {
+        let interface = fixture.interface.borrow();
+        let menu = interface
+            .overlay()
+            .menu
+            .as_ref()
+            .expect("the source list opens");
+        assert!(matches!(
+            menu.owner,
+            MenuOwner::MatrixSelector {
+                slot: 0,
+                destination: false
+            }
+        ));
+        assert_eq!(menu.items[0].name, "-");
+        assert!(menu.items.iter().any(|item| item.name == "Lfo 1"));
+    }
+    fixture.interface.borrow_mut().overlay_mut().menu = None;
+    choose_in_matrix(&mut harness, &fixture, 0, false, "lfo_1");
+    assert!(fixture.synth.bus.lock().unwrap().is_empty());
+
+    press(
+        &mut harness,
+        centre(row.destination),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    release(
+        &mut harness,
+        centre(row.destination),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert!(fixture.interface.borrow().overlay().dual_menu.is_some());
+    fixture.interface.borrow_mut().overlay_mut().dual_menu = None;
+    choose_in_matrix(&mut harness, &fixture, 0, true, "macro_control_1");
+    choose_in_matrix(&mut harness, &fixture, 0, false, "env_1");
+    choose_in_matrix(&mut harness, &fixture, 0, false, "-");
+    assert_eq!(
+        *fixture.synth.bus.lock().unwrap(),
+        [
+            "route 0 lfo_1 macro_control_1",
+            "route 0 env_1 macro_control_1",
+            "unroute 0",
+        ]
+    );
+    assert_eq!(fixture.take_log(), Vec::<String>::new());
+    assert!(fixture.synth.modulations().is_empty());
+}
+
+/// A route to the row's own amount is refused (`isInvalidConnection`): the
+/// row's selectors show "-" again, as `updateDisplay` gives.
+#[test]
+fn a_row_cannot_modulate_its_own_amount() {
+    let fixture = Fixture::new();
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    choose_in_matrix(&mut harness, &fixture, 0, false, "lfo_1");
+    choose_in_matrix(&mut harness, &fixture, 0, true, "modulation_1_amount");
+    assert!(fixture.synth.modulations().is_empty());
+    choose_in_matrix(&mut harness, &fixture, 0, true, "macro_control_1");
+    // The source was cleared with the refused route.
+    assert!(fixture.synth.modulations().is_empty());
+}
+
+/// A press on a row selects it (`mouseDown` → `rowSelected`), and so does a
+/// state load that changes a row's toggle (`setAllValues` sends
+/// `buttonClicked`); the last such row wins.
+#[test]
+fn rows_are_selected_by_a_press_and_by_a_load_changing_their_toggles() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 0);
+    let row = matrix_row(&fixture, 1);
+    // Between the morph curve and the amount bar.
+    let gap = egui::pos2(
+        (row.power.right() + row.amount.x) as f32 / 2.0,
+        centre(row.bounds).y,
+    );
+    press(&mut harness, gap, PointerButton::Primary, Modifiers::NONE);
+    release(&mut harness, gap, PointerButton::Primary, Modifiers::NONE);
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 1);
+
+    fixture.synth.set("modulation_1_stereo", 1.0);
+    fixture.synth.generation.fetch_add(1, Ordering::Relaxed);
+    harness.step();
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 0);
+}
+
+/// `ModulationMatrix::mouseDown` on the headings: a column sorts ascending,
+/// pressing it again descending; connected rows stay first.
+#[test]
+fn pressing_a_heading_sorts_the_rows() {
+    use sas_gui::sections::matrix::SortColumn;
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    assert_eq!(&fixture.interface.borrow().matrix().order()[..3], [0, 1, 2]);
+    let heading = |x_offset: i32| {
+        let row = matrix_row(&fixture, 0);
+        egui::pos2((row.bounds.x + x_offset) as f32, (row.bounds.y - 10) as f32)
+    };
+    click(&mut harness, heading(5));
+    assert_eq!(
+        fixture.interface.borrow().matrix().sort_column(),
+        (SortColumn::Number, false)
+    );
+    assert_eq!(
+        &fixture.interface.borrow().matrix().order()[..3],
+        [1, 0, 63]
+    );
+    click(&mut harness, heading(5));
+    assert_eq!(&fixture.interface.borrow().matrix().order()[..3], [0, 1, 2]);
+    // SOURCE: env_1 before lfo_1.
+    click(&mut harness, heading(100));
+    assert_eq!(
+        fixture.interface.borrow().matrix().sort_column(),
+        (SortColumn::Source, true)
+    );
+    assert_eq!(&fixture.interface.borrow().matrix().order()[..2], [1, 0]);
+}
+
+/// A row's sliders select it only when they change it
+/// (`sliderValueChanged` → `rowSelected`): a press that doesn't move the
+/// amount leaves the selection, a drag selects the row.
+#[test]
+fn a_rows_slider_selects_it_only_when_it_moves() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    let row = matrix_row(&fixture, 1);
+    let amount = centre(row.amount);
+    press(
+        &mut harness,
+        amount,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    release(
+        &mut harness,
+        amount,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 0);
+    let power = centre(row.power);
+    press(&mut harness, power, PointerButton::Primary, Modifiers::NONE);
+    release(&mut harness, power, PointerButton::Primary, Modifiers::NONE);
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 0);
+
+    drag(
+        &mut harness,
+        amount,
+        amount + egui::vec2(20.0, 0.0),
+        Modifiers::NONE,
+    );
+    assert_ne!(fixture.synth.value("modulation_2_amount"), 0.0);
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 1);
+}
+
+/// A row's toggle selects it through `buttonClicked`, on a release over the
+/// toggle: not on the press, and not on a release off it.
+#[test]
+fn a_rows_toggle_selects_it_on_a_release_over_it() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    let row = matrix_row(&fixture, 1);
+    let stereo = centre(row.stereo);
+    press(
+        &mut harness,
+        stereo,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 0);
+    move_to(&mut harness, centre(row.amount));
+    release(
+        &mut harness,
+        centre(row.amount),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 0);
+    press(
+        &mut harness,
+        stereo,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 0);
+    release(
+        &mut harness,
+        stereo,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 1);
+}
+
+/// After a load, the last changed toggle in `setAllValues`' name order
+/// selects its row: `modulation_10_*` sorts before `modulation_2_*`, so with
+/// slots 2 and 10 changed, slot 2 (index 1) is selected.
+#[test]
+fn a_load_selects_the_last_changed_row_in_name_order() {
+    let fixture = Fixture::new();
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    fixture.synth.set("modulation_2_bypass", 1.0);
+    fixture.synth.set("modulation_10_bypass", 1.0);
+    fixture.synth.generation.fetch_add(1, Ordering::Relaxed);
+    harness.step();
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 1);
+
+    fixture.synth.set("modulation_9_stereo", 1.0);
+    fixture.synth.set("modulation_19_stereo", 1.0);
+    fixture.synth.generation.fetch_add(1, Ordering::Relaxed);
+    harness.step();
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 8);
+}
+
+/// The morph curve follows a bipolar click in that frame
+/// (`buttonClicked` → `setBipolar`), whether the host applies the set at
+/// once or later.
+#[test]
+fn a_bipolar_click_redraws_the_curve_in_that_frame() {
+    for deferred in [false, true] {
+        let fixture = Fixture::with_sets(deferred);
+        two_sources_on_macro_1(&fixture);
+        fixture
+            .interface
+            .borrow_mut()
+            .set_tab(sas_gui::interface::Tab::Matrix);
+        let mut harness = fixture.harness();
+        harness.step();
+        assert!(!fixture.interface.borrow().matrix().curve_bipolar(0));
+        let row = matrix_row(&fixture, 0);
+        press(
+            &mut harness,
+            centre(row.bipolar),
+            PointerButton::Primary,
+            Modifiers::NONE,
+        );
+        // One frame: the release's.
+        harness.event(Event::PointerButton {
+            pos: centre(row.bipolar),
+            button: PointerButton::Primary,
+            pressed: false,
+            modifiers: Modifiers::NONE,
+        });
+        harness.step();
+        assert!(
+            fixture.interface.borrow().matrix().curve_bipolar(0),
+            "deferred {deferred}"
+        );
+        harness.step();
+        harness.step();
+        assert!(fixture.interface.borrow().matrix().curve_bipolar(0));
+        assert_eq!(fixture.synth.value("modulation_1_bipolar"), 1.0);
+    }
+}
+
+/// Choosing a selector's current item does nothing (`Slider::setValue`
+/// notifies only a change): the row isn't selected and the route isn't
+/// set again.
+#[test]
+fn rechoosing_a_selectors_item_does_nothing() {
+    let fixture = Fixture::new();
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    choose_in_matrix(&mut harness, &fixture, 1, false, "lfo_1");
+    choose_in_matrix(&mut harness, &fixture, 1, true, "macro_control_1");
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 1);
+    fixture.synth.bus.lock().unwrap().clear();
+    // Slot 1 is listed first, so slot 0 is the second row.
+    let row_0 = matrix_row(&fixture, 1);
+    let gap_0 = egui::pos2(
+        (row_0.power.right() + row_0.amount.x) as f32 / 2.0,
+        centre(row_0.bounds).y,
+    );
+    press(&mut harness, gap_0, PointerButton::Primary, Modifiers::NONE);
+    release(&mut harness, gap_0, PointerButton::Primary, Modifiers::NONE);
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 0);
+    choose_in_matrix(&mut harness, &fixture, 1, false, "lfo_1");
+    choose_in_matrix(&mut harness, &fixture, 1, true, "macro_control_1");
+    assert!(fixture.synth.bus.lock().unwrap().is_empty());
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 0);
+}
+
+/// A stand-in line editor for `target` over the whole window,
+/// on the caller's `shape` when given, recording each frame's event.
+fn line_editor_harness<'a>(
+    fixture: &'a Fixture,
+    overlay: &'a RefCell<Overlay>,
+    target: sas_gui::controls::line_editor::LineTarget,
+    shape: Option<&'a RefCell<LineGenerator>>,
+    paint: &'a std::cell::Cell<bool>,
+    events: &'a RefCell<Vec<sas_gui::controls::line_editor::LineEditorEvent>>,
+) -> Harness<'a> {
+    use sas_gui::controls::line_editor::{LineEditor, LineSettings};
+    let bounds = Rect::new(0, 0, 400, 300);
+    let mut harness = Harness::builder()
+        .with_size((400.0, 300.0))
+        .with_step_dt(1.0 / 60.0)
+        .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
+        .build_ui(move |ui| {
+            let area = ui.ctx().content_rect();
+            let host = Host::tracking(
+                fixture.synth.as_ref(),
+                Some(&fixture.context),
+                &fixture.open,
+            );
+            let painter = ui.painter_at(area);
+            let pixels = PixelPainter::new(&painter, area, 1.0);
+            let interface = fixture.interface.borrow();
+            let top = Scope::top(interface.skin(), 1.0);
+            let mut overlay = overlay.borrow_mut();
+            let mut panel = Panel::new(ui, &host, &pixels, top, &mut overlay, bounds);
+            let settings = LineSettings {
+                grid_size_x: 4,
+                grid_size_y: 0,
+                paint: paint.get(),
+                paint_pattern: 0,
+                phase: None,
+                active: true,
+            };
+            let editor = LineEditor { target };
+            let event = match shape {
+                Some(shape) => {
+                    editor.show(&mut panel, bounds, settings, Some(&mut shape.borrow_mut()))
+                }
+                None => editor.show(&mut panel, bounds, settings, None),
+            };
+            panel.finish();
+            events.borrow_mut().push(event);
+        });
+    harness.step();
+    events.borrow_mut().clear();
+    harness
+}
+
+/// The frames' listener calls, in order.
+fn line_changes(
+    events: &RefCell<Vec<sas_gui::controls::line_editor::LineEditorEvent>>,
+) -> Vec<sas_gui::controls::line_editor::LineChange> {
+    std::mem::take(&mut *events.borrow_mut())
+        .into_iter()
+        .flat_map(|event| event.changes)
+        .collect()
+}
+
+/// Waits out the double-click time.
+fn settle(harness: &mut Harness) {
+    for _ in 0..30 {
+        harness.step();
+    }
+}
+
+/// A caller-owned shape is edited in place, and the target's shape is
+/// neither written nor read. The listener calls are upstream's:
+/// - a point drag: `pointChanged(i, false)` while moving, then
+///   `pointChanged(i, true)` on its release (`drawUp`);
+/// - a power drag: `powersChanged(false)`, then `powersChanged(true)`;
+/// - a press and release on a point without a move still releases it;
+/// - a double click on empty space: `pointAdded`, with no release before it
+///   (no active point); on a point: its release, then `pointRemoved`.
+#[test]
+fn a_caller_owned_shape_reports_upstreams_listener_calls() {
+    use sas_gui::controls::line_editor::{LineChange, LineTarget, PointEdit};
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let shape = RefCell::new(LineTarget::Remap(5).init_shape());
+    let paint = std::cell::Cell::new(false);
+    let events = RefCell::new(Vec::new());
+    let mut harness = line_editor_harness(
+        &fixture,
+        &overlay,
+        LineTarget::Remap(5),
+        Some(&shape),
+        &paint,
+        &events,
+    );
+    let middle = egui::pos2(200.0, 60.0);
+
+    click(&mut harness, middle);
+    click(&mut harness, middle);
+    assert_eq!(
+        line_changes(&events),
+        [LineChange::Points(PointEdit::Added(1))]
+    );
+    assert_eq!(shape.borrow().point(1), (0.5, 0.2));
+    settle(&mut harness);
+
+    click(&mut harness, middle);
+    let up = LineChange::PointChanged {
+        index: 1,
+        mouse_up: true,
+    };
+    assert_eq!(line_changes(&events), [up]);
+    assert!(!events.borrow().iter().any(|event| event.changed));
+    settle(&mut harness);
+
+    drag(
+        &mut harness,
+        middle,
+        egui::pos2(200.0, 120.0),
+        Modifiers::NONE,
+    );
+    let changes = line_changes(&events);
+    let (last, moving) = changes.split_last().unwrap();
+    assert_eq!(*last, up);
+    assert!(!moving.is_empty());
+    assert!(moving.iter().all(|change| *change
+        == LineChange::PointChanged {
+            index: 1,
+            mouse_up: false
+        }));
+    let point = shape.borrow().point(1);
+    assert!(point.1 > 0.2);
+    settle(&mut harness);
+
+    // The power handle halfway between the first two points.
+    let first = shape.borrow().point(0);
+    let power = egui::pos2(
+        (first.0 + point.0) / 2.0 * 400.0,
+        (first.1 + point.1) / 2.0 * 300.0,
+    );
+    drag(
+        &mut harness,
+        power,
+        power + egui::vec2(0.0, 30.0),
+        Modifiers::NONE,
+    );
+    let changes = line_changes(&events);
+    let (last, moving) = changes.split_last().unwrap();
+    assert_eq!(*last, LineChange::PowersChanged { mouse_up: true });
+    assert!(!moving.is_empty());
+    assert!(moving
+        .iter()
+        .all(|change| *change == LineChange::PowersChanged { mouse_up: false }));
+    assert_ne!(shape.borrow().power(0), 0.0);
+    settle(&mut harness);
+
+    let on_point = egui::pos2(point.0 * 400.0, 120.0);
+    click(&mut harness, on_point);
+    click(&mut harness, on_point);
+    assert_eq!(
+        line_changes(&events),
+        [up, up, LineChange::Points(PointEdit::Removed(1))]
+    );
+    assert_eq!(shape.borrow().num_points(), 2);
+
+    assert!(
+        !fixture
+            .synth
+            .bus
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|entry| entry.starts_with("line_mapping")),
+        "the target's shape was written"
+    );
+}
+
+/// Painting calls only `pointAdded`, `pointsAdded` and `pointsRemoved`, and
+/// its release calls nothing (`mouseUp` calls `drawUp` only when not
+/// painting), so the shape's owner decides when to commit.
+#[test]
+fn a_paint_strokes_release_calls_nothing() {
+    use sas_gui::controls::line_editor::{LineChange, LineTarget};
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let shape = RefCell::new(LineTarget::Remap(5).init_shape());
+    let paint = std::cell::Cell::new(true);
+    let events = RefCell::new(Vec::new());
+    let mut harness = line_editor_harness(
+        &fixture,
+        &overlay,
+        LineTarget::Remap(5),
+        Some(&shape),
+        &paint,
+        &events,
+    );
+    press(
+        &mut harness,
+        egui::pos2(150.0, 100.0),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    for x in [180.0, 250.0, 320.0] {
+        harness.event(Event::PointerMoved(egui::pos2(x, 100.0)));
+        harness.step();
+    }
+    let stroke = line_changes(&events);
+    assert!(!stroke.is_empty());
+    assert!(
+        stroke
+            .iter()
+            .all(|change| matches!(change, LineChange::Points(_))),
+        "{stroke:?}"
+    );
+    let points = shape.borrow().num_points();
+    assert!(points > 2);
+    release(
+        &mut harness,
+        egui::pos2(320.0, 100.0),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert_eq!(line_changes(&events), []);
+    assert_eq!(shape.borrow().num_points(), points);
+}
+
+/// The menu's calls: the flips release point 0 (`pointChanged(0, true)`),
+/// Remove Point calls `pointRemoved`, Initialize `fileLoaded`, and Reset
+/// Power changes the shape without a call.
+#[test]
+fn the_line_menus_listener_calls() {
+    use sas_gui::controls::line_editor::{menu, LineAction, LineChange, LineTarget, PointEdit};
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let mut line = LineTarget::Remap(5).init_shape();
+    line.add_point(1, (0.5, 0.2));
+    line.set_power(0, 3.0);
+    line.render();
+    let shape = RefCell::new(line);
+    let paint = std::cell::Cell::new(false);
+    let events = RefCell::new(Vec::new());
+    let mut harness = line_editor_harness(
+        &fixture,
+        &overlay,
+        LineTarget::Remap(5),
+        Some(&shape),
+        &paint,
+        &events,
+    );
+    let mut choose = |choice: i32| {
+        overlay.borrow_mut().line_action = Some(LineAction {
+            target: LineTarget::Remap(5),
+            choice,
+            point: 1,
+            power: 0,
+            grid_section: -1,
+        });
+        harness.step();
+        let changed = events.borrow().iter().any(|event| event.changed);
+        (line_changes(&events), changed)
+    };
+    let flipped = vec![LineChange::PointChanged {
+        index: 0,
+        mouse_up: true,
+    }];
+    assert_eq!(choose(menu::FLIP_HORIZONTAL), (flipped.clone(), true));
+    assert_eq!(choose(menu::FLIP_VERTICAL), (flipped, true));
+    assert_eq!(choose(menu::RESET_POWER), (vec![], true));
+    assert_eq!(shape.borrow().power(0), 0.0);
+    assert_eq!(
+        choose(menu::REMOVE_POINT),
+        (vec![LineChange::Points(PointEdit::Removed(1))], true)
+    );
+    assert_eq!(
+        choose(menu::INIT),
+        (vec![LineChange::Points(PointEdit::Loaded)], true)
+    );
+}
+
+/// Without a caller's shape the editor writes the target's shape as before.
+#[test]
+fn without_a_callers_shape_the_target_is_written() {
+    use sas_gui::controls::line_editor::{LineChange, PointEdit};
+    let fixture = Fixture::new();
+    let overlay = RefCell::new(Overlay::default());
+    let paint = std::cell::Cell::new(false);
+    let events = RefCell::new(Vec::new());
+    let mut harness = line_editor_harness(
+        &fixture,
+        &overlay,
+        sas_gui::controls::line_editor::LineTarget::Remap(5),
+        None,
+        &paint,
+        &events,
+    );
+    let middle = egui::pos2(200.0, 60.0);
+    click(&mut harness, middle);
+    click(&mut harness, middle);
+    assert_eq!(
+        line_changes(&events),
+        [LineChange::Points(PointEdit::Added(1))]
+    );
+    assert_eq!(*fixture.synth.bus.lock().unwrap(), ["line_mapping 5"]);
+}
+
+/// A right-click's release calls `drawUp` in the base editor (its
+/// `mouseUp` has no popup check): over a point `pointChanged(i, true)`,
+/// over a power `powersChanged(true)`. `LfoEditor::mouseUp` skips popup
+/// releases, so an LFO reports nothing.
+#[test]
+fn a_right_clicks_release_is_reported_except_on_an_lfo() {
+    use sas_gui::controls::line_editor::{LineChange, LineTarget};
+    let fixture = Fixture::new();
+    let mut line = LineTarget::Remap(5).init_shape();
+    line.add_point(1, (0.5, 0.2));
+    line.render();
+    // The point, and the power handle between the first two points.
+    let point = egui::pos2(200.0, 60.0);
+    let power = egui::pos2(100.0, 180.0);
+    let right_click = |harness: &mut Harness, at: Pos2| {
+        harness.event(Event::PointerMoved(at));
+        harness.step();
+        press(harness, at, PointerButton::Secondary, Modifiers::NONE);
+        release(harness, at, PointerButton::Secondary, Modifiers::NONE);
+    };
+    for target in [LineTarget::Remap(5), LineTarget::Lfo(0)] {
+        let overlay = RefCell::new(Overlay::default());
+        let shape = RefCell::new(line.clone());
+        let paint = std::cell::Cell::new(false);
+        let events = RefCell::new(Vec::new());
+        let mut harness =
+            line_editor_harness(&fixture, &overlay, target, Some(&shape), &paint, &events);
+        right_click(&mut harness, point);
+        assert!(
+            overlay.borrow().menu.is_some(),
+            "{target:?}: the menu opens"
+        );
+        overlay.borrow_mut().menu = None;
+        let at_point = line_changes(&events);
+        right_click(&mut harness, power);
+        overlay.borrow_mut().menu = None;
+        let at_power = line_changes(&events);
+        if target == LineTarget::Lfo(0) {
+            assert_eq!((at_point, at_power), (vec![], vec![]));
+        } else {
+            assert_eq!(
+                at_point,
+                [LineChange::PointChanged {
+                    index: 1,
+                    mouse_up: true
+                }]
+            );
+            assert_eq!(at_power, [LineChange::PowersChanged { mouse_up: true }]);
+        }
+        assert_eq!(shape.borrow().num_points(), 3);
+    }
+}
+
+fn remap_layout(fixture: &Fixture) -> sas_gui::sections::matrix::RemapLayout {
+    use sas_gui::sections::matrix::{self, MatrixLayout};
+    let interface = fixture.interface.borrow();
+    let layout = FullLayout::new(interface.skin(), 1400, 820);
+    let scope = Scope::top(interface.skin(), layout.size_ratio).within(matrix::SKIN);
+    MatrixLayout::new(&scope, layout.main).remap_layout(&scope)
+}
+
+/// The remap editor edits the selected row's curve (`map_editors_`
+/// shown for `selected_index_`): with row 2 selected, a double click in
+/// it adds a point to slot 2's curve, through the model's line mapping.
+#[test]
+fn the_remap_editor_edits_the_selected_rows_curve() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    let row = matrix_row(&fixture, 1);
+    let gap = egui::pos2(
+        (row.power.right() + row.amount.x) as f32 / 2.0,
+        centre(row.bounds).y,
+    );
+    click(&mut harness, gap);
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 1);
+    fixture.synth.bus.lock().unwrap().clear();
+
+    let editor = remap_layout(&fixture).editor;
+    let off_the_line = egui::pos2(
+        editor.x as f32 + editor.width as f32 * 0.25,
+        editor.y as f32 + editor.height as f32 * 0.2,
+    );
+    click(&mut harness, off_the_line);
+    click(&mut harness, off_the_line);
+    assert_eq!(*fixture.synth.bus.lock().unwrap(), ["line_mapping 1"]);
+    assert_eq!(fixture.synth.line_mapping(1).unwrap().num_points(), 3);
+    assert!(fixture.synth.line_mapping(0).is_none());
+}
+
+/// The remap strip loads LFO files into the selected curve: the arrows
+/// step through the user's LFOs (`nextClicked`, `getShiftedFile`) and a
+/// press on its name opens the browser for them (`textMouseDown`).
+#[test]
+fn the_remap_strip_loads_lfo_files() {
+    let fixture = Fixture::new();
+    let _data = lfo_data(&fixture, "remap");
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    let preset = remap_layout(&fixture).preset_selector;
+    click(&mut harness, centre(preset.next));
+    assert_eq!(fixture.synth.line_mapping(0).unwrap().name(), "Bank Shape");
+    click(&mut harness, centre(preset.next));
+    assert_eq!(fixture.synth.line_mapping(0).unwrap().name(), "Ramp 2");
+    click(&mut harness, centre(preset.previous));
+    assert_eq!(fixture.synth.line_mapping(0).unwrap().name(), "Bank Shape");
+    assert!(fixture.synth.lfo_shape(0).is_none());
+
+    click(&mut harness, centre(preset.text));
+    assert_eq!(popup_files(&fixture), ["Bank Shape", "Ramp 2", "Wobble"]);
+}
+
+/// Opens LFO 1's menu over the point at `x`, `y` (fractions of the editor)
+/// and returns the menu's item names.
+fn open_lfo_point_menu(harness: &mut Harness, fixture: &Fixture, x: f32, y: f32) -> Vec<String> {
+    let at = lfo_point(lfo_layout(fixture).editor, x, y);
+    harness.event(Event::PointerMoved(at));
+    harness.step();
+    press(harness, at, PointerButton::Secondary, Modifiers::NONE);
+    release(harness, at, PointerButton::Secondary, Modifiers::NONE);
+    let interface = fixture.interface.borrow();
+    let menu = interface.overlay().menu.as_ref().expect("the LFO menu");
+    menu.items.iter().map(|item| item.name.clone()).collect()
+}
+
+/// Chooses row `row` of the open menu (rows above any divider).
+fn choose_open_menu_row(harness: &mut Harness, fixture: &Fixture, row: usize) {
+    let position = {
+        let interface = fixture.interface.borrow();
+        interface.overlay().menu.as_ref().expect("a menu").position
+    };
+    let pos = Pos2::new(position.x + 20.0, position.y + 12.0 + 24.0 * row as f32);
+    harness.event(Event::PointerMoved(pos));
+    harness.step();
+    click(harness, pos);
+    for _ in 0..2 {
+        harness.step();
+    }
+}
+
+/// `LfoEditor::mouseDown` over a point: Set Start Point, then Remove Point
+/// and Enter Point Phase for an inner point, then Enter Point Value, before
+/// the shape's items; over an end point, no removal or phase.
+#[test]
+fn the_lfo_point_menu_offers_the_entries() {
+    sas_gui::controls::line_editor::set_clipboard_reader(|| None);
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let tail = [
+        "Copy",
+        "Save to LFOs",
+        "Flip Horizontal",
+        "Flip Vertical",
+        "Import LFO",
+        "Export LFO",
+    ];
+    let peak = open_lfo_point_menu(&mut harness, &fixture, 0.5, 0.0);
+    let mut expected = vec![
+        "Set Start Point",
+        "Remove Point",
+        "Enter Point Phase",
+        "Enter Point Value",
+        "",
+    ];
+    expected.extend(tail);
+    assert_eq!(peak, expected);
+    fixture.interface.borrow_mut().overlay_mut().menu = None;
+    harness.step();
+    let start = open_lfo_point_menu(&mut harness, &fixture, 0.0, 1.0);
+    let mut expected = vec!["Set Start Point", "Enter Point Value", ""];
+    expected.extend(tail);
+    assert_eq!(start, expected);
+}
+
+/// Types `text` into the point entry LFO 1's menu row `row` opened over the
+/// point at `x`, `y`, then ends it with `end`.
+fn enter_point(fixture: &Fixture, x: f32, y: f32, row: usize, text: &str, end: Key) {
+    sas_gui::controls::line_editor::set_clipboard_reader(|| None);
+    let mut harness = fixture.harness();
+    open_lfo_point_menu(&mut harness, fixture, x, y);
+    choose_open_menu_row(&mut harness, fixture, row);
+    harness.event(Event::Text(text.to_string()));
+    harness.step();
+    key(&mut harness, end);
+    for _ in 0..3 {
+        harness.step();
+    }
+}
+
+/// `setSliderPositionFromText`: the peak's typed value sets its height, and
+/// its typed phase stays within its neighbours'.
+#[test]
+fn a_typed_point_value_or_phase_moves_the_point() {
+    let fixture = Fixture::new();
+    enter_point(&fixture, 0.5, 0.0, 3, "0.25", Key::Enter);
+    assert_eq!(lfo_1_shape(&fixture).point(1), (0.5, 0.75));
+
+    let fixture = Fixture::new();
+    enter_point(&fixture, 0.5, 0.0, 2, "0.3", Key::Enter);
+    assert_eq!(lfo_1_shape(&fixture).point(1), (0.3, 0.0));
+
+    let fixture = Fixture::new();
+    enter_point(&fixture, 0.5, 0.0, 2, "2", Key::Enter);
+    assert_eq!(lfo_1_shape(&fixture).point(1), (1.0, 0.0));
+}
+
+/// A level end typed to a new value takes the other end with it.
+#[test]
+fn a_typed_end_value_moves_both_ends() {
+    let fixture = Fixture::new();
+    enter_point(&fixture, 0.0, 1.0, 1, "0.5", Key::Enter);
+    let line = lfo_1_shape(&fixture);
+    assert_eq!(line.point(0), (0.0, 0.5));
+    assert_eq!(line.point(2), (1.0, 0.5));
+}
+
+/// Escape hides the entry, and hiding it loses the keyboard, which sets
+/// the point (`textEditorFocusLost`), as upstream's does.
+#[test]
+fn escape_sets_the_typed_point_too() {
+    let fixture = Fixture::new();
+    enter_point(&fixture, 0.5, 0.0, 3, "0.5", Key::Escape);
+    assert_eq!(lfo_1_shape(&fixture).point(1), (0.5, 0.5));
+}
+
+fn wheel(harness: &mut Harness, at: Pos2, lines: f32) {
+    harness.event(Event::PointerMoved(at));
+    harness.step();
+    harness.event(Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: egui::vec2(0.0, lines),
+        modifiers: Modifiers::NONE,
+        phase: egui::TouchPhase::Move,
+        source: egui::MouseWheelSource::Wheel,
+    });
+    harness.step();
+}
+
+/// `lineEditorScrolled`: the wheel over an LFO's editor or the remap
+/// editor moves its X grid, and while painting its paint pattern.
+#[test]
+fn the_wheel_over_a_line_editor_moves_its_grid_or_pattern() {
+    use sas_gui::local;
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let lfo = lfo_layout(&fixture);
+    let middle = centre(lfo.editor);
+    let local = |name: &str| fixture.interface.borrow().local_value(name).unwrap();
+    wheel(&mut harness, middle, 1.0);
+    assert_eq!(local(local::GRID_SIZE_X[0]), 9.0);
+    wheel(&mut harness, middle, -1.0);
+    wheel(&mut harness, middle, -1.0);
+    assert_eq!(local(local::GRID_SIZE_X[0]), 7.0);
+    click(&mut harness, centre(lfo.paint));
+    assert_eq!(local(local::PAINT[0]), 1.0);
+    let pattern = local(local::PAINT_PATTERN[0]);
+    wheel(&mut harness, middle, 1.0);
+    assert_eq!(local(local::PAINT_PATTERN[0]), pattern + 1.0);
+    assert_eq!(local(local::GRID_SIZE_X[0]), 7.0);
+
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    harness.step();
+    let editor = centre(remap_layout(&fixture).editor);
+    wheel(&mut harness, editor, -1.0);
+    assert_eq!(local(local::MATRIX_GRID_SIZE_X), 7.0);
+    assert_eq!(local(local::GRID_SIZE_X[0]), 7.0);
+}
+
+/// The wheel over a line editor shows the moved slider's popup
+/// (`mouseWheelMove`'s `showPopup(true)`), and it stays while the pointer
+/// moves over the editor: only a slider's `mouseExit` hides it
+/// (`hidePopupDisplay`), whichever slider's popup it is.
+#[test]
+fn the_wheels_popup_stays_until_a_slider_is_left() {
+    use sas_gui::local;
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let lfo = lfo_layout(&fixture);
+    let popup = |fixture: &Fixture| {
+        fixture
+            .interface
+            .borrow()
+            .overlay()
+            .value_popup
+            .as_ref()
+            .map(|(name, _)| *name)
+    };
+    let middle = centre(lfo.editor);
+    wheel(&mut harness, middle, 1.0);
+    assert_eq!(popup(&fixture), Some(local::GRID_SIZE_X[0]));
+    move_to(&mut harness, middle + egui::vec2(30.0, 10.0));
+    move_to(&mut harness, middle + egui::vec2(-40.0, -20.0));
+    assert_eq!(popup(&fixture), Some(local::GRID_SIZE_X[0]));
+
+    // Into the grid slider and out: its mouseExit.
+    move_to(&mut harness, centre(lfo.grid_size_x));
+    move_to(&mut harness, middle);
+    assert_eq!(popup(&fixture), None);
+
+    // Another slider's mouseExit hides it too.
+    wheel(&mut harness, middle, 1.0);
+    assert_eq!(popup(&fixture), Some(local::GRID_SIZE_X[0]));
+    move_to(&mut harness, centre(lfo.delay));
+    move_to(&mut harness, middle);
+    assert_eq!(popup(&fixture), None);
+
+    // The texts (getTextFromValue): the LFO's grid has a popup prefix; the
+    // paint pattern, an editor control without a parameter, shows its
+    // name from the string lookup; the Matrix's grid, without a prefix,
+    // shows its value.
+    let text = |fixture: &Fixture| {
+        fixture
+            .interface
+            .borrow()
+            .overlay()
+            .value_popup
+            .as_ref()
+            .map(|(_, popup)| popup.text.clone())
+            .unwrap()
+    };
+    wheel(&mut harness, middle, 1.0);
+    assert_eq!(text(&fixture), "X Grid");
+    click(&mut harness, centre(lfo.paint));
+    let pattern = fixture
+        .interface
+        .borrow()
+        .local_value(local::PAINT_PATTERN[0])
+        .unwrap() as usize;
+    wheel(&mut harness, middle, 1.0);
+    assert_eq!(
+        text(&fixture),
+        sas_gui::controls::line_editor::PAINT_PATTERN_NAMES[pattern + 1]
+    );
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    harness.step();
+    wheel(&mut harness, centre(remap_layout(&fixture).editor), 1.0);
+    assert_eq!(text(&fixture), "9");
 }

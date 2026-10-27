@@ -26,16 +26,39 @@ class LayoutPathsTest(unittest.TestCase):
         preset = "migration/corpus/gui/presets/all_effects.vital"
         self.assertEqual(
             self.paths(f"# comment\nheader_section\n\n@preset {preset}\neffects/container/CHORUS\n"),
-            [("header_section", None, None), ("effects/container/CHORUS", preset, None)],
+            [("header_section", None, None, None), ("effects/container/CHORUS", preset, None, None)],
         )
 
     def test_an_overlay_applies_until_none(self):
         self.assertEqual(
             self.paths("header_section\n@overlay popup_browser\nPopup Browser/Exit\n"
                        "@overlay none\neffects\n"),
-            [("header_section", None, None), ("Popup Browser/Exit", None, "popup_browser"),
-             ("effects", None, None)],
+            [("header_section", None, None, None), ("Popup Browser/Exit", None, "popup_browser", None),
+             ("effects", None, None, None)],
         )
+
+    def test_a_wavetable_selection_applies_until_none(self):
+        self.assertEqual(
+            self.paths("header_section\n@overlay wavetable_editor\n@wavetable-select 0:3\n"
+                       "oscillator 1/FREQUENCY FILTER\n@wavetable-select 1:0:1\noscillator 1/LINE SOURCE\n"
+                       "@wavetable-select none\noscillator 1/WAVE SOURCE\n@overlay none\neffects\n"),
+            [("header_section", None, None, None),
+             ("oscillator 1/FREQUENCY FILTER", None, "wavetable_editor", "0:3"),
+             ("oscillator 1/LINE SOURCE", None, "wavetable_editor", "1:0:1"),
+             ("oscillator 1/WAVE SOURCE", None, "wavetable_editor", None),
+             ("effects", None, None, None)],
+        )
+
+    def test_a_wavetable_selection_needs_the_wavetable_editor(self):
+        with self.assertRaises(SystemExit):
+            self.paths("@wavetable-select 1:0:1\nheader_section\n")
+        with self.assertRaises(SystemExit):
+            self.paths("@overlay popup_browser\n@wavetable-select 0:3\nPopup Browser/Exit\n")
+
+    def test_a_malformed_wavetable_selection_fails(self):
+        for select in ("x:y", "0", "0:1:2:3", "-1:0"):
+            with self.assertRaises(SystemExit, msg=select):
+                self.paths(f"@overlay wavetable_editor\n@wavetable-select {select}\noscillator 1\n")
 
     def test_an_unknown_overlay_fails(self):
         with self.assertRaises(SystemExit):
@@ -140,6 +163,24 @@ class OverlayArgsTest(unittest.TestCase):
     def test_an_unknown_overlay_fails(self):
         with self.assertRaises(SystemExit):
             gui_reference.overlay_args({"name": "v", "overlay": "about_section"})
+
+    def test_a_wavetable_selection_passes_through(self):
+        for select in ("0:3", "1:0:1"):
+            view = {"name": "v", "overlay": "wavetable_editor", "wavetable_select": select}
+            self.assertEqual(gui_reference.overlay_args(view),
+                             ["--overlay", "wavetable_editor", "--wavetable-select", select])
+
+    def test_a_wavetable_selection_needs_the_wavetable_editor(self):
+        with self.assertRaises(SystemExit):
+            gui_reference.overlay_args({"name": "v", "wavetable_select": "0:3"})
+        with self.assertRaises(SystemExit):
+            gui_reference.overlay_args({"name": "v", "overlay": "popup_browser", "wavetable_select": "0:3"})
+
+    def test_a_malformed_wavetable_selection_fails(self):
+        for select in ("x:y", "0", "0:1:2:3", "", "0:3\n"):
+            view = {"name": "v", "overlay": "wavetable_editor", "wavetable_select": select}
+            with self.assertRaises(SystemExit, msg=select):
+                gui_reference.overlay_args(view)
 
 
 class RunRefGuiTest(unittest.TestCase):

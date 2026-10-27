@@ -26,6 +26,13 @@ pub struct Format {
     pub display_multiply: Option<f32>,
     /// `display_exponential_base_`.
     pub exponential_base: f32,
+    /// `string_lookup_` (`setStringLookup`): option names for a slider whose
+    /// control has none of its own.
+    pub string_lookup: Option<&'static [&'static str]>,
+    /// For a slider with no parameter assignment (`has_parameter_assignment_`
+    /// false), JUCE's `Slider::getTextFromValue`: the value with this many
+    /// decimal places (`numDecimalPlaces`, 7 for a range with no interval).
+    pub unassigned_decimal_places: Option<usize>,
 }
 
 impl Default for Format {
@@ -36,6 +43,8 @@ impl Default for Format {
             use_suffix: true,
             display_multiply: None,
             exponential_base: 2.0,
+            string_lookup: None,
+            unassigned_decimal_places: None,
         }
     }
 }
@@ -113,11 +122,14 @@ pub fn format_value(info: &ParamInfo, format: &Format, value: f32) -> String {
 /// `SynthSlider::getSliderTextFromValue`: the option name, or the adjusted
 /// value formatted.
 pub fn slider_text(info: &ParamInfo, format: &Format, value: f32) -> String {
-    if let Some(options) = info.options() {
+    if let Some(options) = format.string_lookup.or_else(|| info.options()) {
         let index = (value as i32).clamp(0, info.max as i32) as usize;
         if let Some(option) = options.get(index) {
             return option.to_string();
         }
+    }
+    if let Some(places) = format.unassigned_decimal_places {
+        return format!("{value:.places$}");
     }
     format_value(
         info,
@@ -139,7 +151,7 @@ pub fn value_from_text(info: &ParamInfo, format: &Format, text: &str) -> f64 {
         .filter(|c| *c != ' ')
         .collect::<String>()
         .to_lowercase();
-    if let Some(options) = info.options() {
+    if let Some(options) = format.string_lookup.or_else(|| info.options()) {
         for (index, option) in options.iter().enumerate().take(info.max as usize + 1) {
             if cleaned == option.to_lowercase() {
                 return index as f64;
@@ -159,7 +171,8 @@ fn juce_float(value: f32) -> String {
     juce_double(value as f64)
 }
 
-fn juce_double(value: f64) -> String {
+/// JUCE's `String(double)`, the same formatting as [`juce_float`].
+pub(crate) fn juce_double(value: f64) -> String {
     if value == 0.0 {
         return "0".to_string();
     }
@@ -191,7 +204,7 @@ fn juce_double(value: f64) -> String {
 }
 
 /// JUCE's `String::getDoubleValue`: the leading number, or 0.
-fn juce_double_value(text: &str) -> f64 {
+pub(crate) fn juce_double_value(text: &str) -> f64 {
     let text = text.trim_start();
     let mut end = 0;
     for (index, c) in text.char_indices() {
@@ -249,6 +262,12 @@ mod tests {
         assert_eq!(slider_text(info("polyphony"), &polyphony, 8.0), "8");
         // Option names: stereo mode.
         assert_eq!(slider_text(info("stereo_mode"), &format, 1.0), "ROTATE");
+        // No parameter behind it: JUCE's own text.
+        let juce = Format {
+            unassigned_decimal_places: Some(7),
+            ..Format::default()
+        };
+        assert_eq!(slider_text(info("polyphony"), &juce, 2.5), "2.5000000");
     }
 
     #[test]

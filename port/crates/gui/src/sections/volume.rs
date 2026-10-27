@@ -68,6 +68,8 @@ pub struct VolumeSection {
     volume: Slider,
     /// `PeakMeterViewer::clamped_` for each meter.
     clamped: Cell<[f32; 2]>,
+    /// The egui frame the clamp last decayed in.
+    clamped_frame: Cell<Option<u64>>,
 }
 
 impl Default for VolumeSection {
@@ -81,6 +83,7 @@ impl Default for VolumeSection {
                 },
             ),
             clamped: Cell::new([0.0; 2]),
+            clamped_frame: Cell::new(None),
         }
     }
 }
@@ -134,6 +137,11 @@ impl VolumeSection {
     pub fn show(&self, panel: &mut Panel, layout: &VolumeLayout, levels: Option<PeakLevels>) {
         if let Some(levels) = levels {
             let mut clamped = self.clamped.get();
+            // Once per render, as upstream's: egui may run a frame in more
+            // than one pass.
+            let frame = panel.ui.ctx().cumulative_frame_nr();
+            let decaying = self.clamped_frame.get() != Some(frame);
+            self.clamped_frame.set(Some(frame));
             for (index, meter) in [layout.peak_meter_left, layout.peak_meter_right]
                 .into_iter()
                 .enumerate()
@@ -152,7 +160,9 @@ impl VolumeSection {
                 let one_pixel = 2.0 / meter.width as f32;
                 panel.quad(gain_meter(meter, -1.0, level, from, to));
                 panel.quad(gain_meter(meter, memory - one_pixel, memory, from, to));
-                clamped[index] = (clamped[index] - CLAMP_DECAY).max(0.0);
+                if decaying {
+                    clamped[index] = (clamped[index] - CLAMP_DECAY).max(0.0);
+                }
 
                 let rounding = (meter.height as f32 / 3.0)
                     .min(panel.scope.value(ValueId::WidgetRoundedCorner) * 0.5);

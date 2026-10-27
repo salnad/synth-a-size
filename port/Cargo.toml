@@ -63,6 +63,7 @@ egui_kittest = { version = "=0.37.0", features = ["wgpu", "snapshot"] }
 
 [patch.crates-io]
 egui-baseview = { path = "vendor/egui-baseview" }
+nice-plug-egui = { path = "vendor/nice-plug-egui" }
 
 [profile.release]
 debug = 1

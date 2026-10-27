@@ -810,6 +810,182 @@ MCP server) extends this entry when it lands.*
 - **Approved:** coordinator, relaying Voice Reviewer's review of #170,
   2026-10-26.
 
+### D28. "Add Folder" refuses a folder that links back into itself
+
+- **Differs:** what the popup browser's "Add Folder" does with a folder
+  holding a symbolic link to itself or to a folder above it.
+- **Upstream:** `isAcceptableRoot` walks the folder with
+  `findChildFiles(File::findDirectories, false)`, linked folders followed,
+  and refuses it once more than `kMaxRootFiles` (8,000) files are counted.
+  A loop is walked round and round, each pass deeper in the path. With
+  files in it, the count soon passes 8,000 and the folder is refused. With
+  none, the walk goes on until the system refuses the path, and with two
+  such links it doubles at every level, so the host hangs.
+- **Port:** `popup_browser::is_acceptable_root` walks and counts the same
+  way, linked folders followed, so a folder without a loop gets upstream's
+  answer. A folder whose walk reaches one of the folders above it is
+  refused at once, with the same "too many files" message.
+- **Why:** no folder a user picks may hang the host. A looped folder with
+  files is refused by upstream too, and the browser's listings follow
+  links as upstream's do, so an accepted loop would only move the hang to
+  the listing.
+- **Approved:** coordinator, 2026-10-26.
+
+### D29. No "Open File Location" menu on the All, Favorites and Add Folder rows
+
+- **Differs:** a right-click on the All, Favorites or Add Folder row of the
+  preset browser's or popup browser's folder list.
+- **Upstream:** `SelectionList::menuClick` offers "Open File Location" on
+  any hovered row. For these three rows the row is a made-up file under
+  `cwd/_` that doesn't exist, so `revealToUser` does nothing.
+- **Port:** the menu is offered only on rows that are real files or
+  folders (`selection_list.rs`); a right-click on these three rows opens
+  nothing.
+- **Why:** a menu item that does nothing is left out rather than copied.
+- **Approved:** coordinator, 2026-10-26.
+
+### D30. The saved window size isn't kept within the screen
+
+- **Differs:** a saved window size larger than the screen the window opens
+  on, and a corner drag past the screen's edge.
+- **Upstream:** `SynthEditor`'s constructor, run each time the window
+  opens, reads the config's `window_size` and keeps it within the desktop's
+  total bounds less 50 pixels of height
+  (`Desktop::getInstance().getDisplays().getTotalBounds`) before opening at
+  1400 × 820 times it.
+- **Port:** each window opens at 1400 × 820 times the saved size (at least
+  0.25), as upstream's does, without the screen bound. Upstream also keeps
+  a size dragged with the corner resizer within the display
+  (`BorderBoundsConstrainer::checkBounds`); the port's corner doesn't.
+- **Why:** baseview, which opens the window, reports no screen or display
+  size, so there is nothing to bound it by before the window opens. A size
+  saved on a large screen can open larger than a smaller one; the host can
+  still shrink the window.
+- **Approved:** coordinator, 2026-10-26.
+
+### D31. No factory wavetables
+
+- **Differs:** the wavetables the oscillator's and the wavetable editor's
+  browsers and arrows offer.
+- **Upstream:** the factory content installer puts upstream's wavetables in
+  a factory folder inside the data folder, beside the user's; the browsers
+  list every bank's Wavetables folder (`LoadSave::getWavetableDirectories`),
+  so the factory tables are listed and stepped through with the user's.
+- **Port:** no factory wavetables ship, and there is no installer. The
+  browsers and arrows list the user's wavetables, any bank folders in the
+  data folder (an upstream data folder with its factory content included),
+  and added folders.
+- **Why:** the port ships no factory content (migration/AGENTS.md rule 3),
+  and the downloader isn't ported (D26).
+- **Approved:** coordinator, 2026-10-27.
+
+### D32. The wavetable editor loads any audio file, not only `.wav`
+
+- **Differs:** a `.flac`, or a `.wav` with its extension in upper case,
+  loaded from the wavetable editor's browser, arrows or Import.
+- **Upstream:** `WavetableEditSection::loadFile` takes a file as audio
+  only when its extension is exactly `.wav`, and parses everything else as
+  a `.vitaltable`. The browser lists `.flac` and any case of `.wav`, but
+  they fail to parse and load nothing. The oscillator's `loadFile` loads
+  them as audio.
+- **Port:** the editor loads everything that isn't a `.vitaltable` as
+  audio, spliced, as the oscillator does
+  (`popup_browser::editor_load_wavetable_file`).
+- **Why:** a file the browser offers should load, as in D1 and D19.
+- **Approved:** coordinator, 2026-10-27.
+
+### D33. Audio dropped on the Audio File Source that can't be read, or is too short, loads nothing
+
+- **Differs:** what a file dropped on the wavetable editor's Audio File
+  Source overlay does when it can't be read, or holds fewer samples than
+  pitch detection measures (8096).
+- **Upstream:** `FileSourceOverlay::loadFile` loads whatever the viewer's
+  buffer holds. When `createReaderFor` fails, the buffer keeps the last
+  file the viewer read (or stays empty), so a corrupt file reloads the
+  previous audio. `detectPitch` then reads 8096 samples from a third of the
+  way into the audio less 8096, which for shorter audio starts before the
+  buffer (undefined behaviour).
+- **Port:** either file loads nothing and commits nothing: the source
+  keeps its audio, window size and start position
+  (`FileSourceOverlay::load_file`,
+  `port/crates/gui/src/sections/file_source_overlay.rs`).
+- **Why:** reloading audio the user didn't drop, or reading outside the
+  buffer, isn't behaviour to copy; leaving the source as it was matches
+  D4 and D21.
+- **Approved:** coordinator, 2026-10-27.
+
+### D34. The Frequency Filter overlay's style selector shows the style when a keyframe is selected
+
+- **Differs:** the text in the wavetable editor's Frequency Filter overlay
+  style selector right after one of its keyframes is selected.
+- **Upstream:** `FrequencyFilterOverlay::frameSelected` sets the style
+  selector with `dontSendNotification` and redraws only the cutoff and
+  shape images (`cutoff_->redoImage(); shape_->redoImage();`), after the
+  section's `setOverlayPosition` has already drawn them all. The selector
+  keeps the text it was last drawn with (Low Pass the first time) until
+  something redraws it, so a Band Pass filter reads "Low Pass".
+- **Port:** the selector draws the modifier's style each frame
+  (`port/crates/gui/src/sections/filter_slew_fold_warp_overlays.rs`).
+- **Why:** stale text naming the wrong style isn't behaviour to copy; this
+  follows D1's and D19's precedent of not replicating upstream bugs.
+- **Approved:** coordinator, 2026-10-27.
+
+### D35. A Line Source's power reset commits with the double click
+
+- **Differs:** a double click on a Line Source keyframe's power (with
+  Shift, every power) in the wavetable editor's Line Source overlay.
+- **Upstream:** the second click's `mouseUp` calls `drawUp`, whose
+  `powersChanged(true)` commits the keyframe as it is
+  (`WaveLineSourceOverlay::notifyChanged(true)`). JUCE then calls
+  `LineEditor::mouseDoubleClick`, which resets the power in the keyframe's
+  shape with no listener call, so the table keeps playing the old power
+  until the next commit while the keyframe, and a saved preset, already
+  hold the reset one.
+- **Port:** the editor reports the release and the reset in one frame, and
+  the overlay commits the shape with the reset in it
+  (`sections/line_source_overlay.rs`), so the table plays the reset power
+  at once. The menu's Reset Power, which upstream also leaves for the next
+  commit, commits the same way.
+- **Why:** the port commits a shape the section owns rather than editing
+  the document in place, so a change left uncommitted wouldn't be saved
+  either. Committing it keeps the saved shape and the sound in agreement.
+- **Approved:** coordinator, 2026-10-27.
+
+### D36. A Line Source's paint stroke commits once, when it ends
+
+- **Differs:** painting (Command held, or the paint mode) on a Line Source
+  keyframe in the wavetable editor's Line Source overlay.
+- **Upstream:** `LineEditor::paintLine` tells the overlay of each painted
+  cell that changes the shape's point count (`pointAdded`, `pointsAdded`,
+  `pointsRemoved`), and the overlay commits each
+  (`notifyChanged(true)`); a cell that keeps the count tells it nothing,
+  and the stroke's release (`mouseUp` without `drawUp`) commits nothing
+  either. A stroke commits once per cell that changed the count, and a
+  stroke that never changes it is left for the next commit.
+- **Port:** each painted cell auditions the playhead's frame, and the
+  stroke commits once, when it ends (`sections/line_source_overlay.rs`).
+- **Why:** a drag is one gesture with one commit at its end (D18), and
+  committing every stroke keeps the saved shape and the sound in
+  agreement, as D35 does for a power reset.
+- **Approved:** coordinator, 2026-10-27.
+
+### D37. The remap strip names the selected row's curve
+
+- **Differs:** the name in the Matrix tab's LFO file strip, above the remap
+  editor, after selecting another row.
+- **Upstream:** `preset_selector_` is set only when a file loads
+  (`loadFile`, `exportLfo`, `fileLoaded`). `rowSelected` changes the
+  editor shown but not the strip, so after a load the strip keeps that
+  file's name on every row, whatever curve the row has. It starts as
+  "Linear".
+- **Port:** the strip shows the name of the curve the editor shows: the
+  selected row's (`lfo::show_line_controls`, the same as the LFO
+  sections).
+- **Why:** the strip then describes the curve below it, as D34 does for the
+  same kind of name. Upstream's stale name can label a row with a file
+  that was loaded into another row.
+- **Approved:** coordinator, 2026-10-27.
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change

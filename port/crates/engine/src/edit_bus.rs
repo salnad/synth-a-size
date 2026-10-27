@@ -71,6 +71,11 @@ const OVERFLOW_CAPACITY: usize = 4;
 /// its linear remap curve too).
 const MAX_ENTRIES_PER_EDIT: usize = 2;
 
+/// Entries kept free for [`EditHandle::end_audition`], one per oscillator:
+/// every other edit leaves them, so ending a wavetable drag never meets a
+/// full queue, however long the audio thread stops draining it.
+pub const END_AUDITION_RESERVE: usize = NUM_OSCILLATORS;
+
 const LFO_SLOTS: usize = 0;
 const LINE_MAPPING_SLOTS: usize = LFO_SLOTS + NUM_LFOS;
 const WAVETABLE_SLOTS: usize = LINE_MAPPING_SLOTS + MAX_MODULATION_CONNECTIONS;
@@ -126,6 +131,15 @@ pub struct PreparedWavetable {
     creator: WavetableCreator,
     wavetable: Wavetable,
     shared: Arc<Wavetable>,
+}
+
+/// Which oscillator wavetable an audition belongs to: the state's
+/// generation and the oscillator's wavetable commits and ended auditions
+/// when the drag began ([`EditHandle::audition_token`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AuditionToken {
+    generation: u64,
+    commit: u64,
 }
 
 impl PreparedWavetable {
@@ -220,6 +234,19 @@ enum Command {
         source: &'static str,
         destination: &'static str,
     },
+    /// A matrix row connecting its own slot (values and curve unchanged).
+    ConnectSlot {
+        slot: usize,
+        source: &'static str,
+        destination: &'static str,
+    },
+    /// A matrix row freeing its own slot, which connects `source` to
+    /// `destination`.
+    DisconnectSlot {
+        slot: usize,
+        source: &'static str,
+        destination: &'static str,
+    },
     /// Apply the pending payload of `slot` if it is still the one pushed
     /// with `seq`.
     Apply { slot: usize, seq: u64 },
@@ -253,6 +280,14 @@ struct Mirror {
     revision: u64,
     next_seq: u64,
     wavetables: [Option<Arc<Wavetable>>; NUM_OSCILLATORS],
+    /// Each oscillator's wavetable commits ([`Batch::set_prepared_wavetable`])
+    /// and ended auditions ([`EditHandle::end_audition`]), which make older
+    /// auditions stale.
+    wavetable_commits: [u64; NUM_OSCILLATORS],
+    /// Whether a drawn frame has reached each oscillator's tables since its
+    /// last commit, end of audition or restore, so ending the drag has a
+    /// table to put back.
+    auditioned: [bool; NUM_OSCILLATORS],
 }
 
 struct Shared {
@@ -343,6 +378,8 @@ impl EditBus {
                 revision: 0,
                 next_seq: 0,
                 wavetables: Default::default(),
+                wavetable_commits: [0; NUM_OSCILLATORS],
+                auditioned: [false; NUM_OSCILLATORS],
             }),
             generation: AtomicU64::new(0),
             revision: AtomicU64::new(0),
@@ -379,8 +416,12 @@ pub struct Batch<'a> {
     /// Values replaced in the mirror that a rollback puts back, kept out of
     /// the batch's snapshot because they can be large.
     replaced_sample: Option<SampleState>,
-    replaced_wavetables: [Option<(WavetableCreator, Option<Arc<Wavetable>>)>; NUM_OSCILLATORS],
+    replaced_wavetables: [Option<ReplacedWavetable>; NUM_OSCILLATORS],
 }
+
+/// An oscillator's wavetable state before a batch replaced it: its creator,
+/// shared table, commit count and audition flag.
+type ReplacedWavetable = (WavetableCreator, Option<Arc<Wavetable>>, u64, bool);
 
 impl Batch<'_> {
     /// A source dropped on a control (see
@@ -446,6 +487,46 @@ impl Batch<'_> {
             }));
         }
         Ok(slot)
+    }
+
+    /// A modulation matrix row choosing slot `slot`'s route (see
+    /// [`PresetState::set_slot_route`](sas_preset::PresetState::set_slot_route)):
+    /// the slot's old route is disconnected and `route` connected in the same
+    /// slot, with its controls and curve as they are, in one step for the
+    /// engine. No host parameter changes. Returns whether the slot is
+    /// connected afterwards (a route to its own amount is refused).
+    pub fn set_slot_route(
+        &mut self,
+        slot: usize,
+        route_names: Option<(&str, &str)>,
+    ) -> Result<bool, EditError> {
+        check_index(slot, MAX_MODULATION_CONNECTIONS)?;
+        let route_names = route_names
+            .map(|(source, destination)| route(source, destination))
+            .transpose()?;
+        let state = &mut self.mirror.document.state;
+        let old = &state.modulations()[slot];
+        let old = (!old.is_free())
+            .then(|| route(&old.source, &old.destination))
+            .transpose()?;
+        let connected = state
+            .set_slot_route(slot, route_names)
+            .map_err(|_| EditError::BadIndex(slot))?;
+        if let Some((source, destination)) = old {
+            self.staged.push(Staged::Command(Command::DisconnectSlot {
+                slot,
+                source,
+                destination,
+            }));
+        }
+        if let (true, Some((source, destination))) = (connected, route_names) {
+            self.staged.push(Staged::Command(Command::ConnectSlot {
+                slot,
+                source,
+                destination,
+            }));
+        }
+        Ok(connected)
     }
 
     /// The remap curve of modulation slot `slot` (0-based).
@@ -529,8 +610,12 @@ impl Batch<'_> {
             prepared.creator,
         );
         let shared = self.mirror.wavetables[oscillator].replace(prepared.shared);
+        let commits = self.mirror.wavetable_commits[oscillator];
+        let auditioned = self.mirror.auditioned[oscillator];
+        self.mirror.wavetable_commits[oscillator] += 1;
+        self.mirror.auditioned[oscillator] = false;
         if self.replaced_wavetables[oscillator].is_none() {
-            self.replaced_wavetables[oscillator] = Some((creator, shared));
+            self.replaced_wavetables[oscillator] = Some((creator, shared, commits, auditioned));
         }
         self.staged.push(Staged::Pending(
             Target::Wavetable(oscillator),
@@ -659,7 +744,7 @@ impl EditHandle {
             ..
         } = batch;
         let result = result.and_then(|value| {
-            if staged.len() <= self.capacity_remaining() {
+            if staged.len() + END_AUDITION_RESERVE <= self.capacity_remaining() {
                 Ok(value)
             } else {
                 Err(EditError::QueueFull)
@@ -676,9 +761,12 @@ impl EditHandle {
                     .unwrap_or_else(|| std::mem::take(&mut mirror.document.state.sample));
                 let mut wavetables = std::mem::take(&mut mirror.document.state.wavetables);
                 for (oscillator, replaced) in replaced_wavetables.into_iter().enumerate() {
-                    if let Some((creator, shared)) = replaced {
+                    if let Some((creator, shared, commits, auditioned)) = replaced {
                         wavetables[oscillator] = creator;
                         mirror.wavetables[oscillator] = shared;
+                        // A drag auditioning before the batch still is.
+                        mirror.wavetable_commits[oscillator] = commits;
+                        mirror.auditioned[oscillator] = auditioned;
                     }
                 }
                 mirror.document = snapshot;
@@ -708,7 +796,7 @@ impl EditHandle {
     ) -> Result<R, EditError> {
         self.collect_retired();
         let mut mirror = self.lock();
-        if self.capacity_remaining() < MAX_ENTRIES_PER_EDIT {
+        if self.capacity_remaining() < MAX_ENTRIES_PER_EDIT + END_AUDITION_RESERVE {
             return Err(EditError::QueueFull);
         }
         let mut batch = Batch::new(&mut mirror);
@@ -719,8 +807,19 @@ impl EditHandle {
     }
 
     /// Queues `staged` under the mirror lock (which every producer holds
-    /// while pushing, so the room checked under it is still there).
+    /// while pushing, so the room checked under it is still there), and
+    /// bumps the revision.
     fn push(&self, mirror: &mut Mirror, staged: Vec<Staged>) {
+        self.queue(mirror, staged);
+        mirror.revision += 1;
+        self.shared
+            .revision
+            .store(mirror.revision, Ordering::Release);
+    }
+
+    /// Queues `staged` under the mirror lock without bumping the revision,
+    /// for auditions, which leave the document alone.
+    fn queue(&self, mirror: &mut Mirror, staged: Vec<Staged>) {
         let count = staged.len();
         for (index, staged) in staged.into_iter().enumerate() {
             let command = match staged {
@@ -749,10 +848,6 @@ impl EditHandle {
                 unreachable!("room was checked under the mirror lock");
             }
         }
-        mirror.revision += 1;
-        self.shared
-            .revision
-            .store(mirror.revision, Ordering::Release);
     }
 
     /// See [`Batch::connect_modulation`].
@@ -763,6 +858,15 @@ impl EditHandle {
         values: SlotValues,
     ) -> Result<Connection, EditError> {
         self.single(|batch| batch.connect_modulation(source, destination, values))
+    }
+
+    /// See [`Batch::set_slot_route`].
+    pub fn set_slot_route(
+        &self,
+        slot: usize,
+        route: Option<(&str, &str)>,
+    ) -> Result<bool, EditError> {
+        self.single(|batch| batch.set_slot_route(slot, route))
     }
 
     /// See [`Batch::disconnect_modulation`].
@@ -823,39 +927,53 @@ impl EditHandle {
         self.single(|batch| batch.set_prepared_wavetable(oscillator, prepared))
     }
 
-    /// While the editor draws on oscillator `oscillator`'s wavetable:
-    /// `creator` becomes its creator, and frame `position` alone is
-    /// rendered (`WavetableCreator::render(position)`, without the full
-    /// render's normalisation) into the shared table and the engine's, as
-    /// upstream's editor renders into the playing table during a drag. The
-    /// editor commits the full render with [`Self::set_wavetable`] when the
-    /// drag ends.
+    /// While the editor draws on oscillator `oscillator`'s wavetable: frame
+    /// `position` of `creator` alone is rendered
+    /// (`WavetableCreator::render(position)`, without the full render's
+    /// normalisation) into the shared table and the engine's, as upstream's
+    /// editor renders into the playing table during a drag. An audition:
+    /// the document keeps its creator and the revision doesn't move, so the
+    /// drag reaches the document (and a host save) once, when the editor
+    /// commits the full render with [`Self::set_wavetable`] at its end.
     ///
     /// The frame is rendered here, on the calling thread, under the mirror
     /// lock, and travels as data the audio thread copies into its table; it
     /// comes back on the return queue. A newer frame for the same
     /// oscillator replaces one the audio thread has not taken yet, even at
     /// another position, and a position past the table's last frame
-    /// changes only the creator, as `loadWaveFrame` ignores it.
+    /// changes nothing, as `loadWaveFrame` ignores it.
+    ///
+    /// Returns false, changing nothing, when `token` is stale: the
+    /// oscillator's wavetable was committed, the state restored or the drag
+    /// ended ([`Self::end_audition`]) since `token` was read.
+    ///
+    /// Drop any table from [`Self::wavetable`] first: while one is held, the
+    /// shared table is copied (about 8.5 MB) to draw into.
     pub fn set_wavetable_frame(
         &self,
         oscillator: usize,
         creator: WavetableCreator,
         position: usize,
-    ) -> Result<(), EditError> {
+        token: AuditionToken,
+    ) -> Result<bool, EditError> {
         check_index(oscillator, NUM_OSCILLATORS)?;
         check_index(position, NUM_OSCILLATOR_WAVE_FRAMES as usize)?;
+        if self.is_stale(&self.lock(), oscillator, token) {
+            return Ok(false);
+        }
         // The shared table, rendered first if a restore cleared it.
         self.wavetable(oscillator)
             .ok_or_else(|| EditError::Render("the wavetable cannot render".to_string()))?;
         self.collect_retired();
         let mut mirror = self.lock();
-        if self.capacity_remaining() < 1 {
+        if self.is_stale(&mirror, oscillator, token) {
+            return Ok(false);
+        }
+        if self.capacity_remaining() < 1 + END_AUDITION_RESERVE {
             return Err(EditError::QueueFull);
         }
-        let mirror_ref = &mut *mirror;
         let mut creator = creator;
-        let frame = match &mut mirror_ref.wavetables[oscillator] {
+        let frame = match &mut mirror.wavetables[oscillator] {
             Some(shared) => {
                 // Copied only while the editor still holds the last one.
                 let table = Arc::make_mut(shared);
@@ -864,7 +982,6 @@ impl EditHandle {
             }
             None => None,
         };
-        mirror_ref.document.state.wavetables[oscillator] = creator;
         let staged = frame
             .map(|frame| {
                 Staged::Pending(
@@ -873,9 +990,79 @@ impl EditHandle {
                 )
             })
             .into_iter()
-            .collect();
-        self.push(&mut mirror, staged);
-        Ok(())
+            .collect::<Vec<_>>();
+        if !staged.is_empty() {
+            mirror.auditioned[oscillator] = true;
+        }
+        self.queue(&mut mirror, staged);
+        Ok(true)
+    }
+
+    /// Whether `token` predates the state's generation or the oscillator's
+    /// last wavetable commit.
+    fn is_stale(&self, mirror: &Mirror, oscillator: usize, token: AuditionToken) -> bool {
+        mirror.generation != token.generation
+            || mirror.wavetable_commits[oscillator] != token.commit
+    }
+
+    /// The token a drag on oscillator `oscillator`'s wavetable passes to
+    /// [`Self::set_wavetable_frame`] and [`Self::end_audition`]: read it
+    /// when the drag starts.
+    pub fn audition_token(&self, oscillator: usize) -> Result<AuditionToken, EditError> {
+        check_index(oscillator, NUM_OSCILLATORS)?;
+        let mirror = self.lock();
+        Ok(AuditionToken {
+            generation: mirror.generation,
+            commit: mirror.wavetable_commits[oscillator],
+        })
+    }
+
+    /// Ends a drag that won't be committed (cancelled, or the editor closed
+    /// or failed during it): renders the document's creator on the calling
+    /// thread and swaps it into the shared table and the engine's, so what
+    /// plays is again what a save stores. Like the drawn frames, it leaves
+    /// the document and the revision alone, and returns false, changing
+    /// nothing, when `token` is stale, since a commit or restore has
+    /// already replaced the table. It makes `token` stale, so a frame of
+    /// the drag still in flight can't reach the table it restored.
+    ///
+    /// It never meets a full queue: every other edit leaves
+    /// [`END_AUDITION_RESERVE`] entries free, and a drag whose frames
+    /// reached nothing since the last commit, end or restore queues nothing,
+    /// so the free entries never drop below the oscillators with a table to
+    /// put back.
+    pub fn end_audition(&self, oscillator: usize, token: AuditionToken) -> Result<bool, EditError> {
+        check_index(oscillator, NUM_OSCILLATORS)?;
+        let creator = {
+            let mut mirror = self.lock();
+            if self.is_stale(&mirror, oscillator, token) {
+                return Ok(false);
+            }
+            if !mirror.auditioned[oscillator] {
+                // The tables are the document's already.
+                mirror.wavetable_commits[oscillator] += 1;
+                return Ok(true);
+            }
+            mirror.document.state.wavetables[oscillator].clone()
+        };
+        let prepared = PreparedWavetable::render(creator)?;
+        self.collect_retired();
+        let mut mirror = self.lock();
+        if self.is_stale(&mirror, oscillator, token) {
+            return Ok(false);
+        }
+        if self.capacity_remaining() < 1 {
+            return Err(EditError::QueueFull);
+        }
+        mirror.wavetable_commits[oscillator] += 1;
+        mirror.auditioned[oscillator] = false;
+        mirror.wavetables[oscillator] = Some(prepared.shared);
+        let staged = vec![Staged::Pending(
+            Target::Wavetable(oscillator),
+            Payload::Wavetable(prepared.wavetable),
+        )];
+        self.queue(&mut mirror, staged);
+        Ok(true)
     }
 
     /// See [`Batch::set_sample`].
@@ -903,7 +1090,9 @@ impl EditHandle {
         let rendered = PreparedWavetable::render(creator).ok()?.shared;
         let mut mirror = self.lock();
         if mirror.revision == revision {
-            mirror.wavetables[oscillator] = Some(rendered.clone());
+            // An audition may have stored a table meanwhile; it stays.
+            let stored = mirror.wavetables[oscillator].get_or_insert(rendered);
+            return Some(stored.clone());
         }
         Some(rendered)
     }
@@ -918,6 +1107,7 @@ impl EditHandle {
         mirror.generation += 1;
         mirror.revision += 1;
         mirror.wavetables = Default::default();
+        mirror.auditioned = [false; NUM_OSCILLATORS];
         let restore = Box::new(Restore {
             generation: mirror.generation,
             document: document.clone(),
@@ -948,6 +1138,11 @@ pub trait EditTarget {
     /// `values` are the slot's if the connection creates it.
     fn connect_modulation(&mut self, source: &str, destination: &str, values: Option<&SlotValues>);
     fn disconnect_modulation(&mut self, source: &str, destination: &str);
+    /// Connects bank slot `slot` itself (`connectModulation(connection)`).
+    fn connect_slot(&mut self, slot: usize, source: &str, destination: &str);
+    /// Frees bank slot `slot` itself, which connects `source` to
+    /// `destination` (`disconnectModulation(connection)`).
+    fn disconnect_slot(&mut self, slot: usize, source: &str, destination: &str);
     fn set_lfo_shape(&mut self, lfo: usize, line: &mut LineGenerator);
     fn set_line_mapping(&mut self, slot: usize, line: &mut LineGenerator);
     /// Modulation slot `slot`'s amount, bipolar, stereo and bypass.
@@ -977,6 +1172,12 @@ impl EditTarget for Synth {
 
     fn disconnect_modulation(&mut self, source: &str, destination: &str) {
         Synth::disconnect_modulation(self, source, destination);
+    }
+    fn connect_slot(&mut self, slot: usize, source: &str, destination: &str) {
+        Synth::connect_bank_slot(self, slot, source, destination);
+    }
+    fn disconnect_slot(&mut self, slot: usize, source: &str, destination: &str) {
+        Synth::disconnect_bank_slot(self, slot, source, destination);
     }
 
     fn set_lfo_shape(&mut self, lfo: usize, line: &mut LineGenerator) {
@@ -1022,6 +1223,8 @@ impl EditTarget for () {
     ) {
     }
     fn disconnect_modulation(&mut self, _source: &str, _destination: &str) {}
+    fn connect_slot(&mut self, _slot: usize, _source: &str, _destination: &str) {}
+    fn disconnect_slot(&mut self, _slot: usize, _source: &str, _destination: &str) {}
     fn set_lfo_shape(&mut self, _lfo: usize, _line: &mut LineGenerator) {}
     fn set_line_mapping(&mut self, _slot: usize, _line: &mut LineGenerator) {}
     fn set_connection_values(&mut self, _slot: usize, _values: &SlotValues) {}
@@ -1168,6 +1371,16 @@ impl EditConsumer {
                 source,
                 destination,
             } => target.disconnect_modulation(source, destination),
+            Command::ConnectSlot {
+                slot,
+                source,
+                destination,
+            } => target.connect_slot(slot, source, destination),
+            Command::DisconnectSlot {
+                slot,
+                source,
+                destination,
+            } => target.disconnect_slot(slot, source, destination),
             Command::Apply { slot, seq } => {
                 let Some(mut pending) = self.take_pending(slot, seq) else {
                     return;

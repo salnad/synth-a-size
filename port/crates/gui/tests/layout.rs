@@ -13,9 +13,12 @@ use sas_gui::sections::bend::{self, BendLayout};
 use sas_gui::sections::envelope::{self, EnvelopeLayout};
 use sas_gui::sections::extra_mod::ExtraModLayout;
 use sas_gui::sections::filter::{self, FilterLayout, Kind};
+use sas_gui::sections::filter_slew_fold_warp_overlays::{SliderModifier, SliderModifierLayout};
 use sas_gui::sections::lfo::{self, LfoLayout};
+use sas_gui::sections::line_source_overlay::LineSourceLayout;
 use sas_gui::sections::modulation::{ModulationInterface, ModulationLayout};
 use sas_gui::sections::oscillator::{self, OscillatorLayout};
+use sas_gui::sections::phase_window_overlays::{PhaseLayout, WindowLayout};
 use sas_gui::sections::popup_browser::{self, PopupBrowserLayout};
 use sas_gui::sections::portamento::{self, PortamentoLayout};
 use sas_gui::sections::preset_browser::PresetBrowserLayout;
@@ -25,8 +28,10 @@ use sas_gui::sections::save_section::SaveLayout;
 use sas_gui::sections::synthesis::SynthesisLayout;
 use sas_gui::sections::voice::{self, VoiceLayout};
 use sas_gui::sections::volume::VolumeLayout;
-use sas_gui::sections::wavetable_edit::WavetableEditLayout;
+use sas_gui::sections::wave_source_overlay::OverlayLayout;
+use sas_gui::sections::wavetable_edit::{component_rows, WavetableEditLayout};
 use sas_gui::skin::{Skin, ValueId};
+use sas_preset::{InitContent, PresetState};
 
 /// G6: the Effects tab, laid out with every effect on
 /// (`migration/corpus/gui/presets/all_effects.vital`).
@@ -226,7 +231,11 @@ mod effects {
 }
 
 fn corpus() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../migration/corpus/gui")
+    repo().join("migration/corpus/gui")
+}
+
+fn repo() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
 }
 
 /// `migration/corpus/gui/layout_paths.txt`: every component the port lays out.
@@ -311,7 +320,9 @@ fn port_rect(skin: &Skin, layout: &FullLayout, path: &str, preset: Option<&str>)
         _ if path.starts_with("master_controls/") => return advanced_rect(skin, layout, path),
         _ if path.starts_with("MODULATION MATRIX/") => return matrix_rect(skin, layout, path),
         _ if path.starts_with("preset_browser") => return browser_rect(skin, layout, path),
-        _ if path.starts_with("oscillator 1") => return wavetable_editor_rect(skin, layout, path),
+        _ if path.starts_with("oscillator 1") => {
+            return wavetable_editor_rect(skin, layout, path, preset)
+        }
         _ => return synthesis_rect(skin, layout, path, phase_visible(preset)),
     })
 }
@@ -324,6 +335,25 @@ fn matrix_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> {
     let top = Scope::top(skin, layout.size_ratio);
     let scope = top.within(matrix::SKIN);
     let tab = MatrixLayout::new(&scope, layout.main);
+    let remap = tab.remap_layout(&scope);
+    let part = path.strip_prefix("MODULATION MATRIX/")?;
+    let remap_part = match part {
+        "remap_name" => Some(remap.name),
+        "paint" => Some(remap.paint),
+        "paint_pattern" => Some(remap.paint_pattern),
+        "grid_size_x" => Some(remap.grid_size_x),
+        "grid_size_y" => Some(remap.grid_size_y),
+        "smooth" => Some(remap.smooth),
+        "preset_selector" => Some(remap.preset_selector.bounds),
+        "preset_selector/Text" => Some(remap.preset_selector.text),
+        "preset_selector/Prev" => Some(remap.preset_selector.previous),
+        "preset_selector/Next" => Some(remap.preset_selector.next),
+        "modulation_source_1" => Some(remap.editor),
+        _ => None,
+    };
+    if remap_part.is_some() {
+        return remap_part;
+    }
     let rest = path.strip_prefix("MODULATION MATRIX/Container")?;
     if rest.is_empty() {
         let viewport = tab.viewport;
@@ -398,8 +428,14 @@ fn save_rect(layout: &FullLayout, width: i32, height: i32, path: &str) -> Option
 }
 
 /// Oscillator 1's wavetable editor (`WavetableEditSection::resized`),
-/// with the init preset's one Wave Source in the component list.
-fn wavetable_editor_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> {
+/// with the component list's rows for `preset`'s wavetable (the init
+/// preset's one Wave Source without one).
+fn wavetable_editor_rect(
+    skin: &Skin,
+    layout: &FullLayout,
+    path: &str,
+    preset: Option<&str>,
+) -> Option<Rect> {
     let top = Scope::top(skin, layout.size_ratio);
     let bounds = Rect::new(
         layout.bounds.x,
@@ -408,16 +444,53 @@ fn wavetable_editor_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option
         layout.bounds.height,
     );
     let edit = WavetableEditLayout::new(&top, bounds);
-    Some(match path {
+    let overlay = OverlayLayout::wave_source(&top, &edit);
+    let phase = PhaseLayout::new(&top, &edit);
+    let modifier = |kind| SliderModifierLayout::new(kind, &top, &edit);
+    let filter = modifier(SliderModifier::Filter);
+    let slew = modifier(SliderModifier::Slew);
+    let fold = modifier(SliderModifier::Fold);
+    let warp = modifier(SliderModifier::Warp);
+    let window = WindowLayout::new(&top, &edit);
+    let line = LineSourceLayout::new(&top, &edit);
+    let mut state = PresetState::new(&InitContent { sample_seed: 0 });
+    if let Some(preset) = preset {
+        state
+            .load_file(&repo().join(preset))
+            .unwrap_or_else(|e| panic!("{preset}: {e:?}"));
+    }
+    let rows = component_rows(&state.wavetables[0]);
+    // Each group's "Add Modifier" row follows its components, and "Add
+    // Source" follows the last group.
+    let mut add_rows = Vec::new();
+    let mut row = 0;
+    for group in &state.wavetables[0].groups {
+        row += group.components.len();
+        add_rows.push(row);
+        row += 1;
+    }
+    let source_row = row;
+    // A repeated name's later instances are "#2", "#3", ... in tree order.
+    let (name, instance) = match path.rsplit_once('#') {
+        Some((name, n)) => (name, n.parse::<usize>().ok()?),
+        None => (path, 1),
+    };
+    Some(match name {
         "oscillator 1" => edit.bounds,
         "oscillator 1/Wavetable Organizer" => edit.organizer,
         "oscillator 1/component list" => edit.component_list,
-        "oscillator 1/component list/0" => edit.component_name(0, false),
-        "oscillator 1/component list/0#2" => edit.component_menu(0),
-        "oscillator 1/component list/Add Modifier" => edit.add_button(&top, 1, true),
-        "oscillator 1/component list/Add Source" => edit.add_button(&top, 2, false),
-        "oscillator 1/component list/plus" => edit.add_plus(&top, 1, true),
-        "oscillator 1/component list/plus#17" => edit.add_plus(&top, 2, false),
+        "oscillator 1/component list/Add Source" => edit.add_button(&top, source_row, false),
+        "oscillator 1/component list/Add Modifier" => {
+            edit.add_button(&top, *add_rows.get(instance - 1)?, true)
+        }
+        // `plus_icons_`: one per group, then Add Source's (the
+        // seventeenth).
+        "oscillator 1/component list/plus" if instance == 17 => {
+            edit.add_plus(&top, source_row, false)
+        }
+        "oscillator 1/component list/plus" => {
+            edit.add_plus(&top, *add_rows.get(instance - 1)?, true)
+        }
         "oscillator 1/Playhead" => edit.playhead,
         "oscillator 1/Exit" => edit.exit,
         "oscillator 1/preset_selector" => edit.preset.bounds,
@@ -426,7 +499,81 @@ fn wavetable_editor_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option
         "oscillator 1/preset_selector/Next" => edit.preset.next,
         "oscillator 1/Menu" => edit.menu,
         "oscillator 1/Settings" => edit.settings,
-        _ => return None,
+        "oscillator 1/WAVE SOURCE" => overlay.overlay,
+        "oscillator 1/WAVE SOURCE/background" => overlay.controls,
+        "oscillator 1/WAVE SOURCE/background/text" => *overlay.titles.get(instance - 1)?,
+        "oscillator 1/WAVE SOURCE/Interpolation" => overlay.interpolation,
+        "oscillator 1/WAVE SOURCE/wave_source_horizontal_grid" => overlay.grid_x,
+        "oscillator 1/WAVE SOURCE/wave_source_vertical_grid" => overlay.grid_y,
+        // The horizontal grid's increment and decrement, then the
+        // vertical's.
+        "oscillator 1/PHASE SHIFTER" | "oscillator 1/WAVE WINDOW" | "oscillator 1/LINE SOURCE" => {
+            overlay.overlay
+        }
+        "oscillator 1/LINE SOURCE/background" => line.controls,
+        "oscillator 1/LINE SOURCE/background/text" => *line.titles.get(instance - 1)?,
+        "oscillator 1/LINE SOURCE/wave_line_source_pull_power" => line.pull_power,
+        "oscillator 1/LINE SOURCE/wave_line_source_horizontal_grid" => line.grid_x,
+        "oscillator 1/LINE SOURCE/wave_line_source_vertical_grid" => line.grid_y,
+        "oscillator 1/LINE SOURCE/Increment" => *[
+            line.grid_x_buttons[0],
+            line.grid_x_buttons[1],
+            line.grid_y_buttons[0],
+            line.grid_y_buttons[1],
+        ]
+        .get(instance - 1)?,
+        "oscillator 1/PHASE SHIFTER/background" => phase.controls,
+        "oscillator 1/PHASE SHIFTER/background/text" => *phase.titles.get(instance - 1)?,
+        "oscillator 1/PHASE SHIFTER/Harmonic Phase" => phase.style,
+        "oscillator 1/PHASE SHIFTER/Phase Mix" => phase.mix,
+        "oscillator 1/WAVE WINDOW/background" => window.controls,
+        "oscillator 1/WAVE WINDOW/background/text" => *window.titles.get(instance - 1)?,
+        "oscillator 1/WAVE WINDOW/Window Shape" => window.shape,
+        "oscillator 1/WAVE WINDOW/Left Position" => window.left,
+        "oscillator 1/WAVE WINDOW/Right Position" => window.right,
+        "oscillator 1/FREQUENCY FILTER"
+        | "oscillator 1/SLEW LIMITER"
+        | "oscillator 1/WAVE FOLDER"
+        | "oscillator 1/WAVE WARPER" => overlay.overlay,
+        "oscillator 1/FREQUENCY FILTER/background" => filter.controls,
+        "oscillator 1/FREQUENCY FILTER/background/text" => *filter.titles.get(instance - 1)?,
+        "oscillator 1/FREQUENCY FILTER/Filter Style" => filter.sliders[0],
+        "oscillator 1/FREQUENCY FILTER/Frequency Filter Cutoff" => filter.sliders[1],
+        "oscillator 1/FREQUENCY FILTER/Frequency Filter Shape" => filter.sliders[2],
+        "oscillator 1/FREQUENCY FILTER/NORMALIZE" => filter.toggles[0],
+        "oscillator 1/SLEW LIMITER/background" => slew.controls,
+        "oscillator 1/SLEW LIMITER/background/text" => *slew.titles.get(instance - 1)?,
+        "oscillator 1/SLEW LIMITER/up_slew_limit" => slew.sliders[0],
+        "oscillator 1/SLEW LIMITER/down_slew_limit" => slew.sliders[1],
+        "oscillator 1/WAVE FOLDER/background" => fold.controls,
+        "oscillator 1/WAVE FOLDER/background/text" => *fold.titles.get(instance - 1)?,
+        "oscillator 1/WAVE FOLDER/wave_fold_amount" => fold.sliders[0],
+        "oscillator 1/WAVE WARPER/background" => warp.controls,
+        "oscillator 1/WAVE WARPER/background/text" => *warp.titles.get(instance - 1)?,
+        "oscillator 1/WAVE WARPER/X Asymmetric" => warp.toggles[0],
+        "oscillator 1/WAVE WARPER/wave_warp_horizontal" => warp.sliders[0],
+        "oscillator 1/WAVE WARPER/Y Asymmetric" => warp.toggles[1],
+        "oscillator 1/WAVE WARPER/wave_warp_vertical" => warp.sliders[1],
+        "oscillator 1/WAVE SOURCE/Increment" => *[
+            overlay.grid_x_buttons[0],
+            overlay.grid_x_buttons[1],
+            overlay.grid_y_buttons[0],
+            overlay.grid_y_buttons[1],
+        ]
+        .get(instance - 1)?,
+        _ => {
+            // `names_[i]` then `menu_buttons_[i]`, both named i.
+            let index: usize = name
+                .strip_prefix("oscillator 1/component list/")?
+                .parse()
+                .ok()?;
+            let row = rows.get(index)?;
+            match instance {
+                1 => edit.component_name(row.row, row.component > 0),
+                2 => edit.component_menu(row.row),
+                _ => return None,
+            }
+        }
     })
 }
 

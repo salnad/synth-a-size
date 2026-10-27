@@ -79,6 +79,12 @@ pub fn focus_at_end(ui: &Ui, salt: impl std::hash::Hash + std::fmt::Debug, text:
     focus_with(ui, salt, egui::text_selection::CCursorRange::one(end));
 }
 
+/// Takes the keyboard from the field (its parent's `grabKeyboardFocus`).
+pub fn surrender_focus(ui: &Ui, salt: impl std::hash::Hash + std::fmt::Debug) {
+    let id = ui.scope_id().with(("text editor", salt));
+    ui.memory_mut(|memory| memory.surrender_focus(id));
+}
+
 fn focus_with(
     ui: &Ui,
     salt: impl std::hash::Hash + std::fmt::Debug,
@@ -100,6 +106,13 @@ fn focus_with(
 pub struct TextStyle {
     pub font_size: f32,
     pub colour: ColorId,
+    /// `setJustification(Justification::centred)`; left otherwise.
+    pub centred: bool,
+    /// No `setTextToShowWhenEmpty`: the prompt only names the field (its
+    /// component name) and isn't drawn.
+    pub hide_prompt: bool,
+    /// `setMonospace`: Droid Sans Mono, with its own top indent.
+    pub mono: bool,
 }
 
 /// A single-line `OpenGlTextEditor` at `bounds` (pixels) editing `text`,
@@ -118,6 +131,9 @@ pub fn single_line(
     let style = TextStyle {
         font_size: bounds.height as f32 / 2.0,
         colour: ColorId::BodyText,
+        centred: false,
+        hide_prompt: false,
+        mono: false,
     };
     single_line_styled(ui, pixels, scope, salt, bounds, text, prompt, style)
 }
@@ -138,7 +154,7 @@ pub fn single_line_styled(
     // OpenGlTextEditor::resized: the indents.
     let height = bounds.height as f32;
     let left_indent = (height * 0.2) as i32;
-    let top_indent = (height * 0.15) as i32;
+    let top_indent = (height * if style.mono { 0.17 } else { 0.15 }) as i32;
     let inner = Rect::new(
         bounds.x + left_indent,
         bounds.y + top_indent,
@@ -199,6 +215,7 @@ fn edit(
     max_chars: Option<usize>,
 ) -> TextEditorEvents {
     let font_size = style.font_size;
+    let face = if style.mono { Face::Mono } else { Face::Light };
     let body_text = scope.color(ColorId::BodyText);
 
     let id = ui.scope_id().with(("text editor", salt));
@@ -215,13 +232,17 @@ fn edit(
     child.visuals_mut().selection.bg_fill = scope.color(ColorId::TextEditorSelection).to_egui();
     child.visuals_mut().text_cursor.stroke.color = scope.color(ColorId::TextEditorCaret).to_egui();
     let edit = match max_chars {
-        None => egui::TextEdit::singleline(text).align(egui::Align2::LEFT_CENTER),
+        None => egui::TextEdit::singleline(text).align(if style.centred {
+            egui::Align2::CENTER_CENTER
+        } else {
+            egui::Align2::LEFT_CENTER
+        }),
         Some(max) => egui::TextEdit::multiline(text).char_limit(max),
     }
     .id(id)
     .frame(egui::Frame::NONE)
     .margin(egui::Margin::ZERO)
-    .font(Face::Light.at(pixels.points(font_size)))
+    .font(face.at(pixels.points(font_size)))
     .text_color(scope.color(style.colour).to_egui())
     .desired_width(rect.width());
     let response = child.add_sized(rect.size(), edit);
@@ -239,7 +260,7 @@ fn edit(
     let has_focus = response.has_focus() || escape;
     ui.data_mut(|data| data.insert_temp(focus_key, has_focus));
 
-    if text.is_empty() && !has_focus {
+    if text.is_empty() && !has_focus && !style.hide_prompt {
         // A multi-line field shows its prompt on its first line.
         let line = match max_chars {
             None => inner,
@@ -248,7 +269,7 @@ fn edit(
         pixels.text_line(
             prompt,
             line,
-            (Face::Light, font_size, body_text.with_multiplied_alpha(0.5)),
+            (face, font_size, body_text.with_multiplied_alpha(0.5)),
             Justify::Left,
             Overflow::Curtail,
         );

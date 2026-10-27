@@ -1155,9 +1155,11 @@ impl OscillatorSection {
         }
         if shift != 0 {
             let model = host.model();
-            let directories = user_folders::root(model.data_directory().as_deref())
+            // getShiftedFile: the user's folders, then the added ones.
+            let mut directories = user_folders::root(model.data_directory().as_deref())
                 .map(|root| user_folders::directories(&root, Kind::Wavetables))
                 .unwrap_or_default();
+            directories.extend(model.additional_folders(Kind::Wavetables));
             let files =
                 user_folders::files_of_type(&directories, popup_browser::WAVETABLE_EXTENSIONS);
             let current = self.current_file();

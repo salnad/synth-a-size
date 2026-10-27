@@ -622,3 +622,54 @@ fn a_shift_drag_needs_a_grabbed_compressor_point() {
     assert!(fixture.synth.value("compressor_low_upper_threshold") < threshold);
     assert!(fixture.synth.value("compressor_band_upper_threshold") < band_threshold);
 }
+
+/// The compressor's low band, near the bottom: its lower ratio
+/// (`DragPoint::LowerRatio`).
+fn low_lower_ratio_point(fixture: &Fixture) -> Pos2 {
+    let (fx, top) = fixture.effects_layout();
+    let bounds = fx.effects[Effect::Compressor as usize].unwrap();
+    let editor = CompressorLayout::new(&top.within(Effect::Compressor.skin()), bounds).editor;
+    let x = editor.x as f32 + 0.05 * editor.width as f32 + 0.4 / 3.0 * editor.width as f32;
+    Pos2::new(x, (editor.bottom() - 3) as f32)
+}
+
+/// JUCE's click count (`isLongPressOrDrag`): a second press that drags a
+/// ratio 5 pixels is a drag, not a double click, so the ratio keeps its
+/// dragged value rather than going back to 0 (egui's rules allowed 6).
+#[test]
+fn a_dragged_second_press_doesnt_reset_a_compressor_ratio() {
+    let fixture = Fixture::new(Apply::NextFrame, &[Effect::Compressor]);
+    let mut harness = fixture.harness();
+    let point = low_lower_ratio_point(&fixture);
+    let before = fixture.synth.value("compressor_low_lower_ratio");
+    harness.event(Event::PointerMoved(point));
+    harness.step();
+    press(&mut harness, point);
+    release(&mut harness, point);
+    drag(&mut harness, point, point + egui::vec2(0.0, -5.0), 2);
+    let after = fixture.synth.value("compressor_low_lower_ratio");
+    assert_ne!(after, before, "the drag moved nothing");
+    assert_ne!(after, 0.0, "the drag was taken for a double click");
+}
+
+/// Two clicks 0.35 s apart are a double click by JUCE's rules (presses
+/// within 0.4 s), which resets the ratio (`mouseDoubleClick`); egui's
+/// 0.3 s between releases missed them.
+#[test]
+fn a_double_click_paced_like_juces_resets_a_compressor_ratio() {
+    let fixture = Fixture::new(Apply::NextFrame, &[Effect::Compressor]);
+    let mut harness = fixture.harness();
+    let point = low_lower_ratio_point(&fixture);
+    assert_ne!(fixture.synth.value("compressor_low_lower_ratio"), 0.0);
+    harness.event(Event::PointerMoved(point));
+    harness.step();
+    press(&mut harness, point);
+    release(&mut harness, point);
+    // 21 frames at 60 Hz from press to press.
+    for _ in 0..18 {
+        harness.step();
+    }
+    press(&mut harness, point);
+    release(&mut harness, point);
+    assert_eq!(fixture.synth.value("compressor_low_lower_ratio"), 0.0);
+}

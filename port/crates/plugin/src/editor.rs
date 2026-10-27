@@ -10,12 +10,14 @@ use nice_plug::context::gui::GuiContext;
 use sas_common::json;
 use sas_common::line_generator::LineGenerator;
 use sas_engine::document::PresetDocument;
+use sas_engine::edit_bus::AuditionToken;
 use sas_engine::keyboard::KeyboardHandle;
 use sas_engine::sas_oscillators::sas_wavetable::creator::{AudioFileLoadStyle, WavetableCreator};
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::telemetry::Telemetry;
 use sas_engine::Tuning;
 use sas_gui::{ChatHost, EditorModel, HostParam, Route};
+use sas_preset::user_folders::Kind;
 use sas_preset::{GuiConnection, InitContent, PresetState, SampleState, SaveInfo, SlotValues};
 
 use crate::audio_file;
@@ -44,6 +46,8 @@ pub struct PluginModel {
     data_directory: Mutex<Option<PathBuf>>,
     /// `SynthBase::active_file_`.
     active_file: Mutex<Option<PathBuf>>,
+    /// Each oscillator's `WavetableCreator::last_file_loaded_`.
+    wavetable_files: Mutex<[Option<PathBuf>; 3]>,
     /// The host connection, once the editor has opened.
     gui: Mutex<Option<GuiContext>>,
     resynthesizer: Resynthesizer,
@@ -79,6 +83,7 @@ impl PluginModel {
             hz_frequency: AtomicBool::new(hz_frequency),
             data_directory: Mutex::new(data_directory),
             active_file: Mutex::new(None),
+            wavetable_files: Mutex::default(),
             gui: Mutex::new(None),
             resynthesizer,
         }
@@ -206,6 +211,23 @@ impl EditorModel for PluginModel {
         self.params.edit_handle().set_lfo_shape(index, line).is_ok()
     }
 
+    fn line_mapping(&self, slot: usize) -> Option<LineGenerator> {
+        self.params.edit_handle().with_document(|document| {
+            document
+                .state
+                .modulations()
+                .get(slot)
+                .map(|slot| slot.line_mapping.clone())
+        })
+    }
+
+    fn set_line_mapping(&self, slot: usize, line: LineGenerator) -> bool {
+        self.params
+            .edit_handle()
+            .set_line_mapping(slot, line)
+            .is_ok()
+    }
+
     fn macro_name(&self, index: usize) -> String {
         self.params
             .edit_handle()
@@ -256,6 +278,13 @@ impl EditorModel for PluginModel {
             .flatten()
     }
 
+    fn set_slot_route(&self, slot: usize, route: Option<(&str, &str)>) -> bool {
+        self.params
+            .edit_handle()
+            .set_slot_route(slot, route)
+            .unwrap_or(false)
+    }
+
     fn tuning_name(&self) -> String {
         self.params
             .edit_handle()
@@ -287,6 +316,38 @@ impl EditorModel for PluginModel {
         self.params
             .edit_handle()
             .with_document(|document| document.state.wavetables.get(oscillator).cloned())
+    }
+
+    fn set_wavetable_creator(&self, oscillator: usize, creator: WavetableCreator) -> bool {
+        self.params
+            .edit_handle()
+            .set_wavetable(oscillator, creator)
+            .is_ok()
+    }
+
+    fn wavetable_audition_token(&self, oscillator: usize) -> Option<AuditionToken> {
+        self.params.edit_handle().audition_token(oscillator).ok()
+    }
+
+    fn audition_wavetable_frame(
+        &self,
+        oscillator: usize,
+        creator: WavetableCreator,
+        position: usize,
+        token: AuditionToken,
+    ) -> bool {
+        self.params
+            .edit_handle()
+            .set_wavetable_frame(oscillator, creator, position, token)
+            .unwrap_or(false)
+    }
+
+    fn end_wavetable_audition(&self, oscillator: usize, token: AuditionToken) {
+        // The edit bus keeps queue room for this, so it isn't refused for a
+        // full queue.
+        if let Err(error) = self.params.edit_handle().end_audition(oscillator, token) {
+            nice_plug::nice_warn!("cannot end the wavetable audition: {error}");
+        }
     }
 
     fn wavetable_json(&self, oscillator: usize) -> Option<String> {
@@ -345,6 +406,54 @@ impl EditorModel for PluginModel {
 
     fn audio_file_extensions(&self) -> &'static [&'static str] {
         audio_file::AUDIO_EXTENSIONS
+    }
+
+    fn load_sample_file(&self, path: &Path) -> bool {
+        /// `SampleSection::loadFile`'s `kMaxFileSamples`.
+        const MAX_FILE_SAMPLES: usize = 17_640_000;
+        /// `kMaxSize` of the mono `Sample::loadSample`; the stereo one has
+        /// no cap.
+        const MAX_MONO_SAMPLES: usize = 1_764_000;
+        let Ok(bytes) = std::fs::read(path) else {
+            return false;
+        };
+        let extension = path
+            .extension()
+            .map(|extension| extension.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let Some(audio) = audio_file::read_audio_channels(&bytes, &extension, 2, MAX_FILE_SAMPLES)
+        else {
+            return false;
+        };
+        let mut channels = audio.channels.into_iter();
+        let Some(mut left) = channels.next() else {
+            return false;
+        };
+        let right = channels.next();
+        if right.is_none() {
+            left.truncate(MAX_MONO_SAMPLES);
+        }
+        let name = path
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let sample = SampleState {
+            name,
+            sample_rate: audio.sample_rate,
+            left,
+            right,
+        };
+        self.params.edit_handle().set_sample(sample).is_ok()
+    }
+
+    fn read_audio_file(&self, path: &Path, max_frames: usize) -> Option<Vec<f32>> {
+        let bytes = std::fs::read(path).ok()?;
+        let extension = path
+            .extension()
+            .map(|extension| extension.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let audio = audio_file::read_audio_channels(&bytes, &extension, 1, max_frames)?;
+        audio.channels.into_iter().next()
     }
 
     fn load_audio_as_wavetable(
@@ -412,6 +521,18 @@ impl EditorModel for PluginModel {
         lock(&self.data_directory).clone()
     }
 
+    fn window_size(&self) -> Option<f32> {
+        self.midi_learn
+            .config_file()
+            .map(crate::config::window_size)
+    }
+
+    fn save_window_size(&self, window_size: f32) {
+        if let Some(path) = self.midi_learn.config_file() {
+            let _ = crate::config::save_window_size(path, window_size);
+        }
+    }
+
     fn set_data_directory(&self, folder: PathBuf) {
         if let Some(path) = self.midi_learn.config_file() {
             let _ = crate::config::save_data_directory(path, &folder);
@@ -426,6 +547,21 @@ impl EditorModel for PluginModel {
             .unwrap_or_default()
     }
 
+    fn additional_folders(&self, kind: Kind) -> Vec<PathBuf> {
+        match (self.midi_learn.config_file(), additional_folders_name(kind)) {
+            (Some(config), Some(name)) => crate::config::additional_folders(config, name),
+            _ => Vec::new(),
+        }
+    }
+
+    fn set_additional_folders(&self, kind: Kind, folders: &[PathBuf]) {
+        if let (Some(config), Some(name)) =
+            (self.midi_learn.config_file(), additional_folders_name(kind))
+        {
+            let _ = crate::config::save_additional_folders(config, name, folders);
+        }
+    }
+
     fn set_favourite(&self, path: &Path, favourite: bool) {
         if let Some(config) = self.midi_learn.config_file() {
             let _ = crate::config::save_favourite(
@@ -433,6 +569,19 @@ impl EditorModel for PluginModel {
                 path,
                 favourite,
             );
+        }
+    }
+
+    fn last_wavetable_file(&self, oscillator: usize) -> Option<PathBuf> {
+        lock(&self.wavetable_files)
+            .get(oscillator)
+            .cloned()
+            .flatten()
+    }
+
+    fn set_last_wavetable_file(&self, oscillator: usize, file: PathBuf) {
+        if let Some(slot) = lock(&self.wavetable_files).get_mut(oscillator) {
+            *slot = Some(file);
         }
     }
 
@@ -539,6 +688,16 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// The config key holding the folders added to `kind`'s browser
+/// (`LoadSave::kAdditionalWavetableFoldersName`, `kAdditionalSampleFoldersName`).
+fn additional_folders_name(kind: Kind) -> Option<&'static str> {
+    match kind {
+        Kind::Wavetables => Some(crate::config::WAVETABLE_FOLDERS),
+        Kind::Samples => Some(crate::config::SAMPLE_FOLDERS),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -546,6 +705,34 @@ mod tests {
     use sas_engine::edit_bus::EditBus;
     use sas_engine::keyboard::keyboard;
     use sas_preset::InitContent;
+
+    /// `LoadSave::loadWindowSize` and `saveWindowSize` through the model:
+    /// the config's size, and none without a config.
+    #[test]
+    fn the_window_size_is_kept_in_the_config() {
+        let model = |midi_learn: MidiLearn| {
+            let (edits, _consumer) =
+                EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+            let (_writer, telemetry) = Telemetry::new(Arc::default());
+            PluginModel::new(
+                Arc::new(SynthParams::new(edits)),
+                telemetry,
+                keyboard().0,
+                Arc::new(midi_learn),
+                None,
+            )
+        };
+        let dir = std::env::temp_dir().join(format!("sas-window-size-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        let saved = model(MidiLearn::with_config_file(path.clone()));
+        assert_eq!(saved.window_size(), Some(1.0));
+        saved.save_window_size(1.5);
+        assert_eq!(saved.window_size(), Some(1.5));
+        assert_eq!(crate::config::window_size(&path), 1.5);
+        assert_eq!(model(MidiLearn::in_memory()).window_size(), None);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn a_preset_that_doesnt_load_gives_upstreams_reason() {
@@ -612,6 +799,71 @@ mod tests {
         std::fs::remove_dir_all(&folder).unwrap();
     }
 
+    /// A WAV file of 8-bit samples, `channels` interleaved, `frames` long.
+    fn wav_8bit(channels: u16, frames: usize, value: u8) -> Vec<u8> {
+        let data_length = frames * channels as usize;
+        let mut file = b"RIFF".to_vec();
+        file.extend_from_slice(&((36 + data_length) as u32).to_le_bytes());
+        file.extend_from_slice(b"WAVEfmt ");
+        file.extend_from_slice(&16u32.to_le_bytes());
+        file.extend_from_slice(&1u16.to_le_bytes());
+        file.extend_from_slice(&channels.to_le_bytes());
+        file.extend_from_slice(&44_100u32.to_le_bytes());
+        file.extend_from_slice(&(44_100 * channels as u32).to_le_bytes());
+        file.extend_from_slice(&channels.to_le_bytes());
+        file.extend_from_slice(&8u16.to_le_bytes());
+        file.extend_from_slice(b"data");
+        file.extend_from_slice(&(data_length as u32).to_le_bytes());
+        file.resize(file.len() + data_length, value);
+        file
+    }
+
+    /// `SampleSection::loadFile`: a stereo file keeps both channels and its
+    /// length (the stereo `loadSample` has no cap); a mono file stops at
+    /// `kMaxSize`; both are named after the file.
+    #[test]
+    fn a_sample_file_loads_as_upstream_loads_it() {
+        let (edits, _consumer) =
+            EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+        let params = Arc::new(SynthParams::new(edits));
+        let (_writer, telemetry) = Telemetry::new(Arc::default());
+        let model = PluginModel::new(
+            params,
+            telemetry,
+            keyboard().0,
+            Arc::new(MidiLearn::in_memory()),
+            None,
+        );
+        let folder = std::env::temp_dir().join(format!("sas-sample-files-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let long = 1_764_000 + 10;
+
+        let stereo = folder.join("Stereo Loop.wav");
+        std::fs::write(&stereo, wav_8bit(2, long, 192)).unwrap();
+        assert!(model.load_sample_file(&stereo));
+        assert_eq!(model.sample_name(), "Stereo Loop");
+        let mut lengths = (0, None);
+        model.with_sample(&mut |sample| {
+            lengths = (sample.left.len(), sample.right.as_ref().map(Vec::len));
+            assert_eq!(sample.left[0], 0.5);
+        });
+        assert_eq!(lengths, (long, Some(long)));
+
+        let mono = folder.join("Mono Hit.wav");
+        std::fs::write(&mono, wav_8bit(1, long, 64)).unwrap();
+        assert!(model.load_sample_file(&mono));
+        assert_eq!(model.sample_name(), "Mono Hit");
+        model.with_sample(&mut |sample| {
+            lengths = (sample.left.len(), sample.right.as_ref().map(Vec::len));
+            assert_eq!(sample.left[0], -0.5);
+        });
+        assert_eq!(lengths, (1_764_000, None));
+
+        assert!(!model.load_sample_file(&folder.join("missing.wav")));
+        assert_eq!(model.sample_name(), "Mono Hit");
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
     #[test]
     fn the_preset_name_follows_renames() {
         let (edits, _consumer) =
@@ -655,6 +907,48 @@ mod tests {
         params.edit_handle().set_wavetable(1, renamed).unwrap();
         assert_eq!(model.wavetable_creator(1).unwrap().name, "Renamed");
         assert!(model.wavetable_creator(3).is_none());
+    }
+
+    /// A wavetable drag's frames play and draw without touching the saved
+    /// creator, and ending the drag puts the saved table back at once, even
+    /// when the edit queue is otherwise full.
+    #[test]
+    fn an_ended_wavetable_audition_goes_back_to_the_saved_table() {
+        let (edits, mut consumer) =
+            EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+        let params = Arc::new(SynthParams::new(edits));
+        let (_writer, telemetry) = Telemetry::new(Arc::default());
+        let model = PluginModel::new(
+            params.clone(),
+            telemetry,
+            keyboard().0,
+            Arc::new(MidiLearn::in_memory()),
+            None,
+        );
+        let saved_json = model.wavetable_json(0).unwrap();
+        let saved = model.wavetable(0).unwrap().frame(0).unwrap();
+        let mut drawn = model.wavetable_creator(0).unwrap();
+        if let sas_engine::sas_oscillators::sas_wavetable::creator::component::WavetableComponent::WaveSource(source) =
+            &mut drawn.groups[0].components[0]
+        {
+            let frame = &mut source.keyframes.keyframes[0].data.wave_frame;
+            frame.time_domain[..1024].fill(1.0);
+            frame.to_frequency_domain();
+        }
+
+        let token = model.wavetable_audition_token(0).unwrap();
+        assert!(model.audition_wavetable_frame(0, drawn.clone(), 0, token));
+        assert_ne!(model.wavetable(0).unwrap().frame(0).unwrap(), saved);
+        assert_eq!(model.wavetable_json(0).unwrap(), saved_json);
+
+        // Nothing drains the queue, so it fills up.
+        while model.audition_wavetable_frame(0, drawn.clone(), 0, token) {}
+        model.end_wavetable_audition(0, token);
+        assert_eq!(model.wavetable(0).unwrap().frame(0).unwrap(), saved);
+        assert_eq!(model.wavetable_json(0).unwrap(), saved_json);
+        consumer.drain(&mut sas_engine::synth::Synth::new());
+        // The drag's token is stale now.
+        assert!(!model.audition_wavetable_frame(0, drawn, 0, token));
     }
 
     #[test]

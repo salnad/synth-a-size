@@ -8,7 +8,11 @@ Commands:
            upstream's own layout code at each size in SIZES. Paths after an
            "@preset <file>" line are laid out with that preset loaded (a file
            in migration/corpus/gui/presets/), the rest with the init preset;
-           their entries name the preset. Each path may be listed once.
+           their entries name the preset. Paths after an "@wavetable-select
+           group:component[:keyframe]" line (under "@overlay
+           wavetable_editor") are laid out with that keyframe selected in
+           the editor, until "@wavetable-select none"; their entries name
+           it. Each path may be listed once.
            sas-gui's layout tests compare against these. --check fails if a
            committed file differs instead of writing it.
   frames   Render every view in migration/corpus/gui/views.json to
@@ -18,7 +22,9 @@ Commands:
            ("animate"); see live_args. A view may open an overlay over its
            tab ("overlay": "preset_browser", "save_section" or
            "popup_browser"), or oscillator 1's wavetable editor in place of
-           the interface ("overlay": "wavetable_editor"); see overlay_args.
+           the interface ("overlay": "wavetable_editor"), with a keyframe
+           selected in it ("wavetable_select": "group:component[:keyframe]");
+           see overlay_args.
 
 ref-gui runs with migration/corpus/gui/data (written by
 migration/corpus/generate.py) as its data folder, which the port's gallery
@@ -32,6 +38,7 @@ OpenGL (LIBGL_ALWAYS_SOFTWARE=1) is used either way.
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -125,27 +132,46 @@ def live_args(view):
 
 
 OVERLAYS = ("preset_browser", "save_section", "popup_browser", "wavetable_editor")
+# ref-gui --wavetable-select: zero-based group, component and keyframe.
+WAVETABLE_SELECT = re.compile(r"^\d+:\d+(:\d+)?$")
+
+
+def check_wavetable_select(select, overlay, where):
+    """Exits unless `select` is "group:component[:keyframe]" and `overlay`
+    is the wavetable editor, which the selection is made in."""
+    if overlay != "wavetable_editor":
+        sys.exit(f"gui_reference.py: {where}: wavetable_select {select} needs overlay wavetable_editor")
+    if not WAVETABLE_SELECT.fullmatch(select):
+        sys.exit(f"gui_reference.py: {where}: wavetable_select {select} isn't group:component[:keyframe]")
 
 
 def overlay_args(view):
     """ref-gui options for the overlay a view opens over its tab: "overlay"
     is one of OVERLAYS."""
     overlay = view.get("overlay")
+    select = view.get("wavetable_select")
+    if select is not None:
+        check_wavetable_select(select, overlay, f"{VIEWS.name}: {view.get('name', '?')}")
     if overlay is None:
         return []
     if overlay not in OVERLAYS:
         sys.exit(f"gui_reference.py: {VIEWS.name}: {view.get('name', '?')}: unknown overlay {overlay}")
-    return ["--overlay", overlay]
+    args = ["--overlay", overlay]
+    if select is not None:
+        args += ["--wavetable-select", select]
+    return args
 
 
 def layout_paths():
     """The checked paths in file order, each with the preset it is laid out
-    with (None for the init preset) and the overlay open over it (None for
-    none)."""
+    with (None for the init preset), the overlay open over it (None for
+    none) and the wavetable editor keyframe selected (None for the
+    default)."""
     paths = []
     seen = set()
     preset = None
     overlay = None
+    select = None
     for line in LAYOUT_PATHS.read_text().splitlines():
         line = line.strip()
         if line.startswith("@preset "):
@@ -157,22 +183,31 @@ def layout_paths():
                 overlay = None
             elif overlay not in OVERLAYS:
                 sys.exit(f"gui_reference.py: {LAYOUT_PATHS.name}: unknown overlay {overlay}")
+        elif line.startswith("@wavetable-select "):
+            select = line[len("@wavetable-select "):].strip()
+            if select == "none":
+                select = None
         elif line and not line.startswith("#"):
             if line in seen:
                 sys.exit(f"gui_reference.py: {LAYOUT_PATHS.name}: {line} is listed twice")
+            if select is not None:
+                check_wavetable_select(select, overlay, f"{LAYOUT_PATHS.name}: {line}")
             seen.add(line)
-            paths.append((line, preset, overlay))
+            paths.append((line, preset, overlay, select))
     return paths
 
 
-def layout_for(width, height, paths, preset=None, overlay=None):
+def layout_for(width, height, paths, preset=None, overlay=None, select=None):
     with tempfile.TemporaryDirectory() as tmp:
         dump = Path(tmp) / "layout.jsonl"
         args = ["--layout", str(dump), "--width", str(width), "--height", str(height)]
         if preset:
             args += ["--preset", str(REPO / preset)]
         if overlay:
-            args += overlay_args({"name": LAYOUT_PATHS.name, "overlay": overlay})
+            view = {"name": LAYOUT_PATHS.name, "overlay": overlay}
+            if select:
+                view["wavetable_select"] = select
+            args += overlay_args(view)
         run_ref_gui(args)
         entries = {}
         seen = {}
@@ -187,8 +222,9 @@ def layout_for(width, height, paths, preset=None, overlay=None):
     if missing:
         with_preset = f" with {preset}" if preset else ""
         with_overlay = f" under {overlay}" if overlay else ""
+        with_select = f" selecting {select}" if select else ""
         sys.exit(f"gui_reference.py: upstream has no component {missing} at {width}x{height}"
-                 f"{with_preset}{with_overlay}")
+                 f"{with_preset}{with_overlay}{with_select}")
     laid_out = {}
     for path in paths:
         entry = {"bounds": entries[path]["bounds"], "visible": entries[path]["visible"]}
@@ -196,6 +232,8 @@ def layout_for(width, height, paths, preset=None, overlay=None):
             entry["preset"] = preset
         if overlay:
             entry["overlay"] = overlay
+        if select:
+            entry["wavetable_select"] = select
         laid_out[path] = entry
     return laid_out
 
@@ -204,13 +242,13 @@ def layout(check):
     paths = layout_paths()
     LAYOUT_DIR.mkdir(parents=True, exist_ok=True)
     stale = []
-    groups = list(dict.fromkeys((preset, overlay) for _, preset, overlay in paths))
+    groups = list(dict.fromkeys(tuple(settings) for _, *settings in paths))
     for width, height in SIZES:
         laid_out = {}
-        for preset, overlay in groups:
-            group = [path for path, p, o in paths if (p, o) == (preset, overlay)]
-            laid_out.update(layout_for(width, height, group, preset, overlay))
-        components = {path: laid_out[path] for path, _, _ in paths}
+        for preset, overlay, select in groups:
+            group = [path for path, *settings in paths if tuple(settings) == (preset, overlay, select)]
+            laid_out.update(layout_for(width, height, group, preset, overlay, select))
+        components = {path: laid_out[path] for path, *_ in paths}
         lines = [f"  {json.dumps(path)}: {json.dumps(entry)}" for path, entry in components.items()]
         text = (f'{{\n "width": {width},\n "height": {height},\n "components": {{\n'
                 + ",\n".join(lines) + "\n }\n}\n")

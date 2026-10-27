@@ -16,13 +16,17 @@ pub mod delete_section;
 pub mod effects;
 pub mod envelope;
 pub mod extra_mod;
+pub mod file_source_overlay;
 pub mod filter;
+pub mod filter_slew_fold_warp_overlays;
 pub mod keyboard;
 pub mod lfo;
+pub mod line_source_overlay;
 pub mod matrix;
 pub mod modulation;
 pub mod oscillator;
 pub mod oscillator_advanced;
+pub mod phase_window_overlays;
 pub mod popup_browser;
 pub mod portamento;
 pub mod preset_browser;
@@ -34,6 +38,7 @@ pub mod selection_list;
 pub mod synthesis;
 pub mod voice;
 pub mod volume;
+pub mod wave_source_overlay;
 pub mod wavetable_edit;
 
 use egui::Ui;
@@ -87,6 +92,9 @@ pub enum MenuOwner {
     /// An oscillator's wavetable view, by index (`Wavetable3d::mouseDown`):
     /// the selection goes to [`Overlay::wavetable_action`] for the view.
     Wavetable(usize),
+    /// A menu of an oscillator's wavetable editor, by index: the selection
+    /// goes to [`Overlay::wavetable_edit_action`] for the editor.
+    WavetableEdit(usize, wavetable_edit::EditMenu),
     /// An editor setting's list (the Advanced tab's tuning, frequency units
     /// and skin): the choice's id goes to the function, with the egui
     /// context for any dialog it opens.
@@ -96,6 +104,9 @@ pub enum MenuOwner {
     /// A modulation amount knob's menu (`ModulationAmountKnob`): its
     /// slider, where its text entry goes, and its slot.
     ModulationAmount(Slider, Rect, usize),
+    /// A Matrix row's source or destination list (`ModulationSelector`):
+    /// the id is the index of the choice in its names.
+    MatrixSelector { slot: usize, destination: bool },
 }
 
 /// Room for each filter model's styles in a [`MenuOwner::FilterType`] id.
@@ -131,6 +142,8 @@ impl TextEntry {
 pub struct Overlay {
     /// The value bubble and the slider showing it.
     pub value_popup: Option<(&'static str, ValuePopup)>,
+    /// The frame the value bubble was last shown in by a slider.
+    pub value_popup_pass: Option<u64>,
     pub menu: Option<Menu<MenuOwner>>,
     /// The two-column selector (`FullInterface::dualPopupSelector`).
     pub dual_menu: Option<DualMenu<MenuOwner>>,
@@ -143,11 +156,26 @@ pub struct Overlay {
     /// An oscillator's edit button was clicked: the wavetable editor to
     /// show (`FullInterface::showWavetableEditSection`).
     pub open_wavetable_editor: Option<usize>,
+    /// A wavetable editor's menu choice, (oscillator, menu, item), for the
+    /// editor to carry out on its next frame.
+    pub wavetable_edit_action: Option<(usize, wavetable_edit::EditMenu, i32)>,
     /// The modulation sources: the selected one and a drag in progress.
     pub modulation: ModulationManager,
+    /// A Matrix row's selector choice, (slot, destination, id), for the
+    /// matrix's next frame (`ModulationSelector::setValue`).
+    pub matrix_choice: Option<(usize, bool, i32)>,
 }
 
 impl Overlay {
+    /// `hidePopupDisplay(true)` from a slider's `mouseExit`: whichever value
+    /// bubble shows, unless another slider showed it in this frame, `pass`
+    /// (JUCE sends the old slider's exit before the new one's enter).
+    pub fn hide_value_popup(&mut self, pass: u64) {
+        if self.value_popup_pass != Some(pass) {
+            self.value_popup = None;
+        }
+    }
+
     /// The selection menu, if open, and what its selection does.
     pub fn show_menu(
         &mut self,
@@ -176,6 +204,9 @@ impl Overlay {
                         MenuOwner::Wavetable(oscillator) => {
                             self.wavetable_action = Some((oscillator, id));
                         }
+                        MenuOwner::WavetableEdit(oscillator, menu) => {
+                            self.wavetable_edit_action = Some((oscillator, menu, id));
+                        }
                         MenuOwner::Control { name, then } => {
                             host.set_once(name, id as f32);
                             if let Some(then) = then {
@@ -200,6 +231,9 @@ impl Overlay {
                                 crate::modulation::amount_knob_choice(host, slot, id);
                             }
                         }
+                        MenuOwner::MatrixSelector { slot, destination } => {
+                            self.matrix_choice = Some((slot, destination, id));
+                        }
                     }
                 }
             }
@@ -210,7 +244,11 @@ impl Overlay {
                 MenuOutcome::Closed => {}
                 MenuOutcome::Selected(id) => {
                     // The dual selector stays open after a choice.
-                    apply_choice(host, menu.owner, id);
+                    if let MenuOwner::MatrixSelector { slot, destination } = menu.owner {
+                        self.matrix_choice = Some((slot, destination, id));
+                    } else {
+                        apply_choice(host, menu.owner, id);
+                    }
                     self.dual_menu = Some(menu);
                 }
             }
@@ -270,8 +308,15 @@ impl<'a, 'b> Panel<'a, 'b> {
     /// Shows `slider` at `bounds`: handles its mouse, routes its popup, menu
     /// and text entry to the overlay, and draws it.
     pub fn slider(&mut self, slider: &Slider, bounds: Rect) {
+        self.slider_changed(slider, bounds);
+    }
+
+    /// [`slider`](Self::slider), telling whether this frame's input moved
+    /// its value (`Slider::Listener::sliderValueChanged`).
+    pub fn slider_changed(&mut self, slider: &Slider, bounds: Rect) -> bool {
         let slider = &slider.displayed(self.host.model().hz_frequency_display());
         self.register_destination(slider, bounds);
+        let before = slider.host_value(self.host);
         let (value, hover) = self.slider_input(slider, bounds);
         self.meter(slider, bounds, value);
         slider.paint(
@@ -282,6 +327,7 @@ impl<'a, 'b> Panel<'a, 'b> {
             value,
             hover,
         );
+        value != before
     }
 
     /// `slider`'s `ModulationMeter`, if the engine is modulating it and it
@@ -448,22 +494,19 @@ impl<'a, 'b> Panel<'a, 'b> {
         let slider = &slider.displayed(self.host.model().hz_frequency_display());
         let event = slider.interact(self.ui, self.host, self.pixels, bounds);
         let value = event.value.unwrap_or_else(|| slider.host_value(self.host));
+        // mouseExit, which JUCE sends once the pointer is outside and no
+        // button is held on the slider (`isMouseOverOrDragging`).
+        let inside_id = self.ui.scope_id().with(("slider inside", slider.name));
+        let was_inside = self
+            .ui
+            .data(|data| data.get_temp::<bool>(inside_id).unwrap_or(false));
+        self.ui
+            .data_mut(|data| data.insert_temp(inside_id, event.hover));
         if event.popup {
-            let popup = ValuePopup {
-                text: slider.popup_text(value),
-                source: bounds,
-                placement: slider.popup_placement,
-            };
-            self.overlay.value_popup = Some((slider.name, popup));
-        } else if !event.hover
-            && self
-                .overlay
-                .value_popup
-                .as_ref()
-                .is_some_and(|(name, _)| *name == slider.name)
-        {
-            // SynthSlider::mouseExit hides the popup.
-            self.overlay.value_popup = None;
+            self.show_value_popup(slider, bounds, value);
+        } else if was_inside && !event.hover {
+            self.overlay
+                .hide_value_popup(self.ui.ctx().cumulative_pass_nr());
         }
         if let Some(position) = event.menu_at {
             let area = self.pixels.area();
@@ -515,6 +558,18 @@ impl<'a, 'b> Panel<'a, 'b> {
             &self.scope,
             bounds,
         )
+    }
+
+    /// `SynthSlider::showPopup(true)`: `slider`'s value bubble, at
+    /// `value`, over `bounds`.
+    pub fn show_value_popup(&mut self, slider: &Slider, bounds: Rect, value: f32) {
+        let popup = ValuePopup {
+            text: slider.popup_text(value),
+            source: bounds,
+            placement: slider.popup_placement,
+        };
+        self.overlay.value_popup = Some((slider.name, popup));
+        self.overlay.value_popup_pass = Some(self.ui.ctx().cumulative_pass_nr());
     }
 
     /// A quad drawn with the section's controls.

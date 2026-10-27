@@ -196,6 +196,33 @@ pub fn text_toggle(
     on: bool,
     bounds: Rect,
 ) -> bool {
+    toggle(ui, pixels, layer, scope, (id, text, true), on, bounds)
+}
+
+/// [`text_toggle`] without its background (`setNoBackground`, `kJustText`).
+#[allow(clippy::too_many_arguments)]
+pub fn just_text_toggle(
+    ui: &mut Ui,
+    pixels: &PixelPainter,
+    layer: &mut Layer,
+    scope: &Scope,
+    id: egui::Id,
+    text: &str,
+    on: bool,
+    bounds: Rect,
+) -> bool {
+    toggle(ui, pixels, layer, scope, (id, text, false), on, bounds)
+}
+
+fn toggle(
+    ui: &mut Ui,
+    pixels: &PixelPainter,
+    layer: &mut Layer,
+    scope: &Scope,
+    (id, text, background): (egui::Id, &str, bool),
+    on: bool,
+    bounds: Rect,
+) -> bool {
     let response = ui.interact(pixels.rect(bounds.into()), id, Sense::click());
     let mut state: ButtonState = ui.data(|data| data.get_temp(id)).unwrap_or_default();
     let primary_down = ui.input(|input| input.pointer.button_down(PointerButton::Primary));
@@ -222,7 +249,7 @@ pub fn text_toggle(
         scope,
         bounds,
         text,
-        true,
+        background,
         on,
         down,
         state.hover_amount,

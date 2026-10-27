@@ -234,6 +234,39 @@ repeat the check in FL Studio where the note says so.
       plugins in its own window, and whether it honours a plugin's own
       resize on macOS is what this item settles; if it doesn't, the overlay
       fallback should take over.
+11. **The popup browser (G7d).** Click oscillator 1's wavetable name, then
+    the sample's name and LFO 1's name, choosing a file in each.
+    - Each browser should open beside its name, list the user's files of
+      its kind, and load the file clicked; Escape, the cross, or a click
+      outside its section should close it. Dragging in its lists should
+      move no knob underneath.
+    - In the wavetable browser, click "Add Folder" at the bottom of the
+      folder list and choose a folder holding a few `.wav` files. The
+      folder dialog should open as a sheet on the plugin's window, as in
+      item 8; the folder should then be listed above "Add Folder", and its
+      files appear under All and in the oscillator's arrows.
+    - Add the same folder again, then a folder holding more than 8,000
+      files: each should show an "Error Adding Folder" message as a sheet,
+      as in item 9, and add nothing.
+    - Close and reopen the plugin window, and open a second instance: the
+      added folder should still be listed (it is kept in the config the
+      instances share). Hover it and click the cross at its right: it
+      should go, and stay gone after reopening.
+    - *REAPER:* settles the sheets; repeat the parenting checks in FL
+      Studio, as in items 8 and 9.
+
+12. **The saved window size.** Drag the corner resizer at the plugin
+    window's bottom right (JUCE's three diagonal lines), let go, close the
+    window, then insert a second instance and open it.
+    - The new instance should open at the size the first was left at,
+      with upstream's 1400:820 ratio; so should the first instance's window
+      when reopened, and every instance after the project is closed and
+      reopened.
+    - Resize the window by the host's own frame instead, close it and open
+      a new instance: it opens at the corner's last size, as upstream saves
+      only the corner's resizes.
+    - Open the chat's drawer, then close it: the size saved is the
+      editor's without the drawer, so a new instance opens no wider.
 
 ## Vendored egui-baseview
 
@@ -251,6 +284,17 @@ unwinds into the host). It is excluded from the workspace, so its
 code is not held to the port's lints, and patch 3's tests live in
 `port/crates/gui/tests/file_drop.rs`. Proposing the patches upstream needs
 a human.
+
+## Vendored nice-plug-egui
+
+Upstream's editor reads the saved window size each time its window opens
+(`SynthEditor`'s constructor, `LoadSave::loadWindowSize`). nice-plug builds
+a plugin's editor once, and nice-plug-egui opens each window at a size only
+the window itself could change. `port/vendor/nice-plug-egui` is
+nice-plug-egui 0.6.0, used through `[patch.crates-io]`, with one patch
+listed in its `PATCHES.md`: `EguiEditorState::set_size`, which the editor
+calls with the saved size before each window opens (and when the host asks
+the size beforehand). Like egui-baseview it is excluded from the workspace.
 
 ## Known limits
 

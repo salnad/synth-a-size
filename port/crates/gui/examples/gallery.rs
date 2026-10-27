@@ -23,8 +23,10 @@ use sas_engine::keyboard::keyboard;
 use sas_engine::midi_file::{read_midi_file, TimedMessage};
 use sas_engine::sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
+use sas_engine::sas_oscillators::RandomValues;
 use sas_engine::synth::{render, RenderSettings, Synth};
 use sas_engine::telemetry::Telemetry;
+use sas_gui::sections::wavetable_edit::KeyframeRef;
 use sas_gui::{EditorModel, Host, HostParam, Interface, Route, Tab};
 use sas_preset::registry::{registry, ValueScale};
 use sas_preset::{InitContent, PresetState, SampleState};
@@ -81,6 +83,11 @@ impl Live {
         if frames == 0 {
             return None;
         }
+        // ref-gui builds one engine per process, and the first engine of a
+        // process takes a seed for RandomValues: take it for every view's
+        // engine, or each one after the first starts its random sources a
+        // seed early.
+        RandomValues::reset_process_state();
         let mut synth = Synth::new();
         synth.load_preset(state);
         let settings = RenderSettings {
@@ -278,6 +285,9 @@ fn live_view(
     live
 }
 
+/// `ref-gui`'s default `--frames`.
+const REF_GUI_FRAMES: usize = 30;
+
 fn tab(name: &str) -> Tab {
     match name {
         "voice" => Tab::Voice,
@@ -309,7 +319,12 @@ fn main() {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../migration/corpus/gui/views.json");
     let views: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&views_path).unwrap()).unwrap();
+    // ref-gui renders each view in a fresh process: start each view's
+    // engine and interface from the seed counter as it is now, so a view's
+    // random sources don't depend on the views before it.
+    let first_seed = sas_common::random::take_next_seed();
     for view in views["views"].as_array().unwrap() {
+        sas_common::random::set_next_seed(first_seed);
         let name = view["name"].as_str().unwrap();
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
         let preset_path = view
@@ -318,6 +333,7 @@ fn main() {
             .map(|p| repo.join(p));
         let mut model = ViewPreset::new(preset_path.as_deref());
         model.live = live_view(name, view, &repo, &model.state);
+        let live = model.live.is_some();
         let width = view.get("width").and_then(|v| v.as_f64()).unwrap_or(1400.0) as f32;
         let height = view.get("height").and_then(|v| v.as_f64()).unwrap_or(820.0) as f32;
         let interface = RefCell::new(Interface::default());
@@ -331,6 +347,11 @@ fn main() {
             Some("wavetable_editor") => interface.borrow_mut().show_wavetable_editor(Some(0)),
             Some("popup_browser") => interface.borrow_mut().request_wavetable_browser(0),
             _ => {}
+        }
+        if let Some(select) = view.get("wavetable_select").and_then(|v| v.as_str()) {
+            interface
+                .borrow_mut()
+                .select_wavetable_keyframe(0, wavetable_select(select));
         }
         if let Some(scroll) = view.get("effects_scroll").and_then(|v| v.as_f64()) {
             interface
@@ -355,12 +376,37 @@ fn main() {
                 let host = Host::new(&model, None);
                 interface.borrow_mut().show_in(ui, screen, &host)
             });
-        harness.run_steps(2);
+        // ref-gui draws 30 frames (`--frames`) before it reads one back, so
+        // an animated view's decays have run as long in both.
+        if live {
+            // Building the harness already ran some frames.
+            let done = harness.ctx.cumulative_frame_nr() as usize;
+            harness.run_steps(REF_GUI_FRAMES.saturating_sub(done));
+        } else {
+            harness.run_steps(2);
+        }
         let image = harness
             .render()
             .unwrap_or_else(|e| panic!("{name}: render failed: {e}"));
         let path = out.join(format!("{name}.png"));
         image.save(&path).unwrap();
         println!("wrote {}", path.display());
+    }
+}
+
+/// A view's `wavetable_select`, "group:component[:keyframe]".
+fn wavetable_select(text: &str) -> KeyframeRef {
+    let parts: Vec<usize> = text
+        .split(':')
+        .map(|part| part.parse().expect("wavetable_select takes whole numbers"))
+        .collect();
+    assert!(
+        parts.len() == 2 || parts.len() == 3,
+        "wavetable_select takes group:component[:keyframe]"
+    );
+    KeyframeRef {
+        group: parts[0],
+        component: parts[1],
+        keyframe: parts.get(2).copied().unwrap_or(0),
     }
 }

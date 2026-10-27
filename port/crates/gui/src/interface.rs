@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use sas_common::line_generator::LineGenerator;
+use sas_engine::edit_bus::AuditionToken;
 use sas_engine::sas_oscillators::sas_wavetable::creator::{AudioFileLoadStyle, WavetableCreator};
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::telemetry::Telemetry;
@@ -152,6 +153,20 @@ pub trait EditorModel: Send + Sync + 'static {
         true
     }
 
+    /// Modulation slot `slot`'s remap curve (`ModulationConnection`'s
+    /// `modulation_processor->lineMapGenerator()`). None draws the init line.
+    fn line_mapping(&self, slot: usize) -> Option<LineGenerator> {
+        let _ = slot;
+        None
+    }
+
+    /// Replaces slot `slot`'s remap curve. False when the synth can't take
+    /// it now (its edit queue is full); the editor tries again next frame.
+    fn set_line_mapping(&self, slot: usize, line: LineGenerator) -> bool {
+        let _ = (slot, line);
+        true
+    }
+
     /// `SynthBase::getMacroName`: macro `index`'s (0-based) name, "MACRO n"
     /// when blank.
     fn macro_name(&self, index: usize) -> String {
@@ -203,6 +218,17 @@ pub trait EditorModel: Send + Sync + 'static {
         None
     }
 
+    /// A modulation matrix row choosing slot `slot`'s route, or freeing it
+    /// with `None` (`ModulationMatrixRow::sliderValueChanged`): the old route
+    /// goes and the new one takes the same slot in one step for the engine,
+    /// with the slot's controls and curve as they are, so the host hears
+    /// nothing. Returns whether the slot is connected afterwards (a route to
+    /// its own amount is refused).
+    fn set_slot_route(&self, slot: usize, route: Option<(&str, &str)>) -> bool {
+        let _ = (slot, route);
+        false
+    }
+
     /// `LoadSave::displayHzFrequency`: cutoff sliders show hertz rather
     /// than their note value (the "hz_frequency" setting, off by default).
     fn hz_frequency_display(&self) -> bool {
@@ -240,6 +266,19 @@ pub trait EditorModel: Send + Sync + 'static {
         None
     }
 
+    /// `LoadSave::loadWindowSize`: the size saved for the next window to
+    /// open at, the editor's width as a share of upstream's 1400; `None`
+    /// without a config to read it from.
+    fn window_size(&self) -> Option<f32> {
+        None
+    }
+
+    /// `LoadSave::saveWindowSize`: keep `window_size`, the editor's width as
+    /// a share of upstream's 1400, for the next editor to open at.
+    fn save_window_size(&self, window_size: f32) {
+        let _ = window_size;
+    }
+
     /// `LoadSave::setDataDirectory`: keep `folder` as the data folder.
     fn set_data_directory(&self, folder: PathBuf) {
         let _ = folder;
@@ -248,6 +287,19 @@ pub trait EditorModel: Send + Sync + 'static {
     /// `SynthBase::getActiveFile`: the preset file last loaded or saved.
     fn active_preset_file(&self) -> Option<PathBuf> {
         None
+    }
+
+    /// `WavetableCreator::getLastFileLoaded`: the file oscillator
+    /// `oscillator`'s wavetable last loaded from, kept until another loads
+    /// (not saved with the preset, as upstream's isn't).
+    fn last_wavetable_file(&self, oscillator: usize) -> Option<PathBuf> {
+        let _ = oscillator;
+        None
+    }
+
+    /// `WavetableCreator::setFileLoaded`.
+    fn set_last_wavetable_file(&self, oscillator: usize, file: PathBuf) {
+        let _ = (oscillator, file);
     }
 
     /// `SynthBase::loadFromFile`: plays the preset at `path`. The error is
@@ -272,6 +324,19 @@ pub trait EditorModel: Send + Sync + 'static {
     /// `LoadSave::getFavorites`: the favourite presets' full paths.
     fn favourites(&self) -> Vec<PathBuf> {
         Vec::new()
+    }
+
+    /// `LoadSave::getAdditionalFolders`: the folders added to the browser for
+    /// `kind`, in the order they were added. Only wavetables and samples
+    /// have them.
+    fn additional_folders(&self, kind: sas_preset::user_folders::Kind) -> Vec<PathBuf> {
+        let _ = kind;
+        Vec::new()
+    }
+
+    /// `LoadSave::saveAdditionalFolders`.
+    fn set_additional_folders(&self, kind: sas_preset::user_folders::Kind, folders: &[PathBuf]) {
+        let _ = (kind, folders);
     }
 
     /// `LoadSave::addFavorite` / `removeFavorite`.
@@ -358,6 +423,45 @@ pub trait EditorModel: Send + Sync + 'static {
         None
     }
 
+    /// Sets oscillator `oscillator`'s wavetable creator, as the wavetable
+    /// editor's edits do: it renders the whole table
+    /// (`WavetableCreator::render`). Returns false, changing nothing, past
+    /// the oscillators or when the edit can't be queued.
+    fn set_wavetable_creator(&self, _oscillator: usize, _creator: WavetableCreator) -> bool {
+        false
+    }
+
+    /// The token a drag on oscillator `oscillator`'s wavetable passes to
+    /// [`Self::audition_wavetable_frame`] and [`Self::end_wavetable_audition`],
+    /// read when the drag starts. None without an engine.
+    fn wavetable_audition_token(&self, _oscillator: usize) -> Option<AuditionToken> {
+        None
+    }
+
+    /// While the editor draws on oscillator `oscillator`'s wavetable: frame
+    /// `position` of `creator` alone is rendered into the playing and drawn
+    /// tables (`WavetableEditSection::render(position)`), without changing
+    /// the saved creator; the drag's release commits the whole table with
+    /// [`Self::set_wavetable_creator`]. Returns false when the frame couldn't
+    /// be sent (a full queue or a stale token), which a later frame or the
+    /// commit makes up for.
+    fn audition_wavetable_frame(
+        &self,
+        _oscillator: usize,
+        _creator: WavetableCreator,
+        _position: usize,
+        _token: AuditionToken,
+    ) -> bool {
+        false
+    }
+
+    /// Ends a drag that won't be committed (the editor closed, failed or
+    /// was hidden during it, or its commit was refused): the playing and
+    /// drawn tables go back to the saved creator. The edit bus keeps queue
+    /// room for it (`EditHandle::end_audition`), so it isn't refused for a
+    /// full queue.
+    fn end_wavetable_audition(&self, _oscillator: usize, _token: AuditionToken) {}
+
     /// Oscillator `oscillator`'s wavetable creator as upstream's JSON
     /// (`FullInterface::getWavetableJson`), for copying. None past the
     /// oscillators, or without an engine.
@@ -391,6 +495,13 @@ pub trait EditorModel: Send + Sync + 'static {
         &[]
     }
 
+    /// The first channel of the audio file at `path`, at most `max_frames`
+    /// of it (`AudioFormatReader::read` of `min(length, max)` samples), or
+    /// `None` when it can't be read.
+    fn read_audio_file(&self, _path: &std::path::Path, _max_frames: usize) -> Option<Vec<f32>> {
+        None
+    }
+
     /// `FullInterface::loadAudioAsWavetable`: loads the audio file at `path`
     /// into oscillator `oscillator`'s wavetable as `style` (splice, vocode
     /// or pitch splice), named after the file. Returns false, changing
@@ -401,6 +512,13 @@ pub trait EditorModel: Send + Sync + 'static {
         _path: &std::path::Path,
         _style: AudioFileLoadStyle,
     ) -> bool {
+        false
+    }
+
+    /// `SampleSection::loadFile`: loads the audio file at `path` as the
+    /// sample, named after the file. Returns false, changing nothing, when
+    /// the file can't be read.
+    fn load_sample_file(&self, _path: &std::path::Path) -> bool {
         false
     }
 
@@ -424,7 +542,10 @@ pub trait EditorModel: Send + Sync + 'static {
     /// edit, preset load and state restore), so drawings of them can be
     /// cached against it. Read it before the content you cache: a change
     /// that lands in between then moves the revision past the one stored,
-    /// and the next frame reads the content again.
+    /// and the next frame reads the content again. A wavetable editor drag's
+    /// auditions don't move it: they change the drawn and played table but
+    /// not the document, so a drawing of the table during a drag must read
+    /// it each frame.
     fn content_revision(&self) -> u64 {
         0
     }
@@ -645,9 +766,35 @@ impl Interface {
         self.wavetable_editor = oscillator.filter(|&index| index < NUM_OSCILLATORS);
     }
 
+    /// Each wavetable editor's auditioning drag, for the window to end if
+    /// it closes or fails during one.
+    pub fn pending_auditions(&self) -> Vec<crate::sections::wavetable_edit::PendingAudition> {
+        self.wavetable_edits
+            .iter()
+            .map(|section| section.pending_audition())
+            .collect()
+    }
+
     /// Oscillator `oscillator`'s wavetable editor.
     pub fn wavetable_edit_section(&self, oscillator: usize) -> &WavetableEditSection {
         &self.wavetable_edits[oscillator]
+    }
+
+    /// Selects `keyframe` in oscillator `oscillator`'s wavetable editor when
+    /// it next shows ([`WavetableEditSection::request_selection`]).
+    pub fn select_wavetable_keyframe(
+        &mut self,
+        oscillator: usize,
+        keyframe: crate::sections::wavetable_edit::KeyframeRef,
+    ) {
+        if let Some(section) = self.wavetable_edits.get_mut(oscillator) {
+            section.request_selection(keyframe);
+        }
+    }
+
+    /// Local control `name`'s value ([`crate::local`]), if it is one.
+    pub fn local_value(&self, name: &str) -> Option<f32> {
+        self.locals.get(name)
     }
 
     pub fn preset_browser_visible(&self) -> bool {
@@ -679,6 +826,16 @@ impl Interface {
     /// The open popups.
     pub fn overlay(&self) -> &Overlay {
         &self.overlay
+    }
+
+    /// The interface-wide popups and menus, to change.
+    pub fn overlay_mut(&mut self) -> &mut Overlay {
+        &mut self.overlay
+    }
+
+    /// The Matrix tab's state.
+    pub fn matrix(&self) -> &MatrixTab {
+        &self.matrix
     }
 
     /// The connection a drag to modulate has made, for writing to the host
@@ -732,7 +889,7 @@ impl Interface {
         }
         for (index, section) in self.wavetable_edits.iter_mut().enumerate() {
             if self.wavetable_editor != Some(index) {
-                section.hidden();
+                section.hidden(model);
             }
         }
         if let Some(index) = self.wavetable_editor {
@@ -740,7 +897,9 @@ impl Interface {
             // interface's own background still shows around it.
             self.paint_background(&pixels, &layout, width, height);
             self.show_wavetable_edit_section(ui, host, &pixels, &layout, index);
+            self.show_popup_browser(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
             self.show_overlay(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
+            self.show_save_section(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
             return;
         }
         self.overlay
@@ -807,6 +966,49 @@ impl Interface {
                 current.as_deref(),
             );
         }
+        let editor_request = self
+            .wavetable_editor
+            .and_then(|index| Some((index, self.wavetable_edits[index].take_browse_request()?)));
+        if let Some((index, (browser, section))) = editor_request {
+            let current = host.model().last_wavetable_file(index);
+            self.popup_browser.open(
+                host.model(),
+                BrowserOwner::WavetableEditor(index),
+                browser,
+                section,
+                current.as_deref(),
+            );
+        }
+        if let Some((browser, section)) = self.synthesis.take_sample_browse_request() {
+            let current = self.synthesis.sample_file();
+            self.popup_browser.open(
+                host.model(),
+                BrowserOwner::Sample,
+                browser,
+                section,
+                current.as_deref(),
+            );
+        }
+        if let Some((index, browser, section)) = self.modulation.take_lfo_browse_request() {
+            let current = self.modulation.lfo_file(index);
+            self.popup_browser.open(
+                host.model(),
+                BrowserOwner::Lfo(index),
+                browser,
+                section,
+                current.as_deref(),
+            );
+        }
+        if let Some((slot, browser, section)) = self.matrix.take_browse_request() {
+            let current = self.matrix.current_file();
+            self.popup_browser.open(
+                host.model(),
+                BrowserOwner::Remap(slot),
+                browser,
+                section,
+                current.as_deref(),
+            );
+        }
         if !self.popup_browser.is_open() {
             return;
         }
@@ -814,9 +1016,24 @@ impl Interface {
         let mut panel = Panel::new(ui, host, pixels, top, &mut self.overlay, bounds);
         let event = self.popup_browser.show(&mut panel, bounds);
         panel.finish();
-        if let Some(BrowserEvent::Load(BrowserOwner::Oscillator(index), file)) = event {
-            self.synthesis
-                .load_wavetable_file(host.model(), index, &file);
+        match event {
+            Some(BrowserEvent::Load(BrowserOwner::Oscillator(index), file)) => {
+                self.synthesis
+                    .load_wavetable_file(host.model(), index, &file);
+            }
+            Some(BrowserEvent::Load(BrowserOwner::Lfo(index), file)) => {
+                self.modulation.load_lfo_file(host.model(), index, &file);
+            }
+            Some(BrowserEvent::Load(BrowserOwner::Remap(slot), file)) => {
+                self.matrix.load_file(host.model(), slot, &file);
+            }
+            Some(BrowserEvent::Load(BrowserOwner::Sample, file)) => {
+                self.synthesis.load_sample_file(host.model(), &file);
+            }
+            Some(BrowserEvent::Load(BrowserOwner::WavetableEditor(index), file)) => {
+                popup_browser::editor_load_wavetable_file(host.model(), index, &file);
+            }
+            None => {}
         }
     }
 
@@ -853,7 +1070,15 @@ impl Interface {
         {
             self.save_section.open(host, SaveTarget::Preset);
         }
-        if let Some(oscillator) = self.synthesis.take_wavetable_save_request() {
+        if let Some(data) = crate::controls::line_editor::take_save_request(ui.ctx()) {
+            if let Some(target) = SaveTarget::lfo(host.model(), data) {
+                self.save_section.open(host, target);
+            }
+        }
+        let editor_save = self
+            .wavetable_editor
+            .filter(|&index| self.wavetable_edits[index].take_save_request());
+        if let Some(oscillator) = self.synthesis.take_wavetable_save_request().or(editor_save) {
             if let Some(target) = SaveTarget::wavetable(host.model(), oscillator) {
                 self.save_section.open(host, target);
             }

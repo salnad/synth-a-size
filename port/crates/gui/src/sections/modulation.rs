@@ -174,6 +174,32 @@ impl Default for ModulationInterface {
 }
 
 impl ModulationInterface {
+    /// The LFO that asked for the popup browser since the last call, with
+    /// the browser's bounds and its section's.
+    pub fn take_lfo_browse_request(&self) -> Option<(usize, Rect, Rect)> {
+        self.lfos.iter().enumerate().find_map(|(index, lfo)| {
+            lfo.take_browse_request()
+                .map(|(browser, section)| (index, browser, section))
+        })
+    }
+
+    /// LFO `index`'s current file (`getCurrentFile`).
+    pub fn lfo_file(&self, index: usize) -> Option<std::path::PathBuf> {
+        self.lfos.get(index)?.current_file()
+    }
+
+    /// Loads `file` into LFO `index` (`LfoSection::loadFile`).
+    pub fn load_lfo_file(
+        &self,
+        model: &dyn crate::interface::EditorModel,
+        index: usize,
+        file: &std::path::Path,
+    ) {
+        if let Some(lfo) = self.lfos.get(index) {
+            lfo.load_file(model, file);
+        }
+    }
+
     /// Each selector with the number of its tabs shown, which depends on the
     /// sources with a modulation.
     fn selectors(&self, modulation: &ModulationManager) -> [(&ModulationTabSelector, usize); 5] {

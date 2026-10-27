@@ -22,13 +22,14 @@ use sas_gui::sections::delete_section::DeleteLayout;
 use sas_gui::sections::oscillator::{self, OscillatorLayout};
 use sas_gui::sections::popup_browser::{self, PopupBrowserLayout};
 use sas_gui::sections::preset_browser::PresetBrowserLayout;
+use sas_gui::sections::sample::{self, SampleLayout};
 use sas_gui::sections::save_section::{OverwriteLayout, SaveLayout};
 use sas_gui::sections::selection_list::Selection;
 use sas_gui::sections::synthesis::SynthesisLayout;
 use sas_gui::skin::Skin;
 use sas_gui::{EditorModel, Host, HostParam, Interface, OpenGestures, Tab};
 use sas_preset::registry::registry;
-use sas_preset::user_folders::PRESET_EXTENSION;
+use sas_preset::user_folders::{Kind, PRESET_EXTENSION};
 
 /// Every registry control, linear over its range, and the editor settings.
 struct Synth {
@@ -40,6 +41,8 @@ struct Synth {
     /// What the editor asked the synth to do with presets.
     calls: Mutex<Vec<String>>,
     favourites: Mutex<Vec<PathBuf>>,
+    /// The folders added to the wavetable browser.
+    added_wavetable_folders: Mutex<Vec<PathBuf>>,
     generation: AtomicU64,
     default_author: Mutex<String>,
 }
@@ -66,6 +69,7 @@ impl Synth {
             active_file: Mutex::new(None),
             calls: Mutex::new(Vec::new()),
             favourites: Mutex::new(Vec::new()),
+            added_wavetable_folders: Mutex::new(Vec::new()),
             generation: AtomicU64::new(0),
             default_author: Mutex::new("Someone".to_string()),
         })
@@ -157,8 +161,26 @@ impl EditorModel for Synth {
         true
     }
 
+    fn load_sample_file(&self, path: &Path) -> bool {
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        self.calls.lock().unwrap().push(format!("sample {name}"));
+        name != "Broken.wav"
+    }
+
     fn favourites(&self) -> Vec<PathBuf> {
         self.favourites.lock().unwrap().clone()
+    }
+
+    fn additional_folders(&self, kind: Kind) -> Vec<PathBuf> {
+        match kind {
+            Kind::Wavetables => self.added_wavetable_folders.lock().unwrap().clone(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn set_additional_folders(&self, kind: Kind, folders: &[PathBuf]) {
+        assert_eq!(kind, Kind::Wavetables);
+        *self.added_wavetable_folders.lock().unwrap() = folders.to_vec();
     }
 
     fn set_favourite(&self, path: &Path, favourite: bool) {
@@ -1096,6 +1118,7 @@ fn stems(rows: &[Selection]) -> Vec<String> {
         .map(|row| match row {
             Selection::All => "All".to_string(),
             Selection::Favourites => "Favorites".to_string(),
+            Selection::AddFolder => "Add Folder".to_string(),
             Selection::Path(path) => path.file_stem().unwrap().to_string_lossy().into_owned(),
         })
         .collect()
@@ -1128,6 +1151,7 @@ fn the_wavetable_name_opens_the_popup_browser_and_a_file_loads() {
             Selection::Favourites,
             Selection::Path(data.0.join("Bank/Wavetables")),
             Selection::Path(data.0.join("Wavetables")),
+            Selection::AddFolder,
         ]
     );
     assert_eq!(
@@ -1357,4 +1381,195 @@ fn the_delete_section_hides_the_chat_toggle_until_it_closes() {
     drag_up(&mut harness, centre(fixture.header().volume));
     assert!(fixture.interface.borrow().deleting().is_none());
     assert!(fixture.interface.borrow().logo_shown());
+}
+
+/// A data folder holding samples: two in Samples (and a file of another
+/// type) and one in the bank's.
+fn sample_data(fixture: &Fixture, tag: &str) -> Folder {
+    let folder = Folder::new(tag, &[]);
+    for file in [
+        "Samples/Hit.wav",
+        "Samples/Pad.flac",
+        "Samples/notes.txt",
+        "Bank/Samples/Bank Loop.wav",
+    ] {
+        let path = folder.0.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "").unwrap();
+    }
+    *fixture.synth.data_directory.lock().unwrap() = Some(folder.0.clone());
+    folder
+}
+
+/// The sample section's layout and its popup browser's: 450 × 300 right
+/// of the name, level with it (`SampleSection::textMouseDown`).
+fn sample_browser(fixture: &Fixture) -> (SampleLayout, PopupBrowserLayout) {
+    let layout = FullLayout::new(&fixture.skin, 1400, 820);
+    let top = Scope::top(&fixture.skin, layout.size_ratio);
+    let synthesis = SynthesisLayout::new(&top, layout.main);
+    let section = SampleLayout::new(&top.within(sample::SKIN), synthesis.sample);
+    let preset = section.preset_selector.bounds;
+    let browser = Rect::new(preset.right(), preset.y, 450, 300);
+    let padding = top
+        .within(popup_browser::SKIN)
+        .value(sas_gui::skin::ValueId::Padding);
+    (section, PopupBrowserLayout::new(1.0, padding, browser))
+}
+
+/// A press on the sample's name opens the popup browser for the user's
+/// `.wav` and `.flac` samples; a file chosen in it loads as the sample, and
+/// the arrows step through them (`SampleSection::textMouseDown`,
+/// `loadFile`, `nextClicked`).
+#[test]
+fn the_sample_name_opens_the_browser_and_the_arrows_step() {
+    let fixture = Fixture::new();
+    let _data = sample_data(&fixture, "samples");
+    let mut harness = fixture.harness();
+    let (section, browser) = sample_browser(&fixture);
+    click(&mut harness, centre(section.preset_selector.text));
+    let rows = fixture.interface.borrow().popup_browser_rows().unwrap();
+    assert_eq!(stems(&rows.1), ["Bank Loop", "Hit", "Pad"]);
+    click(&mut harness, popup_row(browser.files, 2));
+    assert_eq!(calls(&fixture), ["sample Pad.flac"]);
+
+    press_key(&mut harness, egui::Key::Escape);
+    click(&mut harness, centre(section.preset_selector.next));
+    assert_eq!(calls(&fixture), ["sample Bank Loop.wav"]);
+    click(&mut harness, centre(section.preset_selector.previous));
+    assert_eq!(calls(&fixture), ["sample Pad.flac"]);
+}
+
+/// A sample that doesn't read becomes the current file all the same, as
+/// `SampleSection::loadFile` sets the last browsed file before it reads, so
+/// the arrows step on past it.
+#[test]
+fn the_sample_arrows_step_past_a_file_that_doesnt_read() {
+    let fixture = Fixture::new();
+    let data = sample_data(&fixture, "samples-broken");
+    std::fs::write(data.0.join("Samples/Broken.wav"), "").unwrap();
+    let mut harness = fixture.harness();
+    let (section, _) = sample_browser(&fixture);
+    let next = centre(section.preset_selector.next);
+    click(&mut harness, next);
+    assert_eq!(calls(&fixture), ["sample Bank Loop.wav"]);
+    click(&mut harness, next);
+    assert_eq!(calls(&fixture), ["sample Broken.wav"]);
+    click(&mut harness, next);
+    assert_eq!(calls(&fixture), ["sample Hit.wav"]);
+}
+
+/// A folder outside the data folder holding one wavetable, added to the
+/// wavetable browser.
+fn added_wavetables(fixture: &Fixture, data: &Folder) -> PathBuf {
+    let added = data.0.join("Outside/Added");
+    std::fs::create_dir_all(&added).unwrap();
+    std::fs::write(
+        added.join("Zeta.vitaltable"),
+        r#"{"version":"1.0.0","name":"Inside","groups":[]}"#,
+    )
+    .unwrap();
+    *fixture.synth.added_wavetable_folders.lock().unwrap() = vec![added.clone()];
+    added
+}
+
+/// The square left of a list's scroll bar in row `row`, where an added
+/// folder's remove cross is (`x_area_`).
+fn cross_square(list: Rect, row: i32) -> Pos2 {
+    Pos2::new(
+        (list.right() - 15 - 12) as f32,
+        (list.y + 24 * row + 12) as f32,
+    )
+}
+
+/// An added folder is listed after the user's and before Add Folder, its
+/// files among All's. A press on its cross removes it from the list and the
+/// config; the same square on a user's folder does nothing, not even select
+/// it (`leftClick`'s `x_area_`).
+#[test]
+fn an_added_folder_lists_and_its_cross_removes_it() {
+    let fixture = Fixture::new();
+    let data = wavetable_data(&fixture, "popup-added");
+    let added = added_wavetables(&fixture, &data);
+    let mut harness = fixture.harness();
+    let (osc, browser) = oscillator_browser(&fixture);
+    click(&mut harness, centre(osc.preset_selector.text));
+    let rows = fixture.interface.borrow().popup_browser_rows().unwrap();
+    assert_eq!(
+        rows.0[4..],
+        [Selection::Path(added.clone()), Selection::AddFolder]
+    );
+    assert!(stems(&rows.1).contains(&"Zeta".to_string()));
+
+    click(&mut harness, cross_square(browser.folders, 3));
+    let rows = fixture.interface.borrow().popup_browser_rows().unwrap();
+    assert_eq!(rows.0.len(), 6, "the user's folder stays");
+    assert!(
+        stems(&rows.1).contains(&"Zeta".to_string()),
+        "All stays selected"
+    );
+
+    click(&mut harness, cross_square(browser.folders, 4));
+    let rows = fixture.interface.borrow().popup_browser_rows().unwrap();
+    assert_eq!(rows.0[4..], [Selection::AddFolder]);
+    assert!(fixture
+        .synth
+        .added_wavetable_folders
+        .lock()
+        .unwrap()
+        .is_empty());
+}
+
+/// The wavetable arrows step through the added folders' files too, all
+/// sorted by full path (`getShiftedFile` with
+/// `kAdditionalWavetableFoldersName`): here the added folder's file comes
+/// after the bank's.
+#[test]
+fn the_wavetable_arrows_step_into_added_folders() {
+    let fixture = Fixture::new();
+    let data = wavetable_data(&fixture, "popup-added-arrows");
+    let _added = added_wavetables(&fixture, &data);
+    let mut harness = fixture.harness();
+    let (osc, _) = oscillator_browser(&fixture);
+    let next = centre(osc.preset_selector.next);
+    click(&mut harness, next);
+    assert_eq!(calls(&fixture), ["wavetable 0 Bank Table"]);
+    click(&mut harness, next);
+    assert_eq!(calls(&fixture), ["wavetable 0 Zeta"]);
+}
+
+/// JUCE's click count for the popup browser's files: a second press held
+/// half a second isn't a double click (`isLongPressOrDrag`), so the browser
+/// stays open; two clicks 0.35 s apart are one (presses within 0.4 s), so
+/// it closes. egui's rules took the first and missed the second.
+#[test]
+fn the_browser_closes_on_juces_double_clicks() {
+    let fixture = Fixture::new();
+    let _data = wavetable_data(&fixture, "popup-double");
+    let mut harness = fixture.harness();
+    let (osc, browser) = oscillator_browser(&fixture);
+    click(&mut harness, centre(osc.preset_selector.text));
+    let row = popup_row(browser.files, 0);
+    for _ in 0..30 {
+        harness.step();
+    }
+    click(&mut harness, row);
+    assert!(browser_rows(&fixture).is_some());
+    button(&mut harness, row, true);
+    for _ in 0..30 {
+        harness.step();
+    }
+    button(&mut harness, row, false);
+    harness.step();
+    assert!(browser_rows(&fixture).is_some(), "a held press closed it");
+
+    for _ in 0..30 {
+        harness.step();
+    }
+    click(&mut harness, row);
+    // 21 frames at 60 Hz from press to press.
+    for _ in 0..17 {
+        harness.step();
+    }
+    click(&mut harness, row);
+    assert_eq!(browser_rows(&fixture), None);
 }
