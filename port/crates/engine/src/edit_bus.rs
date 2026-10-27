@@ -17,8 +17,9 @@
 //!   (a wavetable is rendered there) and swapped into the engine, and the
 //!   replaced values travel back on a return queue, so the audio thread
 //!   never allocates or frees;
-//! - one pending slot per target (8 LFOs, 64 remap curves, 3 wavetables,
-//!   the sample, the tuning, and 64 connections' slot values), newest wins: a push replaces a payload the
+//! - one pending slot per target (8 LFOs, 64 remap curves, 3 wavetables, a
+//!   drawn frame of each of the 3 wavetables, the sample, the tuning, and 64
+//!   connections' slot values), newest wins: a push replaces a payload the
 //!   audio thread has not taken yet, and a heap-free marker in the queue
 //!   keeps it ordered against connections;
 //! - a generation tag on every entry: a host state restore or preset load
@@ -44,7 +45,7 @@ use crossbeam_queue::ArrayQueue;
 use sas_common::LineGenerator;
 use sas_dsp_core::constants::MAX_MODULATION_CONNECTIONS;
 use sas_oscillators::sas_wavetable::creator::WavetableCreator;
-use sas_oscillators::sas_wavetable::{Wavetable, NUM_OSCILLATOR_WAVE_FRAMES};
+use sas_oscillators::sas_wavetable::{Wavetable, WavetableFrame, NUM_OSCILLATOR_WAVE_FRAMES};
 use sas_oscillators::Sample;
 use sas_preset::{GuiConnection, SampleState, SaveInfo, SlotValues};
 
@@ -73,7 +74,8 @@ const MAX_ENTRIES_PER_EDIT: usize = 2;
 const LFO_SLOTS: usize = 0;
 const LINE_MAPPING_SLOTS: usize = LFO_SLOTS + NUM_LFOS;
 const WAVETABLE_SLOTS: usize = LINE_MAPPING_SLOTS + MAX_MODULATION_CONNECTIONS;
-const SAMPLE_SLOT: usize = WAVETABLE_SLOTS + NUM_OSCILLATORS;
+const WAVETABLE_FRAME_SLOTS: usize = WAVETABLE_SLOTS + NUM_OSCILLATORS;
+const SAMPLE_SLOT: usize = WAVETABLE_FRAME_SLOTS + NUM_OSCILLATORS;
 const TUNING_SLOT: usize = SAMPLE_SLOT + 1;
 const CONNECTION_VALUE_SLOTS: usize = TUNING_SLOT + 1;
 const NUM_SLOTS: usize = CONNECTION_VALUE_SLOTS + MAX_MODULATION_CONNECTIONS;
@@ -153,6 +155,7 @@ enum Target {
     Lfo(usize),
     LineMapping(usize),
     Wavetable(usize),
+    WavetableFrame(usize),
     Sample,
     Tuning,
     ConnectionValues(usize),
@@ -164,6 +167,7 @@ impl Target {
             Target::Lfo(lfo) => LFO_SLOTS + lfo,
             Target::LineMapping(slot) => LINE_MAPPING_SLOTS + slot,
             Target::Wavetable(oscillator) => WAVETABLE_SLOTS + oscillator,
+            Target::WavetableFrame(oscillator) => WAVETABLE_FRAME_SLOTS + oscillator,
             Target::Sample => SAMPLE_SLOT,
             Target::Tuning => TUNING_SLOT,
             Target::ConnectionValues(slot) => CONNECTION_VALUE_SLOTS + slot,
@@ -174,7 +178,8 @@ impl Target {
         match slot {
             s if s < LINE_MAPPING_SLOTS => Target::Lfo(s - LFO_SLOTS),
             s if s < WAVETABLE_SLOTS => Target::LineMapping(s - LINE_MAPPING_SLOTS),
-            s if s < SAMPLE_SLOT => Target::Wavetable(s - WAVETABLE_SLOTS),
+            s if s < WAVETABLE_FRAME_SLOTS => Target::Wavetable(s - WAVETABLE_SLOTS),
+            s if s < SAMPLE_SLOT => Target::WavetableFrame(s - WAVETABLE_FRAME_SLOTS),
             SAMPLE_SLOT => Target::Sample,
             TUNING_SLOT => Target::Tuning,
             s => Target::ConnectionValues(s - CONNECTION_VALUE_SLOTS),
@@ -188,6 +193,8 @@ impl Target {
 enum Payload {
     Line(LineGenerator),
     Wavetable(Wavetable),
+    /// One rendered frame and where it goes.
+    Frame(usize, WavetableFrame),
     Sample(Sample),
     Tuning(Tuning),
     Values(SlotValues),
@@ -816,6 +823,61 @@ impl EditHandle {
         self.single(|batch| batch.set_prepared_wavetable(oscillator, prepared))
     }
 
+    /// While the editor draws on oscillator `oscillator`'s wavetable:
+    /// `creator` becomes its creator, and frame `position` alone is
+    /// rendered (`WavetableCreator::render(position)`, without the full
+    /// render's normalisation) into the shared table and the engine's, as
+    /// upstream's editor renders into the playing table during a drag. The
+    /// editor commits the full render with [`Self::set_wavetable`] when the
+    /// drag ends.
+    ///
+    /// The frame is rendered here, on the calling thread, under the mirror
+    /// lock, and travels as data the audio thread copies into its table; it
+    /// comes back on the return queue. A newer frame for the same
+    /// oscillator replaces one the audio thread has not taken yet, even at
+    /// another position, and a position past the table's last frame
+    /// changes only the creator, as `loadWaveFrame` ignores it.
+    pub fn set_wavetable_frame(
+        &self,
+        oscillator: usize,
+        creator: WavetableCreator,
+        position: usize,
+    ) -> Result<(), EditError> {
+        check_index(oscillator, NUM_OSCILLATORS)?;
+        check_index(position, NUM_OSCILLATOR_WAVE_FRAMES as usize)?;
+        // The shared table, rendered first if a restore cleared it.
+        self.wavetable(oscillator)
+            .ok_or_else(|| EditError::Render("the wavetable cannot render".to_string()))?;
+        self.collect_retired();
+        let mut mirror = self.lock();
+        if self.capacity_remaining() < 1 {
+            return Err(EditError::QueueFull);
+        }
+        let mirror_ref = &mut *mirror;
+        let mut creator = creator;
+        let frame = match &mut mirror_ref.wavetables[oscillator] {
+            Some(shared) => {
+                // Copied only while the editor still holds the last one.
+                let table = Arc::make_mut(shared);
+                creator.render_frame(table, position as i32);
+                table.frame(position)
+            }
+            None => None,
+        };
+        mirror_ref.document.state.wavetables[oscillator] = creator;
+        let staged = frame
+            .map(|frame| {
+                Staged::Pending(
+                    Target::WavetableFrame(oscillator),
+                    Payload::Frame(position, frame),
+                )
+            })
+            .into_iter()
+            .collect();
+        self.push(&mut mirror, staged);
+        Ok(())
+    }
+
     /// See [`Batch::set_sample`].
     pub fn set_sample(&self, sample: SampleState) -> Result<(), EditError> {
         self.single(|batch| batch.set_sample(sample))
@@ -891,6 +953,9 @@ pub trait EditTarget {
     /// Modulation slot `slot`'s amount, bipolar, stereo and bypass.
     fn set_connection_values(&mut self, slot: usize, values: &SlotValues);
     fn swap_wavetable(&mut self, oscillator: usize, rendered: &mut Wavetable);
+    /// Writes `frame` over frame `position` of oscillator `oscillator`'s
+    /// wavetable.
+    fn set_wavetable_frame(&mut self, oscillator: usize, position: usize, frame: &WavetableFrame);
     fn swap_sample(&mut self, loaded: &mut Sample);
     /// Takes `tuning` in place of the engine's own, handing the old one back
     /// in `tuning`.
@@ -930,6 +995,10 @@ impl EditTarget for Synth {
         Synth::swap_wavetable(self, oscillator, rendered);
     }
 
+    fn set_wavetable_frame(&mut self, oscillator: usize, position: usize, frame: &WavetableFrame) {
+        Synth::set_wavetable_frame(self, oscillator, position, frame);
+    }
+
     fn swap_sample(&mut self, loaded: &mut Sample) {
         Synth::swap_sample(self, loaded);
     }
@@ -957,6 +1026,13 @@ impl EditTarget for () {
     fn set_line_mapping(&mut self, _slot: usize, _line: &mut LineGenerator) {}
     fn set_connection_values(&mut self, _slot: usize, _values: &SlotValues) {}
     fn swap_wavetable(&mut self, _oscillator: usize, _rendered: &mut Wavetable) {}
+    fn set_wavetable_frame(
+        &mut self,
+        _oscillator: usize,
+        _position: usize,
+        _frame: &WavetableFrame,
+    ) {
+    }
     fn swap_sample(&mut self, _loaded: &mut Sample) {}
     fn swap_tuning(&mut self, _tuning: &mut Tuning) {}
     fn load_document(&mut self, _document: &PresetDocument) {}
@@ -1103,6 +1179,9 @@ impl EditConsumer {
                     }
                     (Target::Wavetable(oscillator), Payload::Wavetable(wavetable)) => {
                         target.swap_wavetable(oscillator, wavetable)
+                    }
+                    (Target::WavetableFrame(oscillator), Payload::Frame(position, frame)) => {
+                        target.set_wavetable_frame(oscillator, *position, frame)
                     }
                     (Target::Sample, Payload::Sample(sample)) => target.swap_sample(sample),
                     (Target::Tuning, Payload::Tuning(tuning)) => target.swap_tuning(tuning),
