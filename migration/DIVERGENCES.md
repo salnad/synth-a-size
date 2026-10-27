@@ -1031,6 +1031,24 @@ has its own decision record.
   and 15 are reported with their metrics instead of failing the same-binary
   check. See `migration/corpus/macos_libm_drift.json` and
   `decisions/reference-arm.md`.
+- **macOS justification exception (A13 seed).** The macOS no-fast-math
+  justification step ("proxy must pass") does not gate one value:
+  `wavetable/edit/add_sources`, `artifact/saved.json`, JSON path
+  `$.groups[2].components[0].random_seed`. Only Apple clang's official
+  fast-math build folds `FileSource`'s seed (A13), so macOS official and
+  no-fast-math differ there by construction, and JSON integers are exact.
+  - The step reports the difference with both values and does not gate
+    it. It matches only that exact path, and only the pinned values
+    (official 209652480, no-fast-math 209652560); any change to either
+    value fails. The rest of the case's outputs, and every other case,
+    stay fully under the check.
+  - The port is still compared exactly against the official seed.
+  - See `migration/corpus/macos_justify_exceptions.json`,
+    `run_corpus.py compare --justify-exceptions` and
+    `decisions/reference-arm.md` (A13).
+  - Approved: Salil, 2026-10-27, scoped to this seed only. It does not
+    approve A11 or any other precedent: any further entry needs its own
+    owner approval.
 - **macOS arm64 parks.** These are temporary, owner-approved skips of a case
   on the macOS reference only; x86 keeps the case live. See
   `migration/corpus/parked_arm64.json` and migration/AGENTS.md.

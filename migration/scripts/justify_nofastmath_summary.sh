@@ -5,17 +5,19 @@
 #   justify_nofastmath_summary.sh OFFICIAL_TREE NOFASTMATH_TREE
 #
 # Runs `run_corpus.py compare OFFICIAL NOFASTMATH --justify-nofastmath
-# --parked migration/corpus/parked_arm64.json` and exits with its status.
+# --parked migration/corpus/parked_arm64.json --justify-exceptions
+# migration/corpus/macos_justify_exceptions.json` and exits with its status.
 set -uo pipefail
 
 if [[ $# -ne 2 ]]; then
-  sed -n '2,8p' "$0" >&2
+  sed -n '2,9p' "$0" >&2
   exit 2
 fi
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 log=$(mktemp)
 python3 "$repo/migration/scripts/run_corpus.py" compare "$1" "$2" --justify-nofastmath \
-  --parked "$repo/migration/corpus/parked_arm64.json" | tee "$log"
+  --parked "$repo/migration/corpus/parked_arm64.json" \
+  --justify-exceptions "$repo/migration/corpus/macos_justify_exceptions.json" | tee "$log"
 status=${PIPESTATUS[0]}
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   {
@@ -25,7 +27,7 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     echo
     echo "Justification lines:"
     echo '```'
-    grep -E 'nofastmath|justif|not gated|parked' "$log" || echo "(no reference \"nofastmath\" cases)"
+    grep -E 'nofastmath|justif|not gated|parked|excepted' "$log" || echo "(no reference \"nofastmath\" cases)"
     echo '```'
     echo
     echo "$(tail -1 "$log")"

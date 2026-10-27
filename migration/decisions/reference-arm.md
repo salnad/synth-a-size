@@ -224,7 +224,13 @@ achievable on arm64.
    `FileSource`, and JSON integers are compared exactly. The macOS
    justification step ("proxy must pass") therefore fails on such cases
    (`wavetable/edit/add_sources:artifact/saved.json`) whatever the port
-   does. How that step treats a fast-math-only A-entry is open.
+   does. The owner approved one exception for that step (Salil,
+   2026-10-27): that case's `$.groups[2].components[0].random_seed`,
+   only as official 209652480 vs no-fast-math 209652560, is reported with
+   both values and not gated
+   (`migration/corpus/macos_justify_exceptions.json`; DIVERGENCES.md,
+   "Verification exceptions"). It is scoped to this seed only and sets no
+   precedent for A11 or anything else.
 
    Rust's `as` casts truncate and saturate (the arm64 behaviour), so the
    x86 variants must be written explicitly. Any new ISA- or

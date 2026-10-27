@@ -25,7 +25,9 @@ WORKFLOW = "reference-arm-main.yml"
 SUITE_JOB = "macOS 15 arm64 full suite"
 SUITE_FILES = (
     ".github/workflows/reference-arm-main.yml",
+    "migration/corpus/macos_justify_exceptions.json",
     "migration/scripts/compare_known_drift.py",
+    "migration/scripts/justify_nofastmath_summary.sh",
     "migration/scripts/mac_full_suite_gate.py",
     "migration/scripts/mac_full_suite_report.py",
     "migration/scripts/mac_hash_backfill.sh",

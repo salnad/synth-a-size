@@ -864,9 +864,11 @@ def json_bound_problems(ref_bytes, test_bytes, bound, base64_keys=()):
     return problems
 
 
-def compare_module_case(args, case, ref_dir, test_dir, reports, bit_exact):
+def compare_module_case(args, case, ref_dir, test_dir, reports, bit_exact, exceptions=None):
     """[(label, code)] for one module case. bit_exact: every array and
-    artifact must be byte-identical (reference "nofastmath" cases)."""
+    artifact must be byte-identical (reference "nofastmath" cases).
+    exceptions: {artifact: {json path: entry}} from the macOS justification
+    exception list (--justify-exceptions); see split_excepted."""
     results = []
     outputs = module_outputs(ref_dir)
     artifacts = module_artifacts(ref_dir)
@@ -907,11 +909,20 @@ def compare_module_case(args, case, ref_dir, test_dir, reports, bit_exact):
         if modes.get(name) == "json" and not (args.exact or bit_exact):
             problems = json_bound_problems(ref_bytes, test_bytes, case["json_bound"],
                                            case.get("base64_f32_keys", ()))
+            excepted_paths = (exceptions or {}).get(name, {})
+            problems, excepted = split_excepted(problems, excepted_paths)
             for problem in problems[:10]:
                 print("  %s: %s" % (label, problem))
             if len(problems) > 10:
                 print("  %s: ... %d more" % (label, len(problems) - 10))
-            results.append((label + " (json bound)", 1 if problems else 0))
+            for entry, official, nofastmath in excepted:
+                print("  %s: %s: official %s, no-fast-math %s (excepted, not gated: %s; approved %s)"
+                      % (label, entry["path"], official, nofastmath, entry["cites"], entry["approved"]))
+            for path in sorted(set(excepted_paths) - {entry["path"] for entry, _, _ in excepted}):
+                print("  %s: %s: excepted, but official and no-fast-math agree here (exception unused)"
+                      % (label, path))
+            suffix = "; %d excepted difference" % len(excepted) if excepted else ""
+            results.append((label + " (json bound%s)" % suffix, 1 if problems else 0))
         else:
             kind = "nofastmath, exact" if bit_exact else "exact"
             results.append((label + " (%s)" % kind, 0 if ref_bytes == test_bytes else 1))
@@ -919,6 +930,69 @@ def compare_module_case(args, case, ref_dir, test_dir, reports, bit_exact):
         label = "%s:artifact/%s" % (case["id"], artifact[len("artifact_"):])
         results.append((label + " (missing in reference tree)", 2))
     return results
+
+
+JUSTIFY_EXCEPTION_KEYS = ("case", "artifact", "path", "cites", "approved")
+JUSTIFY_EXCEPTION_VALUES = ("official", "nofastmath")
+EXCEPTED_DIFFERENCE = re.compile(r"^(.*): reference (-?\d+), port (-?\d+)$")
+
+
+def load_justify_exceptions(path, modules):
+    """The macOS no-fast-math justification step's exception list
+    (migration/corpus/macos_justify_exceptions.json, owner-approved; see
+    DIVERGENCES.md, "Verification exceptions"), as {(case id, artifact):
+    {json path: entry}}. Each entry excepts one integer difference at one
+    exact JSON path of one declared json artifact of one regular case, and
+    only between its two pinned values (official, nofastmath)."""
+    data = read_json_strict(path)
+    if not isinstance(data, dict) or set(data) != {"description", "exceptions"} \
+            or not isinstance(data["exceptions"], list):
+        raise CaseError("%s: must be {\"description\": ..., \"exceptions\": [...]}" % path)
+    by_id = {case["id"]: case for case in modules}
+    result = {}
+    for index, entry in enumerate(data["exceptions"]):
+        where = "%s: exceptions[%d]" % (path, index)
+        if not isinstance(entry, dict) or set(entry) != set(JUSTIFY_EXCEPTION_KEYS + JUSTIFY_EXCEPTION_VALUES) \
+                or not all(isinstance(entry[k], str) and entry[k] for k in JUSTIFY_EXCEPTION_KEYS) \
+                or not all(type(entry[k]) is int for k in JUSTIFY_EXCEPTION_VALUES):
+            raise CaseError("%s: needs exactly the non-empty strings %s and the integers %s"
+                            % (where, ", ".join(JUSTIFY_EXCEPTION_KEYS), ", ".join(JUSTIFY_EXCEPTION_VALUES)))
+        if entry["official"] == entry["nofastmath"]:
+            raise CaseError("%s: official and nofastmath must differ" % where)
+        case = by_id.get(entry["case"])
+        if case is None:
+            raise CaseError("%s: %s is not a loaded module case" % (where, entry["case"]))
+        if case.get("reference") == "nofastmath":
+            raise CaseError("%s: %s is a reference \"nofastmath\" case" % (where, entry["case"]))
+        if case.get("artifacts", {}).get(entry["artifact"]) != "json":
+            raise CaseError("%s: %s is not a declared json artifact of %s" % (where, entry["artifact"], entry["case"]))
+        if not entry["path"].startswith("$"):
+            raise CaseError("%s: path must be a JSON path starting with $" % where)
+        paths = result.setdefault((entry["case"], entry["artifact"]), {})
+        if entry["path"] in paths:
+            raise CaseError("%s: duplicate entry for %s %s" % (where, entry["case"], entry["path"]))
+        paths[entry["path"]] = entry
+    return result
+
+
+def split_excepted(problems, excepted_paths):
+    """(remaining problems, [(entry, official, nofastmath)]): a problem is
+    excepted only if it is an integer difference at exactly a listed path,
+    between exactly that entry's pinned official and nofastmath values. A
+    missing key, a type change, any other value or any other path stays a
+    problem."""
+    remaining, excepted = [], []
+    for problem in problems:
+        match = EXCEPTED_DIFFERENCE.match(problem)
+        entry = excepted_paths.get(match.group(1)) if match else None
+        if entry and (int(match.group(2)), int(match.group(3))) == (entry["official"], entry["nofastmath"]):
+            excepted.append((entry, match.group(2), match.group(3)))
+        elif entry:
+            remaining.append("%s (not the excepted official %d, no-fast-math %d)"
+                             % (problem, entry["official"], entry["nofastmath"]))
+        else:
+            remaining.append(problem)
+    return remaining, excepted
 
 
 def justify_target(identity):
@@ -1015,6 +1089,13 @@ def report_parked(parked, path, what):
 
 def cmd_compare(args):
     renders, modules = load_renders(), load_modules()
+    exceptions = {}
+    if args.justify_exceptions:
+        if not args.justify_nofastmath:
+            raise CaseError("--justify-exceptions only applies to --justify-nofastmath")
+        if justify_target(tree_identity(args.reference, renders, modules)) != "macos":
+            raise CaseError("--justify-exceptions is for the macOS justification step only")
+        exceptions = load_justify_exceptions(args.justify_exceptions, modules)
     if args.parked:
         parked = load_parked(args.parked, renders, modules)
         report_parked({k: v for k, v in parked.items() if selected(k, args.only)}, args.parked, "not compared")
@@ -1042,7 +1123,10 @@ def cmd_compare(args):
         test_dir = os.path.join(args.test, "modules", case["id"])
         if case.get("reference") != "nofastmath":
             ref_dir = os.path.join(args.reference, "modules", case["id"])
-            results.extend(compare_module_case(args, case, ref_dir, test_dir, reports, bit_exact=False))
+            case_exceptions = {artifact: paths for (case_id, artifact), paths in exceptions.items()
+                               if case_id == case["id"]}
+            results.extend(compare_module_case(args, case, ref_dir, test_dir, reports, bit_exact=False,
+                                               exceptions=case_exceptions))
         elif args.justify_nofastmath:
             results.extend(justify_nofastmath(args, case, test_dir, reports, target, allowlist[case["id"]][1]))
         elif args.reference_nofastmath or args.exact:
@@ -1413,6 +1497,10 @@ def main():
     compare.add_argument("--parked", metavar="FILE",
                          help="park file (e.g. migration/corpus/parked_arm64.json): listed cases are skipped "
                               "and reported; every listed id must be a loaded case")
+    compare.add_argument("--justify-exceptions", metavar="FILE",
+                         help="with --justify-nofastmath on the macOS trees only: the owner-approved exception "
+                              "list (migration/corpus/macos_justify_exceptions.json); each listed integer "
+                              "difference at one exact JSON path is reported with both values, not gated")
     compare.add_argument("--only", nargs="*", help="substrings of case ids to run")
 
     hashes = sub.add_parser("hashes", help="write / check output hashes of a render tree")
