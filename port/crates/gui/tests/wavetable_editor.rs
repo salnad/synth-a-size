@@ -153,6 +153,20 @@ impl EditorModel for Synth {
         true
     }
 
+    fn load_audio_as_wavetable(
+        &self,
+        oscillator: usize,
+        path: &std::path::Path,
+        _style: sas_engine::sas_oscillators::sas_wavetable::creator::AudioFileLoadStyle,
+    ) -> bool {
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        self.loads
+            .lock()
+            .unwrap()
+            .push(format!("{oscillator} audio {name}"));
+        true
+    }
+
     fn last_wavetable_file(&self, oscillator: usize) -> Option<PathBuf> {
         self.last_files.lock().unwrap()[oscillator].clone()
     }
@@ -1018,5 +1032,55 @@ fn the_editor_name_opens_the_browser() {
         ),
     );
     assert_eq!(loads(&fixture), ["0 Alpha"]);
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+/// `OscillatorSection::loadFile` sends only a `.vitaltable` through the
+/// editor's `loadFile`, which records the creator's last file; audio loads
+/// from the oscillator directly (`loadAudioAsWavetable`), unrecorded.
+#[test]
+fn the_oscillators_audio_loads_arent_the_last_file() {
+    let fixture = Fixture::new();
+    let root = wavetable_folders(&fixture, "oscillator-last");
+    let wav = root.join("Data/Wavetables/Loop.wav");
+    std::fs::write(&wav, "").unwrap();
+    let model = fixture.synth.as_ref();
+    assert!(popup_browser::load_wavetable_file(model, 0, &wav));
+    assert_eq!(loads(&fixture), ["0 audio Loop.wav"]);
+    assert_eq!(model.last_wavetable_file(0), None);
+    let table = root.join("Data/Wavetables/Alpha.vitaltable");
+    assert!(popup_browser::load_wavetable_file(model, 0, &table));
+    assert_eq!(model.last_wavetable_file(0), Some(table));
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+/// The editor's own loads take every file that isn't a `.vitaltable` as
+/// audio, a `.flac` and an upper-case `.WAV` included, where upstream's
+/// takes only `.wav` (D32); each becomes the creator's last file.
+#[test]
+fn the_editor_loads_flac_and_upper_case_wav_as_audio() {
+    let fixture = Fixture::new();
+    let root = std::env::temp_dir().join(format!("sas-editor-audio-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let folder = root.join("Wavetables");
+    std::fs::create_dir_all(&folder).unwrap();
+    for file in ["Delta.flac", "Echo.WAV"] {
+        std::fs::write(folder.join(file), "").unwrap();
+    }
+    *fixture.synth.data_directory.lock().unwrap() = Some(root.clone());
+    let mut harness = opened(&fixture);
+    let preset = fixture.editor_layout().preset;
+    click(&mut harness, centre(preset.next));
+    assert_eq!(loads(&fixture), ["0 audio Delta.flac"]);
+    assert_eq!(
+        fixture.synth.last_wavetable_file(0),
+        Some(folder.join("Delta.flac"))
+    );
+    click(&mut harness, centre(preset.next));
+    assert_eq!(loads(&fixture), ["0 audio Echo.WAV"]);
+    assert_eq!(
+        fixture.synth.last_wavetable_file(0),
+        Some(folder.join("Echo.WAV"))
+    );
     std::fs::remove_dir_all(&root).unwrap();
 }

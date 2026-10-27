@@ -792,7 +792,7 @@ impl WavetableEditSection {
 
     /// `prevClicked` and `nextClicked`: the wavetable `shift` places from the
     /// creator's last file among the user's and the added folders'
-    /// (`getShiftedFile`), loaded as the oscillator's browser loads one.
+    /// (`getShiftedFile`), loaded through the editor's `loadFile`.
     fn load_shifted_file(&self, model: &dyn EditorModel, shift: i32) {
         let mut directories = user_folders::root(model.data_directory().as_deref())
             .map(|root| user_folders::directories(&root, Kind::Wavetables))
@@ -801,7 +801,7 @@ impl WavetableEditSection {
         let files = user_folders::files_of_type(&directories, popup_browser::WAVETABLE_EXTENSIONS);
         let current = model.last_wavetable_file(self.oscillator);
         if let Some(file) = user_folders::shifted_file(files, current.as_deref(), shift) {
-            popup_browser::load_wavetable_file(model, self.oscillator, &file);
+            popup_browser::editor_load_wavetable_file(model, self.oscillator, &file);
         }
     }
 

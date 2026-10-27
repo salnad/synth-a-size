@@ -933,7 +933,7 @@ impl Interface {
                 self.synthesis.load_sample_file(host.model(), &file);
             }
             Some(BrowserEvent::Load(BrowserOwner::WavetableEditor(index), file)) => {
-                popup_browser::load_wavetable_file(host.model(), index, &file);
+                popup_browser::editor_load_wavetable_file(host.model(), index, &file);
             }
             None => {}
         }

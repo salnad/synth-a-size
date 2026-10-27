@@ -521,13 +521,25 @@ pub fn closing_areas(interface: Rect, passthrough: Rect) -> [Rect; 4] {
     ]
 }
 
-/// `WavetableEditSection::loadFile`, which the oscillator's and the
-/// wavetable editor's browsers and arrows load through: a `.vitaltable`
-/// loads named after its file (`jsonToState`, then `setName`); any other
-/// file loads as audio, spliced. A file that loads becomes the creator's
-/// last file (`setFileLoaded`). Returns false, changing nothing, when the
-/// file can't be read.
+/// `OscillatorSection::loadFile`, which the oscillator's browser and
+/// arrows load through: a `.vitaltable` goes to the wavetable editor's
+/// `loadFile`, which loads it named after its file and makes it the
+/// creator's last file (`setFileLoaded`); any other file loads as audio,
+/// spliced (`loadAudioAsWavetable`), and isn't recorded. Returns false,
+/// changing nothing, when the file can't be read.
 pub fn load_wavetable_file(model: &dyn EditorModel, oscillator: usize, path: &Path) -> bool {
+    let loaded = load_wavetable_contents(model, oscillator, path);
+    if loaded && is_wavetable_file(path) {
+        model.set_last_wavetable_file(oscillator, path.to_path_buf());
+    }
+    loaded
+}
+
+/// `WavetableEditSection::loadFile`, which the wavetable editor's browser,
+/// arrows and Import load through: a `.vitaltable` loads named after its
+/// file, and any other file as audio, spliced (D32: upstream takes only
+/// `.wav` as audio); either becomes the creator's last file once it loads.
+pub fn editor_load_wavetable_file(model: &dyn EditorModel, oscillator: usize, path: &Path) -> bool {
     let loaded = load_wavetable_contents(model, oscillator, path);
     if loaded {
         model.set_last_wavetable_file(oscillator, path.to_path_buf());
@@ -535,11 +547,14 @@ pub fn load_wavetable_file(model: &dyn EditorModel, oscillator: usize, path: &Pa
     loaded
 }
 
+/// Whether `path` is a `.vitaltable`, by its extension.
+fn is_wavetable_file(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case(WAVETABLE_EXTENSION))
+}
+
 fn load_wavetable_contents(model: &dyn EditorModel, oscillator: usize, path: &Path) -> bool {
-    let table = path
-        .extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case(WAVETABLE_EXTENSION));
-    if !table {
+    if !is_wavetable_file(path) {
         return model.load_audio_as_wavetable(
             oscillator,
             path,

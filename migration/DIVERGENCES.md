@@ -879,6 +879,21 @@ MCP server) extends this entry when it lands.*
   and the downloader isn't ported (D26).
 - **Approved:** coordinator, 2026-10-27.
 
+### D32. The wavetable editor loads any audio file, not only `.wav`
+
+- **Differs:** a `.flac`, or a `.wav` with its extension in upper case,
+  loaded from the wavetable editor's browser, arrows or Import.
+- **Upstream:** `WavetableEditSection::loadFile` takes a file as audio
+  only when its extension is exactly `.wav`, and parses everything else as
+  a `.vitaltable`. The browser lists `.flac` and any case of `.wav`, but
+  they fail to parse and load nothing. The oscillator's `loadFile` loads
+  them as audio.
+- **Port:** the editor loads everything that isn't a `.vitaltable` as
+  audio, spliced, as the oscillator does
+  (`popup_browser::editor_load_wavetable_file`).
+- **Why:** a file the browser offers should load, as in D1 and D19.
+- **Approved:** coordinator, 2026-10-27.
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change

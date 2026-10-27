@@ -8,15 +8,19 @@ G5e-7b.
 - **The creator's last file** (`EditorModel::last_wavetable_file`,
   `set_last_wavetable_file`): upstream's `WavetableEditSection::loadFile`
   remembers each oscillator's last file in its creator
-  (`setFileLoaded`), not in the preset. `popup_browser::load_wavetable_file`,
-  which the oscillator's browser and arrows and now the editor's load
-  through, sets it when a file loads; the plugin keeps it per oscillator
-  while the instance lives.
+  (`setFileLoaded`), not in the preset. The plugin keeps it per
+  oscillator while the instance lives. The oscillator's browser and arrows
+  load through `popup_browser::load_wavetable_file`
+  (`OscillatorSection::loadFile`), which sets it only for a `.vitaltable`
+  that loads: audio loads straight from the oscillator, unrecorded. The
+  editor's load through `editor_load_wavetable_file`
+  (`WavetableEditSection::loadFile`), which sets it for any file that
+  loads.
 - **The name** (`textMouseDown`): a press opens the popup browser for the
   oscillator's wavetables, 600 × 400 at the size ratio below the name from
   its left, over the editor (`BrowserOwner::WavetableEditor`), with the
   user's and the added folders and the last file selected. A file chosen
-  loads as the oscillator's browser loads one. The interface draws the
+  loads through the editor's `loadFile`. The interface draws the
   popup browser over the editor too.
 - **The arrows** (`prevClicked`, `nextClicked`): the wavetable before or
   after the creator's last file among the user's and the added folders'
@@ -27,6 +31,9 @@ G5e-7b.
   which the frequency displays and the overlays read.
 - **D31**: upstream's factory wavetables aren't there (approved by the
   coordinator, 2026-10-27).
+- **D32**: the editor loads a `.flac` or an upper-case `.WAV` as audio,
+  where upstream's takes only an exact `.wav` and fails the rest as JSON
+  (approved by the coordinator, 2026-10-27).
 
 **Tests** (`tests/wavetable_editor.rs`)
 
@@ -38,5 +45,11 @@ G5e-7b.
   previous steps back; the last file follows.
 - `the_editor_name_opens_the_browser`: the browser lists the added folder
   and every wavetable, and a file chosen loads.
+- `the_oscillators_audio_loads_arent_the_last_file`: through the
+  oscillator's load, a `.wav` loads as audio and isn't recorded; a
+  `.vitaltable` is.
+- `the_editor_loads_flac_and_upper_case_wav_as_audio`: the editor's arrows
+  load `Delta.flac` and `Echo.WAV` as audio, and each becomes the last
+  file (D32).
 
 No audio change.
