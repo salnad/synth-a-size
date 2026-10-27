@@ -153,6 +153,7 @@ impl NiceEguiApp for App {
         // gestures, before this frame draws them.
         host.forward_midi_moves();
         self.interface.show(ui, &host);
+        crate::controls::file_dialog::show_alerts(ui.ctx());
         if crate::controls::text_editor::take_window_focus_request(ui.ctx()) {
             // As the chat's fields: ask for the keyboard when the focus
             // setting does (its default without a chat).

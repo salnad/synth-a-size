@@ -100,6 +100,11 @@ struct Dialogs {
     parent: Option<PlatformHandle>,
     pending: Vec<(egui::Id, Pending)>,
     answered: Vec<(egui::Id, Answer)>,
+    /// Alerts asked for and not yet shown (title, message).
+    alerts: Vec<(String, String)>,
+    /// The ids alerts were shown under, whose answers nobody takes.
+    alert_ids: Vec<egui::Id>,
+    shown_alerts: u64,
 }
 
 #[derive(Clone, Default)]
@@ -170,6 +175,60 @@ pub fn open(ctx: &egui::Context, id: egui::Id, request: &FileRequest) {
         }),
     };
     start(ctx, id, future);
+}
+
+/// `AlertWindow::showNativeDialogBox(title, message, false)`: asks for a
+/// native message box with an OK button, which the editor shows after the
+/// frame ([`show_alerts`]).
+pub fn alert(ctx: &egui::Context, title: &str, message: &str) {
+    with_dialogs(ctx, |dialogs| {
+        dialogs
+            .alerts
+            .push((title.to_string(), message.to_string()))
+    });
+    ctx.request_repaint();
+}
+
+/// The alerts asked for and not yet shown (title, message).
+pub fn queued_alerts(ctx: &egui::Context) -> Vec<(String, String)> {
+    with_dialogs(ctx, |dialogs| dialogs.alerts.clone())
+}
+
+/// Shows the alerts asked for, each as a native message box attached to the
+/// editor's window, without waiting for them.
+pub fn show_alerts(ctx: &egui::Context) {
+    let (alerts, parent) = with_dialogs(ctx, |dialogs| {
+        let done: Vec<egui::Id> = dialogs.alert_ids.clone();
+        dialogs.answered.retain(|(id, _)| !done.contains(id));
+        dialogs
+            .alert_ids
+            .retain(|id| dialogs.pending.iter().any(|(open, _)| open == id));
+        (std::mem::take(&mut dialogs.alerts), dialogs.parent.clone())
+    });
+    for (title, message) in alerts {
+        let mut dialog = rfd::AsyncMessageDialog::new()
+            .set_level(rfd::MessageLevel::Info)
+            .set_title(&title)
+            .set_description(&message)
+            .set_buttons(rfd::MessageButtons::Ok);
+        if let Some(parent) = &parent {
+            dialog = dialog.set_parent(parent);
+        }
+        let id = with_dialogs(ctx, |dialogs| {
+            dialogs.shown_alerts += 1;
+            let id = egui::Id::unique("alert").with(dialogs.shown_alerts);
+            dialogs.alert_ids.push(id);
+            id
+        });
+        start(
+            ctx,
+            id,
+            Box::pin(async move {
+                dialog.show().await;
+                None
+            }),
+        );
+    }
 }
 
 /// Waits on `future` as the dialog under `id`.

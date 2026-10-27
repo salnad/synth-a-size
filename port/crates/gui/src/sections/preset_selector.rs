@@ -15,7 +15,7 @@ use sas_preset::registry::registry;
 use sas_preset::user_folders::{self, Kind, PRESET_EXTENSION};
 
 use super::advanced;
-use super::preset_browser::PresetBrowser;
+use super::preset_browser::{self, PresetBrowser};
 use super::{MenuOwner, Panel};
 use crate::controls::file_dialog::{self, FileRequest};
 use crate::controls::path::Path;
@@ -234,13 +234,13 @@ pub fn show(
         .shape_button("preset previous", arrow(Shape::Prev), preset.previous)
         .clicked
     {
-        browser.jump_to_preset(model, -1);
+        browser.jump_to_preset(&panel.ui.ctx().clone(), model, -1);
     }
     if panel
         .shape_button("preset next", arrow(Shape::Next), preset.next)
         .clicked
     {
-        browser.jump_to_preset(model, 1);
+        browser.jump_to_preset(&panel.ui.ctx().clone(), model, 1);
     }
 
     // The save button opens the save section (G7c).
@@ -280,8 +280,9 @@ pub fn show(
     let ctx = panel.ui.ctx().clone();
     // importPreset and exportPreset: the preset is external to the list.
     if let Some(Some(path)) = file_dialog::take_result(&ctx, open_dialog()) {
-        if model.load_preset_file(&path).is_ok() {
-            browser.external_preset_loaded(Some(path));
+        match model.load_preset_file(&path) {
+            Ok(()) => browser.external_preset_loaded(Some(path)),
+            Err(error) => preset_browser::alert_load_error(&ctx, &error),
         }
     }
     if let Some(Some(path)) = file_dialog::take_result(&ctx, export_dialog()) {

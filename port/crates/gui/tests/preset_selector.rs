@@ -15,7 +15,7 @@ use nice_plug::context::gui::{GuiContext, GuiContextInner};
 use nice_plug::context::PluginApi;
 use nice_plug::prelude::{FloatParam, FloatRange, Param, ParamPtr, PluginState};
 use sas_engine::Tuning;
-use sas_gui::controls::text_editor;
+use sas_gui::controls::{file_dialog, text_editor};
 use sas_gui::layout::{FullLayout, HeaderLayout, Rect};
 use sas_gui::scope::Scope;
 use sas_gui::sections::delete_section::DeleteLayout;
@@ -114,6 +114,9 @@ impl EditorModel for Synth {
     fn load_preset_file(&self, path: &Path) -> Result<(), String> {
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
         self.calls.lock().unwrap().push(format!("load {name}"));
+        if name.contains("broken") {
+            return Err("Preset file is corrupted.".to_string());
+        }
         *self.active_file.lock().unwrap() = Some(path.to_path_buf());
         Ok(())
     }
@@ -754,4 +757,40 @@ fn the_row_menu_deletes_a_preset_after_asking() {
         .0
         .join(format!("Presets/Lead 2.{PRESET_EXTENSION}"))
         .exists());
+}
+
+/// A preset picked in the list that doesn't load says why
+/// (`newPresetSelected`'s "Error opening preset"); stepping through an
+/// external preset's folder doesn't (`PresetBrowser::loadFromFile`).
+#[test]
+fn a_preset_that_doesnt_load_says_why_when_picked() {
+    let folder = Folder::new("broken", &[preset("broken"), preset("fine")]);
+    let fixture = Fixture::new();
+    *fixture.synth.data_directory.lock().unwrap() = Some(folder.0.clone());
+    fixture
+        .interface
+        .borrow_mut()
+        .set_preset_browser_visible(true);
+    let mut harness = fixture.harness();
+    click(&mut harness, list_row(&fixture, 0));
+    assert_eq!(
+        file_dialog::queued_alerts(&harness.ctx),
+        [(
+            "Error opening preset".to_string(),
+            "There was an error open the preset. Preset file is corrupted.".to_string()
+        )]
+    );
+
+    let fixture = Fixture::new();
+    fixture
+        .interface
+        .borrow_mut()
+        .external_preset_loaded(Some(folder.0.join("Presets").join(preset("fine"))));
+    let mut harness = fixture.harness();
+    click(&mut harness, centre(fixture.header().preset.next));
+    assert_eq!(
+        *fixture.synth.calls.lock().unwrap(),
+        [format!("load {}", preset("broken"))]
+    );
+    assert!(file_dialog::queued_alerts(&harness.ctx).is_empty());
 }

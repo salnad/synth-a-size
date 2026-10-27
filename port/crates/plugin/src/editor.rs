@@ -365,7 +365,16 @@ impl EditorModel for PluginModel {
     }
 
     fn load_preset_file(&self, path: &Path) -> Result<(), String> {
-        let state = state::plugin_state_from_file(path).map_err(|error| error.to_string())?;
+        // SynthBase::loadFromFile's reasons: none for a missing file.
+        if !path.exists() {
+            return Err(String::new());
+        }
+        let state = state::plugin_state_from_file(path).map_err(|error| match error {
+            sas_preset::Error::NewerVersion(_) => {
+                "Preset was created with a newer version.".to_string()
+            }
+            _ => "Preset file is corrupted.".to_string(),
+        })?;
         let gui = lock(&self.gui)
             .clone()
             .ok_or("the editor isn't connected to the host")?;
@@ -461,6 +470,40 @@ mod tests {
     use sas_engine::edit_bus::EditBus;
     use sas_engine::keyboard::keyboard;
     use sas_preset::InitContent;
+
+    #[test]
+    fn a_preset_that_doesnt_load_gives_upstreams_reason() {
+        let (edits, _consumer) =
+            EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+        let params = Arc::new(SynthParams::new(edits));
+        let (_writer, telemetry) = Telemetry::new(Arc::default());
+        let model = PluginModel::new(
+            params,
+            telemetry,
+            keyboard().0,
+            Arc::new(MidiLearn::in_memory()),
+            None,
+        );
+        let folder = std::env::temp_dir().join(format!("sas-load-errors-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let corrupted = folder.join("corrupted.preset");
+        std::fs::write(&corrupted, "{ not json").unwrap();
+        let newer = folder.join("newer.preset");
+        std::fs::write(&newer, r#"{"synth_version": "99.0.0", "settings": {}}"#).unwrap();
+        assert_eq!(
+            model.load_preset_file(&folder.join("missing.preset")),
+            Err(String::new())
+        );
+        assert_eq!(
+            model.load_preset_file(&corrupted),
+            Err("Preset file is corrupted.".to_string())
+        );
+        assert_eq!(
+            model.load_preset_file(&newer),
+            Err("Preset was created with a newer version.".to_string())
+        );
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
 
     #[test]
     fn the_preset_name_follows_renames() {
