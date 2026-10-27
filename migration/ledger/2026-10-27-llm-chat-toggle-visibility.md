@@ -19,8 +19,11 @@ empty top-left.
 **Changed**
 
 - `sas-gui`:
-  - `Interface::logo_shown`: no wavetable editor, no save section, no
-    delete section. `ChatPlacement::logo_shown` carries it.
+  - `Interface::logo_shown`: the logo shows and takes clicks. That means
+    no wavetable editor replaces the header, and nothing that closes on a
+    click outside it covers the logo (the save and delete sections, listed
+    in one `covered` array so more can be added).
+    `ChatPlacement::logo_shown` carries it.
   - `ChatPanel` draws its toggle only while the logo shows, so a click
     there reaches the wavetable editor or closes the save section, as
     upstream.
@@ -43,7 +46,18 @@ empty top-left.
   - with the save section open, the toggle is hidden, and a click at the
     logo closes the save section without opening the drawer.
   - Drawing the toggle unconditionally fails all three.
+- `cargo test -p sas-gui --test preset_selector`: 1 new test. The preset
+  browser keeps the logo; the delete section (opened from a row's menu)
+  hides it; closing the section brings it back. Leaving the delete section
+  out of `covered` fails it.
 - Clippy `-D warnings` for `sas-gui` and `sas-plugin` and rustfmt are clean.
   All `sas-gui` tests pass.
+
+**Review (#177).** UI Reviewer approved at 29fc025, with a mutation check of
+the three composed tests. Its nit, a delete-section test, is above. Its
+follow-up for #172's popup browser, whose closing areas cover the logo and
+close the browser on a click there (`closingAreaClicked`), is left to
+whichever of #172 and this merges second: add the popup browser to
+`covered`, with a test like the save section's.
 
 **Blocked:** nothing.

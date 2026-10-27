@@ -813,14 +813,17 @@ impl Interface {
         }
     }
 
-    /// Whether our logo section shows: the header is drawn (no wavetable
-    /// editor replaces it, `showWavetableEditSection`) and no full-window
-    /// overlay covers it (the save and delete sections, whose clicks outside
-    /// their box close them). The preset browser keeps the header.
+    /// Whether our logo section shows and takes clicks, so the chat's toggle
+    /// can be there: the header is drawn (no wavetable editor replaces it,
+    /// `showWavetableEditSection`), and nothing that closes on a click
+    /// outside it covers the logo (the save and delete sections over the
+    /// whole interface). The preset browser keeps the header and leaves the
+    /// logo alone.
     pub fn logo_shown(&self) -> bool {
-        self.wavetable_editor.is_none()
-            && !self.save_section.is_open()
-            && self.delete_section.is_none()
+        let header_drawn = self.wavetable_editor.is_none();
+        // Each takes a click at the logo to close itself.
+        let covered = [self.save_section.is_open(), self.delete_section.is_some()];
+        header_drawn && !covered.contains(&true)
     }
 
     /// Opens the save section for the preset next frame, as the header's
