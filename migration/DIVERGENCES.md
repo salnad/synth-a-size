@@ -779,7 +779,7 @@ MCP server) extends this entry when it lands.*
 - **Why:** the port ships no factory content or installer (rule 3), and the
   store needs upstream's accounts and servers (rule 4). Without them, the
   search box is what upstream shows once content is installed.
-- **Approved:** pending.
+- **Approved:** coordinator, 2026-10-26.
 
 ### D27. A cycle of modulation amounts reads at a share instead of hanging
 
