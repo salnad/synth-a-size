@@ -33,7 +33,10 @@ items the line editors still lacked
 - **Import LFO** (`importLfo`): a native open dialog titled "Import LFO" in
   the user's LFOs folder for `.vitallfo` files; the choice loads with the
   LFO extension (`loadFile(choice.withFileExtension(...))`), becoming the
-  current file and naming the shape.
+  current file and naming the shape, through `load_line_file` (#200). The
+  section takes Import and Export from `show_line_controls`' event, which
+  the Matrix tab's remap editor shares; its base menu offers neither, and
+  gets the point entry.
 - **Export LFO** (`exportLfo`): a native save dialog titled "Export LFO" in
   the same folder, suggesting no name; the shape is written with the LFO
   extension and then named after the file, so the file keeps the earlier
