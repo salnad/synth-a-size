@@ -238,6 +238,12 @@ pub trait EditorModel: Send + Sync + 'static {
         None
     }
 
+    /// `LoadSave::saveWindowSize`: keep `window_size`, the editor's width as
+    /// a share of upstream's 1400, for the next editor to open at.
+    fn save_window_size(&self, window_size: f32) {
+        let _ = window_size;
+    }
+
     /// `LoadSave::setDataDirectory`: keep `folder` as the data folder.
     fn set_data_directory(&self, folder: PathBuf) {
         let _ = folder;

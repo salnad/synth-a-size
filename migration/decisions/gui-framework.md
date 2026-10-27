@@ -234,6 +234,13 @@ repeat the check in FL Studio where the note says so.
       plugins in its own window, and whether it honours a plugin's own
       resize on macOS is what this item settles; if it doesn't, the overlay
       fallback should take over.
+11. **The saved window size.** Resize the plugin window by its corner,
+    wait a second, close it, then insert a second instance and open it.
+    - The new instance should open at the size the first was left at,
+      with upstream's 1400:820 ratio; so should every instance after the
+      project is closed and reopened.
+    - Open the chat's drawer, then close it: the size saved is the
+      editor's without the drawer, so a new instance opens no wider.
 
 ## Vendored egui-baseview
 

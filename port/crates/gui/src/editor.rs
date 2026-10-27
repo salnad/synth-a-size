@@ -6,9 +6,11 @@
 //!
 //! Window behaviour follows upstream's plugin editor
 //! (`vital/src/plugin/synth_editor.cpp`, `common/border_bounds_constrainer.cpp`):
-//! it opens at the default 1400 × 820 and the host may resize it down to
-//! 350 × 205, keeping the 1400:820 aspect ratio. Upstream also scales the
-//! first size by a factor saved in its config file; the port does not yet.
+//! it opens at 1400 × 820 scaled by the size last saved in the config
+//! (`LoadSave::loadWindowSize`), and the host may resize it down to
+//! 350 × 205, keeping the 1400:820 aspect ratio. Once a new size has held,
+//! the editor saves it (`BorderBoundsConstrainer::resizeEnd`), for the next
+//! instance to open at (D30).
 //!
 //! The chat's drawer (D13) widens the window beside that layout while it is
 //! open ([`crate::drawer`]): the editor asks the host for the wider window,
@@ -57,12 +59,68 @@ pub struct EditorState {
 /// The editor's state at the default size, with the drawer closed. Keep one
 /// per plugin instance so they survive closing and reopening the window.
 pub fn default_state() -> EditorState {
+    state_for_window_size(1.0)
+}
+
+/// The editor's state at upstream's size scaled by `window_size`
+/// (`SynthEditor`'s constructor: `kDefaultWindowWidth` and
+/// `kDefaultWindowHeight` times it, rounded), with the drawer closed.
+pub fn state_for_window_size(window_size: f32) -> EditorState {
+    let width = (window_size * DEFAULT_WIDTH as f32).round().max(MIN_WIDTH);
+    let height = (window_size * DEFAULT_HEIGHT as f32)
+        .round()
+        .max(MIN_HEIGHT);
     EditorState {
-        window: EguiEditorState::from_size(
-            LogicalSize::new(DEFAULT_WIDTH as f64, DEFAULT_HEIGHT as f64),
-            1.0,
-        ),
+        window: EguiEditorState::from_size(LogicalSize::new(width as f64, height as f64), 1.0),
         drawer: DrawerState::default(),
+    }
+}
+
+/// How long a new editor size must hold before it is saved: a drag's
+/// sizes in between aren't (upstream saves at `resizeEnd`).
+pub const WINDOW_SIZE_SETTLE: f64 = 0.5;
+
+/// Follows the editor's size and says when to save it: a size other than
+/// the one last seen, once it has held for [`WINDOW_SIZE_SETTLE`] seconds.
+/// The first size seen is the one the window opened at, not saved.
+#[derive(Clone, Debug, Default)]
+pub struct WindowSizeSaver {
+    last: Option<f32>,
+    changed: Option<(f32, f64)>,
+}
+
+impl WindowSizeSaver {
+    /// The editor at `window_size` (its width over 1400) at time `now`:
+    /// the size to save, if one is due.
+    pub fn observe(&mut self, window_size: f32, now: f64) -> Option<f32> {
+        let same = |a: f32, b: f32| (a - b).abs() < 1e-4;
+        let Some(last) = self.last else {
+            self.last = Some(window_size);
+            return None;
+        };
+        if same(window_size, last) {
+            self.changed = None;
+            return None;
+        }
+        match self.changed {
+            Some((size, since)) if same(size, window_size) => {
+                if now - since < WINDOW_SIZE_SETTLE {
+                    return None;
+                }
+                self.last = Some(window_size);
+                self.changed = None;
+                Some(window_size)
+            }
+            _ => {
+                self.changed = Some((window_size, now));
+                None
+            }
+        }
+    }
+
+    /// Whether a size is waiting to hold.
+    pub fn is_waiting(&self) -> bool {
+        self.changed.is_some()
     }
 }
 
@@ -98,6 +156,7 @@ pub struct App {
     drawer: DrawerState,
     /// A size asked of the host for the drawer, until it answers.
     resize_pending: Option<drawer::PendingResize>,
+    window_size: WindowSizeSaver,
     #[cfg(feature = "focus-spike")]
     focus_spike: crate::focus_spike::FocusSpike,
 }
@@ -115,6 +174,7 @@ impl App {
             drawer_followed: None,
             drawer,
             resize_pending: None,
+            window_size: WindowSizeSaver::default(),
             #[cfg(feature = "focus-spike")]
             focus_spike: Default::default(),
         }
@@ -156,6 +216,28 @@ impl App {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
         self.drawer_followed = Some(open);
+    }
+}
+
+impl App {
+    /// Saves the editor's share of the window, without the drawer, once a
+    /// new size has held; not while the drawer's resize awaits the host.
+    fn save_window_size(&mut self, ctx: &egui::Context, window: egui::Rect) {
+        if self.resize_pending.is_some() {
+            return;
+        }
+        let editor =
+            drawer::split(window, ctx.pixels_per_point(), self.interface.drawer_open()).editor;
+        let now = ctx.input(|input| input.time);
+        if let Some(size) = self
+            .window_size
+            .observe(editor.width() / DEFAULT_WIDTH as f32, now)
+        {
+            self.model.save_window_size(size);
+        }
+        if self.window_size.is_waiting() {
+            ctx.request_repaint_after(std::time::Duration::from_secs_f64(WINDOW_SIZE_SETTLE));
+        }
     }
 }
 
@@ -327,6 +409,7 @@ impl NiceEguiApp for App {
             );
         }
         self.follow_drawer(ui.ctx(), area);
+        self.save_window_size(ui.ctx(), area);
         #[cfg(feature = "focus-spike")]
         self.focus_spike.show(ui, frame);
     }
@@ -684,6 +767,83 @@ mod tests {
         window.open();
         window.close();
         assert_eq!(calls(&model), [true, false]);
+    }
+
+    /// Records `save_window_size` calls.
+    #[derive(Default)]
+    struct SizeRecorder(Mutex<Vec<f32>>);
+
+    impl EditorModel for SizeRecorder {
+        fn preset_name(&self) -> String {
+            String::new()
+        }
+
+        fn save_window_size(&self, window_size: f32) {
+            self.0.lock().unwrap().push(window_size);
+        }
+    }
+
+    /// `SynthEditor`'s constructor: upstream's size scaled and rounded, no
+    /// smaller than the minimum window.
+    #[test]
+    fn the_state_opens_at_the_saved_size() {
+        let size = |window_size| {
+            let state = state_for_window_size(window_size);
+            let size = state.window.size().to_logical::<f64>(1.0);
+            (size.width, size.height)
+        };
+        assert_eq!(size(1.0), (1400.0, 820.0));
+        assert_eq!(size(1.5), (2100.0, 1230.0));
+        assert_eq!(size(0.6005), (841.0, 492.0));
+        assert_eq!(size(0.1), (350.0, 205.0));
+    }
+
+    /// A new size is saved once it has held for half a second: not the size
+    /// the window opened at, and not the sizes a drag passes through.
+    #[test]
+    fn a_size_is_saved_once_it_holds() {
+        let mut saver = WindowSizeSaver::default();
+        assert_eq!(saver.observe(1.0, 0.0), None);
+        assert_eq!(saver.observe(1.1, 1.0), None);
+        assert_eq!(saver.observe(1.2, 1.2), None);
+        assert_eq!(saver.observe(1.2, 1.6), None);
+        assert!(saver.is_waiting());
+        assert_eq!(saver.observe(1.2, 1.71), Some(1.2));
+        assert!(!saver.is_waiting());
+        assert_eq!(saver.observe(1.2, 5.0), None);
+        // Back to where it was before it settles: nothing to save.
+        assert_eq!(saver.observe(0.8, 6.0), None);
+        assert_eq!(saver.observe(1.2, 6.2), None);
+        assert!(!saver.is_waiting());
+    }
+
+    /// The editor saves its own share of the window: opening the drawer
+    /// widens the window and saves nothing; a corner drag saves the
+    /// editor's width over 1400 once it holds.
+    #[test]
+    fn the_editor_saves_its_width_without_the_drawer() {
+        let model = Arc::new(SizeRecorder::default());
+        let mut app = App::new(model.clone(), DrawerState::default());
+        let ctx = egui::Context::default();
+        let frame = |app: &mut App, time: f64, width: f32, height: f32| {
+            let input = egui::RawInput {
+                time: Some(time),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| {
+                let window = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(width, height));
+                app.save_window_size(ui.ctx(), window);
+            });
+            output.textures_delta.clear();
+        };
+        frame(&mut app, 0.0, 1400.0, 820.0);
+        app.interface.set_drawer_open(true);
+        frame(&mut app, 0.1, 1760.0, 820.0);
+        frame(&mut app, 1.0, 1760.0, 820.0);
+        assert_eq!(*model.0.lock().unwrap(), Vec::<f32>::new());
+        frame(&mut app, 2.0, 2640.0, 1230.0);
+        frame(&mut app, 2.6, 2640.0, 1230.0);
+        assert_eq!(*model.0.lock().unwrap(), [1.5]);
     }
 
     /// Only VST3's answer is awaited: CLAP accepts without a call, and

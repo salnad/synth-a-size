@@ -150,6 +150,9 @@ impl<E: Engine> SynthPlugin<E> {
         let (writer, telemetry) = Telemetry::with_equalizer_memory(audio_memory, equalizer_memory);
         let (keyboard, keyboard_consumer) = keyboard();
         let params = Arc::new(SynthParams::new(edits));
+        // SynthEditor's constructor: a new editor opens at the size last
+        // saved, in any instance.
+        let window_size = midi_learn.config_file().map_or(1.0, config::window_size);
         SynthPlugin {
             chat: Arc::new(chat(params.clone())),
             params,
@@ -162,7 +165,7 @@ impl<E: Engine> SynthPlugin<E> {
             ),
             telemetry,
             keyboard,
-            editor_state: sas_gui::default_state(),
+            editor_state: sas_gui::state_for_window_size(window_size),
         }
     }
 
@@ -343,6 +346,25 @@ nice_export_vst3!(SynthASize);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `SynthEditor`'s constructor: a new instance's editor opens at the
+    /// size saved in the config, and at upstream's default without one.
+    #[test]
+    fn a_new_instance_opens_at_the_saved_window_size() {
+        let size = |plugin: &SynthASize| {
+            let size = plugin.editor_state.window.size().to_logical::<f64>(1.0);
+            (size.width, size.height)
+        };
+        let dir = std::env::temp_dir().join(format!("sas-plugin-window-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        config::save_window_size(&path, 1.5).unwrap();
+        let midi_learn = Arc::new(MidiLearn::with_config_file(path));
+        let plugin = SynthPlugin::with_midi_learn(SoundEngineHost::default(), midi_learn);
+        assert_eq!(size(&plugin), (2100.0, 1230.0));
+        assert_eq!(size(&SynthASize::in_memory()), (1400.0, 820.0));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn upstream_sources_exist() {

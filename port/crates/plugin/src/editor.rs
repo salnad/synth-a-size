@@ -412,6 +412,12 @@ impl EditorModel for PluginModel {
         lock(&self.data_directory).clone()
     }
 
+    fn save_window_size(&self, window_size: f32) {
+        if let Some(path) = self.midi_learn.config_file() {
+            let _ = crate::config::save_window_size(path, window_size);
+        }
+    }
+
     fn set_data_directory(&self, folder: PathBuf) {
         if let Some(path) = self.midi_learn.config_file() {
             let _ = crate::config::save_data_directory(path, &folder);

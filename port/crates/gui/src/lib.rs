@@ -38,8 +38,8 @@ pub use chat::{
     ChatHost, ChatMode, ChatPanel, ChatPlacement, ChatSettingsView, ChatStyle, ChatView, FocusMode,
 };
 pub use editor::{
-    create as create_editor, default_state, drawer_resize, show_chat, Editor, EditorError,
-    EditorHandle, EditorState, EditorWindow,
+    create as create_editor, default_state, drawer_resize, show_chat, state_for_window_size,
+    Editor, EditorError, EditorHandle, EditorState, EditorWindow, WindowSizeSaver,
 };
 pub use host::{Host, HostParam, OpenGestures};
 pub use interface::{EditorModel, Interface, Route, Tab, PRODUCT_NAME};
