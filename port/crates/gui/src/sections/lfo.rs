@@ -12,10 +12,11 @@
 
 use std::path::{Path as FsPath, PathBuf};
 
-use sas_preset::user_folders::{self, Kind};
+use sas_preset::user_folders::{self, Kind, LFO_EXTENSION};
 
 use super::{popup_browser, MenuOwner, Panel};
 use crate::colour::Colour;
+use crate::controls::file_dialog::{self, FileRequest};
 use crate::controls::icon::fill_path;
 use crate::controls::line_editor::{
     paint_pattern as line_paint_pattern, LineEditor, LineEditorEvent, LineSettings, LineTarget,
@@ -27,7 +28,7 @@ use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
 use crate::controls::slider::{Placement, Slider, SliderStyle};
 use crate::controls::tempo::{self, TempoSelector};
 use crate::fonts::Face;
-use crate::interface::EditorModel;
+use crate::interface::{self, EditorModel};
 use crate::layout::{PresetSelectorLayout, Rect};
 use crate::local;
 use crate::paint::PixelPainter;
@@ -533,6 +534,46 @@ impl LfoSection {
         self.browse_request.borrow_mut().take()
     }
 
+    /// `importLfo` and `exportLfo`: the menu's choices open a native dialog
+    /// in the user's LFO folder for `.vitallfo` files, and an answer is
+    /// carried out. An imported file loads with the LFO extension, as
+    /// `loadFile(choice.withFileExtension(...))` does. An export writes the
+    /// shape, then names it after the file: the file keeps the shape's
+    /// earlier name, as upstream's does (`stateToJson` before `setName`).
+    fn import_and_export(&self, panel: &mut Panel, import: bool, export: bool) {
+        let ctx = panel.ui.ctx().clone();
+        let model = panel.host.model();
+        let import_id = egui::Id::unique("import lfo").with(self.index);
+        let export_id = egui::Id::unique("export lfo").with(self.index);
+        if import || export {
+            let filters = vec![("LFO".to_string(), vec![LFO_EXTENSION.to_string()])];
+            let (title, id) = if import {
+                ("Import LFO", import_id)
+            } else {
+                ("Export LFO", export_id)
+            };
+            let mut request = if import {
+                FileRequest::open(title, filters)
+            } else {
+                // The chooser starts at the folder, suggesting no name.
+                let mut request = FileRequest::save(title, filters, "");
+                request.file_name = None;
+                request
+            };
+            if let Some(folder) = interface::user_folder(model, Kind::Lfos) {
+                request = request.in_folder(folder);
+            }
+            file_dialog::open(&ctx, id, &request);
+        }
+        if let Some(Some(path)) = file_dialog::take_result(&ctx, import_id) {
+            self.load_file(model, &path.with_extension(LFO_EXTENSION));
+        }
+        if let Some(Some(path)) = file_dialog::take_result(&ctx, export_id) {
+            let name = export_shape(&self.editor.shape(panel), &path);
+            self.editor.set_name(panel, &name);
+        }
+    }
+
     /// The editor and the controls that set it up: the grid sizes, paint
     /// and its pattern, smooth, and the shape's name in the strip.
     fn show_editor(&self, panel: &mut Panel, layout: &LfoLayout) {
@@ -554,7 +595,8 @@ impl LfoSection {
             smooth: layout.smooth,
             preset_selector: layout.preset_selector,
         };
-        show_line_controls(panel, &controls, &layout);
+        let event = show_line_controls(panel, &controls, &layout);
+        self.import_and_export(panel, event.import, event.export);
     }
 }
 
@@ -728,4 +770,38 @@ fn paint_pattern_selector(panel: &mut Panel, bounds: Rect, pattern: usize, activ
         // controls::path doesn't port yet; a round-ended polyline matches.
         pixels.polyline(&points, line_width as f32, stroke);
     });
+}
+
+/// `exportLfo`'s file: `shape` written to `path` with the LFO extension, as
+/// it is (its earlier name included). Returns the name the shape takes, the
+/// file's name.
+fn export_shape(shape: &sas_common::line_generator::LineGenerator, path: &FsPath) -> String {
+    let path = path.with_extension(LFO_EXTENSION);
+    let _ = std::fs::write(&path, shape.to_json().dump());
+    path.file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::*;
+    use sas_common::line_generator::LineGenerator;
+
+    /// The export takes the LFO extension and writes the shape under its
+    /// earlier name; the new name is the file's.
+    #[test]
+    fn an_export_writes_the_shape_before_renaming_it() {
+        let folder = std::env::temp_dir().join(format!("sas-lfo-export-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let mut shape = LineGenerator::new(LineGenerator::DEFAULT_RESOLUTION);
+        shape.init_triangle();
+        shape.set_name("Before");
+        let name = export_shape(&shape, &folder.join("Wobble.txt"));
+        assert_eq!(name, "Wobble");
+        let written =
+            std::fs::read_to_string(folder.join(format!("Wobble.{LFO_EXTENSION}"))).unwrap();
+        assert!(written.contains(r#""name":"Before""#), "{written}");
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
 }
