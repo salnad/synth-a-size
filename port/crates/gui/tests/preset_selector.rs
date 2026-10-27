@@ -1019,3 +1019,65 @@ fn the_browser_takes_no_keys_while_saving() {
     assert!(browser_visible(&fixture));
     assert_eq!(save_state(&fixture), (true, false));
 }
+
+/// Drags `from` 40 pixels up, step by step.
+fn drag_up(harness: &mut Harness, from: Pos2) {
+    harness.event(Event::PointerMoved(from));
+    harness.step();
+    button(harness, from, true);
+    for step in 1..=4 {
+        harness.event(Event::PointerMoved(
+            from + egui::vec2(0.0, -10.0 * step as f32),
+        ));
+        harness.step();
+    }
+    button(harness, from + egui::vec2(0.0, -40.0), false);
+    harness.step();
+}
+
+/// The save section takes a drag outside its box, as upstream's overlay
+/// covers the editor: the knob beneath doesn't move, and the drag's mouse
+/// up outside the box closes the section (`mouseUp`).
+#[test]
+fn the_save_section_takes_drags_meant_for_controls_beneath() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    click(&mut harness, centre(fixture.header().save_button));
+    assert_eq!(save_state(&fixture), (true, false));
+    let layout = FullLayout::new(&fixture.skin, 1400, 820);
+    let top = Scope::top(&fixture.skin, layout.size_ratio);
+    let synthesis = SynthesisLayout::new(&top, layout.main);
+    let osc = OscillatorLayout::new(
+        &top.within(oscillator::SKIN),
+        synthesis.oscillators[0],
+        false,
+    );
+    fixture.recorder.log.lock().unwrap().clear();
+    drag_up(&mut harness, centre(osc.distortion_amount));
+    assert_eq!(*fixture.recorder.log.lock().unwrap(), Vec::<String>::new());
+    assert_eq!(save_state(&fixture), (false, false));
+}
+
+/// The delete section takes a drag outside its box: the header's volume
+/// beneath doesn't move, and the drag's mouse up closes the section.
+#[test]
+fn the_delete_section_takes_drags_meant_for_controls_beneath() {
+    let folder = copied_data("delete-drag");
+    let fixture = Fixture::new();
+    *fixture.synth.data_directory.lock().unwrap() = Some(folder.0.clone());
+    fixture
+        .interface
+        .borrow_mut()
+        .set_preset_browser_visible(true);
+    let mut harness = fixture.harness();
+    let row = list_row(&fixture, 1);
+    right_click(&mut harness, row);
+    choose_row(&mut harness, row.x, row.y, 2);
+    harness.step();
+    assert!(fixture.interface.borrow().deleting().is_some());
+    fixture.recorder.log.lock().unwrap().clear();
+    drag_up(&mut harness, centre(fixture.header().volume));
+    assert_eq!(*fixture.recorder.log.lock().unwrap(), Vec::<String>::new());
+    assert!(fixture.interface.borrow().deleting().is_none());
+    assert_eq!(shown(&fixture).len(), 3);
+}
