@@ -856,7 +856,8 @@ fn drawn_creator() -> WavetableCreator {
 
 /// `set_wavetable_frame` renders only the drawn frame (upstream's
 /// `render(position)`) into the shared table and sends it to the engine,
-/// which writes it over that frame; the document takes the creator.
+/// which writes it over that frame. It is an audition: the document keeps
+/// its creator and the revision doesn't move.
 #[test]
 fn a_drawn_frame_reaches_the_engine_and_the_shared_table() {
     let _rng = ENGINE_RNG.lock().unwrap_or_else(|p| p.into_inner());
@@ -869,16 +870,18 @@ fn a_drawn_frame_reaches_the_engine_and_the_shared_table() {
     let creator = drawn_creator();
     let mut expected = (*before).clone();
     creator.clone().render_frame(&mut expected, 3);
+    let revision = edits.revision();
     edits.set_wavetable_frame(0, creator.clone(), 3).unwrap();
     let shared = edits.wavetable(0).unwrap();
     assert_eq!(shared.frame(3), expected.frame(3));
     assert_ne!(shared.frame(3), before.frame(3));
     assert_eq!(shared.frame(2), before.frame(2));
     assert_eq!(shared.num_frames(), before.num_frames());
+    assert_eq!(edits.revision(), revision);
     edits.with_document(|document| {
         assert_eq!(
             document.state.wavetables[0].to_json().dump(),
-            creator.to_json().dump()
+            corpus_wavetable().to_json().dump()
         );
     });
 
@@ -925,7 +928,7 @@ fn drawn_frames_coalesce_and_keep_their_order() {
 }
 
 /// A restore drops a frame queued before it; a frame past the table's last
-/// changes only the creator; bad indices change nothing.
+/// changes nothing; bad indices change nothing.
 #[test]
 fn drawn_frames_respect_restores_and_bounds() {
     let (edits, mut consumer) = EditBus::new(init_document());
@@ -937,16 +940,14 @@ fn drawn_frames_respect_restores_and_bounds() {
 
     recorder.0.clear();
     let revision = edits.revision();
+    let init = edits.with_document(|document| document.state.wavetables[0].to_json().dump());
     // The init table has one frame.
     edits.set_wavetable_frame(0, drawn_creator(), 100).unwrap();
-    assert!(edits.revision() > revision);
+    assert_eq!(edits.revision(), revision);
     consumer.drain(&mut recorder);
     assert!(recorder.0.is_empty());
     edits.with_document(|document| {
-        assert_eq!(
-            document.state.wavetables[0].to_json().dump(),
-            drawn_creator().to_json().dump()
-        );
+        assert_eq!(document.state.wavetables[0].to_json().dump(), init);
     });
 
     let revision = edits.revision();
@@ -959,4 +960,104 @@ fn drawn_frames_respect_restores_and_bounds() {
         Err(EditError::BadIndex(257))
     );
     assert_eq!(edits.revision(), revision);
+}
+
+/// Whether two tables hold the same frames.
+fn same_frames(
+    a: &sas_oscillators::sas_wavetable::Wavetable,
+    b: &sas_oscillators::sas_wavetable::Wavetable,
+) -> bool {
+    a.num_frames() == b.num_frames() && (0..a.num_frames()).all(|i| a.frame(i) == b.frame(i))
+}
+
+/// `audition_wavetable` renders the whole creator and swaps it into the
+/// shared table and the engine's, leaving the document and the revision
+/// alone; the commit that ends the drag then takes the document.
+#[test]
+fn an_audition_swaps_the_whole_table_without_touching_the_document() {
+    let _rng = ENGINE_RNG.lock().unwrap_or_else(|p| p.into_inner());
+    let mut synth = fresh_synth();
+    let (edits, mut consumer) = EditBus::new(init_document());
+    edits.set_wavetable(0, corpus_wavetable()).unwrap();
+    consumer.drain(&mut synth);
+    let before = edits.wavetable(0).unwrap();
+
+    let token = edits.audition_token(0).unwrap();
+    let revision = edits.revision();
+    let creator = drawn_creator();
+    let expected = PreparedWavetable::render(creator.clone()).unwrap();
+    assert!(edits.audition_wavetable(0, creator.clone(), token).unwrap());
+    let shared = edits.wavetable(0).unwrap();
+    assert!(same_frames(&shared, expected.wavetable()));
+    assert!(!same_frames(&shared, &before));
+    assert_eq!(edits.revision(), revision);
+    edits.with_document(|document| {
+        assert_eq!(
+            document.state.wavetables[0].to_json().dump(),
+            corpus_wavetable().to_json().dump()
+        );
+    });
+
+    consumer.drain(&mut synth);
+    let engine = with_svh(&synth, |svh| svh.wavetable(0));
+    assert!(same_frames(&engine.borrow(), &shared));
+
+    // A frame drawn after it lands on the auditioned table.
+    edits.set_wavetable_frame(0, creator.clone(), 7).unwrap();
+    consumer.drain(&mut synth);
+    assert_eq!(
+        engine.borrow().frame(7),
+        edits.wavetable(0).unwrap().frame(7)
+    );
+
+    edits.set_wavetable(0, creator.clone()).unwrap();
+    assert!(edits.revision() > revision);
+    edits.with_document(|document| {
+        assert_eq!(
+            document.state.wavetables[0].to_json().dump(),
+            creator.to_json().dump()
+        );
+    });
+    edits.collect_retired();
+    assert_eq!(edits.leaked_payloads(), 0);
+}
+
+/// An audition rendered for a drag that has since been committed, or from
+/// before a restore, changes nothing, so a render finishing late can't
+/// replace the committed table.
+#[test]
+fn stale_auditions_change_nothing() {
+    let (edits, mut consumer) = EditBus::new(init_document());
+    let mut recorder = Recorder::default();
+    edits.set_wavetable(2, corpus_wavetable()).unwrap();
+    consumer.drain(&mut recorder);
+    recorder.0.clear();
+
+    let token = edits.audition_token(2).unwrap();
+    edits.set_wavetable(2, corpus_wavetable()).unwrap();
+    let committed = edits.wavetable(2).unwrap();
+    consumer.drain(&mut recorder);
+    recorder.0.clear();
+    assert!(!edits.audition_wavetable(2, drawn_creator(), token).unwrap());
+    assert!(std::sync::Arc::ptr_eq(
+        &edits.wavetable(2).unwrap(),
+        &committed
+    ));
+    consumer.drain(&mut recorder);
+    assert!(recorder.0.is_empty());
+
+    // Another oscillator's commit doesn't make it stale.
+    let token = edits.audition_token(2).unwrap();
+    edits.set_wavetable(1, corpus_wavetable()).unwrap();
+    assert!(edits.audition_wavetable(2, drawn_creator(), token).unwrap());
+
+    let token = edits.audition_token(2).unwrap();
+    edits.begin_restore(init_document());
+    consumer.drain(&mut recorder);
+    recorder.0.clear();
+    assert!(!edits.audition_wavetable(2, drawn_creator(), token).unwrap());
+    consumer.drain(&mut recorder);
+    assert!(recorder.0.is_empty());
+
+    assert_eq!(edits.audition_token(3), Err(EditError::BadIndex(3)));
 }
