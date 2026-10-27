@@ -63,3 +63,25 @@ symptom.
       and oscilloscope memory.
 - `cargo test -p sas-engine` passes. Clippy `-D warnings` and rustfmt are
   clean for the workspace. No parity tolerance changed.
+
+**Merge-rule waiver (coordinator, 2026-10-27).** Every Linux check was
+green at `a8c18b7`, rebased on `94a4633`. Then #204 and #199 merged, and
+#204 changed `examples/gallery.rs`, so rule (b) ("no commit on `main` since
+the base touches the PR's files") failed. The overlap is code-only and
+merges without conflict:
+- #204's hunks are in `main()`'s view loop (`REF_GUI_FRAMES`, 30 frames for
+  live views).
+- This PR's hunk is in `Live::render`.
+
+For this PR only, rule (b) is waived for overlaps that are code-only and
+merge without conflict, on the same terms as #120 and #158. Rule (a) holds.
+Rule (c) passed on the merged tree (`722a6f6`, rebased on `c3d7611`):
+- the gallery renders all 26 views
+- Python unittests
+- `ledger.py --check` and `--check-frozen`
+- `allowlist-approval`
+- `check_names.sh`
+- rustfmt and clippy `-D warnings`
+- `cargo test -p sas-engine` and `-p sas-parity`
+- x86 render: 2845 hashes checked, 0 problems
+- no-fast-math render: 359 hashes checked, 0 problems
