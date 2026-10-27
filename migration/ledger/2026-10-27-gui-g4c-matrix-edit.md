@@ -32,13 +32,22 @@
     again.
   - The choice selects the row.
 - **Row selection** (`rowSelected`):
-  - A press on a row (`mouseDown`, or on one of its toggles or sliders)
-    selects it. Its selectors select it on a choice instead.
+  - A press on a row's background (`mouseDown`) or a click on one of its
+    toggles (`buttonClicked`) selects it.
+  - Its sliders select it only when their value changes
+    (`sliderValueChanged`); a press that doesn't move one leaves the
+    selection as it was. `Panel::slider_changed` compares the frame's
+    input value with the host's value before it.
+  - Its selectors select it on a choice.
   - A state load that changes a row's bipolar, bypass or stereo selects the
     last such row, as `setAllValues` sends those toggles' `buttonClicked`.
-  - ref-gui's extra highlight on row 1, from its load-before-attach order
-    (see G4c-1's ledger), isn't reproduced. It belongs to the harness, not
-    to the editor.
+  - **Not copied: ref-gui's second highlight.** ref-gui's
+    `modulations_matrix` also highlights row 1. That comes from the
+    harness, which loads the preset before attaching the editor, so the
+    rows see their toggles change as they are built (see G4c-1's ledger).
+    A plugin opening its editor on an already-loaded state doesn't do
+    that, so the port doesn't copy it. That one highlight is a known
+    difference between that view and ref-gui.
 - **Sorting** (`ModulationMatrix::mouseDown`, `sort`):
   - A press on the headings sorts by the column under it, using upstream's
     hit columns (`bipolar_x = source_width + 1.5·x_padding`, ...). Pressing
@@ -72,6 +81,10 @@
     stays empty throughout.
   - `a_row_cannot_modulate_its_own_amount`.
   - `rows_are_selected_by_a_press_and_by_a_load_changing_their_toggles`.
+  - `a_rows_slider_selects_it_only_when_it_moves`: a press on row 2's
+    amount, and one on its morph curve, leave row 1 selected. A drag on the
+    amount selects row 2. The test fails when the amount's change doesn't
+    select the row.
   - `pressing_a_heading_sorts_the_rows`: number descending, back, then
     source ascending.
 - **Unit tests:** the stable sort and connected-first order, the rows

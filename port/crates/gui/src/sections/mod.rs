@@ -292,8 +292,15 @@ impl<'a, 'b> Panel<'a, 'b> {
     /// Shows `slider` at `bounds`: handles its mouse, routes its popup, menu
     /// and text entry to the overlay, and draws it.
     pub fn slider(&mut self, slider: &Slider, bounds: Rect) {
+        self.slider_changed(slider, bounds);
+    }
+
+    /// [`slider`](Self::slider), telling whether this frame's input moved
+    /// its value (`Slider::Listener::sliderValueChanged`).
+    pub fn slider_changed(&mut self, slider: &Slider, bounds: Rect) -> bool {
         let slider = &slider.displayed(self.host.model().hz_frequency_display());
         self.register_destination(slider, bounds);
+        let before = slider.host_value(self.host);
         let (value, hover) = self.slider_input(slider, bounds);
         self.meter(slider, bounds, value);
         slider.paint(
@@ -304,6 +311,7 @@ impl<'a, 'b> Panel<'a, 'b> {
             value,
             hover,
         );
+        value != before
     }
 
     /// `slider`'s `ModulationMeter`, if the engine is modulating it and it

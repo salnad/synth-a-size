@@ -4778,3 +4778,46 @@ fn pressing_a_heading_sorts_the_rows() {
     );
     assert_eq!(&fixture.interface.borrow().matrix().order()[..2], [1, 0]);
 }
+
+/// A row's sliders select it only when they change it
+/// (`sliderValueChanged` → `rowSelected`): a press that doesn't move the
+/// amount leaves the selection, a drag selects the row.
+#[test]
+fn a_rows_slider_selects_it_only_when_it_moves() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    let row = matrix_row(&fixture, 1);
+    let amount = centre(row.amount);
+    press(
+        &mut harness,
+        amount,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    release(
+        &mut harness,
+        amount,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 0);
+    let power = centre(row.power);
+    press(&mut harness, power, PointerButton::Primary, Modifiers::NONE);
+    release(&mut harness, power, PointerButton::Primary, Modifiers::NONE);
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 0);
+
+    drag(
+        &mut harness,
+        amount,
+        amount + egui::vec2(20.0, 0.0),
+        Modifiers::NONE,
+    );
+    assert_ne!(fixture.synth.value("modulation_2_amount"), 0.0);
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 1);
+}

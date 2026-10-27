@@ -745,9 +745,9 @@ impl MatrixTab {
         let scope = panel.scope;
         let pixels = panel.pixels;
         let host = panel.host;
-        // mouseDown on the row, or on a control that changes it
-        // (buttonClicked, sliderValueChanged); the selectors select on a
-        // choice.
+        // mouseDown on the row's background or a toggle (buttonClicked);
+        // its sliders select it when they move (sliderValueChanged), its
+        // selectors on a choice.
         let pressed_at = panel.ui.input(|input| {
             input
                 .pointer
@@ -755,9 +755,12 @@ impl MatrixTab {
                 .then(|| input.pointer.interact_pos())
                 .flatten()
         });
-        let select = pressed_at.is_some_and(|pos| {
-            let to_pixels = |rect: Rect| pixels.rect(rect.into()).contains(pos);
-            to_pixels(row.bounds) && !to_pixels(row.source) && !to_pixels(row.destination)
+        let mut select = pressed_at.is_some_and(|pos| {
+            let within = |rect: Rect| pixels.rect(rect.into()).contains(pos);
+            within(row.bounds)
+                && ![row.source, row.destination, row.power, row.amount]
+                    .into_iter()
+                    .any(within)
         });
 
         pixels.fill_rect(row.bounds, scope.color(ColorId::Body));
@@ -848,7 +851,7 @@ impl MatrixTab {
         let mut power = controls.power;
         power.bipolar = bipolar;
         power.active = connected;
-        panel.slider(&power, row.power);
+        select |= panel.slider_changed(&power, row.power);
 
         let mut amount = controls.amount;
         amount.active = connected;
@@ -860,7 +863,7 @@ impl MatrixTab {
                 amount.format.display_multiply = Some(info.max - info.min);
             }
         }
-        panel.slider(&amount, row.amount);
+        select |= panel.slider_changed(&amount, row.amount);
 
         if !connected {
             panel.off_overlay(row.bounds);
