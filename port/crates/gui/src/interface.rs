@@ -404,6 +404,13 @@ pub trait EditorModel: Send + Sync + 'static {
         false
     }
 
+    /// `SampleSection::loadFile`: loads the audio file at `path` as the
+    /// sample, named after the file. Returns false, changing nothing, when
+    /// the file can't be read.
+    fn load_sample_file(&self, _path: &std::path::Path) -> bool {
+        false
+    }
+
     /// Calls `f` with the sample oscillator's audio, read in place: nothing
     /// is copied. `left` is the mono or left channel `SampleViewer` draws
     /// (`Sample::buffer`, `originalLength`). `f` is not called when there is
@@ -810,6 +817,16 @@ impl Interface {
                 current.as_deref(),
             );
         }
+        if let Some((browser, section)) = self.synthesis.take_sample_browse_request() {
+            let current = self.synthesis.sample_file();
+            self.popup_browser.open(
+                host.model(),
+                BrowserOwner::Sample,
+                browser,
+                section,
+                current.as_deref(),
+            );
+        }
         if let Some((index, browser, section)) = self.modulation.take_lfo_browse_request() {
             let current = self.modulation.lfo_file(index);
             self.popup_browser.open(
@@ -834,6 +851,9 @@ impl Interface {
             }
             Some(BrowserEvent::Load(BrowserOwner::Lfo(index), file)) => {
                 self.modulation.load_lfo_file(host.model(), index, &file);
+            }
+            Some(BrowserEvent::Load(BrowserOwner::Sample, file)) => {
+                self.synthesis.load_sample_file(host.model(), &file);
             }
             None => {}
         }

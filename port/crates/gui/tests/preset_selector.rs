@@ -22,6 +22,7 @@ use sas_gui::sections::delete_section::DeleteLayout;
 use sas_gui::sections::oscillator::{self, OscillatorLayout};
 use sas_gui::sections::popup_browser::{self, PopupBrowserLayout};
 use sas_gui::sections::preset_browser::PresetBrowserLayout;
+use sas_gui::sections::sample::{self, SampleLayout};
 use sas_gui::sections::save_section::{OverwriteLayout, SaveLayout};
 use sas_gui::sections::selection_list::Selection;
 use sas_gui::sections::synthesis::SynthesisLayout;
@@ -155,6 +156,12 @@ impl EditorModel for Synth {
             .unwrap()
             .push(format!("audio {oscillator} {name}"));
         true
+    }
+
+    fn load_sample_file(&self, path: &Path) -> bool {
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        self.calls.lock().unwrap().push(format!("sample {name}"));
+        name != "Broken.wav"
     }
 
     fn favourites(&self) -> Vec<PathBuf> {
@@ -1357,4 +1364,79 @@ fn the_delete_section_hides_the_chat_toggle_until_it_closes() {
     drag_up(&mut harness, centre(fixture.header().volume));
     assert!(fixture.interface.borrow().deleting().is_none());
     assert!(fixture.interface.borrow().logo_shown());
+}
+
+/// A data folder holding samples: two in Samples (and a file of another
+/// type) and one in the bank's.
+fn sample_data(fixture: &Fixture, tag: &str) -> Folder {
+    let folder = Folder::new(tag, &[]);
+    for file in [
+        "Samples/Hit.wav",
+        "Samples/Pad.flac",
+        "Samples/notes.txt",
+        "Bank/Samples/Bank Loop.wav",
+    ] {
+        let path = folder.0.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "").unwrap();
+    }
+    *fixture.synth.data_directory.lock().unwrap() = Some(folder.0.clone());
+    folder
+}
+
+/// The sample section's layout and its popup browser's: 450 × 300 right
+/// of the name, level with it (`SampleSection::textMouseDown`).
+fn sample_browser(fixture: &Fixture) -> (SampleLayout, PopupBrowserLayout) {
+    let layout = FullLayout::new(&fixture.skin, 1400, 820);
+    let top = Scope::top(&fixture.skin, layout.size_ratio);
+    let synthesis = SynthesisLayout::new(&top, layout.main);
+    let section = SampleLayout::new(&top.within(sample::SKIN), synthesis.sample);
+    let preset = section.preset_selector.bounds;
+    let browser = Rect::new(preset.right(), preset.y, 450, 300);
+    let padding = top
+        .within(popup_browser::SKIN)
+        .value(sas_gui::skin::ValueId::Padding);
+    (section, PopupBrowserLayout::new(1.0, padding, browser))
+}
+
+/// A press on the sample's name opens the popup browser for the user's
+/// `.wav` and `.flac` samples; a file chosen in it loads as the sample, and
+/// the arrows step through them (`SampleSection::textMouseDown`,
+/// `loadFile`, `nextClicked`).
+#[test]
+fn the_sample_name_opens_the_browser_and_the_arrows_step() {
+    let fixture = Fixture::new();
+    let _data = sample_data(&fixture, "samples");
+    let mut harness = fixture.harness();
+    let (section, browser) = sample_browser(&fixture);
+    click(&mut harness, centre(section.preset_selector.text));
+    let rows = fixture.interface.borrow().popup_browser_rows().unwrap();
+    assert_eq!(stems(&rows.1), ["Bank Loop", "Hit", "Pad"]);
+    click(&mut harness, popup_row(browser.files, 2));
+    assert_eq!(calls(&fixture), ["sample Pad.flac"]);
+
+    press_key(&mut harness, egui::Key::Escape);
+    click(&mut harness, centre(section.preset_selector.next));
+    assert_eq!(calls(&fixture), ["sample Bank Loop.wav"]);
+    click(&mut harness, centre(section.preset_selector.previous));
+    assert_eq!(calls(&fixture), ["sample Pad.flac"]);
+}
+
+/// A sample that doesn't read becomes the current file all the same, as
+/// `SampleSection::loadFile` sets the last browsed file before it reads, so
+/// the arrows step on past it.
+#[test]
+fn the_sample_arrows_step_past_a_file_that_doesnt_read() {
+    let fixture = Fixture::new();
+    let data = sample_data(&fixture, "samples-broken");
+    std::fs::write(data.0.join("Samples/Broken.wav"), "").unwrap();
+    let mut harness = fixture.harness();
+    let (section, _) = sample_browser(&fixture);
+    let next = centre(section.preset_selector.next);
+    click(&mut harness, next);
+    assert_eq!(calls(&fixture), ["sample Bank Loop.wav"]);
+    click(&mut harness, next);
+    assert_eq!(calls(&fixture), ["sample Broken.wav"]);
+    click(&mut harness, next);
+    assert_eq!(calls(&fixture), ["sample Hit.wav"]);
 }

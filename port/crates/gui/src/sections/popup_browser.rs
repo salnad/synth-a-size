@@ -35,6 +35,9 @@ const TOP_HEIGHT: f32 = 38.0;
 /// `vital::kWavetableExtensionsList`, without the dots.
 pub const WAVETABLE_EXTENSIONS: &[&str] = &[WAVETABLE_EXTENSION, "wav", "flac"];
 
+/// `vital::kSampleExtensionsList`, without the dots.
+pub const SAMPLE_EXTENSIONS: &[&str] = &["wav", "flac"];
+
 /// The LFO browser's `"*." + vital::kLfoExtension`.
 pub const LFO_EXTENSIONS: &[&str] = &[LFO_EXTENSION];
 
@@ -45,6 +48,8 @@ pub enum BrowserOwner {
     Oscillator(usize),
     /// An LFO's shape (`LfoSection::textMouseDown`).
     Lfo(usize),
+    /// The sample (`SampleSection::textMouseDown`).
+    Sample,
 }
 
 impl BrowserOwner {
@@ -53,6 +58,7 @@ impl BrowserOwner {
         match self {
             BrowserOwner::Oscillator(_) => Kind::Wavetables,
             BrowserOwner::Lfo(_) => Kind::Lfos,
+            BrowserOwner::Sample => Kind::Samples,
         }
     }
 
@@ -61,6 +67,7 @@ impl BrowserOwner {
         match self {
             BrowserOwner::Oscillator(_) => WAVETABLE_EXTENSIONS,
             BrowserOwner::Lfo(_) => LFO_EXTENSIONS,
+            BrowserOwner::Sample => SAMPLE_EXTENSIONS,
         }
     }
 }
