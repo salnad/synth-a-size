@@ -89,6 +89,14 @@ impl Default for SynthesisInterface {
 }
 
 impl SynthesisInterface {
+    /// The oscillator whose wavetable view asked to save its wavetable
+    /// (`FullInterface::saveWavetable`), if one did.
+    pub fn take_wavetable_save_request(&self) -> Option<usize> {
+        self.oscillators
+            .iter()
+            .position(OscillatorSection::take_save_request)
+    }
+
     /// The oscillator sections' layouts for the current wave morph types.
     pub fn oscillator_layouts(
         &self,

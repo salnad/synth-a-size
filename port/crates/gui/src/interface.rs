@@ -48,6 +48,7 @@ use crate::sections::modulation::ModulationInterface;
 use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
 use crate::sections::preset_browser::{self, PresetBrowser, PresetBrowserLayout};
 use crate::sections::preset_selector;
+use crate::sections::save_section::{self, SaveOutcome, SaveSection, SaveTarget};
 use crate::sections::synthesis::SynthesisInterface;
 use crate::sections::voice::{self, VoiceLayout, VoiceSection};
 use crate::sections::volume::{PeakLevels, VolumeLayout, VolumeSection};
@@ -78,6 +79,26 @@ pub trait EditorModel: Send + Sync + 'static {
     /// `SynthBase::getComments`.
     fn preset_comments(&self) -> String {
         String::new()
+    }
+
+    /// `SynthBase::getStyle`.
+    fn preset_style(&self) -> String {
+        String::new()
+    }
+
+    /// `setAuthor`, `setComments` and `setStyle`, before a save.
+    fn set_preset_info(&self, author: &str, comments: &str, style: &str) {
+        let _ = (author, comments, style);
+    }
+
+    /// `LoadSave::getAuthor`: the author last saved with, from the config.
+    fn default_author(&self) -> String {
+        String::new()
+    }
+
+    /// `LoadSave::saveAuthor`.
+    fn save_default_author(&self, author: &str) {
+        let _ = author;
     }
 
     /// The host parameter for synth control `name` (its registry name).
@@ -460,6 +481,10 @@ pub struct Interface {
     preset_browser_was_visible: bool,
     /// `delete_section_`, while it asks before deleting a preset.
     delete_section: Option<DeleteSection>,
+    /// `save_section_`, while it names a preset or a wavetable to save.
+    save_section: SaveSection,
+    /// The save section opens for the preset next frame.
+    save_requested: bool,
     preset_modified: preset_selector::Modified,
 }
 
@@ -490,6 +515,8 @@ impl Interface {
             preset_browser_visible: false,
             preset_browser_was_visible: false,
             delete_section: None,
+            save_section: SaveSection::default(),
+            save_requested: false,
             preset_modified: preset_selector::Modified::default(),
         }
     }
@@ -626,6 +653,7 @@ impl Interface {
         let top = Scope::top(&self.skin, layout.size_ratio);
         self.overlay.modulation.paint_drag(host, &pixels, &top);
         self.show_overlay(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
+        self.show_save_section(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
         // The delete overlay, over everything (deleteRequested, fileDeleted).
         if let Some(file) = self.preset_browser.take_delete_request() {
             self.delete_section = Some(DeleteSection { file });
@@ -641,6 +669,56 @@ impl Interface {
                 }
             }
         }
+    }
+
+    /// The save section, opened by the header (`savePreset`) or an
+    /// oscillator's wavetable view (`saveWavetable`). A save reloads the
+    /// browser's presets and clears the header's `*`, for a wavetable too:
+    /// the preset browser and the header both listen to every save
+    /// (`PresetBrowser::save`, `HeaderSection::save`).
+    fn show_save_section(
+        &mut self,
+        ui: &mut Ui,
+        host: &Host,
+        pixels: &PixelPainter,
+        layout: &FullLayout,
+        bounds: Rect,
+    ) {
+        if preset_selector::take_save_request(ui.ctx()) || std::mem::take(&mut self.save_requested)
+        {
+            self.save_section.open(host, SaveTarget::Preset);
+        }
+        if let Some(oscillator) = self.synthesis.take_wavetable_save_request() {
+            if let Some(target) = SaveTarget::wavetable(host.model(), oscillator) {
+                self.save_section.open(host, target);
+            }
+        }
+        if !self.save_section.is_open() {
+            return;
+        }
+        let top = Scope::top(&self.skin, layout.size_ratio).within(save_section::SKIN);
+        let mut panel = Panel::new(ui, host, pixels, top, &mut self.overlay, bounds);
+        let outcome = self.save_section.show(&mut panel, bounds);
+        panel.finish();
+        if let SaveOutcome::Saved(_) = outcome {
+            self.preset_browser.reload();
+            self.preset_modified.fresh();
+        }
+    }
+
+    /// Opens the save section for the preset next frame, as the header's
+    /// save button does (`SynthPresetSelector::savePreset`).
+    pub fn request_save_preset(&mut self) {
+        self.save_requested = true;
+    }
+
+    /// Whether the save section shows, and whether it asks before
+    /// replacing a file.
+    pub fn save_section_state(&self) -> (bool, bool) {
+        (
+            self.save_section.is_open(),
+            self.save_section.is_overwriting(),
+        )
     }
 
     /// The header's live parts: the volume section and the oscilloscope.
@@ -734,7 +812,8 @@ impl Interface {
             preset_browser::paint_background(pixels, &top, &browser_layout);
             let scope = top.within(preset_browser::SKIN);
             let mut panel = Panel::new(ui, host, pixels, scope, &mut self.overlay, layout.browser);
-            let hide = self.preset_browser.show(&mut panel, &browser_layout);
+            let keys = !self.save_section.is_open();
+            let hide = self.preset_browser.show(&mut panel, &browser_layout, keys);
             panel.finish();
             if hide {
                 self.preset_browser_visible = false;

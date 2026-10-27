@@ -67,11 +67,27 @@ pub struct TextEditorEvents {
 /// `selectAll`), asking the editor window for keyboard focus as a click
 /// does (`grabKeyboardFocus` focuses the plugin's window too).
 pub fn focus_select_all(ui: &Ui, salt: impl std::hash::Hash + std::fmt::Debug, text: &str) {
+    let all = egui::text_selection::CCursorRange::select_all_str(text);
+    focus_with(ui, salt, all);
+}
+
+/// Gives the field the keyboard with the caret after its text
+/// (`grabKeyboardFocus`), raising the window focus request as
+/// [`focus_select_all`] does.
+pub fn focus_at_end(ui: &Ui, salt: impl std::hash::Hash + std::fmt::Debug, text: &str) {
+    let end = egui::text::CCursor::new(text.chars().count());
+    focus_with(ui, salt, egui::text_selection::CCursorRange::one(end));
+}
+
+fn focus_with(
+    ui: &Ui,
+    salt: impl std::hash::Hash + std::fmt::Debug,
+    range: egui::text_selection::CCursorRange,
+) {
     let id = ui.scope_id().with(("text editor", salt));
     ui.memory_mut(|memory| memory.request_focus(id));
     let mut state = egui::TextEdit::load_state(ui.ctx(), id).unwrap_or_default();
-    let all = egui::text_selection::CCursorRange::select_all_str(text);
-    state.cursor.set_char_range(Some(all));
+    state.cursor.set_char_range(Some(range));
     egui::TextEdit::store_state(ui.ctx(), id, state);
     ui.data_mut(|data| {
         data.insert_temp(id.with("had focus"), true);
@@ -79,9 +95,17 @@ pub fn focus_select_all(ui: &Ui, salt: impl std::hash::Hash + std::fmt::Debug, t
     });
 }
 
+/// A field's text: its size in pixels, in the light face, and its colour.
+#[derive(Clone, Copy, Debug)]
+pub struct TextStyle {
+    pub font_size: f32,
+    pub colour: ColorId,
+}
+
 /// A single-line `OpenGlTextEditor` at `bounds` (pixels) editing `text`,
 /// showing `prompt` while empty and unfocused (`setTextToShowWhenEmpty`, in
-/// the body text colour at half its alpha).
+/// the body text colour at half its alpha), in `applyFont`'s light face at
+/// half its height.
 pub fn single_line(
     ui: &mut Ui,
     pixels: &PixelPainter,
@@ -91,8 +115,27 @@ pub fn single_line(
     text: &mut String,
     prompt: &str,
 ) -> TextEditorEvents {
-    // OpenGlTextEditor::resized and applyFont: the indents and the light
-    // face at half the height.
+    let style = TextStyle {
+        font_size: bounds.height as f32 / 2.0,
+        colour: ColorId::BodyText,
+    };
+    single_line_styled(ui, pixels, scope, salt, bounds, text, prompt, style)
+}
+
+/// [`single_line`] with its text in `style` (`applyFontToAllText`,
+/// `TextEditor::textColourId`).
+#[allow(clippy::too_many_arguments)]
+pub fn single_line_styled(
+    ui: &mut Ui,
+    pixels: &PixelPainter,
+    scope: &Scope,
+    salt: impl std::hash::Hash + std::fmt::Debug,
+    bounds: Rect,
+    text: &mut String,
+    prompt: &str,
+    style: TextStyle,
+) -> TextEditorEvents {
+    // OpenGlTextEditor::resized: the indents.
     let height = bounds.height as f32;
     let left_indent = (height * 0.2) as i32;
     let top_indent = (height * 0.15) as i32;
@@ -102,7 +145,60 @@ pub fn single_line(
         bounds.width - left_indent,
         bounds.height - top_indent,
     );
-    let font_size = height / 2.0;
+    edit(ui, pixels, scope, salt, inner, text, prompt, style, None)
+}
+
+/// A multi-line `OpenGlTextEditor` (`setMultiLine(true)`, Return starting a
+/// new line): its indents are the label rounding on every side, its text
+/// wraps, and it holds at most `max_chars` characters
+/// (`setInputRestrictions`).
+#[allow(clippy::too_many_arguments)]
+pub fn multi_line(
+    ui: &mut Ui,
+    pixels: &PixelPainter,
+    scope: &Scope,
+    salt: impl std::hash::Hash + std::fmt::Debug,
+    bounds: Rect,
+    text: &mut String,
+    prompt: &str,
+    style: TextStyle,
+    max_chars: usize,
+) -> TextEditorEvents {
+    let indent = scope.value(ValueId::LabelBackgroundRounding) as i32;
+    let inner = Rect::new(
+        bounds.x + indent,
+        bounds.y + indent,
+        bounds.width - 2 * indent,
+        bounds.height - 2 * indent,
+    );
+    edit(
+        ui,
+        pixels,
+        scope,
+        salt,
+        inner,
+        text,
+        prompt,
+        style,
+        Some(max_chars),
+    )
+}
+
+/// A field editing `text` in `inner`: one line, or wrapped lines up to
+/// `max_chars` characters.
+#[allow(clippy::too_many_arguments)]
+fn edit(
+    ui: &mut Ui,
+    pixels: &PixelPainter,
+    scope: &Scope,
+    salt: impl std::hash::Hash + std::fmt::Debug,
+    inner: Rect,
+    text: &mut String,
+    prompt: &str,
+    style: TextStyle,
+    max_chars: Option<usize>,
+) -> TextEditorEvents {
+    let font_size = style.font_size;
     let body_text = scope.color(ColorId::BodyText);
 
     let id = ui.scope_id().with(("text editor", salt));
@@ -111,20 +207,23 @@ pub fn single_line(
     let focus_key = id.with("had focus");
     let had_focus = ui.data(|data| data.get_temp::<bool>(focus_key).unwrap_or(false));
     let escape = had_focus && ui.input(|input| input.key_pressed(Key::Escape));
-    let return_pressed = had_focus && ui.input(|input| input.key_pressed(Key::Enter));
+    let return_pressed =
+        max_chars.is_none() && had_focus && ui.input(|input| input.key_pressed(Key::Enter));
 
     let rect = pixels.rect(inner.into());
     let mut child = ui.new_child(UiBuilder::new().max_rect(rect));
     child.visuals_mut().selection.bg_fill = scope.color(ColorId::TextEditorSelection).to_egui();
     child.visuals_mut().text_cursor.stroke.color = scope.color(ColorId::TextEditorCaret).to_egui();
-    let edit = egui::TextEdit::singleline(text)
-        .id(id)
-        .frame(egui::Frame::NONE)
-        .margin(egui::Margin::ZERO)
-        .font(Face::Light.at(pixels.points(font_size)))
-        .text_color(body_text.to_egui())
-        .align(egui::Align2::LEFT_CENTER)
-        .desired_width(rect.width());
+    let edit = match max_chars {
+        None => egui::TextEdit::singleline(text).align(egui::Align2::LEFT_CENTER),
+        Some(max) => egui::TextEdit::multiline(text).char_limit(max),
+    }
+    .id(id)
+    .frame(egui::Frame::NONE)
+    .margin(egui::Margin::ZERO)
+    .font(Face::Light.at(pixels.points(font_size)))
+    .text_color(scope.color(style.colour).to_egui())
+    .desired_width(rect.width());
     let response = child.add_sized(rect.size(), edit);
     // The prompt (drawn below, as upstream draws it) names the field.
     let value = text.clone();
@@ -141,9 +240,14 @@ pub fn single_line(
     ui.data_mut(|data| data.insert_temp(focus_key, has_focus));
 
     if text.is_empty() && !has_focus {
+        // A multi-line field shows its prompt on its first line.
+        let line = match max_chars {
+            None => inner,
+            Some(_) => Rect::new(inner.x, inner.y, inner.width, (font_size * 1.3) as i32),
+        };
         pixels.text_line(
             prompt,
-            inner,
+            line,
             (Face::Light, font_size, body_text.with_multiplied_alpha(0.5)),
             Justify::Left,
             Overflow::Curtail,

@@ -196,8 +196,10 @@ fn main() {
             .get("tab")
             .and_then(|v| v.as_str())
             .unwrap_or("voice")));
-        if view.get("overlay").and_then(|v| v.as_str()) == Some("preset_browser") {
-            interface.borrow_mut().set_preset_browser_visible(true);
+        match view.get("overlay").and_then(|v| v.as_str()) {
+            Some("preset_browser") => interface.borrow_mut().set_preset_browser_visible(true),
+            Some("save_section") => interface.borrow_mut().request_save_preset(),
+            _ => {}
         }
         if let Some(scroll) = view.get("effects_scroll").and_then(|v| v.as_f64()) {
             interface

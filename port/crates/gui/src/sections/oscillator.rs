@@ -604,9 +604,11 @@ impl OscillatorSection {
     pub fn new(index: usize) -> OscillatorSection {
         let names = NAMES[index];
         let text = |name| Slider::new(name, SliderStyle::Text).text_entry(1.0, Some(0.0));
+        let mut view = Wavetable3d::new(index);
+        view.save_available = true;
         OscillatorSection {
             index,
-            view: RefCell::new(Wavetable3d::new(index)),
+            view: RefCell::new(view),
             names,
             on: SynthButton::power(names.on),
             transpose: text(names.transpose).sensitivity(TRANSPOSE_MOUSE_SENSITIVITY),
@@ -635,6 +637,12 @@ impl OscillatorSection {
                 .modulation_placement(Placement::Left)
                 .popup_prefix("Frame: "),
         }
+    }
+
+    /// "Save to Wavetables" was chosen in the wavetable view's menu since
+    /// the last call (`OscillatorSection::saveWavetable`).
+    pub fn take_save_request(&self) -> bool {
+        self.view.borrow_mut().take_save_request()
     }
 
     /// The section's layout for the current wave morph type.

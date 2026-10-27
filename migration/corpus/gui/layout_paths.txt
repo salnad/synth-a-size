@@ -340,6 +340,24 @@ preset_browser/Preset
 preset_browser/Author
 preset_browser/Search
 preset_browser/Comments
+save_section/Name
+save_section/Author
+save_section/Comments
+save_section/Save
+save_section/Cancel
+save_section/Preset
+save_section/Author#2
+save_section/Style
+save_section/Comments#2
+save_section/Bass
+save_section/Lead
+save_section/Keys
+save_section/Pad
+save_section/Percussion
+save_section/Sequence
+save_section/Experiment
+save_section/SFX
+save_section/Template
 @preset migration/corpus/gui/presets/osc_3_sync.vital
 synthesis/OSC 3
 synthesis/OSC 3/osc_3_on

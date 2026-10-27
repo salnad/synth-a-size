@@ -716,7 +716,7 @@ impl PresetBrowser {
 
     /// Draws the browser's parts over its background and handles the mouse
     /// and keys. Returns true when Escape asks to hide it (`keyPressed`).
-    pub fn show(&mut self, panel: &mut Panel, layout: &PresetBrowserLayout) -> bool {
+    pub fn show(&mut self, panel: &mut Panel, layout: &PresetBrowserLayout, keys: bool) -> bool {
         let scope = panel.scope;
         let model = panel.host.model();
         self.ensure_loaded(model);
@@ -769,8 +769,9 @@ impl PresetBrowser {
 
         self.show_list(panel, layout);
 
-        // keyPressed, while the search box doesn't have the keyboard.
-        if search.has_focus {
+        // keyPressed, while the search box doesn't have the keyboard and no
+        // overlay's field (`keys` false) does.
+        if search.has_focus || !keys {
             return false;
         }
         let (escape, previous, next) = panel.ui.input(|input| {
