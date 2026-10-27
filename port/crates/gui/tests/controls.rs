@@ -5725,4 +5725,39 @@ fn the_wheels_popup_stays_until_a_slider_is_left() {
     move_to(&mut harness, centre(lfo.delay));
     move_to(&mut harness, middle);
     assert_eq!(popup(&fixture), None);
+
+    // The texts (getTextFromValue): the LFO's grid has a popup prefix; the
+    // paint pattern, an editor control without a parameter, shows its
+    // name from the string lookup; the Matrix's grid, without a prefix,
+    // shows its value.
+    let text = |fixture: &Fixture| {
+        fixture
+            .interface
+            .borrow()
+            .overlay()
+            .value_popup
+            .as_ref()
+            .map(|(_, popup)| popup.text.clone())
+            .unwrap()
+    };
+    wheel(&mut harness, middle, 1.0);
+    assert_eq!(text(&fixture), "X Grid");
+    click(&mut harness, centre(lfo.paint));
+    let pattern = fixture
+        .interface
+        .borrow()
+        .local_value(local::PAINT_PATTERN[0])
+        .unwrap() as usize;
+    wheel(&mut harness, middle, 1.0);
+    assert_eq!(
+        text(&fixture),
+        sas_gui::controls::line_editor::PAINT_PATTERN_NAMES[pattern + 1]
+    );
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    harness.step();
+    wheel(&mut harness, centre(remap_layout(&fixture).editor), 1.0);
+    assert_eq!(text(&fixture), "9");
 }

@@ -21,6 +21,23 @@
   It stays until a slider is left.
   `Panel::show_value_popup` is the shared `showPopup(true)`.
 
+- **The popups' text** (`getTextFromValue`): a text slider names its
+  parameter only when it has one (`has_parameter_assignment_`). The
+  editor's own controls (local) have none, so they show their value or
+  string lookup.
+  - The paint pattern's popup shows the pattern's name (Step, Half, Down,
+    Up or Tri, `PAINT_PATTERN_NAMES`).
+  - The Matrix's grid sizes, which upstream gives no popup prefix (the LFO
+    sections' "X Grid" and "Y Grid" are `LfoSection`'s), show their
+    number.
+- **The wheel, as JUCE reads it (from #202's review):**
+  - `Wheel` carries both deltas.
+  - JUCE's `Slider::mouseWheelMove` (smooth wheels, and controls without an
+    interval) moves by `-deltaX` when the horizontal part is the larger,
+    and not at all while a mouse button is down.
+  - `SynthSlider`'s clicking step still reads only `deltaY`, as upstream's
+    does.
+
 This closes the "Not yet" that G4c-3b (1)'s ledger left for the wheel's
 value popup.
 
@@ -31,6 +48,11 @@ value popup.
   when the pointer enters and leaves the grid slider, and again after
   another wheel when the pointer enters and leaves the delay knob. The
   test fails with the old rule (hide whenever the slider isn't hovered).
+- **Popup text:** the same test checks it: "X Grid" for LFO 1's grid,
+  the pattern's name while painting, and "9" for the Matrix's grid after a
+  step up from 8.
+- **`the_wheel_steps_an_indexed_control`:** it now also covers the
+  horizontal part's `-deltaX` and the held button.
 - **Existing tests:** `the_value_popup_follows_the_drag_and_hides_on_exit`
   and the rest of the `sas-gui` tests pass unchanged.
 - **Checks:** `cargo clippy --workspace --all-targets -D warnings`, the

@@ -281,10 +281,13 @@ const BROWSER_WIDTH: f32 = 500.0;
 const BROWSER_HEIGHT: f32 = 250.0;
 
 /// `LfoSection`'s grid size sliders.
-pub(crate) fn grid_slider(name: &'static str, prefix: &'static str) -> Slider {
-    let mut slider = Slider::new(name, SliderStyle::Text)
-        .sensitivity(0.2)
-        .popup_prefix(prefix);
+/// `prefix` is the popup's (`setPopupPrefix`): the LFO sections set one,
+/// the Matrix's remap editor doesn't.
+pub(crate) fn grid_slider(name: &'static str, prefix: Option<&'static str>) -> Slider {
+    let mut slider = Slider::new(name, SliderStyle::Text).sensitivity(0.2);
+    if let Some(prefix) = prefix {
+        slider = slider.popup_prefix(prefix);
+    }
     slider.text_component_offset = Some(0.0);
     slider.text_height_percentage = 0.6;
     slider
@@ -326,8 +329,8 @@ impl LfoSection {
             editor: LineEditor {
                 target: LineTarget::Lfo(index),
             },
-            grid_size_x: grid_slider(local::GRID_SIZE_X[index], "X Grid"),
-            grid_size_y: grid_slider(local::GRID_SIZE_Y[index], "Y Grid"),
+            grid_size_x: grid_slider(local::GRID_SIZE_X[index], Some("X Grid")),
+            grid_size_y: grid_slider(local::GRID_SIZE_Y[index], Some("Y Grid")),
         }
     }
 
@@ -650,17 +653,21 @@ pub(crate) fn show_line_controls(
     let editor_rect = panel.pixels.rect(layout.editor.into());
     if panel.ui.rect_contains_pointer(editor_rect) {
         let (target, bounds) = if event.painting {
-            (
-                Slider::new(controls.paint_pattern, SliderStyle::Text),
-                layout.paint_pattern,
-            )
+            {
+                // PaintPatternSelector: the pattern's name in its popup.
+                let mut pattern = Slider::new(controls.paint_pattern, SliderStyle::Text);
+                pattern.format.string_lookup = Some(&PAINT_PATTERN_NAMES);
+                (pattern, layout.paint_pattern)
+            }
         } else {
             (*controls.grid_size_x, layout.grid_size_x)
         };
         let mut value = host.value(target.name);
-        let wheels = panel.ui.input(Wheel::events);
+        let (wheels, button_down) = panel
+            .ui
+            .input(|input| (Wheel::events(input), input.pointer.any_down()));
         for wheel in &wheels {
-            if let Some(moved) = target.wheel_value(value, *wheel) {
+            if let Some(moved) = target.wheel_value(value, *wheel, button_down) {
                 host.set_once(target.name, moved);
                 value = moved;
             }
