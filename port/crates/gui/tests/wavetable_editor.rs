@@ -2194,3 +2194,40 @@ fn dragging_the_viewer_moves_the_start_position() {
     assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
     assert!(log_is_empty(&fixture));
 }
+
+/// A window fade drag with another change to the model after its last move:
+/// the overlay counts as pressed until the drag's commit, so the committed
+/// fade is the drag's, as without the change.
+#[test]
+fn a_refresh_during_a_window_fade_drag_keeps_the_drag() {
+    let committed_fade = |refresh: bool| {
+        let fixture = Fixture::new();
+        file_source_creator(&fixture, Some(&sine(20_000)), 100.0);
+        let mut harness = opened(&fixture);
+        let from = centre(fixture.file_source_layout().window_fade);
+        harness.event(Event::PointerMoved(from));
+        harness.step();
+        button(&mut harness, from, true);
+        for dy in [10.0, 20.0, 30.0] {
+            harness.event(Event::PointerMoved(Pos2::new(from.x, from.y + dy)));
+            harness.step();
+        }
+        harness.step();
+        if refresh {
+            // Another edit reaches the model (a chat tool, say).
+            let creator = fixture.synth.wavetable_creator(0).unwrap();
+            fixture.synth.set_creator(0, creator);
+            harness.step();
+        }
+        button(&mut harness, Pos2::new(from.x, from.y + 30.0), false);
+        harness.step();
+        harness.step();
+        assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+        file_source(&fixture).keyframes.keyframes[0]
+            .data
+            .window_fade
+    };
+    let without = committed_fade(false);
+    assert_ne!(without, 1.0);
+    assert_eq!(committed_fade(true), without);
+}

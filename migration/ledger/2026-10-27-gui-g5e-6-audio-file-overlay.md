@@ -50,7 +50,10 @@ overlay for an Audio File Source's keyframes
   2026-10-27).
 - Edits go through the creator's copy and `set_wavetable_creator`, and
   auditions through `frame_edited` and `PendingAudition`: nothing is
-  written to the host, so D18 doesn't apply.
+  written to the host, so D18 doesn't apply. A viewer press, or a window
+  fade change until its drag ends, counts as pressed, so the section keeps
+  its copy of the creator through a change that reaches the model
+  mid-drag.
 - Supporting changes: local controls round only when indexed; `Format`
   gains JUCE's text for a slider with no parameter;
   `LineRenderer::set_boost_left`; the text fields can centre and keep their
@@ -71,6 +74,8 @@ overlay for an Audio File Source's keyframes
   - `dragging_the_viewer_moves_the_start_position`: half the viewer moves
     the start by half the audio less a window, auditioning, then commits on
     release.
+- `a_refresh_during_a_window_fade_drag_keeps_the_drag`: a model change
+  during a window fade drag leaves the committed fade the drag's.
 - `the_file_source_overlay_obscures_nothing`: the mapping, and `obscures`
   all false.
 - `file_source_overlay` unit tests: the window size text (numbers, clamps,

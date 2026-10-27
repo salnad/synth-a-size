@@ -293,9 +293,12 @@ impl FileSourceOverlay {
         }
     }
 
-    /// Whether a press on the viewer is under way.
+    /// Whether an edit is waiting for its commit: a press on the viewer, or
+    /// a window fade change until its drag ends (`sliderDragEnded`). The
+    /// section keeps its copy of the creator until then, so a change
+    /// reaching the model mid-drag doesn't drop the drag's.
     pub fn pressed(&self) -> bool {
-        self.viewer_down
+        self.viewer_down || self.fade_changed
     }
 
     /// `frameSelected`: the controls load from keyframe `keyframe` of
