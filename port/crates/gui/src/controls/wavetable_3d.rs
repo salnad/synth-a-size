@@ -11,9 +11,12 @@
 //! their modulated values from the telemetry, so the oscillator section only
 //! places it and its frame slider.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use egui::{PointerButton, Sense};
+use nice_plug_egui::file_drop::{self, DropTarget};
+pub use sas_engine::sas_oscillators::sas_wavetable::creator::AudioFileLoadStyle;
 use sas_engine::sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_engine::sas_oscillators::sas_wavetable::wave_frame::{
     WaveFrame, WAVEFORM_BITS, WAVEFORM_SIZE,
@@ -32,6 +35,7 @@ use sas_simd::{futils, poly_utils, utils, PolyFloat, PolyInt};
 
 use crate::colour::Colour;
 use crate::controls::slider::Slider;
+use crate::fonts::Face;
 use crate::layout::Rect;
 use crate::paint::{PixelPainter, RectF};
 use crate::popup::{Menu, MenuItem, ValuePopup};
@@ -262,6 +266,9 @@ pub struct Wavetable3d {
     last_table: Option<(usize, i32)>,
     background: Option<Background>,
     drag: Option<Drag>,
+    /// `drag_load_style_`: how a file dragged over the view would load, by
+    /// the pointer's height; `None` when no file this view takes is over it.
+    drag_load_style: Option<AudioFileLoadStyle>,
     /// Whether the menu offers "Save to Wavetables": on once the editor
     /// can save (G7's save section takes [`take_save_request`]).
     ///
@@ -296,10 +303,17 @@ impl Wavetable3d {
             last_table: None,
             background: None,
             drag: None,
+            drag_load_style: None,
             save_available: false,
             save_request: false,
             read_clipboard: system_clipboard_text,
         }
+    }
+
+    /// How a file dragged over the view would load (`drag_load_style_`), or
+    /// `None` when no file it takes is over it.
+    pub fn drag_load_style(&self) -> Option<AudioFileLoadStyle> {
+        self.drag_load_style
     }
 
     /// Reads the clipboard with `read` instead of the system's (tests).
@@ -423,6 +437,7 @@ impl Wavetable3d {
     ) {
         self.respond_to_menu(panel);
         self.interact(panel, bounds, frame_slider);
+        self.file_drop(panel, bounds);
 
         let render_type = self.render_type(panel);
         let active = panel.host.value(self.controls.on) != 0.0;
@@ -451,6 +466,9 @@ impl Wavetable3d {
 
         if wavetable.is_some() || render_type == RenderType::FrequencyAmplitudes {
             self.render(panel, bounds, render_type, active, wavetable.is_some());
+        }
+        if let Some(style) = self.drag_load_style {
+            paint_import_overlay(panel, bounds, style);
         }
 
         // OpenGlLineRenderer::renderCorners: the body colour outside the
@@ -564,6 +582,62 @@ impl Wavetable3d {
             // mouseExit hides the frame slider's popup.
             panel.overlay.value_popup = None;
         }
+    }
+
+    /// The audio file drop (`AudioFileDropSource`, `fileDragEnter`,
+    /// `fileDragMove`, `fileDragExit`, `filesDropped`, `audioFileLoaded`):
+    /// registers the view as a drop target for the model's audio files,
+    /// follows a hovering file's height to pick how it would load, and
+    /// loads a file dropped on the view.
+    fn file_drop(&mut self, panel: &mut Panel, bounds: Rect) {
+        let model = panel.host.model();
+        let extensions = model.audio_file_extensions();
+        let rect = panel.pixels.rect(bounds.into());
+        if extensions.is_empty() {
+            self.drag_load_style = None;
+            return;
+        }
+        file_drop::add_drop_target(panel.ui.ctx(), DropTarget { rect, extensions });
+
+        let (hovered, dropped, pointer) = panel.ui.input(|input| {
+            let hovered: Vec<PathBuf> = input
+                .raw
+                .hovered_files
+                .iter()
+                .filter_map(|file| file.path.clone())
+                .collect();
+            let dropped: Vec<PathBuf> = input
+                .raw
+                .dropped_files
+                .iter()
+                .map(|file| file.path().to_owned())
+                .collect();
+            (hovered, dropped, input.pointer.latest_pos())
+        });
+        let target = DropTarget { rect, extensions };
+        let style_at = |pos: egui::Pos2| {
+            // updateDraggingPosition: the top 3/8 splices, the bottom 3/8
+            // pitch-splices, the middle vocodes.
+            const DIVISION_PERCENT: f32 = 3.0 / 8.0;
+            let y = (pos.y - rect.min.y) * panel.pixels.pixels_per_point();
+            let height = bounds.height as f32;
+            if y < DIVISION_PERCENT * height {
+                AudioFileLoadStyle::WavetableSplice
+            } else if y > (1.0 - DIVISION_PERCENT) * height {
+                AudioFileLoadStyle::Pitched
+            } else {
+                AudioFileLoadStyle::Vocoded
+            }
+        };
+
+        if let Some(pos) = pointer.filter(|&pos| target.takes(pos, &dropped)) {
+            model.load_audio_as_wavetable(self.index, &dropped[0], style_at(pos));
+            self.drag_load_style = None;
+            return;
+        }
+        self.drag_load_style = pointer
+            .filter(|&pos| target.takes(pos, &hovered))
+            .map(style_at);
     }
 
     /// `mouseDown`'s menu: save (once the editor can), copy, paste (when the
@@ -917,6 +991,35 @@ impl Wavetable3d {
                 }
             }
         }
+    }
+}
+
+/// `Wavetable3d::render`'s import overlay while a file is dragged over the
+/// view: the overlay screen, and the three ways to load with the one under
+/// the pointer lit.
+fn paint_import_overlay(panel: &mut Panel, bounds: Rect, style: AudioFileLoadStyle) {
+    const TEXT_HEIGHT_PERCENT: f32 = 0.1;
+    let overlay = panel.scope.color(ColorId::OverlayScreen);
+    panel.quad(Quad::new(QuadKind::Color, bounds.into(), overlay));
+
+    let text_colour = panel.scope.color(ColorId::TextComponentText);
+    let dim = text_colour.interpolated_with(overlay, 0.5);
+    let font_height = bounds.height as f32 * TEXT_HEIGHT_PERCENT;
+    let text_height = bounds.height / 2;
+    let text_y_adjust = bounds.height / 4;
+    let rows = [
+        ("WAVETABLE", 0, AudioFileLoadStyle::WavetableSplice),
+        ("VOCODE", text_y_adjust, AudioFileLoadStyle::Vocoded),
+        (
+            "PITCH SPLICE",
+            2 * text_y_adjust,
+            AudioFileLoadStyle::Pitched,
+        ),
+    ];
+    for (text, y, row_style) in rows {
+        let colour = if row_style == style { text_colour } else { dim };
+        let row = Rect::new(bounds.x, bounds.y + y, bounds.width, text_height);
+        panel.text_centred(text, row, Face::Light, font_height, colour);
     }
 }
 

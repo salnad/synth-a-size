@@ -40,6 +40,7 @@ use sas_engine::keyboard::{keyboard, KeyboardHandle};
 use sas_engine::telemetry::{AudioMemory, Telemetry};
 use sas_preset::InitContent;
 
+pub mod audio_file;
 pub mod chat;
 pub mod chat_bridge;
 pub mod config;

@@ -31,11 +31,18 @@ entries. Changes to the code, each marked "synth-a-size patch":
    refused. `file_drop::handle_drag_event` turns them into egui's
    `RawInput::hovered_files` (while files are over the window) and
    `RawInput::dropped_files` (on the drop, as `file_drop::DroppedPath`,
-   read on demand), moves the pointer with the drag, and answers
-   `AcceptDrop(Copy)` for files. `on_event` calls it and returns that
-   answer before its usual captured/ignored mapping of mouse events.
-   Tested from `port/crates/gui/tests/file_drop.rs`, since this crate is
-   outside the workspace.
+   read on demand), and moves the pointer with the drag. Like JUCE's
+   `FileDragAndDropTarget`s, only places that want a file take it: each
+   frame the app registers drop targets (`file_drop::add_drop_target`, a
+   rectangle and the extensions it takes), the window takes them after the
+   frame (`take_drop_targets`), and a drag is answered `AcceptDrop(Copy)`
+   only over a target that takes exactly one dragged file with one of its
+   extensions; otherwise it is refused and a drop delivers nothing.
+   baseview needs the answer during the event, so it comes from the
+   previous frame's targets. `on_event` returns that answer before its
+   usual captured/ignored mapping of mouse events. Tested from
+   `port/crates/gui/tests/file_drop.rs`, since this crate is outside the
+   workspace.
 
 4. Host safety, in `src/renderer/wgpu/renderer.rs` and `src/window.rs`:
    - `create_render_state` installs a device `on_uncaptured_error` handler

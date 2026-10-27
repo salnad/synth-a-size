@@ -653,6 +653,23 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
 - **Approved:** coordinator (render off the GUI thread, seed isolation,
   record the differences); Graph Reviewer reviews on the resynthesis PR.
 
+### D23. Audio files dropped on a wavetable view are read as WAV only (temporary)
+
+- **Differs:** which audio files a wavetable view takes when one is dropped
+  on it.
+- **Upstream:** `AudioFileDropSource` takes one file in any format JUCE's
+  `AudioFormatManager::registerBasicFormats()` reads. On macOS that is
+  WAV, AIFF, FLAC, Ogg Vorbis and CoreAudio's formats (MP3, AAC/M4A, CAF
+  and others).
+- **Port:** the view takes only `.wav` files (8, 16, 24 and 32-bit PCM,
+  32 and 64-bit float, plain or `WAVE_FORMAT_EXTENSIBLE`), read with the
+  same sample values as JUCE's WAV reader
+  (`port/crates/plugin/src/audio_file.rs`). Other files get no copy badge
+  and the drop is refused.
+- **Why:** the port has no decoder for the other formats yet. The next PR
+  adds one (symphonia) for upstream's macOS set and narrows this entry.
+- **Approved:** coordinator, 2026-10-26 (WAV first, the decoder next).
+
 ### D24. The user data folder: one default root, and a menu item to choose it
 
 - **Differs:** where the user's presets, wavetables, samples and LFOs live
