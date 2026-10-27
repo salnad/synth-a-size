@@ -32,8 +32,9 @@ as follows:
 
 - `juce_dsp` (the FFT), `juce_graphics` (colours, paths and path
   strokes), `juce_gui_basics` (slider dragging, click and double-click
-  timing, buttons, colour lookup) and `juce_data_structures` (the config
-  file location), under the GNU General Public License, version 3 only;
+  timing, buttons, colour lookup), `juce_data_structures` (the config
+  file location) and `juce_audio_formats` (which WAV files are read, and
+  how a short or unsized `data` chunk is), under the GNU General Public License, version 3 only;
 - `juce_core` (base64, string and file-name helpers) and
   `juce_audio_basics` (on-screen keyboard state, MIDI file reading, MPE
   zones, MIDI event ordering, flush-to-zero), under the ISC licence:

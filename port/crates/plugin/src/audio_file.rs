@@ -1,5 +1,6 @@
 // Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
-// SPDX-License-Identifier: GPL-3.0-or-later
+// Portions Copyright (c) 2020 Raw Material Software Limited (JUCE 6: juce_audio_formats, GPL-3.0-only).
+// SPDX-License-Identifier: GPL-3.0-or-later AND GPL-3.0-only
 
 //! Audio files dropped onto a wavetable view: the readers and the wavetable
 //! data an audio file can carry.
@@ -10,6 +11,10 @@
 //! WAV reader is the port's own: PCM at 8, 16, 24 and 32 bits and IEEE
 //! float at 32 and 64 bits (plain or `WAVE_FORMAT_EXTENSIBLE`), giving the
 //! same samples as JUCE's WAV reader and `AudioData` float conversion.
+//! Which files it refuses, and how a short `data` chunk reads, follow
+//! `WavAudioFormatReader`'s constructor
+//! (`juce_audio_formats/codecs/juce_WavAudioFormat.cpp`), within D23's
+//! bounds.
 //! The other formats decode with symphonia (D23 records what can differ
 //! from JUCE's and CoreAudio's readers).
 

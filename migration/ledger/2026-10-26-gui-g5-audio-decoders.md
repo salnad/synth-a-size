@@ -35,6 +35,12 @@ lossy-decoder note.
 - **Bundle:** `THIRD_PARTY_NOTICES.md` names the twelve Symphonia crates
   and their licence, and the licence statement now says the decoders are
   MPL-2.0. `MPL-2.0.txt` is added, and `bundle.sh` copies it.
+- **Credit (rule 1, after #120):** the WAV reader now reproduces
+  `WavAudioFormatReader`'s rules for which files it takes and how a short
+  `data` chunk reads, so `audio_file.rs` gets the JUCE
+  `juce_audio_formats, GPL-3.0-only` line and the compound SPDX line, and
+  the notices list `juce_audio_formats` with the GPL modules. The plugin
+  crate's licence is already compound.
 - **Reference and corpus** (for Parity Reviewer):
   - `generate.py` authors 11 audio files in `migration/corpus/audio` with
     the standard library: WAV variants, AIFF and FLAC. The FLAC writer
