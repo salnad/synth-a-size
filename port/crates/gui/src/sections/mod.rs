@@ -100,6 +100,9 @@ pub enum MenuOwner {
     /// A modulation amount knob's menu (`ModulationAmountKnob`): its
     /// slider, where its text entry goes, and its slot.
     ModulationAmount(Slider, Rect, usize),
+    /// A Matrix row's source or destination list (`ModulationSelector`):
+    /// the id is the index of the choice in its names.
+    MatrixSelector { slot: usize, destination: bool },
 }
 
 /// Room for each filter model's styles in a [`MenuOwner::FilterType`] id.
@@ -152,6 +155,9 @@ pub struct Overlay {
     pub wavetable_edit_action: Option<(usize, wavetable_edit::EditMenu, i32)>,
     /// The modulation sources: the selected one and a drag in progress.
     pub modulation: ModulationManager,
+    /// A Matrix row's selector choice, (slot, destination, id), for the
+    /// matrix's next frame (`ModulationSelector::setValue`).
+    pub matrix_choice: Option<(usize, bool, i32)>,
 }
 
 impl Overlay {
@@ -210,6 +216,9 @@ impl Overlay {
                                 crate::modulation::amount_knob_choice(host, slot, id);
                             }
                         }
+                        MenuOwner::MatrixSelector { slot, destination } => {
+                            self.matrix_choice = Some((slot, destination, id));
+                        }
                     }
                 }
             }
@@ -220,7 +229,11 @@ impl Overlay {
                 MenuOutcome::Closed => {}
                 MenuOutcome::Selected(id) => {
                     // The dual selector stays open after a choice.
-                    apply_choice(host, menu.owner, id);
+                    if let MenuOwner::MatrixSelector { slot, destination } = menu.owner {
+                        self.matrix_choice = Some((slot, destination, id));
+                    } else {
+                        apply_choice(host, menu.owner, id);
+                    }
                     self.dual_menu = Some(menu);
                 }
             }
@@ -280,8 +293,15 @@ impl<'a, 'b> Panel<'a, 'b> {
     /// Shows `slider` at `bounds`: handles its mouse, routes its popup, menu
     /// and text entry to the overlay, and draws it.
     pub fn slider(&mut self, slider: &Slider, bounds: Rect) {
+        self.slider_changed(slider, bounds);
+    }
+
+    /// [`slider`](Self::slider), telling whether this frame's input moved
+    /// its value (`Slider::Listener::sliderValueChanged`).
+    pub fn slider_changed(&mut self, slider: &Slider, bounds: Rect) -> bool {
         let slider = &slider.displayed(self.host.model().hz_frequency_display());
         self.register_destination(slider, bounds);
+        let before = slider.host_value(self.host);
         let (value, hover) = self.slider_input(slider, bounds);
         self.meter(slider, bounds, value);
         slider.paint(
@@ -292,6 +312,7 @@ impl<'a, 'b> Panel<'a, 'b> {
             value,
             hover,
         );
+        value != before
     }
 
     /// `slider`'s `ModulationMeter`, if the engine is modulating it and it

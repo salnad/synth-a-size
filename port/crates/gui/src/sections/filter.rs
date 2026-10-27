@@ -764,16 +764,20 @@ impl FilterSection {
                 ),
             };
             let groups = (0..model::COUNT)
-                .map(|m| DualMenuGroup {
-                    name: MODEL_NAMES[m].to_string(),
-                    items: (0..num_styles(m))
-                        .map(|s| MenuItem::new(m as i32 * FILTER_STYLE_IDS + s, style_name(m, s)))
-                        .collect(),
+                .map(|m| {
+                    DualMenuGroup::new(
+                        MODEL_NAMES[m],
+                        (0..num_styles(m))
+                            .map(|s| {
+                                MenuItem::new(m as i32 * FILTER_STYLE_IDS + s, style_name(m, s))
+                            })
+                            .collect(),
+                    )
                 })
                 .collect();
             panel.overlay.dual_menu = Some(DualMenu::new(
                 groups,
-                model,
+                Some(model),
                 style.max(0) as usize,
                 position,
                 width,

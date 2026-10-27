@@ -22,7 +22,7 @@ const FIRST_REPEAT: f64 = 0.4;
 const REPEAT: f64 = 0.04;
 
 /// A column's scroll position and its bar's state.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScrollBar {
     /// The view position, in pixels from the column's top.
     pub position: f32,
