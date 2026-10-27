@@ -648,7 +648,6 @@ impl WavetableEditSection {
                 &overlay_layout,
                 &self.wave_source_sliders[kind],
                 view.as_ref(),
-                self.oscillator,
             );
         }
         // renderCorners, after the overlay.
@@ -1046,8 +1045,6 @@ impl WavetableEditSection {
             return;
         }
         if let Some((keyframe, _)) = self.frame_at(layout, offset, at) {
-            // Upstream keeps the selection and the overlay's frame pointing
-            // at the deleted keyframe; the port lets both go (D31).
             self.deselect();
             if let Some((_, creator)) = &mut self.creator {
                 edits::delete_keyframe(creator, keyframe);
@@ -1245,7 +1242,22 @@ impl WavetableEditSection {
             }
             _ => return,
         }
+        if !matches!(menu, EditMenu::Organizer(..)) {
+            self.recreate_visible_frames();
+        }
         self.commit(model);
+    }
+
+    /// `WavetableOrganizer::componentsChanged` after a component list edit
+    /// (`recreateVisibleFrames`): one selected keyframe is selected again,
+    /// so its overlay shows, and several are (`selectFrames`), which hides
+    /// it.
+    fn recreate_visible_frames(&mut self) {
+        match self.selected.as_slice() {
+            [keyframe] => self.select_frame(*keyframe),
+            [] => {}
+            _ => self.overlay_frame = None,
+        }
     }
 
     /// The Wave Source overlay to show, if the overlays' keyframe is a

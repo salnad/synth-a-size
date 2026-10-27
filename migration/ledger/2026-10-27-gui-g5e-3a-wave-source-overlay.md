@@ -41,8 +41,9 @@ the bars, their menus and the audible drag come in G5e-3b.
 - The grid sizes (0 to 16, 6 and 4 by default, back to them on a double
   click) set the snap grid. Their `IncrementerButtons` paint with JUCE's
   component painting, which `FullInterface` turns off, so upstream never
-  shows them; the port draws nothing either, but their halves step the
-  value up and down, clamped, as upstream's still do.
+  shows them, and the always-on-top grid sliders over them take every
+  press, so they never step the value either. The port lays them out (for
+  the layout paths) and does nothing else with them.
 - Each oscillator's editor keeps a Wave Source overlay and a Shepard Tone
   one, each with its own grid sizes and selector, as local controls
   (`local::WAVE_SOURCE_CONTROLS`): not saved or automated, as upstream's
@@ -51,9 +52,10 @@ the bars, their menus and the audible drag come in G5e-3b.
   creating one, adding a source, a reset and showing the editor select one
   keyframe and show its overlay; deselecting, a selection box
   (`selectFrames` deselects first), removing a component or keyframes and a
-  preset load hide it; group and modifier moves and keyframe drags carry it.
-  Upstream's double-click delete leaves its overlay pointing at the deleted
-  keyframe's frame; the port hides it (D31).
+  preset load hide it; keyframe drags carry it. After each component list
+  edit (`componentsChanged`, `recreateVisibleFrames`), a selection of one
+  keyframe is selected again, showing its overlay, and a larger one hides
+  it.
 - `Format::string_lookup` (`setStringLookup`), so a slider can show and take
   names from a list of the editor's own; `BarRenderer::y_at` and
   `scaled_y_at`; `Interface::local_value` for tests.
@@ -69,8 +71,10 @@ the bars, their menus and the audible drag come in G5e-3b.
 - `tests/wavetable_editor.rs`: the overlay follows the selection (shown on
   opening, hidden by a click on empty space, shown by a press on the
   keyframe, hidden by a selection box); choosing "Spectral Blend" gives the
-  source linear frequency-domain interpolation and commits once; the
-  incrementers step the grid sizes and stop at 0.
+  source linear frequency-domain interpolation and commits once; a click on
+  an incrementer's half is the grid slider's and leaves the size alone; a
+  modifier added after a selection box took one keyframe shows its overlay
+  again.
 - Unit tests: the selector's values map to upstream's style and mode, and
   other components are left alone; a sine's harmonics; the snap radius.
 - Side by side with ref-gui at 1400x820, `wavetable_editor` matches upstream

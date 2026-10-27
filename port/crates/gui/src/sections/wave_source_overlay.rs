@@ -13,7 +13,8 @@
 //! between them, the interpolation selector and the grid sizes. The grid
 //! sizes' `IncrementerButtons` paint with JUCE's component painting, which
 //! `FullInterface` turns off for its OpenGL context, so upstream never shows
-//! them, though they still take clicks; the port matches.
+//! them, and the always-on-top grid sliders over them take every press, so
+//! they never act either; the port only lays them out.
 //!
 //! Upstream draws the overlay twice each frame: `SynthSection`'s
 //! `renderOpenGlComponents` renders it as a visible sub-section before the
@@ -32,7 +33,6 @@ use super::Panel;
 use crate::colour::Colour;
 use crate::controls::bars::BarRenderer;
 use crate::controls::slider::{Slider, SliderStyle};
-use crate::controls::ui_button;
 use crate::fonts::Face;
 use crate::layout::Rect;
 use crate::local::{WaveSourceControls, WAVE_SOURCE_INTERPOLATIONS};
@@ -82,7 +82,7 @@ pub struct OverlayLayout {
     pub grid_x: Rect,
     pub grid_y: Rect,
     /// `horizontal_incrementers_` and `vertical_incrementers_`: each one's
-    /// increment (top) and decrement (bottom) halves.
+    /// increment (top) and decrement (bottom) halves, laid out but inert.
     pub grid_x_buttons: [Rect; 2],
     pub grid_y_buttons: [Rect; 2],
 }
@@ -298,34 +298,12 @@ pub fn show_wave_source_overlay(
     layout: &OverlayLayout,
     sliders: &WaveSourceSliders,
     view: Option<&WaveSourceView>,
-    salt: usize,
 ) {
-    let host = panel.host;
     paint_editors(panel, edit, sliders, view);
     paint_controls(panel, layout);
     panel.slider(&sliders.interpolation, layout.interpolation);
     panel.slider(&sliders.grid_x, layout.grid_x);
     panel.slider(&sliders.grid_y, layout.grid_y);
-    for (slider, buttons) in [
-        (&sliders.grid_x, layout.grid_x_buttons),
-        (&sliders.grid_y, layout.grid_y_buttons),
-    ] {
-        for (button, delta) in buttons.into_iter().zip([1.0, -1.0]) {
-            let id =
-                panel
-                    .ui
-                    .scope_id()
-                    .with(("wave source incrementer", salt, slider.name, button.y));
-            let (clicked, _) =
-                ui_button::interact(panel.ui, panel.pixels, &panel.scope, id, false, button);
-            if clicked {
-                // IncrementerButtons::buttonClicked: Slider::setValue clamps.
-                let value =
-                    (host.value(slider.name) + delta).clamp(slider.info.min, slider.info.max);
-                host.set_once(slider.name, value);
-            }
-        }
-    }
 }
 
 /// The overlay's editors over the displays.

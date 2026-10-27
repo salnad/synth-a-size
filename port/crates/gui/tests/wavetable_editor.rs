@@ -814,29 +814,50 @@ fn the_interpolation_selector_sets_the_sources_interpolation() {
     assert!(log_is_empty(&fixture));
 }
 
-/// `IncrementerButtons::buttonClicked`: the unpainted top half of each grid
-/// size's right end steps it up and the bottom half down, within 0 to 16.
+/// The grid sizes' `IncrementerButtons` are under the always-on-top grid
+/// sliders, which take the press: a click on either half leaves the size
+/// alone.
 #[test]
-fn the_grid_incrementers_step_the_grid_sizes() {
+fn the_grid_incrementers_are_inert() {
     let fixture = Fixture::new();
     let mut harness = opened(&fixture);
     let overlay = fixture.overlay_layout();
     let controls = WAVE_SOURCE_CONTROLS[0][0];
-    assert_eq!(fixture.local(controls.grid_x), 6.0);
-    assert_eq!(fixture.local(controls.grid_y), 4.0);
-
     click(&mut harness, centre(overlay.grid_x_buttons[0]));
-    assert_eq!(fixture.local(controls.grid_x), 7.0);
     for _ in 0..30 {
         harness.step();
     }
-    for _ in 0..6 {
-        click(&mut harness, centre(overlay.grid_y_buttons[1]));
-        for _ in 0..30 {
-            harness.step();
-        }
-    }
-    assert_eq!(fixture.local(controls.grid_y), 0.0);
-    assert_eq!(fixture.local(controls.grid_x), 7.0);
+    click(&mut harness, centre(overlay.grid_y_buttons[1]));
+    assert_eq!(fixture.local(controls.grid_x), 6.0);
+    assert_eq!(fixture.local(controls.grid_y), 4.0);
     assert!(log_is_empty(&fixture));
+}
+
+/// After a selection box takes one keyframe (the overlay hidden), a
+/// component list edit selects it again (`componentsChanged`,
+/// `recreateVisibleFrames`, `selectFrame`), so the overlay comes back.
+#[test]
+fn a_list_edit_reselects_a_boxed_keyframe() {
+    let fixture = Fixture::new();
+    let mut harness = opened(&fixture);
+    let layout = fixture.editor_layout();
+    let from = organizer_point(&layout, 0, 60);
+    let to = Pos2::new(
+        organizer_point(&layout, 0, 0).x - layout.handle_width as f32,
+        from.y,
+    );
+    drag(&mut harness, from, to);
+    assert_eq!(fixture.selected(0), [FIRST]);
+    assert_eq!(fixture.overlay_frame(0), None);
+
+    let top = Scope::top(&fixture.skin, fixture.layout().size_ratio);
+    let add_modifier = layout.add_button(&top, 1, true);
+    click(&mut harness, centre(add_modifier));
+    choose_row(
+        &mut harness,
+        Pos2::new(add_modifier.x as f32, add_modifier.bottom() as f32),
+        4,
+    );
+    assert_eq!(fixture.selected(0), [FIRST]);
+    assert_eq!(fixture.overlay_frame(0), Some(FIRST));
 }
