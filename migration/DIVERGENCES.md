@@ -810,6 +810,40 @@ MCP server) extends this entry when it lands.*
 - **Approved:** coordinator, relaying Voice Reviewer's review of #170,
   2026-10-26.
 
+### D28. "Add Folder" refuses a folder that links back into itself
+
+- **Differs:** what the popup browser's "Add Folder" does with a folder
+  holding a symbolic link to itself or to a folder above it.
+- **Upstream:** `isAcceptableRoot` walks the folder with
+  `findChildFiles(File::findDirectories, false)`, linked folders followed,
+  and refuses it once more than `kMaxRootFiles` (8,000) files are counted.
+  A loop is walked round and round, each pass deeper in the path. With
+  files in it, the count soon passes 8,000 and the folder is refused. With
+  none, the walk goes on until the system refuses the path, and with two
+  such links it doubles at every level, so the host hangs.
+- **Port:** `popup_browser::is_acceptable_root` walks and counts the same
+  way, linked folders followed, so a folder without a loop gets upstream's
+  answer. A folder whose walk reaches one of the folders above it is
+  refused at once, with the same "too many files" message.
+- **Why:** no folder a user picks may hang the host. A looped folder with
+  files is refused by upstream too, and the browser's listings follow
+  links as upstream's do, so an accepted loop would only move the hang to
+  the listing.
+- **Approved:** coordinator, 2026-10-26.
+
+### D29. No "Open File Location" menu on the All, Favorites and Add Folder rows
+
+- **Differs:** a right-click on the All, Favorites or Add Folder row of the
+  preset browser's or popup browser's folder list.
+- **Upstream:** `SelectionList::menuClick` offers "Open File Location" on
+  any hovered row. For these three rows the row is a made-up file under
+  `cwd/_` that doesn't exist, so `revealToUser` does nothing.
+- **Port:** the menu is offered only on rows that are real files or
+  folders (`selection_list.rs`); a right-click on these three rows opens
+  nothing.
+- **Why:** a menu item that does nothing is left out rather than copied.
+- **Approved:** coordinator, 2026-10-26.
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change

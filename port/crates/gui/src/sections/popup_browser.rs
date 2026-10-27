@@ -16,6 +16,7 @@ use sas_preset::user_folders::{self, Kind, LFO_EXTENSION, WAVETABLE_EXTENSION};
 
 use super::selection_list::{Selection, SelectionEvent, SelectionList};
 use super::Panel;
+use crate::controls::file_dialog::{self, FileRequest};
 use crate::controls::paths;
 use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
 use crate::controls::text_editor;
@@ -37,6 +38,53 @@ pub const WAVETABLE_EXTENSIONS: &[&str] = &[WAVETABLE_EXTENSION, "wav", "flac"];
 
 /// `vital::kSampleExtensionsList`, without the dots.
 pub const SAMPLE_EXTENSIONS: &[&str] = &["wav", "flac"];
+
+/// `kMaxRootFiles`: the most files an added folder may hold, all its
+/// folders counted.
+pub const MAX_ROOT_FILES: usize = 8000;
+
+/// `addAdditionalFolder`'s error box title.
+const ADD_FOLDER_ERROR: &str = "Error Adding Folder";
+
+/// The Add Folder dialog's id.
+fn add_folder_dialog() -> egui::Id {
+    egui::Id::unique("popup browser add folder")
+}
+
+/// `isAcceptableRoot`: whether `folder` and the folders inside it hold no
+/// more than [`MAX_ROOT_FILES`] files, counted folder by folder as
+/// upstream's walk does, linked folders followed. A folder that leads back
+/// to one of the folders above it is refused, where upstream's walk would
+/// go round the loop (D28).
+pub fn is_acceptable_root(folder: &Path) -> bool {
+    let mut folders = vec![(folder.to_path_buf(), Vec::<PathBuf>::new())];
+    let mut files = 0usize;
+    while let Some((current, mut above)) = folders.pop() {
+        let Ok(real) = std::fs::canonicalize(&current) else {
+            continue;
+        };
+        if above.contains(&real) {
+            return false;
+        }
+        above.push(real);
+        let Ok(entries) = std::fs::read_dir(&current) else {
+            continue;
+        };
+        let mut inside = Vec::new();
+        for path in entries.flatten().map(|entry| entry.path()) {
+            if path.is_dir() {
+                inside.push(path);
+            } else if path.is_file() {
+                files += 1;
+            }
+        }
+        if files > MAX_ROOT_FILES {
+            return false;
+        }
+        folders.extend(inside.into_iter().map(|path| (path, above.clone())));
+    }
+    true
+}
 
 /// The LFO browser's `"*." + vital::kLfoExtension`.
 pub const LFO_EXTENSIONS: &[&str] = &[LFO_EXTENSION];
@@ -60,6 +108,12 @@ impl BrowserOwner {
             BrowserOwner::Lfo(_) => Kind::Lfos,
             BrowserOwner::Sample => Kind::Samples,
         }
+    }
+
+    /// Whether folders can be added to its browser: upstream passes an
+    /// additional folders name for wavetables and samples, none for LFOs.
+    pub fn takes_added_folders(self) -> bool {
+        !matches!(self, BrowserOwner::Lfo(_))
     }
 
     /// The file extensions it lists (`vital::kWavetableExtensionsList`).
@@ -212,7 +266,15 @@ impl PopupBrowser {
             .unwrap_or_default();
         self.folders
             .set_passthrough_folder_name(owner.kind().folder_name());
+        let added = if owner.takes_added_folders() {
+            model.additional_folders(owner.kind())
+        } else {
+            Vec::new()
+        };
+        self.folders
+            .set_additional_roots(owner.takes_added_folders().then(|| added.clone()));
         self.folders.set_selections(self.directories.clone());
+        self.directories.extend(added);
         self.files.set_selected(None);
         self.folders.set_filter("");
         let folder_selected =
@@ -236,12 +298,59 @@ impl PopupBrowser {
     /// `allSelected` and `favoritesSelected`: every file under the folders,
     /// or the favourite ones.
     fn list_all(&mut self, favourites: Option<&BTreeSet<PathBuf>>) {
-        let mut files = user_folders::files_of_type(self.folders.selections(), self.extensions);
+        let folders: Vec<PathBuf> = self
+            .folders
+            .selections()
+            .iter()
+            .chain(self.folders.additional_roots())
+            .cloned()
+            .collect();
+        let mut files = user_folders::files_of_type(&folders, self.extensions);
         if let Some(favourites) = favourites {
             files.retain(|file| favourites.contains(file));
         }
         self.files.set_selections(files);
         self.files.reset_scroll_position();
+    }
+
+    /// `addAdditionalFolder` once the dialog has answered: `folder` joins the
+    /// folder list and the config's added folders, unless it holds too many
+    /// files or is already listed, which an alert says.
+    pub fn add_folder(&mut self, ctx: &egui::Context, model: &dyn EditorModel, folder: PathBuf) {
+        let Some(owner) = self.owner.filter(|owner| owner.takes_added_folders()) else {
+            return;
+        };
+        if !folder.exists() {
+            return;
+        }
+        if !is_acceptable_root(&folder) {
+            let message =
+                format!("Folder has too many files to add to browser. Max: {MAX_ROOT_FILES}");
+            file_dialog::alert(ctx, ADD_FOLDER_ERROR, &message);
+            return;
+        }
+        let mut roots = model.additional_folders(owner.kind());
+        if roots.contains(&folder) || self.folders.selections().contains(&folder) {
+            file_dialog::alert(ctx, ADD_FOLDER_ERROR, "Folder already added");
+            return;
+        }
+        self.folders.add_additional_root(folder.clone());
+        roots.push(folder);
+        model.set_additional_folders(owner.kind(), &roots);
+    }
+
+    /// `removeAdditionalFolder`: out of the folder list and the config's
+    /// added folders.
+    pub fn remove_folder(&mut self, model: &dyn EditorModel, folder: &Path) {
+        let Some(owner) = self.owner.filter(|owner| owner.takes_added_folders()) else {
+            return;
+        };
+        self.folders.remove_additional_root(folder);
+        let mut roots = model.additional_folders(owner.kind());
+        if let Some(index) = roots.iter().position(|root| root == folder) {
+            roots.remove(index);
+        }
+        model.set_additional_folders(owner.kind(), &roots);
     }
 
     /// Draws the browser and handles its clicks and keys over the panel's
@@ -317,7 +426,18 @@ impl PopupBrowser {
                 let favourites: BTreeSet<PathBuf> = model.favourites().into_iter().collect();
                 self.list_all(Some(&favourites));
             }
+            Some(SelectionEvent::AddFolder) => {
+                file_dialog::open(
+                    panel.ui.ctx(),
+                    add_folder_dialog(),
+                    &FileRequest::folder("Add Folder"),
+                );
+            }
+            Some(SelectionEvent::RemoveFolder(folder)) => self.remove_folder(model, &folder),
             _ => {}
+        }
+        if let Some(Some(folder)) = file_dialog::take_result(panel.ui.ctx(), add_folder_dialog()) {
+            self.add_folder(panel.ui.ctx(), model, folder);
         }
         let mut chosen = self
             .files
@@ -470,7 +590,13 @@ mod tests {
         assert_eq!(layout.exit, Rect::new(662, 50, 38, 38));
     }
 
-    struct DataFolder(PathBuf);
+    struct DataFolder(PathBuf, std::sync::Mutex<Vec<PathBuf>>);
+
+    impl DataFolder {
+        fn new(root: PathBuf) -> DataFolder {
+            DataFolder(root, Default::default())
+        }
+    }
 
     impl EditorModel for DataFolder {
         fn preset_name(&self) -> String {
@@ -479,6 +605,16 @@ mod tests {
 
         fn data_directory(&self) -> Option<PathBuf> {
             Some(self.0.clone())
+        }
+
+        fn additional_folders(&self, kind: Kind) -> Vec<PathBuf> {
+            assert_eq!(kind, Kind::Wavetables);
+            self.1.lock().unwrap().clone()
+        }
+
+        fn set_additional_folders(&self, kind: Kind, folders: &[PathBuf]) {
+            assert_eq!(kind, Kind::Wavetables);
+            *self.1.lock().unwrap() = folders.to_vec();
         }
     }
 
@@ -495,7 +631,7 @@ mod tests {
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(path, "").unwrap();
         }
-        let model = DataFolder(root.clone());
+        let model = DataFolder::new(root.clone());
         let area = Rect::new(0, 0, 100, 100);
         let mut browser = PopupBrowser::default();
         browser.open(&model, BrowserOwner::Oscillator(0), area, area, None);
@@ -509,6 +645,116 @@ mod tests {
         browser.open(&model, BrowserOwner::Lfo(0), area, area, None);
         assert_eq!(browser.folders.selected(), None);
         assert_eq!(browser.file_rows(), [Selection::Path(shape)]);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// `addAdditionalFolder` and `removeAdditionalFolder`: an accepted folder
+    /// is listed after the user's, before the Add Folder row, and saved; one
+    /// already added or with too many files is refused with upstream's
+    /// alerts; a removed one leaves the list and the config. LFOs take none.
+    #[test]
+    fn folders_are_added_and_removed_as_upstreams_are() {
+        let root = std::env::temp_dir().join(format!("sas-popup-added-{}", std::process::id()));
+        let table = root.join(format!("Wavetables/Table.{WAVETABLE_EXTENSION}"));
+        let extra = root.join("Elsewhere/Extra");
+        let crowded = root.join("Crowded");
+        for path in [&table, &extra.join(format!("Far.{WAVETABLE_EXTENSION}"))] {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "").unwrap();
+        }
+        std::fs::create_dir_all(crowded.join("Inner")).unwrap();
+        for index in 0..=MAX_ROOT_FILES {
+            let folder = if index % 2 == 0 {
+                crowded.clone()
+            } else {
+                crowded.join("Inner")
+            };
+            std::fs::write(folder.join(format!("{index}.wav")), "").unwrap();
+        }
+        let model = DataFolder::new(root.clone());
+        let ctx = egui::Context::default();
+        let area = Rect::new(0, 0, 100, 100);
+        let mut browser = PopupBrowser::default();
+        browser.open(&model, BrowserOwner::Oscillator(0), area, area, None);
+        assert_eq!(browser.folder_rows().last(), Some(&Selection::AddFolder));
+
+        browser.add_folder(&ctx, &model, extra.clone());
+        let rows = browser.folder_rows();
+        assert_eq!(
+            rows[rows.len() - 2..],
+            [Selection::Path(extra.clone()), Selection::AddFolder]
+        );
+        assert_eq!(*model.1.lock().unwrap(), std::slice::from_ref(&extra));
+        assert!(file_dialog::queued_alerts(&ctx).is_empty());
+
+        browser.add_folder(&ctx, &model, extra.clone());
+        browser.add_folder(&ctx, &model, root.join("Wavetables"));
+        browser.add_folder(&ctx, &model, crowded.clone());
+        let alerts: Vec<String> = file_dialog::queued_alerts(&ctx)
+            .into_iter()
+            .map(|(title, message)| format!("{title}: {message}"))
+            .collect();
+        assert_eq!(
+            alerts,
+            [
+                "Error Adding Folder: Folder already added",
+                "Error Adding Folder: Folder already added",
+                "Error Adding Folder: Folder has too many files to add to browser. Max: 8000",
+            ]
+        );
+        assert_eq!(*model.1.lock().unwrap(), std::slice::from_ref(&extra));
+        assert!(is_acceptable_root(&extra) && !is_acceptable_root(&crowded));
+
+        // The added folder's files are among All's, and it stays added when
+        // the browser opens again.
+        browser.list_all(None);
+        assert!(browser.file_rows().contains(&Selection::Path(
+            extra.join(format!("Far.{WAVETABLE_EXTENSION}"))
+        )));
+        browser.open(&model, BrowserOwner::Oscillator(1), area, area, None);
+        assert!(browser
+            .folder_rows()
+            .contains(&Selection::Path(extra.clone())));
+        assert!(browser.file_rows().contains(&Selection::Path(
+            extra.join(format!("Far.{WAVETABLE_EXTENSION}"))
+        )));
+
+        browser.remove_folder(&model, &extra);
+        assert!(!browser
+            .folder_rows()
+            .contains(&Selection::Path(extra.clone())));
+        assert!(model.1.lock().unwrap().is_empty());
+
+        browser.open(&model, BrowserOwner::Lfo(0), area, area, None);
+        assert!(!browser.folder_rows().contains(&Selection::AddFolder));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// A folder holding a link back to itself is refused rather than walked
+    /// round; a link to a folder elsewhere is followed and its files
+    /// counted (D28).
+    #[cfg(unix)]
+    #[test]
+    fn a_folder_that_loops_back_is_refused() {
+        let root = std::env::temp_dir().join(format!("sas-popup-loop-{}", std::process::id()));
+        let looped = root.join("Looped");
+        let linked = root.join("Linked");
+        let plain = root.join("Plain");
+        for folder in [&looped, &linked, &plain] {
+            std::fs::create_dir_all(folder).unwrap();
+            std::fs::write(folder.join("one.wav"), "").unwrap();
+        }
+        std::os::unix::fs::symlink(&looped, looped.join("again")).unwrap();
+        assert!(!is_acceptable_root(&looped));
+        std::os::unix::fs::symlink(&linked, plain.join("elsewhere")).unwrap();
+        assert!(is_acceptable_root(&plain));
+        for index in 0..MAX_ROOT_FILES {
+            std::fs::write(linked.join(format!("{index}.wav")), "").unwrap();
+        }
+        assert!(
+            !is_acceptable_root(&plain),
+            "the linked folder's files count"
+        );
         std::fs::remove_dir_all(&root).unwrap();
     }
 

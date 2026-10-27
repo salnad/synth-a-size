@@ -274,6 +274,19 @@ pub trait EditorModel: Send + Sync + 'static {
         Vec::new()
     }
 
+    /// `LoadSave::getAdditionalFolders`: the folders added to the browser for
+    /// `kind`, in the order they were added. Only wavetables and samples
+    /// have them.
+    fn additional_folders(&self, kind: sas_preset::user_folders::Kind) -> Vec<PathBuf> {
+        let _ = kind;
+        Vec::new()
+    }
+
+    /// `LoadSave::saveAdditionalFolders`.
+    fn set_additional_folders(&self, kind: sas_preset::user_folders::Kind, folders: &[PathBuf]) {
+        let _ = (kind, folders);
+    }
+
     /// `LoadSave::addFavorite` / `removeFavorite`.
     fn set_favourite(&self, path: &Path, favourite: bool) {
         let _ = (path, favourite);

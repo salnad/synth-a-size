@@ -29,7 +29,7 @@ use sas_gui::sections::synthesis::SynthesisLayout;
 use sas_gui::skin::Skin;
 use sas_gui::{EditorModel, Host, HostParam, Interface, OpenGestures, Tab};
 use sas_preset::registry::registry;
-use sas_preset::user_folders::PRESET_EXTENSION;
+use sas_preset::user_folders::{Kind, PRESET_EXTENSION};
 
 /// Every registry control, linear over its range, and the editor settings.
 struct Synth {
@@ -41,6 +41,8 @@ struct Synth {
     /// What the editor asked the synth to do with presets.
     calls: Mutex<Vec<String>>,
     favourites: Mutex<Vec<PathBuf>>,
+    /// The folders added to the wavetable browser.
+    added_wavetable_folders: Mutex<Vec<PathBuf>>,
     generation: AtomicU64,
     default_author: Mutex<String>,
 }
@@ -67,6 +69,7 @@ impl Synth {
             active_file: Mutex::new(None),
             calls: Mutex::new(Vec::new()),
             favourites: Mutex::new(Vec::new()),
+            added_wavetable_folders: Mutex::new(Vec::new()),
             generation: AtomicU64::new(0),
             default_author: Mutex::new("Someone".to_string()),
         })
@@ -166,6 +169,18 @@ impl EditorModel for Synth {
 
     fn favourites(&self) -> Vec<PathBuf> {
         self.favourites.lock().unwrap().clone()
+    }
+
+    fn additional_folders(&self, kind: Kind) -> Vec<PathBuf> {
+        match kind {
+            Kind::Wavetables => self.added_wavetable_folders.lock().unwrap().clone(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn set_additional_folders(&self, kind: Kind, folders: &[PathBuf]) {
+        assert_eq!(kind, Kind::Wavetables);
+        *self.added_wavetable_folders.lock().unwrap() = folders.to_vec();
     }
 
     fn set_favourite(&self, path: &Path, favourite: bool) {
@@ -1103,6 +1118,7 @@ fn stems(rows: &[Selection]) -> Vec<String> {
         .map(|row| match row {
             Selection::All => "All".to_string(),
             Selection::Favourites => "Favorites".to_string(),
+            Selection::AddFolder => "Add Folder".to_string(),
             Selection::Path(path) => path.file_stem().unwrap().to_string_lossy().into_owned(),
         })
         .collect()
@@ -1135,6 +1151,7 @@ fn the_wavetable_name_opens_the_popup_browser_and_a_file_loads() {
             Selection::Favourites,
             Selection::Path(data.0.join("Bank/Wavetables")),
             Selection::Path(data.0.join("Wavetables")),
+            Selection::AddFolder,
         ]
     );
     assert_eq!(
@@ -1439,4 +1456,83 @@ fn the_sample_arrows_step_past_a_file_that_doesnt_read() {
     assert_eq!(calls(&fixture), ["sample Broken.wav"]);
     click(&mut harness, next);
     assert_eq!(calls(&fixture), ["sample Hit.wav"]);
+}
+
+/// A folder outside the data folder holding one wavetable, added to the
+/// wavetable browser.
+fn added_wavetables(fixture: &Fixture, data: &Folder) -> PathBuf {
+    let added = data.0.join("Outside/Added");
+    std::fs::create_dir_all(&added).unwrap();
+    std::fs::write(
+        added.join("Zeta.vitaltable"),
+        r#"{"version":"1.0.0","name":"Inside","groups":[]}"#,
+    )
+    .unwrap();
+    *fixture.synth.added_wavetable_folders.lock().unwrap() = vec![added.clone()];
+    added
+}
+
+/// The square left of a list's scroll bar in row `row`, where an added
+/// folder's remove cross is (`x_area_`).
+fn cross_square(list: Rect, row: i32) -> Pos2 {
+    Pos2::new(
+        (list.right() - 15 - 12) as f32,
+        (list.y + 24 * row + 12) as f32,
+    )
+}
+
+/// An added folder is listed after the user's and before Add Folder, its
+/// files among All's. A press on its cross removes it from the list and the
+/// config; the same square on a user's folder does nothing, not even select
+/// it (`leftClick`'s `x_area_`).
+#[test]
+fn an_added_folder_lists_and_its_cross_removes_it() {
+    let fixture = Fixture::new();
+    let data = wavetable_data(&fixture, "popup-added");
+    let added = added_wavetables(&fixture, &data);
+    let mut harness = fixture.harness();
+    let (osc, browser) = oscillator_browser(&fixture);
+    click(&mut harness, centre(osc.preset_selector.text));
+    let rows = fixture.interface.borrow().popup_browser_rows().unwrap();
+    assert_eq!(
+        rows.0[4..],
+        [Selection::Path(added.clone()), Selection::AddFolder]
+    );
+    assert!(stems(&rows.1).contains(&"Zeta".to_string()));
+
+    click(&mut harness, cross_square(browser.folders, 3));
+    let rows = fixture.interface.borrow().popup_browser_rows().unwrap();
+    assert_eq!(rows.0.len(), 6, "the user's folder stays");
+    assert!(
+        stems(&rows.1).contains(&"Zeta".to_string()),
+        "All stays selected"
+    );
+
+    click(&mut harness, cross_square(browser.folders, 4));
+    let rows = fixture.interface.borrow().popup_browser_rows().unwrap();
+    assert_eq!(rows.0[4..], [Selection::AddFolder]);
+    assert!(fixture
+        .synth
+        .added_wavetable_folders
+        .lock()
+        .unwrap()
+        .is_empty());
+}
+
+/// The wavetable arrows step through the added folders' files too, all
+/// sorted by full path (`getShiftedFile` with
+/// `kAdditionalWavetableFoldersName`): here the added folder's file comes
+/// after the bank's.
+#[test]
+fn the_wavetable_arrows_step_into_added_folders() {
+    let fixture = Fixture::new();
+    let data = wavetable_data(&fixture, "popup-added-arrows");
+    let _added = added_wavetables(&fixture, &data);
+    let mut harness = fixture.harness();
+    let (osc, _) = oscillator_browser(&fixture);
+    let next = centre(osc.preset_selector.next);
+    click(&mut harness, next);
+    assert_eq!(calls(&fixture), ["wavetable 0 Bank Table"]);
+    click(&mut harness, next);
+    assert_eq!(calls(&fixture), ["wavetable 0 Zeta"]);
 }

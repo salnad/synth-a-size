@@ -16,6 +16,7 @@ use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::telemetry::Telemetry;
 use sas_engine::Tuning;
 use sas_gui::{ChatHost, EditorModel, HostParam, Route};
+use sas_preset::user_folders::Kind;
 use sas_preset::{GuiConnection, InitContent, PresetState, SampleState, SaveInfo, SlotValues};
 
 use crate::audio_file;
@@ -464,6 +465,21 @@ impl EditorModel for PluginModel {
             .unwrap_or_default()
     }
 
+    fn additional_folders(&self, kind: Kind) -> Vec<PathBuf> {
+        match (self.midi_learn.config_file(), additional_folders_name(kind)) {
+            (Some(config), Some(name)) => crate::config::additional_folders(config, name),
+            _ => Vec::new(),
+        }
+    }
+
+    fn set_additional_folders(&self, kind: Kind, folders: &[PathBuf]) {
+        if let (Some(config), Some(name)) =
+            (self.midi_learn.config_file(), additional_folders_name(kind))
+        {
+            let _ = crate::config::save_additional_folders(config, name, folders);
+        }
+    }
+
     fn set_favourite(&self, path: &Path, favourite: bool) {
         if let Some(config) = self.midi_learn.config_file() {
             let _ = crate::config::save_favourite(
@@ -575,6 +591,16 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// The config key holding the folders added to `kind`'s browser
+/// (`LoadSave::kAdditionalWavetableFoldersName`, `kAdditionalSampleFoldersName`).
+fn additional_folders_name(kind: Kind) -> Option<&'static str> {
+    match kind {
+        Kind::Wavetables => Some(crate::config::WAVETABLE_FOLDERS),
+        Kind::Samples => Some(crate::config::SAMPLE_FOLDERS),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

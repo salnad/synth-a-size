@@ -377,9 +377,11 @@ impl SampleSection {
             // prevClicked and nextClicked: getShiftedFile among the user's
             // samples.
             let model = host.model();
-            let directories = user_folders::root(model.data_directory().as_deref())
+            // getShiftedFile: the user's folders, then the added ones.
+            let mut directories = user_folders::root(model.data_directory().as_deref())
                 .map(|root| user_folders::directories(&root, Kind::Samples))
                 .unwrap_or_default();
+            directories.extend(model.additional_folders(Kind::Samples));
             let files = user_folders::files_of_type(&directories, popup_browser::SAMPLE_EXTENSIONS);
             let current = self.current_file();
             if let Some(file) = user_folders::shifted_file(files, current.as_deref(), shift) {

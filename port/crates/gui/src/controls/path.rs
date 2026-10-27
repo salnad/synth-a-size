@@ -281,6 +281,75 @@ impl Path {
         }
     }
 
+    /// The dashes `PathStrokeType::createDashedStroke` strokes: the path cut
+    /// into lengths alternating on and off (`dash_lengths`, repeating),
+    /// along its segments as `PathFlatteningIterator` walks them, a closed
+    /// subpath ending with its closing segment. As in JUCE, a dash running
+    /// off the end of an open subpath goes on into the next. Stroke the
+    /// result to draw it; no positive length gives an empty path.
+    pub fn dashed(&self, dash_lengths: &[f32]) -> Path {
+        let mut out = Path::new();
+        if !dash_lengths.iter().any(|&length| length > 0.0) {
+            return out;
+        }
+        let mut segments = Vec::new();
+        for subpath in &self.subpaths {
+            for pair in subpath.points.windows(2) {
+                segments.push((pair[0], pair[1], false));
+            }
+            if let (true, Some(&first), Some(&last)) = (
+                subpath.closed,
+                subpath.points.first(),
+                subpath.points.last(),
+            ) {
+                if first != last {
+                    segments.push((last, first, true));
+                }
+            }
+        }
+        let mut segments = segments.into_iter();
+        let mut first = true;
+        let mut dash = 0usize;
+        let (mut position, mut line_length, mut line_end) = (0.0f32, 0.0f32, 0.0f32);
+        let (mut start, mut end) = ((0.0f32, 0.0f32), (0.0f32, 0.0f32));
+        loop {
+            let solid = dash.is_multiple_of(2);
+            let length = dash_lengths[dash % dash_lengths.len()];
+            dash += 1;
+            if length <= 0.0 {
+                continue;
+            }
+            position += length;
+            while position > line_end {
+                let Some((from, to, closes)) = segments.next() else {
+                    if solid && !first {
+                        out.line_to(end.0, end.1);
+                    }
+                    return out;
+                };
+                if solid && !first {
+                    out.line_to(from.0, from.1);
+                } else {
+                    out.move_to(from.0, from.1);
+                }
+                (start, end) = (from, to);
+                line_length = (to.0 - from.0).hypot(to.1 - from.1);
+                line_end += line_length;
+                first = closes;
+            }
+            let alpha = (position - (line_end - line_length)) / line_length;
+            let (x, y) = (
+                start.0 + (end.0 - start.0) * alpha,
+                start.1 + (end.1 - start.1) * alpha,
+            );
+            if solid {
+                out.line_to(x, y);
+            } else {
+                out.move_to(x, y);
+            }
+        }
+    }
+
     /// `PathStrokeType(thickness, joints, ends).createStrokedPath`: the
     /// outline of a stroke `thickness` wide, as pieces that are each wound
     /// the same way, so their non-zero fill is the stroke. Curved joints and
@@ -1064,5 +1133,53 @@ mod tests {
                 .sum();
             assert!(area >= 0.0);
         }
+    }
+
+    /// `createDashedStroke`'s cuts: on 4, off 2 along a line; round a
+    /// closed square, its closing side included; and on from one open
+    /// subpath into the next.
+    #[test]
+    fn dashes_follow_juces_walk() {
+        let points = |path: &Path| -> Vec<Vec<(f32, f32)>> {
+            path.subpaths()
+                .iter()
+                .map(|subpath| subpath.points.clone())
+                .collect()
+        };
+        let mut line = Path::new();
+        line.move_to(0.0, 0.0);
+        line.line_to(10.0, 0.0);
+        assert_eq!(
+            points(&line.dashed(&[4.0, 2.0])),
+            [vec![(0.0, 0.0), (4.0, 0.0)], vec![(6.0, 0.0), (10.0, 0.0)]]
+        );
+
+        let mut square = Path::new();
+        square.add_rectangle(0.0, 0.0, 2.0, 2.0);
+        // The last gap ends in a lone start point, as in JUCE, which strokes
+        // to nothing.
+        let dashes = square.dashed(&[3.0, 1.0]);
+        let drawn: Vec<usize> = dashes
+            .subpaths()
+            .iter()
+            .map(|subpath| subpath.points.len())
+            .filter(|&points| points > 1)
+            .collect();
+        // The second dash starts on a corner, which JUCE's walk adds again
+        // as the next side's start.
+        assert_eq!(drawn, [3, 4]);
+
+        let mut two = Path::new();
+        two.move_to(0.0, 0.0);
+        two.line_to(1.0, 0.0);
+        two.move_to(0.0, 5.0);
+        two.line_to(1.0, 5.0);
+        assert_eq!(
+            points(&two.dashed(&[1.5, 10.0])),
+            // JUCE adds a segment's start, not its end, so the first
+            // subpath's end is skipped on the way into the second.
+            [vec![(0.0, 0.0), (0.0, 5.0), (0.5, 5.0)]]
+        );
+        assert!(line.dashed(&[0.0, 0.0]).subpaths().is_empty());
     }
 }
