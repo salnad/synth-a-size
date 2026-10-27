@@ -358,6 +358,23 @@ oscillator 1/preset_selector/Next
 oscillator 1/Menu
 oscillator 1/Settings
 
+# G5e-3: oscillator 1's Wave Source overlay, as the init preset's selected
+# Wave Source keyframe places it: the overlay, its controls background with
+# the three title texts, the interpolation selector, the grid sizes and their
+# (unpainted) incrementer halves.
+oscillator 1/WAVE SOURCE
+oscillator 1/WAVE SOURCE/background
+oscillator 1/WAVE SOURCE/background/text
+oscillator 1/WAVE SOURCE/background/text#2
+oscillator 1/WAVE SOURCE/background/text#3
+oscillator 1/WAVE SOURCE/Interpolation
+oscillator 1/WAVE SOURCE/wave_source_horizontal_grid
+oscillator 1/WAVE SOURCE/wave_source_vertical_grid
+oscillator 1/WAVE SOURCE/Increment
+oscillator 1/WAVE SOURCE/Increment#2
+oscillator 1/WAVE SOURCE/Increment#3
+oscillator 1/WAVE SOURCE/Increment#4
+
 # The preset browser (laid out while hidden, as FullInterface::resized does).
 preset_browser
 preset_browser/Preset List

@@ -22,9 +22,11 @@ use sas_engine::sas_oscillators::sas_wavetable::creator::component::{
 use sas_engine::sas_oscillators::sas_wavetable::creator::group::WavetableGroup;
 use sas_engine::sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_gui::layout::{FullLayout, Rect};
+use sas_gui::local::WAVE_SOURCE_CONTROLS;
 use sas_gui::scope::Scope;
 use sas_gui::sections::oscillator::{self, OscillatorLayout};
 use sas_gui::sections::synthesis::SynthesisLayout;
+use sas_gui::sections::wave_source_overlay::OverlayLayout;
 use sas_gui::sections::wavetable_edit::{KeyframeRef, WavetableEditLayout};
 use sas_gui::skin::Skin;
 use sas_gui::{EditorModel, Host, HostParam, Interface, OpenGestures, Tab};
@@ -222,6 +224,23 @@ impl Fixture {
 
     fn editor(&self) -> Option<usize> {
         self.interface.borrow().wavetable_editor()
+    }
+
+    fn overlay_layout(&self) -> OverlayLayout {
+        let layout = self.layout();
+        let top = Scope::top(&self.skin, layout.size_ratio);
+        OverlayLayout::wave_source(&top, &self.editor_layout())
+    }
+
+    fn overlay_frame(&self, oscillator: usize) -> Option<KeyframeRef> {
+        self.interface
+            .borrow()
+            .wavetable_edit_section(oscillator)
+            .overlay_frame()
+    }
+
+    fn local(&self, name: &str) -> f32 {
+        self.interface.borrow().local_value(name).unwrap()
     }
 
     fn selected(&self, oscillator: usize) -> Vec<KeyframeRef> {
@@ -723,4 +742,122 @@ fn the_component_list_adds_moves_and_removes() {
     );
     assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 4);
     assert!(log_is_empty(&fixture));
+}
+
+/// `frameSelected`: showing the editor selects the first keyframe, so the
+/// Wave Source overlay shows it; a click on empty space deselects and hides
+/// it; a press on the keyframe selects it again; a selection box that takes
+/// it hides the overlay, as `selectFrames` deselects first.
+#[test]
+fn the_overlay_follows_the_frame_selection() {
+    let fixture = Fixture::new();
+    let mut harness = opened(&fixture);
+    let layout = fixture.editor_layout();
+    assert_eq!(fixture.overlay_frame(0), Some(FIRST));
+
+    click(&mut harness, organizer_point(&layout, 0, 128));
+    assert_eq!(fixture.overlay_frame(0), None);
+    for _ in 0..30 {
+        harness.step();
+    }
+    click(&mut harness, organizer_point(&layout, 0, 0));
+    assert_eq!(fixture.overlay_frame(0), Some(FIRST));
+    for _ in 0..30 {
+        harness.step();
+    }
+
+    let from = organizer_point(&layout, 0, 60);
+    let to = Pos2::new(
+        organizer_point(&layout, 0, 0).x - layout.handle_width as f32,
+        from.y,
+    );
+    drag(&mut harness, from, to);
+    assert_eq!(fixture.selected(0), [FIRST]);
+    assert_eq!(fixture.overlay_frame(0), None);
+}
+
+/// `WaveSourceOverlay::sliderValueChanged`: choosing "Spectral Blend" in the
+/// interpolation selector gives the source linear interpolation in the
+/// frequency domain and commits once; nothing reaches the host.
+#[test]
+fn the_interpolation_selector_sets_the_sources_interpolation() {
+    let fixture = Fixture::new();
+    // The init source interpolates in frequency; start it in time so the
+    // choice shows.
+    let mut creator = fixture.synth.wavetable_creator(0).unwrap();
+    if let WavetableComponent::WaveSource(source) = &mut creator.groups[0].components[0] {
+        source.interpolation_mode = 0;
+        source.keyframes.interpolation_style = 0;
+    }
+    fixture.synth.set_creator(0, creator);
+    let mut harness = opened(&fixture);
+    let overlay = fixture.overlay_layout();
+    click(&mut harness, centre(overlay.interpolation));
+    let top_left = Pos2::new(
+        overlay.interpolation.x as f32,
+        overlay.interpolation.bottom() as f32,
+    );
+    choose_row(&mut harness, top_left, 2);
+    for _ in 0..3 {
+        harness.step();
+    }
+
+    let controls = WAVE_SOURCE_CONTROLS[0][0];
+    assert_eq!(fixture.local(controls.interpolation), 2.0);
+    let creator = fixture.synth.wavetable_creator(0).unwrap();
+    let WavetableComponent::WaveSource(source) = &creator.groups[0].components[0] else {
+        panic!("the init preset starts with a wave source");
+    };
+    assert_eq!(source.keyframes.interpolation_style, 1);
+    assert_eq!(source.interpolation_mode, 1);
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+    assert!(log_is_empty(&fixture));
+}
+
+/// The grid sizes' `IncrementerButtons` are under the always-on-top grid
+/// sliders, which take the press: a click on either half leaves the size
+/// alone.
+#[test]
+fn the_grid_incrementers_are_inert() {
+    let fixture = Fixture::new();
+    let mut harness = opened(&fixture);
+    let overlay = fixture.overlay_layout();
+    let controls = WAVE_SOURCE_CONTROLS[0][0];
+    click(&mut harness, centre(overlay.grid_x_buttons[0]));
+    for _ in 0..30 {
+        harness.step();
+    }
+    click(&mut harness, centre(overlay.grid_y_buttons[1]));
+    assert_eq!(fixture.local(controls.grid_x), 6.0);
+    assert_eq!(fixture.local(controls.grid_y), 4.0);
+    assert!(log_is_empty(&fixture));
+}
+
+/// After a selection box takes one keyframe (the overlay hidden), a
+/// component list edit selects it again (`componentsChanged`,
+/// `recreateVisibleFrames`, `selectFrame`), so the overlay comes back.
+#[test]
+fn a_list_edit_reselects_a_boxed_keyframe() {
+    let fixture = Fixture::new();
+    let mut harness = opened(&fixture);
+    let layout = fixture.editor_layout();
+    let from = organizer_point(&layout, 0, 60);
+    let to = Pos2::new(
+        organizer_point(&layout, 0, 0).x - layout.handle_width as f32,
+        from.y,
+    );
+    drag(&mut harness, from, to);
+    assert_eq!(fixture.selected(0), [FIRST]);
+    assert_eq!(fixture.overlay_frame(0), None);
+
+    let top = Scope::top(&fixture.skin, fixture.layout().size_ratio);
+    let add_modifier = layout.add_button(&top, 1, true);
+    click(&mut harness, centre(add_modifier));
+    choose_row(
+        &mut harness,
+        Pos2::new(add_modifier.x as f32, add_modifier.bottom() as f32),
+        4,
+    );
+    assert_eq!(fixture.selected(0), [FIRST]);
+    assert_eq!(fixture.overlay_frame(0), Some(FIRST));
 }

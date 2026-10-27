@@ -26,6 +26,9 @@ pub struct Format {
     pub display_multiply: Option<f32>,
     /// `display_exponential_base_`.
     pub exponential_base: f32,
+    /// `string_lookup_` (`setStringLookup`): option names for a slider whose
+    /// control has none of its own.
+    pub string_lookup: Option<&'static [&'static str]>,
 }
 
 impl Default for Format {
@@ -36,6 +39,7 @@ impl Default for Format {
             use_suffix: true,
             display_multiply: None,
             exponential_base: 2.0,
+            string_lookup: None,
         }
     }
 }
@@ -113,7 +117,7 @@ pub fn format_value(info: &ParamInfo, format: &Format, value: f32) -> String {
 /// `SynthSlider::getSliderTextFromValue`: the option name, or the adjusted
 /// value formatted.
 pub fn slider_text(info: &ParamInfo, format: &Format, value: f32) -> String {
-    if let Some(options) = info.options() {
+    if let Some(options) = format.string_lookup.or_else(|| info.options()) {
         let index = (value as i32).clamp(0, info.max as i32) as usize;
         if let Some(option) = options.get(index) {
             return option.to_string();
@@ -139,7 +143,7 @@ pub fn value_from_text(info: &ParamInfo, format: &Format, text: &str) -> f64 {
         .filter(|c| *c != ' ')
         .collect::<String>()
         .to_lowercase();
-    if let Some(options) = info.options() {
+    if let Some(options) = format.string_lookup.or_else(|| info.options()) {
         for (index, option) in options.iter().enumerate().take(info.max as usize + 1) {
             if cleaned == option.to_lowercase() {
                 return index as f64;

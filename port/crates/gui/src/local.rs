@@ -9,7 +9,11 @@
 //! in the host, so they aren't saved or automated, as upstream's aren't.
 //! The preset browser's style filters
 //! (`vital/src/interface/editor_sections/preset_browser.cpp`) are kept here
-//! too.
+//! too, and so are the wavetable editor's Wave Source overlay controls
+//! (`vital/src/interface/wavetable/overlays/wave_source_overlay.cpp`): each
+//! oscillator's editor has an overlay for Wave Sources and another for
+//! Shepard Tone sources, each with its own grid sizes and interpolation
+//! selector.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -28,6 +32,54 @@ const DEFAULT_PAINT_PATTERN: f32 = 2.0;
 const NUM_PAINT_PATTERNS: f32 = 5.0;
 /// `vital::kNumLfos`.
 const NUM_LFOS: usize = 8;
+/// `WaveSourceOverlay::kDefaultXGrid` / `kDefaultYGrid`.
+pub const DEFAULT_WAVE_SOURCE_GRID_X: f32 = 6.0;
+pub const DEFAULT_WAVE_SOURCE_GRID_Y: f32 = 4.0;
+/// `WavetableComponentOverlay::kMaxGrid`.
+pub const MAX_WAVE_SOURCE_GRID: f32 = 16.0;
+/// The Wave Source overlay's interpolation types (`interpolation_types`).
+pub const WAVE_SOURCE_INTERPOLATIONS: [&str; 5] = [
+    "None",
+    "Waveform Blend",
+    "Spectral Blend",
+    "Smooth Waveform Blend",
+    "Smooth Spectral Blend",
+];
+
+/// One Wave Source overlay's controls.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WaveSourceControls {
+    pub grid_x: &'static str,
+    pub grid_y: &'static str,
+    pub interpolation: &'static str,
+}
+
+macro_rules! wave_source_controls {
+    ($prefix:literal) => {
+        WaveSourceControls {
+            grid_x: concat!($prefix, "wave_source_horizontal_grid"),
+            grid_y: concat!($prefix, "wave_source_vertical_grid"),
+            interpolation: concat!($prefix, "wave_source_interpolation"),
+        }
+    };
+}
+
+/// Each oscillator's Wave Source overlay controls: `[oscillator][0]` for
+/// Wave Sources, `[oscillator][1]` for Shepard Tone sources.
+pub const WAVE_SOURCE_CONTROLS: [[WaveSourceControls; 2]; 3] = [
+    [
+        wave_source_controls!("osc_1_"),
+        wave_source_controls!("osc_1_shepard_"),
+    ],
+    [
+        wave_source_controls!("osc_2_"),
+        wave_source_controls!("osc_2_shepard_"),
+    ],
+    [
+        wave_source_controls!("osc_3_"),
+        wave_source_controls!("osc_3_shepard_"),
+    ],
+];
 
 /// `strings::kPresetStyleNames`: the preset browser's style filters.
 pub const PRESET_STYLE_NAMES: [&str; 9] = [
@@ -115,6 +167,33 @@ fn infos() -> &'static HashMap<String, ParamInfo> {
                     "Paint Pattern",
                 ),
                 local_info(PAINT[i], 0.0, 1.0, 0.0, "Paint"),
+            ] {
+                infos.insert(info.name.clone(), info);
+            }
+        }
+        for controls in WAVE_SOURCE_CONTROLS.iter().flatten() {
+            for info in [
+                local_info(
+                    controls.grid_x,
+                    0.0,
+                    MAX_WAVE_SOURCE_GRID,
+                    DEFAULT_WAVE_SOURCE_GRID_X,
+                    "Grid X",
+                ),
+                local_info(
+                    controls.grid_y,
+                    0.0,
+                    MAX_WAVE_SOURCE_GRID,
+                    DEFAULT_WAVE_SOURCE_GRID_Y,
+                    "Grid Y",
+                ),
+                local_info(
+                    controls.interpolation,
+                    0.0,
+                    WAVE_SOURCE_INTERPOLATIONS.len() as f32 - 1.0,
+                    0.0,
+                    "Interpolation",
+                ),
             ] {
                 infos.insert(info.name.clone(), info);
             }

@@ -337,3 +337,30 @@ fn spliced_audio_import() {
         "Audio File Source"
     );
 }
+
+/// The Wave Source overlay's interpolation selector: none, then the
+/// waveform and spectral blends, linear then cubic.
+#[test]
+fn the_interpolation_selector_maps_to_style_and_mode() {
+    use super::component::{ComponentType, WavetableComponent};
+    use super::edits::set_wave_source_interpolation;
+    let mut creator = WavetableCreator::new();
+    creator.init();
+    let expected = [(0, 0), (1, 0), (1, 1), (2, 0), (2, 1)];
+    for (value, &(style, mode)) in expected.iter().enumerate() {
+        set_wave_source_interpolation(&mut creator, 0, 0, value as i32);
+        let WavetableComponent::WaveSource(source) = &creator.groups[0].components[0] else {
+            panic!("the init creator starts with a wave source");
+        };
+        assert_eq!(source.keyframes.interpolation_style, style, "value {value}");
+        assert_eq!(source.interpolation_mode, mode, "value {value}");
+        assert_eq!(source.compute_frame.interpolation_mode, mode);
+    }
+    // Other components are left alone.
+    let mut group = super::group::WavetableGroup::new();
+    group.add_component(WavetableComponent::new(ComponentType::LineSource));
+    creator.add_group(group);
+    let before = creator.to_json().dump();
+    set_wave_source_interpolation(&mut creator, 1, 0, 3);
+    assert_eq!(creator.to_json().dump(), before);
+}

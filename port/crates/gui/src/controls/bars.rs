@@ -73,6 +73,24 @@ impl BarRenderer {
         self.y[index] = 2.0 * value - 1.0;
     }
 
+    /// `yAt`: bar `index`'s top.
+    pub fn y_at(&self, index: usize) -> f32 {
+        self.y[index]
+    }
+
+    /// `scaledYAt`: the value [`Self::set_scaled_y`] would give bar
+    /// `index`'s top.
+    pub fn scaled_y_at(&self, index: usize) -> f32 {
+        let mut value = self.y[index] * 0.5 + 0.5;
+        if self.square_scale {
+            value *= value;
+        }
+        if self.power_scale {
+            value /= index.max(1) as f32 / SCALE_CONSTANT;
+        }
+        value
+    }
+
     pub fn total_points(&self) -> usize {
         self.x.len()
     }

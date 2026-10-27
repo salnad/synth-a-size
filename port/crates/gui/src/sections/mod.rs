@@ -34,6 +34,7 @@ pub mod selection_list;
 pub mod synthesis;
 pub mod voice;
 pub mod volume;
+pub mod wave_source_overlay;
 pub mod wavetable_edit;
 
 use egui::Ui;

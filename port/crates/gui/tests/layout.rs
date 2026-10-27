@@ -25,6 +25,7 @@ use sas_gui::sections::save_section::SaveLayout;
 use sas_gui::sections::synthesis::SynthesisLayout;
 use sas_gui::sections::voice::{self, VoiceLayout};
 use sas_gui::sections::volume::VolumeLayout;
+use sas_gui::sections::wave_source_overlay::OverlayLayout;
 use sas_gui::sections::wavetable_edit::{component_rows, WavetableEditLayout};
 use sas_gui::skin::{Skin, ValueId};
 use sas_preset::{InitContent, PresetState};
@@ -421,6 +422,7 @@ fn wavetable_editor_rect(
         layout.bounds.height,
     );
     let edit = WavetableEditLayout::new(&top, bounds);
+    let overlay = OverlayLayout::wave_source(&top, &edit);
     let mut state = PresetState::new(&InitContent { sample_seed: 0 });
     if let Some(preset) = preset {
         state
@@ -467,6 +469,21 @@ fn wavetable_editor_rect(
         "oscillator 1/preset_selector/Next" => edit.preset.next,
         "oscillator 1/Menu" => edit.menu,
         "oscillator 1/Settings" => edit.settings,
+        "oscillator 1/WAVE SOURCE" => overlay.overlay,
+        "oscillator 1/WAVE SOURCE/background" => overlay.controls,
+        "oscillator 1/WAVE SOURCE/background/text" => *overlay.titles.get(instance - 1)?,
+        "oscillator 1/WAVE SOURCE/Interpolation" => overlay.interpolation,
+        "oscillator 1/WAVE SOURCE/wave_source_horizontal_grid" => overlay.grid_x,
+        "oscillator 1/WAVE SOURCE/wave_source_vertical_grid" => overlay.grid_y,
+        // The horizontal grid's increment and decrement, then the
+        // vertical's.
+        "oscillator 1/WAVE SOURCE/Increment" => *[
+            overlay.grid_x_buttons[0],
+            overlay.grid_x_buttons[1],
+            overlay.grid_y_buttons[0],
+            overlay.grid_y_buttons[1],
+        ]
+        .get(instance - 1)?,
         _ => {
             // `names_[i]` then `menu_buttons_[i]`, both named i.
             let index: usize = name

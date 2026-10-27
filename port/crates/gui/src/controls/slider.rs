@@ -285,7 +285,8 @@ impl Slider {
     }
 
     /// A `TextSelector` (a text slider whose press opens its options),
-    /// listing `long_lookup` if given, else the parameter's option names.
+    /// listing `long_lookup` if given, else the string lookup's or the
+    /// parameter's option names.
     pub fn selector(name: &'static str, long_lookup: Option<&'static [&'static str]>) -> Slider {
         let mut slider = Slider::new(name, SliderStyle::Text);
         slider.text_selector = true;
@@ -298,6 +299,7 @@ impl Slider {
     pub fn selector_options(&self) -> Vec<&'static str> {
         let lookup = self
             .long_lookup
+            .or(self.format.string_lookup)
             .or_else(|| self.info.options())
             .unwrap_or(&[]);
         lookup
@@ -374,7 +376,15 @@ impl Slider {
         // getSliderTextFromValue: a string lookup shows no prefix.
         let text = format::slider_text(self.info, &self.format, value);
         match self.popup_prefix {
-            Some(prefix) if self.info.options().is_none() => format!("{prefix}{text}"),
+            Some(prefix)
+                if self
+                    .format
+                    .string_lookup
+                    .or_else(|| self.info.options())
+                    .is_none() =>
+            {
+                format!("{prefix}{text}")
+            }
             _ => text,
         }
     }
