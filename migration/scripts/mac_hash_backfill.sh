@@ -13,6 +13,8 @@
 # for a human or agent to open. Needs GH_TOKEN with contents, pull-requests
 # and actions write, and RUN_ID / GITHUB_REPOSITORY / GITHUB_SERVER_URL.
 set -euo pipefail
+# stdout goes to $GITHUB_OUTPUT: only the final `pr=` line may reach it.
+exec 3>&1 1>&2
 
 patch=$1
 branch=ci/macos-hashes-backfill
@@ -57,4 +59,4 @@ elif ! url=$(gh pr create --base main --head "$branch" --title "$title" --body-f
   url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/main...${branch}?expand=1"
 fi
 gh workflow run ci.yml --ref "$branch" || echo "could not dispatch ci.yml on ${branch}" >&2
-echo "pr=${url}"
+echo "pr=${url}" >&3
