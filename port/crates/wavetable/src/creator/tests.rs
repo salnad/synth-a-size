@@ -364,3 +364,39 @@ fn the_interpolation_selector_maps_to_style_and_mode() {
     set_wave_source_interpolation(&mut creator, 1, 0, 3);
     assert_eq!(creator.to_json().dump(), before);
 }
+
+/// A File Source's default seed (A13 in
+/// `migration/decisions/reference-arm.md`): for the draw behind
+/// `wavetable/edit/add_sources`' seed, the steps rounded one by one give
+/// the no-fast-math and x86 seed, and Apple clang's fast-math fold
+/// (`float(u) + -2^31f`, truncated) gives the macOS official one. Each
+/// target takes its own path, and the generic path is the old expression.
+#[test]
+fn file_source_seeds_follow_their_targets_compiler() {
+    use component::{default_random_seed, folded_random_seed, generic_random_seed};
+    let draw = 2_357_136_128;
+    assert_eq!(generic_random_seed(draw), 209_652_560);
+    assert_eq!(folded_random_seed(draw), 209_652_480);
+    let expected = if cfg!(target_vendor = "apple") {
+        209_652_480
+    } else {
+        209_652_560
+    };
+    assert_eq!(default_random_seed(draw), expected);
+
+    // The fold saturates as `fcvtzs` does: draws that round to 2^32 give
+    // `i32::MAX`, and 0 gives `i32::MIN`.
+    assert_eq!(folded_random_seed(u32::MAX), i32::MAX);
+    assert_eq!(folded_random_seed(0), i32::MIN);
+
+    // The generic path is `next() * (INT_MAX / kPi)`, as before.
+    let mut generator = sas_common::random::RandomGenerator::new(-scalar::PI, scalar::PI, 7);
+    let mut draws = generator.clone();
+    for _ in 0..1000 {
+        let value = generator.next();
+        assert_eq!(
+            generic_random_seed(draws.next_draw()),
+            (value * (i32::MAX as f32 / scalar::PI)) as i32
+        );
+    }
+}

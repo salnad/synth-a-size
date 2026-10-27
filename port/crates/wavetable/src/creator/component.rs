@@ -9,7 +9,7 @@
 //! 2013-2019 Matt Tytel, GPL-3.0-or-later).
 
 use sas_common::json::{JsonError, Result, Value};
-use sas_common::random::RandomGenerator;
+use sas_common::random::{canonical_from_draw, RandomGenerator};
 use sas_common::{base64, scalar};
 
 use super::keyframes::*;
@@ -372,6 +372,41 @@ impl Default for FileSource {
     }
 }
 
+/// `random_seed_ = random_generator_.next() * (INT_MAX / kPi)` in
+/// `FileSource()`, from the generator's raw mt19937 draw `draw`, with the
+/// generator spanning `[-kPi, kPi)`.
+///
+/// Apple clang's fast-math folds the expression to
+/// `(int)((float)draw + -2^31f)` (A13 in
+/// `migration/decisions/reference-arm.md`): `ucvtf`, `fadd`, `fcvtzs`. That
+/// can differ from rounding each step, as the no-fast-math build and x86
+/// GCC do, in the last bits of the seed, so Apple targets take the folded
+/// form and others the generic one.
+pub fn default_random_seed(draw: u32) -> i32 {
+    #[cfg(target_vendor = "apple")]
+    {
+        folded_random_seed(draw)
+    }
+    #[cfg(not(target_vendor = "apple"))]
+    {
+        generic_random_seed(draw)
+    }
+}
+
+/// The seed with each step rounded: `next()`'s
+/// `canonical * (max - min) + min`, then `* (INT_MAX / kPi)`, truncated.
+pub fn generic_random_seed(draw: u32) -> i32 {
+    let (min, max) = (-scalar::PI, scalar::PI);
+    let value = canonical_from_draw(draw) * (max - min) + min;
+    (value * (i32::MAX as f32 / scalar::PI)) as i32
+}
+
+/// The seed as Apple clang's fast-math folds it (A13): the draw as a float
+/// less 2^31, truncated (saturating, as `fcvtzs` does).
+pub fn folded_random_seed(draw: u32) -> i32 {
+    (draw as f32 + -2_147_483_648.0) as i32
+}
+
 impl FileSource {
     pub const MAX_FILE_SOURCE_SAMPLES: f32 = 176_400.0;
     pub const EXTRA_SAVE_SAMPLES: i32 = 4;
@@ -382,7 +417,7 @@ impl FileSource {
     /// draws the default `random_seed` from it.
     pub fn new() -> Self {
         let mut random_generator = RandomGenerator::from_global_counter(-scalar::PI, scalar::PI);
-        let random_seed = (random_generator.next() * (i32::MAX as f32 / scalar::PI)) as i32;
+        let random_seed = default_random_seed(random_generator.next_draw());
         Self {
             keyframes: Keyframes::default(),
             compute_frame: FileSourceKeyframe::default(),
