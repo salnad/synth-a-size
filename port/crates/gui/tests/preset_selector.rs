@@ -1536,3 +1536,40 @@ fn the_wavetable_arrows_step_into_added_folders() {
     click(&mut harness, next);
     assert_eq!(calls(&fixture), ["wavetable 0 Zeta"]);
 }
+
+/// JUCE's click count for the popup browser's files: a second press held
+/// half a second isn't a double click (`isLongPressOrDrag`), so the browser
+/// stays open; two clicks 0.35 s apart are one (presses within 0.4 s), so
+/// it closes. egui's rules took the first and missed the second.
+#[test]
+fn the_browser_closes_on_juces_double_clicks() {
+    let fixture = Fixture::new();
+    let _data = wavetable_data(&fixture, "popup-double");
+    let mut harness = fixture.harness();
+    let (osc, browser) = oscillator_browser(&fixture);
+    click(&mut harness, centre(osc.preset_selector.text));
+    let row = popup_row(browser.files, 0);
+    for _ in 0..30 {
+        harness.step();
+    }
+    click(&mut harness, row);
+    assert!(browser_rows(&fixture).is_some());
+    button(&mut harness, row, true);
+    for _ in 0..30 {
+        harness.step();
+    }
+    button(&mut harness, row, false);
+    harness.step();
+    assert!(browser_rows(&fixture).is_some(), "a held press closed it");
+
+    for _ in 0..30 {
+        harness.step();
+    }
+    click(&mut harness, row);
+    // 21 frames at 60 Hz from press to press.
+    for _ in 0..17 {
+        harness.step();
+    }
+    click(&mut harness, row);
+    assert_eq!(browser_rows(&fixture), None);
+}

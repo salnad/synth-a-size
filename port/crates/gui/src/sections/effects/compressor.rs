@@ -6,6 +6,7 @@
 //! `CompressorEditor` (`editor_components/compressor_editor.cpp`).
 
 use super::{divided_area_buffered, divided_area_unbuffered, with_left};
+use crate::controls::clicks::DoubleClicks;
 use crate::layout::Rect;
 use crate::scope::Scope;
 use crate::section::place_knobs_in_area;
@@ -307,6 +308,8 @@ struct DragState {
     values: Values,
     /// A bit per control in [`editor_controls`] order.
     begun: u32,
+    /// The presses, for `mouseDoubleClick` (JUCE's rules).
+    clicks: DoubleClicks,
 }
 
 /// Sets control `name` during a drag, beginning its gesture the first time.
@@ -483,6 +486,7 @@ impl CompressorEditor {
             point: None,
             values: Values::read(host),
             begun: 0,
+            clicks: DoubleClicks::default(),
         });
         if state.point.is_none() || !response.is_pointer_button_down_on() {
             state.values = Values::read(host);
@@ -500,7 +504,7 @@ impl CompressorEditor {
         if state.point.is_some() {
             ui.ctx().set_cursor_icon(CursorIcon::ResizeVertical);
         }
-        if response.double_clicked() {
+        if state.clicks.update(ui, &response) {
             // mouseDoubleClick: a ratio back to 0, in its own gesture.
             let mut begun = 0;
             match state.point {
@@ -517,18 +521,20 @@ impl CompressorEditor {
         if !held && state.begun != 0 {
             end_gestures(host, &mut state.begun);
         }
-        if response.drag_stopped() {
-            // mouseUp: hidePopupDisplay.
-            if overlay
+        if !held
+            && overlay
                 .value_popup
                 .as_ref()
                 .is_some_and(|(name, _)| *name == "compressor editor")
-            {
-                overlay.value_popup = None;
-            }
+        {
+            // mouseUp: hidePopupDisplay.
+            overlay.value_popup = None;
         }
-        if response.dragged() {
-            let delta = response.drag_delta().y * ppp * MOUSE_MULTIPLIER / bounds.height as f32;
+        if held {
+            // mouseDrag, from the first move: egui's drag starts only past
+            // its click distance.
+            let delta = ui.input(|input| input.pointer.delta()).y * ppp * MOUSE_MULTIPLIER
+                / bounds.height as f32;
             if delta != 0.0 {
                 let shift = ui.input(|input| input.modifiers.shift);
                 if let Some(text) = drag(host, &mut state, delta, shift) {
@@ -808,6 +814,7 @@ fn drag(host: &Host, state: &mut DragState, delta: f32, shift: bool) -> Option<S
         point,
         values,
         begun,
+        ..
     } = state;
     // mouseDrag returns first when nothing is hovered, shift or not.
     let point = (*point)?;
