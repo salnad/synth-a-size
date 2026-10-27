@@ -34,6 +34,41 @@
         "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -march=x86-64 -mtune=generic -msse2 -mfpmath=sse -mno-recip -ffp-contract=off",
         "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
       }
+    },
+    {
+      "hashes": {
+        "aiff_pcm16_stereo:artifact/sample_rate.txt": "72d14479d60396d4",
+        "aiff_pcm16_stereo:first_channel": "b89aa991ccedc74f",
+        "aiff_pcm24_mono:artifact/sample_rate.txt": "d4e1cc96d419d4e5",
+        "aiff_pcm24_mono:first_channel": "e15bbc6a36007360",
+        "flac_16_stereo:artifact/sample_rate.txt": "72d14479d60396d4",
+        "flac_16_stereo:first_channel": "b89aa991ccedc74f",
+        "flac_24_mono:artifact/sample_rate.txt": "d4e1cc96d419d4e5",
+        "flac_24_mono:first_channel": "e15bbc6a36007360",
+        "wav_extensible_pcm24:artifact/sample_rate.txt": "72d14479d60396d4",
+        "wav_extensible_pcm24:first_channel": "21140b78129e235e",
+        "wav_float32_stereo:artifact/sample_rate.txt": "72d14479d60396d4",
+        "wav_float32_stereo:first_channel": "2146acb58e2e93ad",
+        "wav_pcm16_stereo:artifact/sample_rate.txt": "72d14479d60396d4",
+        "wav_pcm16_stereo:first_channel": "b89aa991ccedc74f",
+        "wav_pcm24_mono:artifact/sample_rate.txt": "d4e1cc96d419d4e5",
+        "wav_pcm24_mono:first_channel": "e15bbc6a36007360",
+        "wav_pcm32_mono:artifact/sample_rate.txt": "72d14479d60396d4",
+        "wav_pcm32_mono:first_channel": "a44afe76b02c29f6",
+        "wav_pcm8_mono:artifact/sample_rate.txt": "72d14479d60396d4",
+        "wav_pcm8_mono:first_channel": "e54918b2e38ad65c",
+        "wav_truncated_data:artifact/sample_rate.txt": "72d14479d60396d4",
+        "wav_truncated_data:first_channel": "808337a29208e438"
+      },
+      "identity": {
+        "arch": "aarch64",
+        "compiler": "Apple LLVM 17.0.0 (clang-1700.0.13.5)",
+        "fast_math": true,
+        "glibc": null,
+        "libm_variants": "Apple libm (macOS 15.7.9)",
+        "opt_flags": "-O3 -ftree-vectorize -ftree-slp-vectorize -funroll-loops -ffast-math -U__FAST_MATH__ -ffp-contract=off -DJUCE_USE_VDSP_FRAMEWORK=0",
+        "upstream_sha": "636ca0ef517a4db087a6a08a6a8a5e704e21f836"
+      }
     }
   ]
 }
