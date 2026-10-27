@@ -516,7 +516,6 @@ impl Synth {
         bypass.set_value(flag(values.bypass));
     }
 
-    /// `disconnectModulation(source, destination)`.
     /// `connectModulation(connection)` for bank slot `index`, named
     /// `source` to `destination` first, as a matrix row sets its
     /// connection's names: its controls and curve stay as they are. A route
@@ -548,6 +547,7 @@ impl Synth {
         self.modulation_change_queue.push(change);
     }
 
+    /// `disconnectModulation(source, destination)`.
     pub fn disconnect_modulation(&mut self, source: &str, destination: &str) {
         let Some(position) = self
             .mod_connections

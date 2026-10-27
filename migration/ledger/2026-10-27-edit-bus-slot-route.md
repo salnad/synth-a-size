@@ -35,6 +35,15 @@ slot, so this adds the slot-specific path.
     no control here either. D18 holds: one user action is one engine
     change and no partial host gestures.
 
+- **Known quirk, ported as it is.** Upstream's `createModulationChange`
+  counts the source's other audio-rate connections (`num_audio_rate`) only
+  among those to a *different* destination. With two slots on the same
+  route, rewiring one away counts the other as nothing, so the source
+  drops to control rate although the other slot still uses it. That lasts
+  until a reload. The port keeps this, and duplicates make it reachable
+  from the matrix now. Recorded as I21 in `IMPROVEMENTS.md`, from Graph
+  Reviewer's review of #185.
+
 **Verified.**
 
 - `a_matrix_row_rewires_its_own_slot_in_one_step` (`tests/edit_bus.rs`)

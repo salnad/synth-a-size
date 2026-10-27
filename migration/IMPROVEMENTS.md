@@ -386,3 +386,18 @@ parity cost), and where it came from.
   - The result won't match upstream's service, so it is a new feature,
     not parity.
 - **Source:** D20 (UI Reviewer on #137, coordinator, 2026-10-26).
+
+## I21. Keep a source at audio rate while a duplicate route still uses it
+
+- **Idea:** when one of two slots on the same route is disconnected, count
+  the remaining slot as audio-rate, so the source stays at audio rate.
+- **Why:** upstream's `SynthBase::createModulationChange` counts only the
+  source's other connections to a *different* destination
+  (`num_audio_rate`). Rewiring away one of two duplicate routes (which the
+  matrix allows) drops the source to control rate although the other slot
+  still modulates at audio rate, until the next reload.
+- **Tradeoff:** a parity cost. Upstream renders with the source at control
+  rate in that state, so fixing it changes the output of such a session
+  until reload. The port reproduces upstream (`Synth::create_modulation_change`).
+- **Source:** Graph Reviewer's review of #185 (edit bus `set_slot_route`),
+  2026-10-27.
