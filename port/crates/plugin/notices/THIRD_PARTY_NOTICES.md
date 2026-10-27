@@ -84,6 +84,27 @@ small local changes, under its Apache-2.0 option (the licence text is
 list of the changes are in the synth-a-size source under
 `port/vendor/egui-baseview`.
 
+Another, nice-plug-egui 0.6.0 (ISC, by Billy Messenger and Robbert van der
+Helm, from https://codeberg.org/RustAudio/nice-plug), is also built from a
+copy with a small local change; the copy, its licence and the change are
+under `port/vendor/nice-plug-egui`. Its licence:
+
+> ISC License
+>
+> Copyright (c) 2022-2024 Robbert van der Helm
+>
+> Permission to use, copy, modify, and/or distribute this software for any
+> purpose with or without fee is hereby granted, provided that the above
+> copyright notice and this permission notice appear in all copies.
+>
+> THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+> REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+> AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+> INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+> LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+> OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+> PERFORMANCE OF THIS SOFTWARE.
+
 ## Audio decoders
 
 The plugin reads AIFF, FLAC, Ogg Vorbis, MP3 and AAC/M4A files dropped on

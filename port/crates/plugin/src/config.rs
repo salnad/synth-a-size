@@ -180,6 +180,29 @@ pub fn save_data_directory(path: &Path, folder: &Path) -> std::io::Result<()> {
     save_json_to_config(path, &data)
 }
 
+/// `LoadSave::loadWindowSize`'s `kMinWindowSize`.
+pub const MIN_WINDOW_SIZE: f32 = 0.25;
+
+/// `LoadSave::loadWindowSize`: the config's `"window_size"`, the editor's
+/// width as a share of 1400, at least [`MIN_WINDOW_SIZE`]; 1 if unset.
+pub fn window_size(path: &Path) -> f32 {
+    match read_config(path).get("window_size").map(Value::to_f64) {
+        Ok(Ok(size)) => (size as f32).max(MIN_WINDOW_SIZE),
+        _ => 1.0,
+    }
+}
+
+/// `LoadSave::saveWindowSize`: rewrites the config's `"window_size"`,
+/// keeping every other key.
+pub fn save_window_size(path: &Path, window_size: f32) -> std::io::Result<()> {
+    let mut data = read_config(path);
+    if !data.is_null() && !data.is_object() {
+        data = Value::Null;
+    }
+    data.set("window_size", f64::from(window_size));
+    save_json_to_config(path, &data)
+}
+
 /// `LoadSave::getAuthor`: the config's `"author"`, empty if unset.
 pub fn author(path: &Path) -> String {
     read_config(path)
@@ -424,6 +447,21 @@ mod tests {
         assert_eq!(additional_folders(&path, WAVETABLE_FOLDERS), folders);
         assert!(additional_folders(&path, SAMPLE_FOLDERS).is_empty());
         assert_eq!(author(&path), "Someone");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn window_size_round_trip() {
+        let dir = std::env::temp_dir().join(format!("sas-config-window-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        assert_eq!(window_size(&path), 1.0);
+        save_author(&path, "Someone").unwrap();
+        save_window_size(&path, 1.5).unwrap();
+        assert_eq!(window_size(&path), 1.5);
+        assert_eq!(author(&path), "Someone");
+        save_window_size(&path, 0.1).unwrap();
+        assert_eq!(window_size(&path), MIN_WINDOW_SIZE);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
