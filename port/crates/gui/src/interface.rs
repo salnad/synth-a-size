@@ -274,6 +274,19 @@ pub trait EditorModel: Send + Sync + 'static {
         None
     }
 
+    /// `WavetableCreator::getLastFileLoaded`: the file oscillator
+    /// `oscillator`'s wavetable last loaded from, kept until another loads
+    /// (not saved with the preset, as upstream's isn't).
+    fn last_wavetable_file(&self, oscillator: usize) -> Option<PathBuf> {
+        let _ = oscillator;
+        None
+    }
+
+    /// `WavetableCreator::setFileLoaded`.
+    fn set_last_wavetable_file(&self, oscillator: usize, file: PathBuf) {
+        let _ = (oscillator, file);
+    }
+
     /// `SynthBase::loadFromFile`: plays the preset at `path`. The error is
     /// upstream's reason for the user ("Preset file is corrupted.", "Preset
     /// was created with a newer version.", or empty for a missing file).
@@ -810,6 +823,7 @@ impl Interface {
             // interface's own background still shows around it.
             self.paint_background(&pixels, &layout, width, height);
             self.show_wavetable_edit_section(ui, host, &pixels, &layout, index);
+            self.show_popup_browser(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
             self.show_overlay(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
             return;
         }
@@ -877,6 +891,19 @@ impl Interface {
                 current.as_deref(),
             );
         }
+        let editor_request = self
+            .wavetable_editor
+            .and_then(|index| Some((index, self.wavetable_edits[index].take_browse_request()?)));
+        if let Some((index, (browser, section))) = editor_request {
+            let current = host.model().last_wavetable_file(index);
+            self.popup_browser.open(
+                host.model(),
+                BrowserOwner::WavetableEditor(index),
+                browser,
+                section,
+                current.as_deref(),
+            );
+        }
         if let Some((browser, section)) = self.synthesis.take_sample_browse_request() {
             let current = self.synthesis.sample_file();
             self.popup_browser.open(
@@ -914,6 +941,9 @@ impl Interface {
             }
             Some(BrowserEvent::Load(BrowserOwner::Sample, file)) => {
                 self.synthesis.load_sample_file(host.model(), &file);
+            }
+            Some(BrowserEvent::Load(BrowserOwner::WavetableEditor(index), file)) => {
+                popup_browser::editor_load_wavetable_file(host.model(), index, &file);
             }
             None => {}
         }

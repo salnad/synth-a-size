@@ -39,12 +39,13 @@ use sas_engine::sas_oscillators::sas_wavetable::wave_frame::{NUM_REAL_COMPLEX, W
 use sas_engine::sas_oscillators::sas_wavetable::{
     WaveFrame, Wavetable, NUM_OSCILLATOR_WAVE_FRAMES,
 };
+use sas_preset::user_folders::{self, Kind};
 
 use super::wave_source_overlay::{
     paint_wave_source_overlay, show_wave_source_overlay, OverlayLayout, WaveSourceSliders,
     WaveSourceView,
 };
-use super::{MenuOwner, Panel};
+use super::{popup_browser, MenuOwner, Panel};
 use crate::controls::bars::BarRenderer;
 use crate::controls::clicks::Clicks;
 use crate::controls::icon;
@@ -103,6 +104,17 @@ pub const MENU_REMOVE_KEYFRAMES: i32 = 2;
 /// `WavetableEditSection::kObscureAmount`: how far a display an overlay
 /// covers fades out.
 const OBSCURE_AMOUNT: f32 = 0.4;
+/// The gear menu's items (`BarEditorMenu`): the amplitudes' scale, then the
+/// frequency displays' zoom, `1 << (item - kZoom1)`.
+pub const MENU_POWER_SCALE: i32 = 1;
+pub const MENU_AMPLITUDE_SCALE: i32 = 2;
+pub const MENU_ZOOM_1: i32 = 3;
+pub const MENU_ZOOM_16: i32 = 7;
+
+/// `textMouseDown`'s `kBrowserWidth` and `kBrowserHeight`, before the size
+/// ratio.
+const BROWSER_WIDTH: f32 = 600.0;
+const BROWSER_HEIGHT: f32 = 400.0;
 /// `updateFrequencyDomain`'s epsilons.
 const AMPLITUDE_EPSILON: f32 = 0.000_000_1;
 const PHASE_EPSILON: f32 = 0.0001;
@@ -336,6 +348,9 @@ pub enum EditMenu {
     /// The organizer's menu, opened at this organizer point
     /// (`menu_created_position_`).
     Organizer(i32, i32),
+    /// The gear's menu over the amplitudes
+    /// (`frequency_amplitude_settings_`).
+    Settings,
 }
 
 /// What a press on the organizer is doing (`WavetableOrganizer::MouseMode`).
@@ -439,6 +454,9 @@ pub struct WavetableEditSection {
     /// sources), and their interpolation selectors' values as last applied.
     wave_source_sliders: [WaveSourceSliders; 2],
     interpolation_seen: [f32; 2],
+    /// The popup browser a press on the name asked for since the last
+    /// call: its bounds and the section's (`textMouseDown`).
+    browse_request: Option<(Rect, Rect)>,
 }
 
 impl WavetableEditSection {
@@ -461,6 +479,7 @@ impl WavetableEditSection {
             wave_source_sliders: local::WAVE_SOURCE_CONTROLS[oscillator.min(2)]
                 .map(WaveSourceSliders::new),
             interpolation_seen: [0.0; 2],
+            browse_request: None,
         }
     }
 
@@ -479,6 +498,22 @@ impl WavetableEditSection {
     /// The keyframe the overlays show, if any (`frameSelected`'s last).
     pub fn overlay_frame(&self) -> Option<KeyframeRef> {
         self.overlay_frame
+    }
+
+    /// `zoom_`: the frequency displays' zoom.
+    pub fn zoom(&self) -> f32 {
+        self.zoom
+    }
+
+    /// `power_scale_`: the amplitudes drawn on the power scale.
+    pub fn power_scale(&self) -> bool {
+        self.power_scale
+    }
+
+    /// The popup browser asked for since the last call: the browser's
+    /// bounds and the section's.
+    pub fn take_browse_request(&mut self) -> Option<(Rect, Rect)> {
+        self.browse_request.take()
     }
 
     /// The creator as last read from the model.
@@ -657,7 +692,7 @@ impl WavetableEditSection {
 
         let colours = ShapeColours::icon(&panel.scope);
         let shape = |shape| ShapeButton { shape, colours };
-        panel.shape_button(
+        let settings = panel.shape_button(
             "wavetable settings",
             shape(Shape::Icon {
                 key: "gear",
@@ -665,6 +700,24 @@ impl WavetableEditSection {
             }),
             layout.settings,
         );
+        if settings.clicked {
+            let items = vec![
+                MenuItem::new(MENU_POWER_SCALE, "Power Scale"),
+                MenuItem::new(MENU_AMPLITUDE_SCALE, "Amplitude Scale"),
+                MenuItem::divider(),
+                MenuItem::new(MENU_ZOOM_1, "Zoom 1x"),
+                MenuItem::new(MENU_ZOOM_1 + 1, "Zoom 2x"),
+                MenuItem::new(MENU_ZOOM_1 + 2, "Zoom 4x"),
+                MenuItem::new(MENU_ZOOM_1 + 3, "Zoom 8x"),
+                MenuItem::new(MENU_ZOOM_16, "Zoom 16x"),
+            ];
+            let position = Pos2::new(layout.settings.x as f32, layout.settings.bottom() as f32);
+            panel.overlay.menu = Some(Menu::new(
+                items,
+                position,
+                MenuOwner::WavetableEdit(self.oscillator, EditMenu::Settings),
+            ));
+        }
 
         let preset = layout.preset;
         let text = self.creator().map(preset_selector_text).unwrap_or_default();
@@ -675,8 +728,36 @@ impl WavetableEditSection {
             preset.text_size,
             panel.scope.color(ColorId::PresetText),
         );
-        panel.shape_button("wavetable previous", shape(Shape::Prev), preset.previous);
-        panel.shape_button("wavetable next", shape(Shape::Next), preset.next);
+        // textMouseDown: the browser below the name, from its left.
+        let text = panel.pixels.rect(preset.text.into());
+        let name = panel.ui.interact(
+            text,
+            panel.ui.scope_id().with("wavetable editor name"),
+            Sense::click(),
+        );
+        if name.hovered() && panel.ui.input(|input| input.pointer.primary_pressed()) {
+            let ratio = panel.scope.size_ratio();
+            let browser = Rect::new(
+                preset.bounds.x,
+                preset.bounds.bottom(),
+                (BROWSER_WIDTH * ratio) as i32,
+                (BROWSER_HEIGHT * ratio) as i32,
+            );
+            self.browse_request = Some((browser, layout.bounds));
+        }
+        let previous =
+            panel.shape_button("wavetable previous", shape(Shape::Prev), preset.previous);
+        let next = panel.shape_button("wavetable next", shape(Shape::Next), preset.next);
+        let shift = if previous.clicked {
+            -1
+        } else if next.clicked {
+            1
+        } else {
+            0
+        };
+        if shift != 0 {
+            self.load_shifted_file(model, shift);
+        }
         let (key, path) = sized_path("wavetable menu", layout.menu.height, paths::menu);
         panel.shape_button(
             "wavetable menu",
@@ -707,6 +788,21 @@ impl WavetableEditSection {
         self.show_organizer(panel, layout, &rows, scroll);
         self.show_playhead(panel, layout);
         exit.clicked
+    }
+
+    /// `prevClicked` and `nextClicked`: the wavetable `shift` places from the
+    /// creator's last file among the user's and the added folders'
+    /// (`getShiftedFile`), loaded through the editor's `loadFile`.
+    fn load_shifted_file(&self, model: &dyn EditorModel, shift: i32) {
+        let mut directories = user_folders::root(model.data_directory().as_deref())
+            .map(|root| user_folders::directories(&root, Kind::Wavetables))
+            .unwrap_or_default();
+        directories.extend(model.additional_folders(Kind::Wavetables));
+        let files = user_folders::files_of_type(&directories, popup_browser::WAVETABLE_EXTENSIONS);
+        let current = model.last_wavetable_file(self.oscillator);
+        if let Some(file) = user_folders::shifted_file(files, current.as_deref(), shift) {
+            popup_browser::editor_load_wavetable_file(model, self.oscillator, &file);
+        }
     }
 
     /// Commits the edited creator to the model, which renders it
@@ -1130,6 +1226,16 @@ impl WavetableEditSection {
         }
         panel.overlay.wavetable_edit_action = None;
         let model = panel.host.model();
+        if menu == EditMenu::Settings {
+            // barViewerCallback.
+            match id {
+                MENU_POWER_SCALE => self.power_scale = true,
+                MENU_AMPLITUDE_SCALE => self.power_scale = false,
+                MENU_ZOOM_1..=MENU_ZOOM_16 => self.zoom = (1 << (id - MENU_ZOOM_1)) as f32,
+                _ => {}
+            }
+            return;
+        }
         if let (EditMenu::Organizer(x, y), MENU_CREATE_KEYFRAME) = (menu, id) {
             // createKeyframeAtMenu.
             let offset = -(self.scroll.position as i32);

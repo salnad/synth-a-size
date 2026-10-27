@@ -863,6 +863,37 @@ MCP server) extends this entry when it lands.*
   still shrink the window.
 - **Approved:** coordinator, 2026-10-26.
 
+### D31. No factory wavetables
+
+- **Differs:** the wavetables the oscillator's and the wavetable editor's
+  browsers and arrows offer.
+- **Upstream:** the factory content installer puts upstream's wavetables in
+  a factory folder inside the data folder, beside the user's; the browsers
+  list every bank's Wavetables folder (`LoadSave::getWavetableDirectories`),
+  so the factory tables are listed and stepped through with the user's.
+- **Port:** no factory wavetables ship, and there is no installer. The
+  browsers and arrows list the user's wavetables, any bank folders in the
+  data folder (an upstream data folder with its factory content included),
+  and added folders.
+- **Why:** the port ships no factory content (migration/AGENTS.md rule 3),
+  and the downloader isn't ported (D26).
+- **Approved:** coordinator, 2026-10-27.
+
+### D32. The wavetable editor loads any audio file, not only `.wav`
+
+- **Differs:** a `.flac`, or a `.wav` with its extension in upper case,
+  loaded from the wavetable editor's browser, arrows or Import.
+- **Upstream:** `WavetableEditSection::loadFile` takes a file as audio
+  only when its extension is exactly `.wav`, and parses everything else as
+  a `.vitaltable`. The browser lists `.flac` and any case of `.wav`, but
+  they fail to parse and load nothing. The oscillator's `loadFile` loads
+  them as audio.
+- **Port:** the editor loads everything that isn't a `.vitaltable` as
+  audio, spliced, as the oscillator does
+  (`popup_browser::editor_load_wavetable_file`).
+- **Why:** a file the browser offers should load, as in D1 and D19.
+- **Approved:** coordinator, 2026-10-27.
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change

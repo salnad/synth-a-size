@@ -45,6 +45,8 @@ pub struct PluginModel {
     data_directory: Mutex<Option<PathBuf>>,
     /// `SynthBase::active_file_`.
     active_file: Mutex<Option<PathBuf>>,
+    /// Each oscillator's `WavetableCreator::last_file_loaded_`.
+    wavetable_files: Mutex<[Option<PathBuf>; 3]>,
     /// The host connection, once the editor has opened.
     gui: Mutex<Option<GuiContext>>,
     resynthesizer: Resynthesizer,
@@ -80,6 +82,7 @@ impl PluginModel {
             hz_frequency: AtomicBool::new(hz_frequency),
             data_directory: Mutex::new(data_directory),
             active_file: Mutex::new(None),
+            wavetable_files: Mutex::default(),
             gui: Mutex::new(None),
             resynthesizer,
         }
@@ -513,6 +516,19 @@ impl EditorModel for PluginModel {
                 path,
                 favourite,
             );
+        }
+    }
+
+    fn last_wavetable_file(&self, oscillator: usize) -> Option<PathBuf> {
+        lock(&self.wavetable_files)
+            .get(oscillator)
+            .cloned()
+            .flatten()
+    }
+
+    fn set_last_wavetable_file(&self, oscillator: usize, file: PathBuf) {
+        if let Some(slot) = lock(&self.wavetable_files).get_mut(oscillator) {
+            *slot = Some(file);
         }
     }
 
