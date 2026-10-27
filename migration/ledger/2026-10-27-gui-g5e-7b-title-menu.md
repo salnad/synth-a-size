@@ -19,8 +19,9 @@ upstream's five items.
   `WavAudioFormat` writer writes a mono 16-bit file at 88.2 kHz: RIFF,
   the 52-byte `JUNK` padding, a 16-byte PCM `fmt `, the `clm ` chunk (its
   text and terminating zero, padded to even) and the samples, converted as
-  `AudioData::Int16::setAsFloatLE` converts them (times 32768, halves to
-  even, within ±32767). The `clm ` text is upstream's frame-size header with
+  `writeFromFloatArrays` converts them: `convertFloatsToInts` to 32 bits
+  (`roundToInt(INT_MAX × sample)`, clipped at ±1), then the top 16 bits
+  (`Int16::setAsInt32LE`, a floor), so -1 writes -32768. The `clm ` text is upstream's frame-size header with
   this product's name in the brackets where upstream names its site
   (rule 2): `<!>2048 20000000 wavetable (synth-a-size)`.
 - **Synthesize Preset to Table** (`resynthesizeToWavetable`): the model's
@@ -34,6 +35,8 @@ Text to Wavetable stays absent (D20), and mouse-wheel zoom stays out.
 - `wavetable_export` `the_file_is_laid_out_as_juces_writer_lays_it_out`:
   every header field, the RIFF size matching the file, and the sample
   conversion's rounding and clipping.
+- `wavetable_export` `samples_floor_to_16_bits`: 0.7 writes 22937 and -0.3
+  writes -9831, the 16-bit step below.
 - `tests/wavetable_editor.rs` `the_title_menu_saves_and_resynthesizes` and
   `the_exports_write_the_json_and_the_rendered_frames` (the dialogs are
   native; the writing they lead to is tested directly).

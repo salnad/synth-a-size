@@ -21,11 +21,20 @@ pub fn clm_text() -> String {
     format!("<!>2048 20000000 wavetable ({PRODUCT_NAME})")
 }
 
-/// JUCE's `AudioData::Int16::setAsFloatLE`: the sample times 32768,
-/// rounded as `roundToInt` rounds (halves to even), within ±32767.
+/// `AudioFormatWriter::writeFromFloatArrays` for a 16-bit writer:
+/// `convertFloatsToInts` (`INT_MIN` at or below -1, `INT_MAX` at or above
+/// 1, else `roundToInt(INT_MAX * sample)`, halves to even), then
+/// `Int16::setAsInt32LE`, the top 16 bits (a floor).
 fn to_int16(sample: f32) -> i16 {
-    let scaled = (f64::from(sample) * 32768.0).round_ties_even();
-    scaled.clamp(-32767.0, 32767.0) as i16
+    let sample = f64::from(sample);
+    let full = if sample <= -1.0 {
+        i32::MIN
+    } else if sample >= 1.0 {
+        i32::MAX
+    } else {
+        (f64::from(i32::MAX) * sample).round_ties_even() as i32
+    };
+    (full >> 16) as i16
 }
 
 /// The file `WavAudioFormat::createWriterFor(…, sample_rate, 1, 16,
@@ -113,7 +122,15 @@ mod tests {
             .chunks(2)
             .map(|pair| i16::from_le_bytes([pair[0], pair[1]]))
             .collect();
-        // Halves round to even: 0.5 → 0, 1.5 → 2.
-        assert_eq!(values, [0, 16384, -32767, 32767, 0, 2]);
+        assert_eq!(values, [0, 16384, -32768, 32767, 0, 1]);
+    }
+
+    /// The top 16 bits of the rounded 32-bit sample floor, so a sample
+    /// between two 16-bit steps takes the lower.
+    #[test]
+    fn samples_floor_to_16_bits() {
+        assert_eq!(to_int16(0.7), 22937);
+        assert_eq!(to_int16(-0.3), -9831);
+        assert_eq!(to_int16(-1.5), i16::MIN);
     }
 }
