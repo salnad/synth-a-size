@@ -893,6 +893,26 @@ MCP server) extends this entry when it lands.*
   (`popup_browser::editor_load_wavetable_file`).
 - **Why:** a file the browser offers should load, as in D1 and D19.
 
+### D33. Audio dropped on the Audio File Source that can't be read, or is too short, loads nothing
+
+- **Differs:** what a file dropped on the wavetable editor's Audio File
+  Source overlay does when it can't be read, or holds fewer samples than
+  pitch detection measures (8096).
+- **Upstream:** `FileSourceOverlay::loadFile` loads whatever the viewer's
+  buffer holds. When `createReaderFor` fails, the buffer keeps the last
+  file the viewer read (or stays empty), so a corrupt file reloads the
+  previous audio. `detectPitch` then reads 8096 samples from a third of the
+  way into the audio less 8096, which for shorter audio starts before the
+  buffer (undefined behaviour).
+- **Port:** either file loads nothing and commits nothing: the source
+  keeps its audio, window size and start position
+  (`FileSourceOverlay::load_file`,
+  `port/crates/gui/src/sections/file_source_overlay.rs`).
+- **Why:** reloading audio the user didn't drop, or reading outside the
+  buffer, isn't behaviour to copy; leaving the source as it was matches
+  D4 and D21.
+- **Approved:** coordinator, 2026-10-27.
+
 ### D35. A Line Source's power reset commits with the double click
 
 - **Differs:** a double click on a Line Source keyframe's power (with

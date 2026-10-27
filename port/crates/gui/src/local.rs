@@ -14,7 +14,9 @@
 //! oscillator's editor has an overlay for Wave Sources and another for
 //! Shepard Tone sources, each with its own grid sizes and interpolation
 //! selector, and so are its Phase Shift, Wave Window and Line Source overlay
-//! controls.
+//! controls. Its Audio File Source overlay's window fade and style
+//! selectors (`vital/src/interface/wavetable/overlays/file_source_overlay.cpp`)
+//! are here too, one set per oscillator.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -148,6 +150,36 @@ pub const WAVE_SOURCE_CONTROLS: [[WaveSourceControls; 2]; 3] = [
         wave_source_controls!("osc_3_"),
         wave_source_controls!("osc_3_shepard_"),
     ],
+];
+
+/// The Audio File Source overlay's blend styles (`kFadeLookup`).
+pub const FILE_SOURCE_FADE_STYLES: [&str; 4] = ["File Blend", "None", "Time", "Spectral"];
+/// Its phase styles (`kPhaseLookup`).
+pub const FILE_SOURCE_PHASE_STYLES: [&str; 3] = ["None", "Clear", "Vocode"];
+
+/// One Audio File Source overlay's controls.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FileSourceControls {
+    pub window_fade: &'static str,
+    pub fade_style: &'static str,
+    pub phase_style: &'static str,
+}
+
+macro_rules! file_source_controls {
+    ($prefix:literal) => {
+        FileSourceControls {
+            window_fade: concat!($prefix, "file_source_window_fade"),
+            fade_style: concat!($prefix, "file_source_fade_style"),
+            phase_style: concat!($prefix, "file_source_phase_style"),
+        }
+    };
+}
+
+/// Each oscillator's Audio File Source overlay controls.
+pub const FILE_SOURCE_CONTROLS: [FileSourceControls; 3] = [
+    file_source_controls!("osc_1_"),
+    file_source_controls!("osc_2_"),
+    file_source_controls!("osc_3_"),
 ];
 
 /// `strings::kPresetStyleNames`: the preset browser's style filters.
@@ -339,6 +371,30 @@ fn infos() -> &'static HashMap<String, ParamInfo> {
                     MAX_WAVE_SOURCE_GRID,
                     DEFAULT_WAVE_SOURCE_GRID_Y,
                     "Grid Y",
+                ),
+            ] {
+                infos.insert(info.name.clone(), info);
+            }
+        }
+        for controls in &FILE_SOURCE_CONTROLS {
+            // window_fade_->setRange(0, 1): a plain slider, not indexed.
+            let mut window_fade = local_info(controls.window_fade, 0.0, 1.0, 0.0, "Window Fade");
+            window_fade.value_scale = ValueScale::Linear;
+            for info in [
+                window_fade,
+                local_info(
+                    controls.fade_style,
+                    0.0,
+                    FILE_SOURCE_FADE_STYLES.len() as f32 - 1.0,
+                    0.0,
+                    "Blend Style",
+                ),
+                local_info(
+                    controls.phase_style,
+                    0.0,
+                    FILE_SOURCE_PHASE_STYLES.len() as f32 - 1.0,
+                    0.0,
+                    "Phase Style",
                 ),
             ] {
                 infos.insert(info.name.clone(), info);
