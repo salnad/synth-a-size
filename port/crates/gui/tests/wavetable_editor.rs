@@ -25,8 +25,9 @@ use sas_engine::sas_oscillators::sas_wavetable::creator::component::{
 use sas_engine::sas_oscillators::sas_wavetable::creator::group::WavetableGroup;
 use sas_engine::sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_gui::layout::{FullLayout, Rect};
-use sas_gui::local::{MODIFIER_CONTROLS, WAVE_SOURCE_CONTROLS};
+use sas_gui::local::{LINE_SOURCE_CONTROLS, MODIFIER_CONTROLS, WAVE_SOURCE_CONTROLS};
 use sas_gui::scope::Scope;
+use sas_gui::sections::line_source_overlay::LineSourceLayout;
 use sas_gui::sections::oscillator::{self, OscillatorLayout};
 use sas_gui::sections::phase_window_overlays::{PhaseLayout, WindowLayout};
 use sas_gui::sections::popup_browser::{self, PopupBrowserLayout};
@@ -1746,4 +1747,256 @@ fn a_refresh_during_a_position_drag_keeps_the_drag() {
     let without = committed_window(false);
     assert_ne!(without.1, 0.75);
     assert_eq!(committed_window(true), without);
+}
+
+/// A Line Source with keyframes at 0 and 128, each a triangle through
+/// (0.5, 0), as oscillator 1's table, with the editor open on its first
+/// keyframe.
+fn line_source_selected(fixture: &Fixture) -> Harness<'_> {
+    let mut creator = WavetableCreator::new();
+    creator.clear();
+    let mut group = WavetableGroup::new();
+    let mut source = WavetableComponent::new(ComponentType::LineSource);
+    source.insert_new_keyframe(0);
+    source.insert_new_keyframe(128);
+    if let WavetableComponent::LineSource(line_source) = &mut source {
+        for keyframe in &mut line_source.keyframes.keyframes {
+            keyframe.data.line_generator.init_triangle();
+        }
+    }
+    group.add_component(source);
+    creator.add_group(group);
+    fixture.synth.set_creator(0, creator);
+    let harness = opened(fixture);
+    assert_eq!(fixture.overlay_frame(0), Some(FIRST));
+    harness
+}
+
+/// Keyframe `index`'s shape and pull power, and the source's point count.
+fn line_keyframe(
+    fixture: &Fixture,
+    index: usize,
+) -> (sas_common::line_generator::LineGenerator, f32, i32) {
+    let creator = fixture.synth.wavetable_creator(0).unwrap();
+    let WavetableComponent::LineSource(source) = &creator.groups[0].components[0] else {
+        panic!("the table is a Line Source");
+    };
+    let data = &source.keyframes.keyframes[index].data;
+    (
+        data.line_generator.clone(),
+        data.pull_power,
+        source.num_points,
+    )
+}
+
+/// The editor's point for shape coordinates `(x, y)` (`padY`).
+fn line_point(fixture: &Fixture, x: f32, y: f32) -> Pos2 {
+    let layout = fixture.editor_layout();
+    let (width, height) = (layout.waveform.width as f32, layout.waveform.height as f32);
+    let pad = fixture.layout().size_ratio * 6.0;
+    let y = y * height * (height - 2.0 * pad) / height + pad;
+    Pos2::new(
+        (layout.waveform.x as f32 + width * x).round(),
+        (layout.waveform.y as f32 + y).round(),
+    )
+}
+
+fn line_source_layout(fixture: &Fixture) -> LineSourceLayout {
+    let top = Scope::top(&fixture.skin, fixture.layout().size_ratio);
+    LineSourceLayout::new(&top, &fixture.editor_layout())
+}
+
+/// `LineEditor` on the selected keyframe's own shape: dragging a point
+/// moves it, auditioning the playhead's frame (`pointChanged(false)`), and
+/// the release commits once (`pointChanged(true)`); the other keyframe
+/// keeps its shape.
+#[test]
+fn dragging_a_line_point_auditions_and_commits_on_release() {
+    let fixture = Fixture::new();
+    let mut harness = line_source_selected(&fixture);
+    drag(
+        &mut harness,
+        line_point(&fixture, 0.5, 0.0),
+        line_point(&fixture, 0.5, 0.5),
+    );
+
+    let (line, _, num_points) = line_keyframe(&fixture, 0);
+    assert_eq!(line.num_points(), 3);
+    assert_eq!(line.point(1).0, 0.5);
+    assert!((line.point(1).1 - 0.5).abs() < 0.02, "{:?}", line.point(1));
+    assert_eq!(num_points, 4, "the source's own count is untouched");
+    assert_eq!(line_keyframe(&fixture, 1).0.point(1), (0.5, 0.0));
+    assert!(auditioned_the_playhead(&fixture));
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+    assert!(fixture.synth.ends.lock().unwrap().is_empty());
+    assert!(log_is_empty(&fixture));
+}
+
+/// A double click in empty space adds a point (`pointAdded`), which every
+/// other keyframe gains as a middle point at the same index
+/// (`addMiddlePoint`); the source's count follows, and it commits once.
+/// A double click on the new point removes it from them all
+/// (`pointRemoved`).
+#[test]
+fn added_and_removed_points_mirror_into_every_keyframe() {
+    let fixture = Fixture::new();
+    let mut harness = line_source_selected(&fixture);
+    let at = line_point(&fixture, 0.1, 0.2);
+    double_click(&mut harness, at);
+
+    let (line, _, num_points) = line_keyframe(&fixture, 0);
+    assert_eq!(line.num_points(), 4);
+    assert_eq!(num_points, 4);
+    let (other, _, _) = line_keyframe(&fixture, 1);
+    assert_eq!(other.num_points(), 4);
+    assert_eq!(other.point(1), (0.25, 0.5));
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+
+    for _ in 0..30 {
+        harness.step();
+    }
+    let added = line.point(1);
+    double_click(&mut harness, line_point(&fixture, added.0, added.1));
+    let (line, _, num_points) = line_keyframe(&fixture, 0);
+    assert_eq!(line.num_points(), 3);
+    assert_eq!(num_points, 3);
+    assert_eq!(line_keyframe(&fixture, 1).0.num_points(), 3);
+    assert!(log_is_empty(&fixture));
+}
+
+/// A paint stroke (Command held) replaces a grid cell with the paint
+/// pattern, keeping the other keyframe's count in step; upstream commits
+/// each painted cell, the port once, when the stroke ends.
+#[test]
+fn a_paint_stroke_commits_when_it_ends() {
+    let fixture = Fixture::new();
+    let mut harness = line_source_selected(&fixture);
+    harness.event(Event::ModifiersChanged(Modifiers::COMMAND));
+    harness.step();
+    let from = line_point(&fixture, 0.05, 0.5);
+    let to = line_point(&fixture, 0.3, 0.5);
+    harness.event(Event::PointerMoved(from));
+    harness.step();
+    harness.event(Event::PointerButton {
+        pos: from,
+        button: PointerButton::Primary,
+        pressed: true,
+        modifiers: Modifiers::COMMAND,
+    });
+    harness.step();
+    harness.event(Event::PointerMoved(to));
+    harness.step();
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 0);
+    assert!(auditioned_the_playhead(&fixture));
+    harness.event(Event::PointerButton {
+        pos: to,
+        button: PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::COMMAND,
+    });
+    harness.step();
+    harness.event(Event::ModifiersChanged(Modifiers::NONE));
+    harness.step();
+
+    let (line, _, num_points) = line_keyframe(&fixture, 0);
+    assert!(line.num_points() > 3);
+    assert_eq!(num_points, line.num_points() as i32);
+    assert_eq!(line_keyframe(&fixture, 1).0.num_points(), line.num_points());
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+}
+
+/// The pull power (`sliderValueChanged`) auditions while it drags and
+/// commits once when the drag ends (`sliderDragEnded`), with nothing
+/// written to the host.
+#[test]
+fn the_pull_power_commits_when_its_drag_ends() {
+    let fixture = Fixture::new();
+    let mut harness = line_source_selected(&fixture);
+    let pull_power = line_source_layout(&fixture).pull_power;
+    let from = centre(pull_power);
+    drag(&mut harness, from, Pos2::new(from.x, from.y - 40.0));
+
+    let (_, power, _) = line_keyframe(&fixture, 0);
+    assert!(power > 0.0);
+    assert_eq!(fixture.local(LINE_SOURCE_CONTROLS[0].pull_power), power);
+    assert_eq!(line_keyframe(&fixture, 1).1, 0.0);
+    assert!(auditioned_the_playhead(&fixture));
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+    assert!(log_is_empty(&fixture));
+}
+
+/// `lineEditorScrolled`: each wheel event over the editor steps the
+/// horizontal grid, up for a scroll up and down otherwise.
+#[test]
+fn the_wheel_over_the_editor_steps_the_horizontal_grid() {
+    let fixture = Fixture::new();
+    let mut harness = line_source_selected(&fixture);
+    let at = line_point(&fixture, 0.2, 0.7);
+    harness.event(Event::PointerMoved(at));
+    harness.step();
+    let wheel = |harness: &mut Harness, y: f32| {
+        harness.event(Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta: egui::vec2(0.0, y),
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Wheel,
+            modifiers: Modifiers::NONE,
+        });
+        harness.step();
+    };
+    wheel(&mut harness, 1.0);
+    let grid_x = LINE_SOURCE_CONTROLS[0].grid_x;
+    assert_eq!(fixture.local(grid_x), 7.0);
+    wheel(&mut harness, -1.0);
+    wheel(&mut harness, -1.0);
+    assert_eq!(fixture.local(grid_x), 5.0);
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 0);
+    assert!(log_is_empty(&fixture));
+}
+
+/// A right-click's release over a point commits, as the base `mouseUp`
+/// calls `drawUp` after a popup press too.
+#[test]
+fn a_right_click_on_a_point_commits() {
+    let fixture = Fixture::new();
+    let mut harness = line_source_selected(&fixture);
+    right_click(&mut harness, line_point(&fixture, 0.5, 0.0));
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+    assert!(log_is_empty(&fixture));
+}
+
+/// A power drag with another change to the model partway through: the
+/// overlay's press holds the editor's copy (no refresh mid-drag), so the
+/// committed bend is the whole drag's, as without the change.
+#[test]
+fn a_refresh_during_a_power_drag_keeps_the_drag() {
+    let committed_power = |refresh: bool| {
+        let fixture = Fixture::new();
+        let mut harness = line_source_selected(&fixture);
+        let from = line_point(&fixture, 0.25, 0.5);
+        harness.event(Event::PointerMoved(from));
+        harness.step();
+        press(&mut harness, from, PointerButton::Primary, true);
+        for (i, dy) in [10.0, 20.0, 30.0, 40.0].into_iter().enumerate() {
+            if refresh && i == 2 {
+                // Another edit reaches the model (a chat tool, say).
+                let creator = fixture.synth.wavetable_creator(0).unwrap();
+                fixture.synth.set_creator(0, creator);
+            }
+            harness.event(Event::PointerMoved(Pos2::new(from.x, from.y - dy)));
+            harness.step();
+        }
+        press(
+            &mut harness,
+            Pos2::new(from.x, from.y - 40.0),
+            PointerButton::Primary,
+            false,
+        );
+        harness.step();
+        assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+        line_keyframe(&fixture, 0).0.power(0)
+    };
+    let without = committed_power(false);
+    assert_ne!(without, 0.0);
+    assert_eq!(committed_power(true), without);
 }

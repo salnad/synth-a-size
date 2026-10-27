@@ -13,7 +13,8 @@
 //! (`vital/src/interface/wavetable/overlays/wave_source_overlay.cpp`): each
 //! oscillator's editor has an overlay for Wave Sources and another for
 //! Shepard Tone sources, each with its own grid sizes and interpolation
-//! selector.
+//! selector, and so are its Phase Shift, Wave Window and Line Source overlay
+//! controls.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -96,6 +97,34 @@ macro_rules! modifier_controls {
         }
     };
 }
+
+/// `WaveLineSourceOverlay`'s pull power range.
+pub const MAX_PULL_POWER: f32 = 5.0;
+
+/// One oscillator's Line Source overlay controls.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LineSourceControls {
+    pub pull_power: &'static str,
+    pub grid_x: &'static str,
+    pub grid_y: &'static str,
+}
+
+macro_rules! line_source_controls {
+    ($prefix:literal) => {
+        LineSourceControls {
+            pull_power: concat!($prefix, "wave_line_source_pull_power"),
+            grid_x: concat!($prefix, "wave_line_source_horizontal_grid"),
+            grid_y: concat!($prefix, "wave_line_source_vertical_grid"),
+        }
+    };
+}
+
+/// Each oscillator's Line Source overlay controls.
+pub const LINE_SOURCE_CONTROLS: [LineSourceControls; 3] = [
+    line_source_controls!("osc_1_"),
+    line_source_controls!("osc_2_"),
+    line_source_controls!("osc_3_"),
+];
 
 /// Each oscillator's Phase Shift and Wave Window overlay controls.
 pub const MODIFIER_CONTROLS: [ModifierControls; 3] = [
@@ -287,6 +316,30 @@ fn infos() -> &'static HashMap<String, ParamInfo> {
                 ),
                 continuous(controls.window_left, 0.0, "Left Position"),
                 continuous(controls.window_right, 1.0, "Right Position"),
+            ] {
+                infos.insert(info.name.clone(), info);
+            }
+        }
+        for controls in LINE_SOURCE_CONTROLS {
+            for info in [
+                ParamInfo {
+                    value_scale: ValueScale::Linear,
+                    ..local_info(controls.pull_power, 0.0, MAX_PULL_POWER, 0.0, "Pull Power")
+                },
+                local_info(
+                    controls.grid_x,
+                    0.0,
+                    MAX_WAVE_SOURCE_GRID,
+                    DEFAULT_WAVE_SOURCE_GRID_X,
+                    "Grid X",
+                ),
+                local_info(
+                    controls.grid_y,
+                    0.0,
+                    MAX_WAVE_SOURCE_GRID,
+                    DEFAULT_WAVE_SOURCE_GRID_Y,
+                    "Grid Y",
+                ),
             ] {
                 infos.insert(info.name.clone(), info);
             }

@@ -115,6 +115,10 @@ pub enum LineTarget {
     Lfo(usize),
     /// A modulation slot's remap curve (0-based), `LineMapEditor`.
     Remap(usize),
+    /// An oscillator's wavetable editor's Line Source overlay (0-based),
+    /// the base `LineEditor` (`WaveLineSourceOverlay`). It always edits a
+    /// keyframe's shape its section owns.
+    LineSource(usize),
 }
 
 /// The editor's menu (`mouseDown` with the popup menu).
@@ -146,7 +150,7 @@ impl LineTarget {
     /// path wraps); a remap curve's (`LineMapEditor`) doesn't.
     pub fn looping(self) -> bool {
         match self {
-            LineTarget::Lfo(_) => true,
+            LineTarget::Lfo(_) | LineTarget::LineSource(_) => true,
             LineTarget::Remap(_) => false,
         }
     }
@@ -154,7 +158,17 @@ impl LineTarget {
     pub fn menu(self) -> MenuKind {
         match self {
             LineTarget::Lfo(_) => MenuKind::Lfo,
-            LineTarget::Remap(_) => MenuKind::Line,
+            LineTarget::Remap(_) | LineTarget::LineSource(_) => MenuKind::Line,
+        }
+    }
+
+    /// `LfoEditor::render` and `LineMapEditor::render` draw the right
+    /// channel's line and fill, then the left's, then the centre line; the
+    /// base `LineEditor::render` draws one line in the left's colours.
+    pub fn stereo(self) -> bool {
+        match self {
+            LineTarget::Lfo(_) | LineTarget::Remap(_) => true,
+            LineTarget::LineSource(_) => false,
         }
     }
 
@@ -164,13 +178,16 @@ impl LineTarget {
     pub fn file_loading(self) -> bool {
         match self {
             LineTarget::Lfo(_) | LineTarget::Remap(_) => true,
+            LineTarget::LineSource(_) => false,
         }
     }
 
-    /// `setLineWidth`: the skin's `kWidgetLineWidth` for both.
+    /// `setLineWidth`: the skin's `kWidgetLineWidth` for an LFO and a remap
+    /// curve, 4 for a Line Source (`WaveLineSourceOverlay::resized`).
     pub fn line_width(self, scope: &Scope) -> f32 {
         match self {
             LineTarget::Lfo(_) | LineTarget::Remap(_) => scope.value(ValueId::WidgetLineWidth),
+            LineTarget::LineSource(_) => 4.0,
         }
     }
 
@@ -181,17 +198,19 @@ impl LineTarget {
         match self {
             LineTarget::Lfo(_) => scope.value(ValueId::WidgetFillCenter),
             LineTarget::Remap(_) => -1.0,
+            LineTarget::LineSource(_) => 0.0,
         }
     }
 
     /// The shape when the synth has none: an LFO's triangle
     /// (`LineGenerator`'s constructor), a remap curve's line
-    /// (`ModulationConnection`'s `initLinear`).
+    /// (`ModulationConnection`'s `initLinear`), and a Line Source's line
+    /// (the overlay's `default_line_generator_`).
     pub fn init_shape(self) -> LineGenerator {
         let mut line = LineGenerator::new(LineGenerator::DEFAULT_RESOLUTION);
         match self {
             LineTarget::Lfo(_) => line.init_triangle(),
-            LineTarget::Remap(_) => line.init_linear(),
+            LineTarget::Remap(_) | LineTarget::LineSource(_) => line.init_linear(),
         }
         line
     }
@@ -201,6 +220,7 @@ impl LineTarget {
         match self {
             LineTarget::Lfo(lfo) => model.lfo_shape(lfo),
             LineTarget::Remap(slot) => model.line_mapping(slot),
+            LineTarget::LineSource(_) => None,
         }
     }
 
@@ -210,15 +230,17 @@ impl LineTarget {
         match self {
             LineTarget::Lfo(lfo) => model.set_lfo_shape(lfo, line),
             LineTarget::Remap(slot) => model.set_line_mapping(slot, line),
+            LineTarget::LineSource(_) => false,
         }
     }
 
     /// The point changes one frame of editing made, in order, before the
     /// shape is written. Nothing else follows an LFO's or a remap curve's
-    /// points.
+    /// points; a Line Source's section mirrors them into the source's other
+    /// keyframes itself, from the event.
     pub fn points_edited(self, model: &dyn EditorModel, edits: &[PointEdit]) {
         match self {
-            LineTarget::Lfo(_) | LineTarget::Remap(_) => {
+            LineTarget::Lfo(_) | LineTarget::Remap(_) | LineTarget::LineSource(_) => {
                 let _ = (model, edits);
             }
         }
@@ -1221,6 +1243,20 @@ impl LineEditor {
         }
     }
 
+    /// Draws `shape` as `show` last drew it, without handling input, for an
+    /// editor drawn twice a frame (a wavetable overlay's).
+    pub fn paint_only(
+        &self,
+        panel: &mut Panel,
+        bounds: Rect,
+        settings: LineSettings,
+        shape: &LineGenerator,
+    ) {
+        let state = self.state(panel);
+        let painting = settings.paint != state.temporary_paint;
+        self.paint(panel, bounds, shape.clone(), &state, settings, painting);
+    }
+
     /// `LfoEditor::mouseDown` with the popup menu, or a remap curve's
     /// `LineEditor::mouseDown`.
     fn open_menu(&self, panel: &mut Panel, line: &LineGenerator, state: &LineState, at: Pos2) {
@@ -1502,6 +1538,7 @@ impl LineEditor {
         let accent2 = scope.color(ColorId::WidgetAccent2);
         let line_width = self.target.line_width(&scope);
         let fill_center = self.target.fill_center(&scope);
+        let stereo = self.target.stereo();
         let rounding = scope.value(ValueId::WidgetRoundedCorner);
         let body = scope.color(ColorId::Body);
         let state = state.clone();
@@ -1564,14 +1601,29 @@ impl LineEditor {
                 renderer.set_y_at(i, y);
             }
             renderer.fill = true;
-            for (colour, fill) in [(line_right, fill_right), (line_left, fill_left)] {
+            let channels: &[_] = if stereo {
+                &[(line_right, fill_right), (line_left, fill_left)]
+            } else {
+                &[(line_left, fill_left)]
+            };
+            // The base editor's fill meets its centre on a row boundary at
+            // odd heights; nudged down a hundredth of a pixel, as the
+            // wavetable editor's displays are, it fills the lower row there,
+            // as GL does. The LFO and remap fills have no such tie.
+            let mut nudged = clip;
+            if !stereo {
+                nudged.y += 0.01;
+            }
+            for &(colour, fill) in channels {
                 renderer.color = colour;
                 renderer.set_fill_colors(fill.with_multiplied_alpha(1.0 - fill_fade), fill);
+                renderer.paint(pixels, nudged, true);
+            }
+            if stereo {
+                renderer.fill = false;
+                renderer.color = center;
                 renderer.paint(pixels, clip, true);
             }
-            renderer.fill = false;
-            renderer.color = center;
-            renderer.paint(pixels, clip, true);
 
             // renderPoints.
             let mut markers = QuadBatch::new();
@@ -1723,6 +1775,12 @@ mod tests {
         let line = remap.init_shape();
         assert_eq!(line.num_points(), 2);
         assert_eq!((line.point(0), line.point(1)), ((0.0, 1.0), (1.0, 0.0)));
+        // The Line Source's base editor: it loops, has the plain menu
+        // without file loading, and draws one line.
+        let source = LineTarget::LineSource(1);
+        assert!(source.looping() && !source.file_loading());
+        assert_eq!(source.menu(), MenuKind::Line);
+        assert!(lfo.stereo() && remap.stereo() && !source.stereo());
     }
 
     /// A line that doesn't loop keeps its ends apart (`movePoint` with

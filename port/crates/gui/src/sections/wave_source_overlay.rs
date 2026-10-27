@@ -206,7 +206,9 @@ pub fn paint_controls_background(
         scope.color(ColorId::WidgetPrimary1),
     );
     let mut quads = vec![background, border];
-    for &line in lines {
+    // The background's own bounds clip its quads, so a line at its right
+    // edge (the Line Source's last) doesn't show.
+    for &line in lines.iter().filter(|&&line| line < controls.width) {
         quads.push(Quad::new(
             QuadKind::Color,
             Rect::new(controls.x + line, controls.y, 1, controls.height).into(),

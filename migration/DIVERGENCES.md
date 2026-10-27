@@ -893,6 +893,45 @@ MCP server) extends this entry when it lands.*
   (`popup_browser::editor_load_wavetable_file`).
 - **Why:** a file the browser offers should load, as in D1 and D19.
 
+### D35. A Line Source's power reset commits with the double click
+
+- **Differs:** a double click on a Line Source keyframe's power (with
+  Shift, every power) in the wavetable editor's Line Source overlay.
+- **Upstream:** the second click's `mouseUp` calls `drawUp`, whose
+  `powersChanged(true)` commits the keyframe as it is
+  (`WaveLineSourceOverlay::notifyChanged(true)`). JUCE then calls
+  `LineEditor::mouseDoubleClick`, which resets the power in the keyframe's
+  shape with no listener call, so the table keeps playing the old power
+  until the next commit while the keyframe, and a saved preset, already
+  hold the reset one.
+- **Port:** the editor reports the release and the reset in one frame, and
+  the overlay commits the shape with the reset in it
+  (`sections/line_source_overlay.rs`), so the table plays the reset power
+  at once. The menu's Reset Power, which upstream also leaves for the next
+  commit, commits the same way.
+- **Why:** the port commits a shape the section owns rather than editing
+  the document in place, so a change left uncommitted wouldn't be saved
+  either. Committing it keeps the saved shape and the sound in agreement.
+- **Approved:** coordinator, 2026-10-27.
+
+### D36. A Line Source's paint stroke commits once, when it ends
+
+- **Differs:** painting (Command held, or the paint mode) on a Line Source
+  keyframe in the wavetable editor's Line Source overlay.
+- **Upstream:** `LineEditor::paintLine` tells the overlay of each painted
+  cell that changes the shape's point count (`pointAdded`, `pointsAdded`,
+  `pointsRemoved`), and the overlay commits each
+  (`notifyChanged(true)`); a cell that keeps the count tells it nothing,
+  and the stroke's release (`mouseUp` without `drawUp`) commits nothing
+  either. A stroke commits once per cell that changed the count, and a
+  stroke that never changes it is left for the next commit.
+- **Port:** each painted cell auditions the playhead's frame, and the
+  stroke commits once, when it ends (`sections/line_source_overlay.rs`).
+- **Why:** a drag is one gesture with one commit at its end (D18), and
+  committing every stroke keeps the saved shape and the sound in
+  agreement, as D35 does for a power reset.
+- **Approved:** coordinator, 2026-10-27.
+
 ### D37. The remap strip names the selected row's curve
 
 - **Differs:** the name in the Matrix tab's LFO file strip, above the remap

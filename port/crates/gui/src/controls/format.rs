@@ -262,6 +262,12 @@ mod tests {
         assert_eq!(slider_text(info("polyphony"), &polyphony, 8.0), "8");
         // Option names: stereo mode.
         assert_eq!(slider_text(info("stereo_mode"), &format, 1.0), "ROTATE");
+        // No parameter behind it: JUCE's own text.
+        let juce = Format {
+            unassigned_decimal_places: Some(7),
+            ..Format::default()
+        };
+        assert_eq!(slider_text(info("polyphony"), &juce, 2.5), "2.5000000");
     }
 
     #[test]
