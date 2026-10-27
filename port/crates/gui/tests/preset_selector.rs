@@ -15,6 +15,7 @@ use nice_plug::context::gui::{GuiContext, GuiContextInner};
 use nice_plug::context::PluginApi;
 use nice_plug::prelude::{FloatParam, FloatRange, Param, ParamPtr, PluginState};
 use sas_engine::Tuning;
+use sas_gui::controls::text_editor;
 use sas_gui::layout::{FullLayout, HeaderLayout, Rect};
 use sas_gui::scope::Scope;
 use sas_gui::sections::delete_section::DeleteLayout;
@@ -689,8 +690,9 @@ fn list_row(fixture: &Fixture, row: i32) -> Pos2 {
     )
 }
 
-/// The row menu's Rename edits the name in place; Return renames the file,
-/// keeping its extension (`PresetList::finishRename`).
+/// The row menu's Rename edits the name in place, asking the window for
+/// the keyboard as a click on a field does; Return renames the file to the
+/// name as typed, keeping its extension (`PresetList::finishRename`).
 #[test]
 fn the_row_menu_renames_a_preset() {
     let folder = copied_data("rename");
@@ -704,15 +706,17 @@ fn the_row_menu_renames_a_preset() {
     assert_eq!(shown(&fixture), ["Bass One", "Lead 2", "Sequence Run"]);
     let row = list_row(&fixture, 0);
     right_click(&mut harness, row);
+    assert!(!text_editor::take_window_focus_request(&harness.ctx));
     choose_row(&mut harness, row.x, row.y, 1);
     harness.step();
-    type_text(&mut harness, "Deep: Bass");
+    assert!(text_editor::take_window_focus_request(&harness.ctx));
+    type_text(&mut harness, " Deep: Bass ");
     press_key(&mut harness, egui::Key::Enter);
     harness.step();
-    assert_eq!(shown(&fixture), ["Deep Bass", "Lead 2", "Sequence Run"]);
+    assert_eq!(shown(&fixture), [" Deep Bass ", "Lead 2", "Sequence Run"]);
     assert!(folder
         .0
-        .join(format!("Presets/Deep Bass.{PRESET_EXTENSION}"))
+        .join(format!("Presets/ Deep Bass .{PRESET_EXTENSION}"))
         .is_file());
 }
 

@@ -574,17 +574,17 @@ impl PresetBrowser {
         }
     }
 
-    /// `finishRename`: a name that isn't blank renames the file, keeping its
-    /// extension, and the list reads its presets again.
+    /// `finishRename`: a name that isn't blank renames the file to it as
+    /// typed (blank only is checked trimmed), keeping its extension, and the
+    /// list reads its presets again.
     fn finish_rename(&mut self, model: &dyn EditorModel) {
         let Some(rename) = self.rename.take() else {
             return;
         };
-        let text = rename.text.trim();
-        if text.is_empty() || !rename.file.exists() {
+        if rename.text.trim().is_empty() || !rename.file.exists() {
             return;
         }
-        let mut name = text.to_string();
+        let mut name = rename.text.clone();
         if let Some(extension) = rename.file.extension() {
             name.push('.');
             name.push_str(&extension.to_string_lossy());

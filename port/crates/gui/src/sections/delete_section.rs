@@ -173,11 +173,8 @@ impl DeleteSection {
             true,
             layout.delete,
         ) {
-            let _ = if self.file.is_dir() {
-                std::fs::remove_dir_all(&self.file)
-            } else {
-                std::fs::remove_file(&self.file)
-            };
+            // The list only offers files.
+            let _ = std::fs::remove_file(&self.file);
             return DeleteOutcome::Deleted;
         }
         let outside = screen

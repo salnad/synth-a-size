@@ -64,7 +64,8 @@ pub struct TextEditorEvents {
 
 /// Gives the field `salt` (as passed to [`single_line`] in `ui`) the
 /// keyboard with all of `text` selected (`grabKeyboardFocus` and
-/// `selectAll`).
+/// `selectAll`), asking the editor window for keyboard focus as a click
+/// does (`grabKeyboardFocus` focuses the plugin's window too).
 pub fn focus_select_all(ui: &Ui, salt: impl std::hash::Hash + std::fmt::Debug, text: &str) {
     let id = ui.scope_id().with(("text editor", salt));
     ui.memory_mut(|memory| memory.request_focus(id));
@@ -72,7 +73,10 @@ pub fn focus_select_all(ui: &Ui, salt: impl std::hash::Hash + std::fmt::Debug, t
     let all = egui::text_selection::CCursorRange::select_all_str(text);
     state.cursor.set_char_range(Some(all));
     egui::TextEdit::store_state(ui.ctx(), id, state);
-    ui.data_mut(|data| data.insert_temp(id.with("had focus"), true));
+    ui.data_mut(|data| {
+        data.insert_temp(id.with("had focus"), true);
+        data.insert_temp(window_focus_request(), true);
+    });
 }
 
 /// A single-line `OpenGlTextEditor` at `bounds` (pixels) editing `text`,
