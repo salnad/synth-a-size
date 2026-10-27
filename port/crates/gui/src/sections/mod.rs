@@ -16,6 +16,7 @@ pub mod delete_section;
 pub mod effects;
 pub mod envelope;
 pub mod extra_mod;
+pub mod file_source_overlay;
 pub mod filter;
 pub mod keyboard;
 pub mod lfo;

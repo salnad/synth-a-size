@@ -31,7 +31,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use egui::{PointerButton, Pos2, Sense};
 use sas_engine::edit_bus::AuditionToken;
-use sas_engine::sas_oscillators::sas_wavetable::creator::component::WavetableComponent;
+use sas_engine::sas_oscillators::sas_wavetable::creator::component::{
+    FileSource, WavetableComponent,
+};
 use sas_engine::sas_oscillators::sas_wavetable::creator::edits::{
     self, KeyframeIndex, MODIFIER_TYPES, SOURCE_TYPES,
 };
@@ -42,6 +44,7 @@ use sas_engine::sas_oscillators::sas_wavetable::{
 };
 use sas_preset::user_folders::{self, Kind, WAVETABLE_EXTENSION};
 
+use super::file_source_overlay::{FileSourceLayout, FileSourceOverlay};
 use super::line_source_overlay::{LineSourceLayout, LineSourceOverlay};
 use super::phase_window_overlays::{PhaseLayout, PhaseOverlay, WindowLayout, WindowOverlay};
 use super::wave_source_overlay::{
@@ -357,6 +360,8 @@ pub enum OverlayKind {
     Window,
     /// A Line Source's `WaveLineSourceOverlay`.
     LineSource,
+    /// A `FileSourceOverlay`, for an Audio File Source.
+    FileSource,
 }
 
 impl OverlayKind {
@@ -368,6 +373,7 @@ impl OverlayKind {
             WavetableComponent::PhaseModifier(_) => Some(OverlayKind::Phase),
             WavetableComponent::WaveWindow(_) => Some(OverlayKind::Window),
             WavetableComponent::LineSource(_) => Some(OverlayKind::LineSource),
+            WavetableComponent::FileSource(_) => Some(OverlayKind::FileSource),
             _ => None,
         }
     }
@@ -389,6 +395,9 @@ impl OverlayKind {
                 time_domain: true,
                 ..Obscured::default()
             },
+            // FileSourceOverlay keeps the base's bounds setters, which
+            // return false.
+            OverlayKind::FileSource => Obscured::default(),
         }
     }
 }
@@ -532,6 +541,8 @@ pub struct WavetableEditSection {
     frame_selections: u64,
     /// The Wave Source overlays: Wave Sources', then Shepard Tone sources'.
     wave_source: [WaveSourceOverlay; 2],
+    /// The Audio File Source overlay.
+    file_source: FileSourceOverlay,
     /// The drag on an overlay's editors that is auditioning, if any.
     audition: PendingAudition,
     /// The popup browser a press on the name asked for since the last
@@ -568,6 +579,7 @@ impl WavetableEditSection {
             overlay_frame: None,
             frame_selections: 0,
             wave_source: local::WAVE_SOURCE_CONTROLS[oscillator.min(2)].map(WaveSourceOverlay::new),
+            file_source: FileSourceOverlay::new(local::FILE_SOURCE_CONTROLS[oscillator.min(2)]),
             audition: PendingAudition::default(),
             browse_request: None,
             save_request: false,
@@ -649,7 +661,8 @@ impl WavetableEditSection {
         let overlay_pressed = self.wave_source.iter().any(WaveSourceOverlay::pressed)
             || self.phase.pressed()
             || self.window.pressed()
-            || self.line_source.pressed();
+            || self.line_source.pressed()
+            || self.file_source.pressed();
         if !loaded && (self.organizer.is_some() || overlay_pressed) {
             // A keyframe drag, or drawing on an overlay, edits the copy
             // until it's committed.
@@ -1633,6 +1646,7 @@ impl WavetableEditSection {
                     .handle(panel, layout, source, keyframe.keyframe);
                 self.frame_edited(panel.host.model(), edit);
             }
+            OverlayKind::FileSource => self.edit_file_source(panel, layout, keyframe),
         }
     }
 
@@ -1659,6 +1673,12 @@ impl WavetableEditSection {
             OverlayKind::LineSource => self
                 .line_source
                 .paint(panel, &LineSourceLayout::new(&panel.scope, layout)),
+            OverlayKind::FileSource => self.file_source.paint(
+                panel,
+                &FileSourceLayout::new(&panel.scope, layout),
+                self.file_source_component(keyframe),
+                false,
+            ),
         }
     }
 
@@ -1697,6 +1717,12 @@ impl WavetableEditSection {
                 let line_layout = LineSourceLayout::new(&panel.scope, layout);
                 self.line_source.show(panel, layout, &line_layout, line);
             }
+            OverlayKind::FileSource => self.file_source.paint(
+                panel,
+                &FileSourceLayout::new(&panel.scope, layout),
+                self.file_source_component(keyframe),
+                true,
+            ),
         }
     }
 
@@ -1742,6 +1768,47 @@ impl WavetableEditSection {
             }
             _ => {}
         }
+    }
+
+    /// The Audio File Source whose keyframe `keyframe` is.
+    fn file_source_component(&self, keyframe: KeyframeRef) -> Option<&FileSource> {
+        let component = self
+            .creator()?
+            .groups
+            .get(keyframe.group)?
+            .components
+            .get(keyframe.component)?;
+        match component {
+            WavetableComponent::FileSource(source) => Some(source),
+            _ => None,
+        }
+    }
+
+    /// The Audio File Source overlay's controls, viewer and drop, editing
+    /// the creator's copy; a change auditions the frame under the playhead
+    /// and a finished one commits (`notifyChanged`).
+    fn edit_file_source(
+        &mut self,
+        panel: &mut Panel,
+        layout: &WavetableEditLayout,
+        keyframe: KeyframeRef,
+    ) {
+        let selection = self.frame_selections;
+        let file_layout = FileSourceLayout::new(&panel.scope, layout);
+        let Some((_, creator)) = &mut self.creator else {
+            return;
+        };
+        let Some(WavetableComponent::FileSource(source)) = creator
+            .groups
+            .get_mut(keyframe.group)
+            .and_then(|group| group.components.get_mut(keyframe.component))
+        else {
+            return;
+        };
+        let edit = self
+            .file_source
+            .input(panel, &file_layout, selection, keyframe, source);
+        self.frame_edited(panel.host.model(), edit);
     }
 
     /// The wave frame of a Wave Source or Shepard Tone source keyframe
@@ -2776,6 +2843,24 @@ mod tests {
         assert_eq!(OverlayKind::LineSource.obscures(), waveform);
         assert_eq!(OverlayKind::Window.obscures(), waveform);
         assert_eq!(OverlayKind::Phase.obscures(), Obscured::default());
+    }
+
+    /// An Audio File Source gets the File Source overlay, which covers no
+    /// display: `FileSourceOverlay` keeps the base's `setTimeDomainBounds`,
+    /// `setFrequencyAmplitudeBounds` and `setPhaseBounds`, which return
+    /// false.
+    #[test]
+    fn the_file_source_overlay_obscures_nothing() {
+        let overlay = OverlayKind::of(&WavetableComponent::new(ComponentType::FileSource));
+        assert_eq!(overlay, Some(OverlayKind::FileSource));
+        assert_eq!(
+            OverlayKind::FileSource.obscures(),
+            Obscured {
+                time_domain: false,
+                amplitudes: false,
+                phases: false,
+            }
+        );
     }
 
     #[test]

@@ -143,6 +143,11 @@ impl LineRenderer {
         self.boost_left[index]
     }
 
+    /// `setBoostLeft`.
+    pub fn set_boost_left(&mut self, index: usize, value: f32) {
+        self.boost_left[index] = value;
+    }
+
     pub fn any_boost_value(&self) -> bool {
         self.any_boost_value
     }

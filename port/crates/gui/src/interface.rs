@@ -495,6 +495,13 @@ pub trait EditorModel: Send + Sync + 'static {
         &[]
     }
 
+    /// The first channel of the audio file at `path`, at most `max_frames`
+    /// of it (`AudioFormatReader::read` of `min(length, max)` samples), or
+    /// `None` when it can't be read.
+    fn read_audio_file(&self, _path: &std::path::Path, _max_frames: usize) -> Option<Vec<f32>> {
+        None
+    }
+
     /// `FullInterface::loadAudioAsWavetable`: loads the audio file at `path`
     /// into oscillator `oscillator`'s wavetable as `style` (splice, vocode
     /// or pitch splice), named after the file. Returns false, changing

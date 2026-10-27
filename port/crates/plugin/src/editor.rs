@@ -446,6 +446,16 @@ impl EditorModel for PluginModel {
         self.params.edit_handle().set_sample(sample).is_ok()
     }
 
+    fn read_audio_file(&self, path: &Path, max_frames: usize) -> Option<Vec<f32>> {
+        let bytes = std::fs::read(path).ok()?;
+        let extension = path
+            .extension()
+            .map(|extension| extension.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let audio = audio_file::read_audio_channels(&bytes, &extension, 1, max_frames)?;
+        audio.channels.into_iter().next()
+    }
+
     fn load_audio_as_wavetable(
         &self,
         oscillator: usize,

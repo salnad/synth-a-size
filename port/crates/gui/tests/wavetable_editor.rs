@@ -20,13 +20,17 @@ use nice_plug::prelude::{FloatParam, FloatRange, Param, ParamPtr, PluginState};
 use sas_engine::document::PresetDocument;
 use sas_engine::edit_bus::{AuditionToken, EditBus, EditHandle};
 use sas_engine::sas_oscillators::sas_wavetable::creator::component::{
-    ComponentType, WavetableComponent,
+    ComponentType, FileSource, WavetableComponent,
 };
 use sas_engine::sas_oscillators::sas_wavetable::creator::group::WavetableGroup;
 use sas_engine::sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_gui::layout::{FullLayout, Rect};
-use sas_gui::local::{LINE_SOURCE_CONTROLS, MODIFIER_CONTROLS, WAVE_SOURCE_CONTROLS};
+use sas_gui::local::{
+    FILE_SOURCE_CONTROLS, LINE_SOURCE_CONTROLS, MODIFIER_CONTROLS, WAVE_SOURCE_CONTROLS,
+};
+use sas_gui::nice_plug_egui::file_drop::DroppedPath;
 use sas_gui::scope::Scope;
+use sas_gui::sections::file_source_overlay::{FileSourceLayout, MAX_FILE_SAMPLES};
 use sas_gui::sections::line_source_overlay::LineSourceLayout;
 use sas_gui::sections::oscillator::{self, OscillatorLayout};
 use sas_gui::sections::phase_window_overlays::{PhaseLayout, WindowLayout};
@@ -66,6 +70,10 @@ struct Synth {
     ends: Mutex<Vec<usize>>,
     /// Refuse commits, as a full edit queue does.
     refuse_commits: std::sync::atomic::AtomicBool,
+    /// The audio files it reads, by file name, and the reads asked for
+    /// (file name and frame limit).
+    audio: Mutex<BTreeMap<String, Vec<f32>>>,
+    audio_reads: Mutex<Vec<(String, usize)>>,
 }
 
 impl Synth {
@@ -104,6 +112,8 @@ impl Synth {
             auditions: Mutex::new(Vec::new()),
             ends: Mutex::new(Vec::new()),
             refuse_commits: std::sync::atomic::AtomicBool::new(false),
+            audio: Mutex::new(BTreeMap::new()),
+            audio_reads: Mutex::new(Vec::new()),
         })
     }
 
@@ -168,6 +178,20 @@ impl EditorModel for Synth {
 
     fn end_wavetable_audition(&self, oscillator: usize, _token: AuditionToken) {
         self.ends.lock().unwrap().push(oscillator);
+    }
+
+    fn audio_file_extensions(&self) -> &'static [&'static str] {
+        &["wav"]
+    }
+
+    fn read_audio_file(&self, path: &std::path::Path, max_frames: usize) -> Option<Vec<f32>> {
+        let name = path.file_name()?.to_string_lossy().into_owned();
+        self.audio_reads
+            .lock()
+            .unwrap()
+            .push((name.clone(), max_frames));
+        let audio = self.audio.lock().unwrap().get(&name)?.clone();
+        Some(audio.into_iter().take(max_frames).collect())
     }
 
     fn content_revision(&self) -> u64 {
@@ -341,6 +365,12 @@ impl Fixture {
         let layout = self.layout();
         let top = Scope::top(&self.skin, layout.size_ratio);
         OverlayLayout::wave_source(&top, &self.editor_layout())
+    }
+
+    fn file_source_layout(&self) -> FileSourceLayout {
+        let layout = self.layout();
+        let top = Scope::top(&self.skin, layout.size_ratio);
+        FileSourceLayout::new(&top, &self.editor_layout())
     }
 
     fn overlay_frame(&self, oscillator: usize) -> Option<KeyframeRef> {
@@ -1612,6 +1642,115 @@ fn the_style_selector_sets_the_phase_style() {
     assert!(log_is_empty(&fixture));
 }
 
+/// Oscillator 0's creator with a single Audio File Source (one keyframe at
+/// the start) holding `audio`, if any, with a `window_size` window.
+fn file_source_creator(fixture: &Fixture, audio: Option<&[f32]>, window_size: f64) {
+    let mut creator = WavetableCreator::new();
+    let mut group = WavetableGroup::default();
+    let mut component = WavetableComponent::new(ComponentType::FileSource);
+    component.insert_new_keyframe(0);
+    if let WavetableComponent::FileSource(source) = &mut component {
+        if let Some(audio) = audio {
+            source.load_buffer(audio, 0);
+        }
+        source.set_window_size(window_size);
+    }
+    group.components.push(component);
+    creator.groups.push(group);
+    fixture.synth.set_creator(0, creator);
+}
+
+fn file_source(fixture: &Fixture) -> FileSource {
+    let creator = fixture.synth.wavetable_creator(0).unwrap();
+    match &creator.groups[0].components[0] {
+        WavetableComponent::FileSource(source) => (**source).clone(),
+        _ => panic!("the creator holds an audio file source"),
+    }
+}
+
+/// A sine with a 100-sample period.
+fn sine(samples: usize) -> Vec<f32> {
+    (0..samples)
+        .map(|i| (i as f32 * std::f32::consts::TAU / 100.0).sin())
+        .collect()
+}
+
+/// Drops the file `name` at `pos` (`filesDropped`).
+fn drop_file(harness: &mut Harness, pos: Pos2, name: &str) {
+    harness.event(Event::PointerMoved(pos));
+    harness.step();
+    let path = std::path::PathBuf::from("/audio").join(name);
+    harness
+        .input_mut()
+        .dropped_files
+        .push(Arc::new(DroppedPath(path)));
+    harness.step();
+    harness.step();
+}
+
+/// `FileSourceOverlay::frameSelected`: selecting an Audio File Source's
+/// keyframe shows its overlay, with the keyframe's window fade and the
+/// source's styles in its controls; nothing is committed or written to the
+/// host.
+#[test]
+fn an_audio_file_source_keyframe_shows_its_overlay() {
+    let fixture = Fixture::new();
+    file_source_creator(&fixture, None, 2048.0);
+    let mut creator = fixture.synth.wavetable_creator(0).unwrap();
+    if let WavetableComponent::FileSource(source) = &mut creator.groups[0].components[0] {
+        source.fade_style = 2;
+        source.set_phase_style(1);
+        source.keyframes.keyframes[0].data.window_fade = 0.25;
+    }
+    fixture.synth.set_creator(0, creator);
+    let mut harness = opened(&fixture);
+    harness.step();
+    assert_eq!(fixture.overlay_frame(0), Some(FIRST));
+    let controls = FILE_SOURCE_CONTROLS[0];
+    assert_eq!(fixture.local(controls.window_fade), 0.25);
+    assert_eq!(fixture.local(controls.fade_style), 2.0);
+    assert_eq!(fixture.local(controls.phase_style), 1.0);
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 0);
+    assert!(log_is_empty(&fixture));
+}
+
+/// `loadFile`: audio dropped on the viewer is read up to the viewer's
+/// 176,400 frames and loads at its sample rate, 0; the window becomes the
+/// detected period, and the edit commits once.
+#[test]
+fn dropping_audio_on_the_viewer_loads_it() {
+    let fixture = Fixture::new();
+    file_source_creator(&fixture, None, 2048.0);
+    let audio = sine(20_000);
+    fixture
+        .synth
+        .audio
+        .lock()
+        .unwrap()
+        .insert("Sine.wav".to_string(), audio.clone());
+    let mut harness = opened(&fixture);
+    drop_file(
+        &mut harness,
+        centre(fixture.file_source_layout().viewer),
+        "Sine.wav",
+    );
+
+    assert_eq!(
+        *fixture.synth.audio_reads.lock().unwrap(),
+        [("Sine.wav".to_string(), MAX_FILE_SAMPLES)]
+    );
+    let source = file_source(&fixture);
+    assert_eq!(source.sample_buffer.size, 20_000);
+    assert_eq!(source.sample_buffer.sample_rate, 0);
+    let mut expected = FileSource::new();
+    expected.load_buffer(&audio, 0);
+    expected.detect_pitch(2048).unwrap();
+    assert_eq!(source.window_size, expected.window_size);
+    assert_eq!(source.keyframes.keyframes[0].data.start_position, 0.0);
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+    assert!(log_is_empty(&fixture));
+}
+
 /// `WaveWindowEditor`: a press near an edge grabs it (`getHover`) and the
 /// drag moves it, auditioning; the release commits once, and the position
 /// sliders follow (`windowChanged`).
@@ -1999,4 +2138,59 @@ fn a_refresh_during_a_power_drag_keeps_the_drag() {
     let without = committed_power(false);
     assert_ne!(without, 0.0);
     assert_eq!(committed_power(true), without);
+}
+
+/// A file that can't be read, or audio shorter than `detectPitch` needs,
+/// loads nothing and commits nothing (D33).
+#[test]
+fn unreadable_or_short_audio_loads_nothing() {
+    let fixture = Fixture::new();
+    file_source_creator(&fixture, None, 2048.0);
+    fixture
+        .synth
+        .audio
+        .lock()
+        .unwrap()
+        .insert("Short.wav".to_string(), sine(8095));
+    let mut harness = opened(&fixture);
+    let viewer = centre(fixture.file_source_layout().viewer);
+    drop_file(&mut harness, viewer, "Missing.wav");
+    drop_file(&mut harness, viewer, "Short.wav");
+
+    assert_eq!(fixture.synth.audio_reads.lock().unwrap().len(), 2);
+    let source = file_source(&fixture);
+    assert!(source.sample_buffer.data.is_none());
+    assert_eq!(source.window_size, 2048.0);
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 0);
+}
+
+/// `AudioFileViewer::mouseDrag` and `positionMovedRelative`: dragging
+/// across half the viewer moves the start position by half the audio less
+/// a window, auditioning as it goes, and the release commits.
+#[test]
+fn dragging_the_viewer_moves_the_start_position() {
+    let fixture = Fixture::new();
+    file_source_creator(&fixture, Some(&sine(20_000)), 100.0);
+    let mut harness = opened(&fixture);
+    let viewer = fixture.file_source_layout().viewer;
+    let from = Pos2::new(viewer.x as f32 + 1.0, centre(viewer).y);
+    let to = Pos2::new(from.x + viewer.width as f32 / 2.0, from.y);
+    harness.event(Event::PointerMoved(from));
+    harness.step();
+    button(&mut harness, from, true);
+    harness.event(Event::PointerMoved(to));
+    harness.step();
+    harness.step();
+    assert!(!fixture.synth.auditions.lock().unwrap().is_empty());
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 0);
+    button(&mut harness, to, false);
+    harness.step();
+
+    let expected = 0.5 * (20_000.0 - 100.0);
+    let start = file_source(&fixture).keyframes.keyframes[0]
+        .data
+        .start_position;
+    assert!((start - expected).abs() < 0.1, "{start}");
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+    assert!(log_is_empty(&fixture));
 }
