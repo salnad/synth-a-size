@@ -4,7 +4,8 @@ The second half of G5e-3: the Wave Source overlay's editors edit the
 selected keyframe's frame, and a drag is heard as it is drawn.
 
 **Port** (`sections/wave_source_overlay.rs`, `sections/wavetable_edit.rs`,
-`interface.rs`, `editor.rs`, `port/crates/plugin/src/editor.rs`)
+`interface.rs`, `editor.rs`, `port/crates/plugin/src/editor.rs`,
+`port/crates/engine/src/edit_bus.rs`)
 
 - `WaveSourceOverlay` keeps each overlay's state between frames: its
   controls, its editors' presses and pointer positions, and its bar
@@ -37,13 +38,24 @@ selected keyframe's frame, and a drag is heard as it is drawn.
   change), and the release or a menu choice commits the whole table
   (`frameDoneEditing`, `set_wavetable_creator`), as upstream's
   `render(position)` and `render()` do. Only the commit changes the saved
-  creator (D18); nothing writes to the host.
+  creator (D18); nothing writes to the host. A commit the model refuses (a
+  full edit queue) ends the drag instead, and the section reads the saved
+  creator back, so the drawn frames don't keep playing.
 - `PendingAudition`: the drag that is auditioning, shared with the editor
   window. A window that closes or fails during it, or a section hidden
   during it, ends it (`EditorModel::end_wavetable_audition`), so the
-  playing table goes back to the saved creator. The plugin's model retries
-  `EditHandle::end_audition` off the GUI thread while the edit queue is
-  full, until it goes through or the token is stale, and logs a long wait.
+  playing table goes back to the saved creator.
+- The edit bus keeps `END_AUDITION_RESERVE` (one per oscillator) queue
+  entries free for `end_audition`: every other edit, drawn frame and commit
+  leaves them. An oscillator's flag records whether a drawn frame reached
+  its tables since its last commit, end or restore; an end without one
+  queues nothing (the tables are the document's already) and only makes the
+  token stale. So the free entries never drop below the oscillators with a
+  table to put back, and an end never meets a full queue, however long the
+  audio thread stops draining it; the plugin's model calls it once, with no
+  retries. A batch that rolls back after setting a wavetable puts back the
+  oscillator's commit count and flag, so a drag auditioning before it can
+  still draw and end.
 - The section doesn't re-read the creator while an overlay editor is
   pressed, as for a keyframe drag.
 - The displays show the frame under the playhead as drawn.
@@ -61,9 +73,18 @@ selected keyframe's frame, and a drag is heard as it is drawn.
   to end.
 - Unit tests: grid snapping within the truncated radius, and the line a drag
   draws.
+- `tests/wavetable_editor.rs`: a drag whose commit is refused ends its
+  audition once, commits nothing, and the editor reads the saved creator
+  back.
+- Engine (`tests/edit_bus.rs`): `ending_auditions_has_room_whatever_else_is_queued`:
+  with every oscillator drawn on and the queue filled with other edits and
+  frames until they're refused, each drag still ends, putting its table
+  back; an end with nothing drawn queues nothing and makes its token stale.
+  `a_failed_batch_keeps_a_drags_audition`. `a_full_queue_refuses_without_changing_the_mirror`
+  now fills the queue up to the reserve, which its edits leave.
 - Plugin: `an_ended_wavetable_audition_goes_back_to_the_saved_table`: a drawn
-  frame plays and draws without touching the saved creator, and an end that
-  meets a full edit queue is retried until the saved table is back, after
-  which the drag's token is stale.
+  frame plays and draws without touching the saved creator, and ending the
+  drag with the queue otherwise full puts the saved table back at once,
+  after which the drag's token is stale.
 
 No audio change outside the editor's drags.

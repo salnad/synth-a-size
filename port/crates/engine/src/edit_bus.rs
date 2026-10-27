@@ -71,6 +71,11 @@ const OVERFLOW_CAPACITY: usize = 4;
 /// its linear remap curve too).
 const MAX_ENTRIES_PER_EDIT: usize = 2;
 
+/// Entries kept free for [`EditHandle::end_audition`], one per oscillator:
+/// every other edit leaves them, so ending a wavetable drag never meets a
+/// full queue, however long the audio thread stops draining it.
+pub const END_AUDITION_RESERVE: usize = NUM_OSCILLATORS;
+
 const LFO_SLOTS: usize = 0;
 const LINE_MAPPING_SLOTS: usize = LFO_SLOTS + NUM_LFOS;
 const WAVETABLE_SLOTS: usize = LINE_MAPPING_SLOTS + MAX_MODULATION_CONNECTIONS;
@@ -279,6 +284,10 @@ struct Mirror {
     /// and ended auditions ([`EditHandle::end_audition`]), which make older
     /// auditions stale.
     wavetable_commits: [u64; NUM_OSCILLATORS],
+    /// Whether a drawn frame has reached each oscillator's tables since its
+    /// last commit, end of audition or restore, so ending the drag has a
+    /// table to put back.
+    auditioned: [bool; NUM_OSCILLATORS],
 }
 
 struct Shared {
@@ -370,6 +379,7 @@ impl EditBus {
                 next_seq: 0,
                 wavetables: Default::default(),
                 wavetable_commits: [0; NUM_OSCILLATORS],
+                auditioned: [false; NUM_OSCILLATORS],
             }),
             generation: AtomicU64::new(0),
             revision: AtomicU64::new(0),
@@ -406,8 +416,12 @@ pub struct Batch<'a> {
     /// Values replaced in the mirror that a rollback puts back, kept out of
     /// the batch's snapshot because they can be large.
     replaced_sample: Option<SampleState>,
-    replaced_wavetables: [Option<(WavetableCreator, Option<Arc<Wavetable>>)>; NUM_OSCILLATORS],
+    replaced_wavetables: [Option<ReplacedWavetable>; NUM_OSCILLATORS],
 }
+
+/// An oscillator's wavetable state before a batch replaced it: its creator,
+/// shared table, commit count and audition flag.
+type ReplacedWavetable = (WavetableCreator, Option<Arc<Wavetable>>, u64, bool);
 
 impl Batch<'_> {
     /// A source dropped on a control (see
@@ -596,9 +610,12 @@ impl Batch<'_> {
             prepared.creator,
         );
         let shared = self.mirror.wavetables[oscillator].replace(prepared.shared);
+        let commits = self.mirror.wavetable_commits[oscillator];
+        let auditioned = self.mirror.auditioned[oscillator];
         self.mirror.wavetable_commits[oscillator] += 1;
+        self.mirror.auditioned[oscillator] = false;
         if self.replaced_wavetables[oscillator].is_none() {
-            self.replaced_wavetables[oscillator] = Some((creator, shared));
+            self.replaced_wavetables[oscillator] = Some((creator, shared, commits, auditioned));
         }
         self.staged.push(Staged::Pending(
             Target::Wavetable(oscillator),
@@ -727,7 +744,7 @@ impl EditHandle {
             ..
         } = batch;
         let result = result.and_then(|value| {
-            if staged.len() <= self.capacity_remaining() {
+            if staged.len() + END_AUDITION_RESERVE <= self.capacity_remaining() {
                 Ok(value)
             } else {
                 Err(EditError::QueueFull)
@@ -744,9 +761,12 @@ impl EditHandle {
                     .unwrap_or_else(|| std::mem::take(&mut mirror.document.state.sample));
                 let mut wavetables = std::mem::take(&mut mirror.document.state.wavetables);
                 for (oscillator, replaced) in replaced_wavetables.into_iter().enumerate() {
-                    if let Some((creator, shared)) = replaced {
+                    if let Some((creator, shared, commits, auditioned)) = replaced {
                         wavetables[oscillator] = creator;
                         mirror.wavetables[oscillator] = shared;
+                        // A drag auditioning before the batch still is.
+                        mirror.wavetable_commits[oscillator] = commits;
+                        mirror.auditioned[oscillator] = auditioned;
                     }
                 }
                 mirror.document = snapshot;
@@ -776,7 +796,7 @@ impl EditHandle {
     ) -> Result<R, EditError> {
         self.collect_retired();
         let mut mirror = self.lock();
-        if self.capacity_remaining() < MAX_ENTRIES_PER_EDIT {
+        if self.capacity_remaining() < MAX_ENTRIES_PER_EDIT + END_AUDITION_RESERVE {
             return Err(EditError::QueueFull);
         }
         let mut batch = Batch::new(&mut mirror);
@@ -949,7 +969,7 @@ impl EditHandle {
         if self.is_stale(&mirror, oscillator, token) {
             return Ok(false);
         }
-        if self.capacity_remaining() < 1 {
+        if self.capacity_remaining() < 1 + END_AUDITION_RESERVE {
             return Err(EditError::QueueFull);
         }
         let mut creator = creator;
@@ -970,7 +990,10 @@ impl EditHandle {
                 )
             })
             .into_iter()
-            .collect();
+            .collect::<Vec<_>>();
+        if !staged.is_empty() {
+            mirror.auditioned[oscillator] = true;
+        }
         self.queue(&mut mirror, staged);
         Ok(true)
     }
@@ -1002,12 +1025,23 @@ impl EditHandle {
     /// nothing, when `token` is stale, since a commit or restore has
     /// already replaced the table. It makes `token` stale, so a frame of
     /// the drag still in flight can't reach the table it restored.
+    ///
+    /// It never meets a full queue: every other edit leaves
+    /// [`END_AUDITION_RESERVE`] entries free, and a drag whose frames
+    /// reached nothing since the last commit, end or restore queues nothing,
+    /// so the free entries never drop below the oscillators with a table to
+    /// put back.
     pub fn end_audition(&self, oscillator: usize, token: AuditionToken) -> Result<bool, EditError> {
         check_index(oscillator, NUM_OSCILLATORS)?;
         let creator = {
-            let mirror = self.lock();
+            let mut mirror = self.lock();
             if self.is_stale(&mirror, oscillator, token) {
                 return Ok(false);
+            }
+            if !mirror.auditioned[oscillator] {
+                // The tables are the document's already.
+                mirror.wavetable_commits[oscillator] += 1;
+                return Ok(true);
             }
             mirror.document.state.wavetables[oscillator].clone()
         };
@@ -1021,6 +1055,7 @@ impl EditHandle {
             return Err(EditError::QueueFull);
         }
         mirror.wavetable_commits[oscillator] += 1;
+        mirror.auditioned[oscillator] = false;
         mirror.wavetables[oscillator] = Some(prepared.shared);
         let staged = vec![Staged::Pending(
             Target::Wavetable(oscillator),
@@ -1072,6 +1107,7 @@ impl EditHandle {
         mirror.generation += 1;
         mirror.revision += 1;
         mirror.wavetables = Default::default();
+        mirror.auditioned = [false; NUM_OSCILLATORS];
         let restore = Box::new(Restore {
             generation: mirror.generation,
             document: document.clone(),

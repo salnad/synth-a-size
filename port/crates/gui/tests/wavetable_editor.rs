@@ -62,6 +62,8 @@ struct Synth {
     auditions: Mutex<Vec<(usize, usize, WavetableCreator)>>,
     /// The oscillators whose auditions the editor ended.
     ends: Mutex<Vec<usize>>,
+    /// Refuse commits, as a full edit queue does.
+    refuse_commits: std::sync::atomic::AtomicBool,
 }
 
 impl Synth {
@@ -99,6 +101,7 @@ impl Synth {
             edits: EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 })).0,
             auditions: Mutex::new(Vec::new()),
             ends: Mutex::new(Vec::new()),
+            refuse_commits: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -135,6 +138,9 @@ impl EditorModel for Synth {
     }
 
     fn set_wavetable_creator(&self, oscillator: usize, creator: WavetableCreator) -> bool {
+        if self.refuse_commits.load(Ordering::Relaxed) {
+            return false;
+        }
         self.commits.fetch_add(1, Ordering::Relaxed);
         self.set_creator(oscillator, creator);
         true
@@ -1347,6 +1353,43 @@ fn closing_during_a_drag_ends_the_audition() {
     assert!(!fixture.synth.auditions.lock().unwrap().is_empty());
     for audition in &auditions {
         audition.end(fixture.synth.as_ref());
+        audition.end(fixture.synth.as_ref());
+    }
+    assert_eq!(*fixture.synth.ends.lock().unwrap(), [0]);
+}
+
+/// A drag whose commit is refused at its release (a full edit queue) ends
+/// its audition rather than leave the drawn frames playing, and the editor
+/// reads the saved creator back.
+#[test]
+fn a_refused_commit_ends_the_audition() {
+    let fixture = Fixture::new();
+    let before = committed_samples(&fixture);
+    let mut harness = opened(&fixture);
+    let layout = fixture.editor_layout();
+    fixture.synth.refuse_commits.store(true, Ordering::Relaxed);
+    let row = layout.waveform.height / 2;
+    drag(
+        &mut harness,
+        waveform_point(&layout, 5, row),
+        waveform_point(&layout, layout.waveform.width / 3, row),
+    );
+    harness.step();
+    assert!(!fixture.synth.auditions.lock().unwrap().is_empty());
+    assert_eq!(*fixture.synth.ends.lock().unwrap(), [0]);
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 0);
+    assert_eq!(committed_samples(&fixture), before);
+    let interface = fixture.interface.borrow();
+    let creator = interface.wavetable_edit_section(0).creator().unwrap();
+    let WavetableComponent::WaveSource(source) = &creator.groups[0].components[0] else {
+        panic!("the init preset starts with a wave source");
+    };
+    assert_eq!(
+        source.keyframes.keyframes[0].data.wave_frame.time_domain[..2048],
+        before[..]
+    );
+    // Nothing is left to end.
+    for audition in interface.pending_auditions() {
         audition.end(fixture.synth.as_ref());
     }
     assert_eq!(*fixture.synth.ends.lock().unwrap(), [0]);

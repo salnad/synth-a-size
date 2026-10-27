@@ -456,10 +456,10 @@ pub trait EditorModel: Send + Sync + 'static {
     }
 
     /// Ends a drag that won't be committed (the editor closed, failed or
-    /// was reset during it): the playing and drawn tables go back to the
-    /// saved creator. It must not be dropped, so an implementation keeps
-    /// trying while the edit queue is full, until it goes through or the
-    /// token is stale.
+    /// was hidden during it, or its commit was refused): the playing and
+    /// drawn tables go back to the saved creator. The edit bus keeps queue
+    /// room for it (`EditHandle::end_audition`), so it isn't refused for a
+    /// full queue.
     fn end_wavetable_audition(&self, _oscillator: usize, _token: AuditionToken) {}
 
     /// Oscillator `oscillator`'s wavetable creator as upstream's JSON

@@ -877,10 +877,12 @@ impl WavetableEditSection {
 
     /// Commits the edited creator to the model, which renders it
     /// (`render`). The next frame reads the rendered creator back, as
-    /// upstream's next edit starts from the creator it rendered.
-    fn commit(&self, model: &dyn EditorModel) {
-        if let Some((_, creator)) = &self.creator {
-            model.set_wavetable_creator(self.oscillator, creator.clone());
+    /// upstream's next edit starts from the creator it rendered. Returns
+    /// false when the model refused it (a full edit queue).
+    fn commit(&self, model: &dyn EditorModel) -> bool {
+        match &self.creator {
+            Some((_, creator)) => model.set_wavetable_creator(self.oscillator, creator.clone()),
+            None => false,
         }
     }
 
@@ -1583,8 +1585,17 @@ impl WavetableEditSection {
         match edit {
             Some(FrameEdit::Changed) => self.audition_frame(model),
             Some(FrameEdit::Done) => {
-                self.audition.clear();
-                self.commit(model);
+                if self.commit(model) {
+                    self.audition.clear();
+                } else {
+                    // The drawn frames mustn't keep playing what the saved
+                    // creator doesn't hold: end the drag, and read the saved
+                    // creator back.
+                    self.audition.end(model);
+                    if let Some((read, _)) = &mut self.creator {
+                        *read = u64::MAX;
+                    }
+                }
             }
             None => {}
         }
