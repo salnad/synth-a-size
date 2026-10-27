@@ -24,5 +24,6 @@ pub mod tab_selector;
 pub mod tempo;
 pub mod text_editor;
 pub mod transpose_quantize;
+pub mod ui_button;
 pub mod wavetable_3d;
 pub mod wheel;

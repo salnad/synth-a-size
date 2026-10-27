@@ -17,7 +17,9 @@ use nice_plug::prelude::{FloatParam, FloatRange, Param, ParamPtr, PluginState};
 use sas_engine::Tuning;
 use sas_gui::layout::{FullLayout, HeaderLayout, Rect};
 use sas_gui::scope::Scope;
+use sas_gui::sections::delete_section::DeleteLayout;
 use sas_gui::sections::preset_browser::PresetBrowserLayout;
+use sas_gui::sections::selection_list::Selection;
 use sas_gui::skin::Skin;
 use sas_gui::{EditorModel, Host, HostParam, Interface, OpenGestures, Tab};
 use sas_preset::registry::registry;
@@ -597,4 +599,155 @@ fn a_row_loads_and_its_star_marks_a_favourite() {
             format!("favourite {} on", preset("bass 10")),
         ]
     );
+}
+
+/// The folder list's row `row`, past its icon.
+fn folder_row(fixture: &Fixture, row: i32) -> Pos2 {
+    let folders = browser_layout(fixture).folders;
+    Pos2::new((folders.x + 100) as f32, (folders.y + row * 24 + 12) as f32)
+}
+
+/// A copy of the corpus data folder, removed when dropped.
+fn copied_data(tag: &str) -> Folder {
+    let folder = Folder::new(tag, &[]);
+    for entry in [
+        "Presets/Bass One",
+        "Presets/Lead 2",
+        "Bank/Presets/Sequence Run",
+    ] {
+        let from = corpus_data().join(format!("{entry}.{PRESET_EXTENSION}"));
+        let to = folder.0.join(format!("{entry}.{PRESET_EXTENSION}"));
+        std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+        std::fs::copy(from, to).unwrap();
+    }
+    folder
+}
+
+/// The folder list shows All, Favorites and each Presets folder, named
+/// after its parent (`setPassthroughFolderName`); choosing a folder lists
+/// its presets, choosing it again opens it, and All and Favorites list
+/// every preset and the favourites (`SelectionList::select`).
+#[test]
+fn the_folder_list_chooses_what_the_list_shows() {
+    let fixture = Fixture::new();
+    *fixture.synth.data_directory.lock().unwrap() = Some(corpus_data());
+    fixture
+        .interface
+        .borrow_mut()
+        .set_preset_browser_visible(true);
+    let mut harness = fixture.harness();
+    let data = corpus_data();
+    assert_eq!(
+        fixture.interface.borrow().browser_folders(),
+        [
+            Selection::All,
+            Selection::Favourites,
+            Selection::Path(data.join("Bank/Presets")),
+            Selection::Path(data.join("Presets")),
+        ]
+    );
+    click(&mut harness, folder_row(&fixture, 2));
+    assert_eq!(shown(&fixture), ["Sequence Run"]);
+    click(&mut harness, folder_row(&fixture, 3));
+    assert_eq!(
+        shown(&fixture),
+        ["bass 10", "Bass One", "Keys Soft", "Lead 2", "Pad"]
+    );
+    click(&mut harness, folder_row(&fixture, 3));
+    assert_eq!(
+        fixture.interface.borrow().browser_folders()[4],
+        Selection::Path(data.join("Presets/Keys"))
+    );
+    click(&mut harness, folder_row(&fixture, 1));
+    assert!(shown(&fixture).is_empty());
+    click(&mut harness, folder_row(&fixture, 0));
+    assert_eq!(shown(&fixture).len(), 6);
+}
+
+fn right_click(harness: &mut Harness, pos: Pos2) {
+    harness.event(Event::PointerMoved(pos));
+    harness.step();
+    for pressed in [true, false] {
+        harness.event(Event::PointerButton {
+            pos,
+            button: PointerButton::Secondary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        });
+        harness.step();
+    }
+    harness.step();
+}
+
+fn list_row(fixture: &Fixture, row: i32) -> Pos2 {
+    let layout = browser_layout(fixture);
+    let list = layout.list;
+    Pos2::new(
+        (list.x + list.width / 2) as f32,
+        (list.y + layout.title_width + row * layout.row_height) as f32
+            + layout.row_height as f32 / 2.0,
+    )
+}
+
+/// The row menu's Rename edits the name in place; Return renames the file,
+/// keeping its extension (`PresetList::finishRename`).
+#[test]
+fn the_row_menu_renames_a_preset() {
+    let folder = copied_data("rename");
+    let fixture = Fixture::new();
+    *fixture.synth.data_directory.lock().unwrap() = Some(folder.0.clone());
+    fixture
+        .interface
+        .borrow_mut()
+        .set_preset_browser_visible(true);
+    let mut harness = fixture.harness();
+    assert_eq!(shown(&fixture), ["Bass One", "Lead 2", "Sequence Run"]);
+    let row = list_row(&fixture, 0);
+    right_click(&mut harness, row);
+    choose_row(&mut harness, row.x, row.y, 1);
+    harness.step();
+    type_text(&mut harness, "Deep: Bass");
+    press_key(&mut harness, egui::Key::Enter);
+    harness.step();
+    assert_eq!(shown(&fixture), ["Deep Bass", "Lead 2", "Sequence Run"]);
+    assert!(folder
+        .0
+        .join(format!("Presets/Deep Bass.{PRESET_EXTENSION}"))
+        .is_file());
+}
+
+/// The row menu's Delete asks first; Delete removes the file and the list
+/// reads its presets again (`DeleteSection`, `fileDeleted`), and a click
+/// outside the box cancels.
+#[test]
+fn the_row_menu_deletes_a_preset_after_asking() {
+    let folder = copied_data("delete");
+    let fixture = Fixture::new();
+    *fixture.synth.data_directory.lock().unwrap() = Some(folder.0.clone());
+    fixture
+        .interface
+        .borrow_mut()
+        .set_preset_browser_visible(true);
+    let mut harness = fixture.harness();
+    let dialog = DeleteLayout::new(1.0, Rect::new(0, 0, 1400, 820));
+
+    let row = list_row(&fixture, 1);
+    right_click(&mut harness, row);
+    choose_row(&mut harness, row.x, row.y, 2);
+    harness.step();
+    assert!(fixture.interface.borrow().deleting().is_some());
+    click(&mut harness, Pos2::new(10.0, 10.0));
+    assert!(fixture.interface.borrow().deleting().is_none());
+    assert_eq!(shown(&fixture).len(), 3);
+
+    right_click(&mut harness, row);
+    choose_row(&mut harness, row.x, row.y, 2);
+    harness.step();
+    click(&mut harness, centre(dialog.delete));
+    assert!(fixture.interface.borrow().deleting().is_none());
+    assert_eq!(shown(&fixture), ["Bass One", "Sequence Run"]);
+    assert!(!folder
+        .0
+        .join(format!("Presets/Lead 2.{PRESET_EXTENSION}"))
+        .exists());
 }

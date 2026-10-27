@@ -58,6 +58,21 @@ pub struct TextEditorEvents {
     pub return_pressed: bool,
     /// It has keyboard focus after this frame.
     pub has_focus: bool,
+    /// It had the keyboard last frame and lost it (`textEditorFocusLost`).
+    pub lost_focus: bool,
+}
+
+/// Gives the field `salt` (as passed to [`single_line`] in `ui`) the
+/// keyboard with all of `text` selected (`grabKeyboardFocus` and
+/// `selectAll`).
+pub fn focus_select_all(ui: &Ui, salt: impl std::hash::Hash + std::fmt::Debug, text: &str) {
+    let id = ui.scope_id().with(("text editor", salt));
+    ui.memory_mut(|memory| memory.request_focus(id));
+    let mut state = egui::TextEdit::load_state(ui.ctx(), id).unwrap_or_default();
+    let all = egui::text_selection::CCursorRange::select_all_str(text);
+    state.cursor.set_char_range(Some(all));
+    egui::TextEdit::store_state(ui.ctx(), id, state);
+    ui.data_mut(|data| data.insert_temp(id.with("had focus"), true));
 }
 
 /// A single-line `OpenGlTextEditor` at `bounds` (pixels) editing `text`,
@@ -135,5 +150,6 @@ pub fn single_line(
         escape,
         return_pressed,
         has_focus,
+        lost_focus: had_focus && !has_focus,
     }
 }
