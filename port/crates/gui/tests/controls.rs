@@ -4492,6 +4492,28 @@ fn the_lfo_arrows_step_through_the_users_shapes() {
     assert_eq!(lfo_1_shape(&fixture).name(), "Bank Shape");
 }
 
+/// A file in LFOs/ that doesn't read becomes the current file all the
+/// same, as `loadFile` sets `current_file_` before it parses, so the arrows
+/// step on past it; the shape stays as it was.
+#[test]
+fn the_lfo_arrows_step_past_a_file_that_doesnt_read() {
+    let fixture = Fixture::new();
+    let data = lfo_data(&fixture, "broken");
+    std::fs::write(data.0.join("LFOs/Ramp 2.vitallfo"), "{not json").unwrap();
+    let mut harness = fixture.harness();
+    let preset = lfo_layout(&fixture).preset_selector;
+    click(&mut harness, centre(preset.next));
+    assert_eq!(lfo_1_shape(&fixture).name(), "Bank Shape");
+    click(&mut harness, centre(preset.next));
+    assert_eq!(lfo_1_shape(&fixture).name(), "Bank Shape");
+    click(&mut harness, centre(preset.next));
+    assert_eq!(lfo_1_shape(&fixture).name(), "Wobble");
+    click(&mut harness, centre(preset.previous));
+    assert_eq!(lfo_1_shape(&fixture).name(), "Wobble");
+    click(&mut harness, centre(preset.previous));
+    assert_eq!(lfo_1_shape(&fixture).name(), "Bank Shape");
+}
+
 /// Opens LFO 1's menu and chooses row `row`.
 fn choose_lfo_menu_row(harness: &mut Harness, fixture: &Fixture, row: usize) {
     let at = lfo_point(lfo_layout(fixture).editor, 0.7, 0.9);

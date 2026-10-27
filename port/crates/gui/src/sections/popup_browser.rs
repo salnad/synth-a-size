@@ -463,6 +463,53 @@ mod tests {
         assert_eq!(layout.exit, Rect::new(662, 50, 38, 38));
     }
 
+    struct DataFolder(PathBuf);
+
+    impl EditorModel for DataFolder {
+        fn preset_name(&self) -> String {
+            String::new()
+        }
+
+        fn data_directory(&self) -> Option<PathBuf> {
+            Some(self.0.clone())
+        }
+    }
+
+    /// A folder chosen in an oscillator's browser isn't carried into an
+    /// LFO's: `loadPresets`' `folder_list_->filter("")` clears a selection
+    /// the new folders don't hold, and then every `.vitallfo` file is
+    /// listed, as upstream's does.
+    #[test]
+    fn a_folder_chosen_for_one_owner_is_cleared_for_another() {
+        let root = std::env::temp_dir().join(format!("sas-popup-owners-{}", std::process::id()));
+        for file in ["Wavetables/Table.vitaltable", "LFOs/Shape.vitallfo"] {
+            let path = root.join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, "").unwrap();
+        }
+        let model = DataFolder(root.clone());
+        let area = Rect::new(0, 0, 100, 100);
+        let mut browser = PopupBrowser::default();
+        browser.open(&model, BrowserOwner::Oscillator(0), area, area, None);
+        let wavetables = root.join("Wavetables");
+        browser
+            .folders
+            .set_selected(Some(Selection::Path(wavetables.clone())));
+        browser.list_folder(&wavetables);
+        assert_eq!(
+            browser.file_rows(),
+            [Selection::Path(wavetables.join("Table.vitaltable"))]
+        );
+
+        browser.open(&model, BrowserOwner::Lfo(0), area, area, None);
+        assert_eq!(browser.folders.selected(), None);
+        assert_eq!(
+            browser.file_rows(),
+            [Selection::Path(root.join("LFOs/Shape.vitallfo"))]
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
     #[test]
     fn closing_areas_surround_the_owner() {
         let areas = closing_areas(Rect::new(0, 0, 1400, 820), Rect::new(100, 50, 300, 200));

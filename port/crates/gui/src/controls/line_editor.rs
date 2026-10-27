@@ -536,7 +536,6 @@ pub struct LineEditorEvent {
     pub smooth: bool,
 }
 
-/// The init LFO shape (`LineGenerator`'s constructor).
 /// The shape in clipboard `text`, if it holds one
 /// (`hasMatchingSystemClipboard`, `LineGenerator::isValidJson`).
 pub fn pasted_shape(text: &str) -> Option<LineGenerator> {
@@ -576,6 +575,7 @@ fn system_clipboard_text() -> Option<String> {
     READ_CLIPBOARD.with(|reader| reader.get())()
 }
 
+/// The init LFO shape (`LineGenerator`'s constructor).
 fn init_shape() -> LineGenerator {
     let mut line = LineGenerator::new(LineGenerator::DEFAULT_RESOLUTION);
     line.init_triangle();

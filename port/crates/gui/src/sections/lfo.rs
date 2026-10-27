@@ -513,12 +513,15 @@ impl LfoSection {
         self.current_file.borrow().clone()
     }
 
-    /// `loadFile`: loads the shape in `file` and keeps it as the current
-    /// file, if it reads.
+    /// `loadFile`: an existing `file` becomes the current file before it's
+    /// read, so the arrows step on past one that doesn't read, and then its
+    /// shape loads.
     pub fn load_file(&self, model: &dyn EditorModel, file: &FsPath) {
-        if popup_browser::load_lfo_file(model, self.index, file) {
-            *self.current_file.borrow_mut() = Some(file.to_path_buf());
+        if !file.exists() {
+            return;
         }
+        *self.current_file.borrow_mut() = Some(file.to_path_buf());
+        popup_browser::load_lfo_file(model, self.index, file);
     }
 
     /// The popup browser asked for since the last call: the browser's
