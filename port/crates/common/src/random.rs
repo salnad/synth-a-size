@@ -220,6 +220,13 @@ impl RandomGenerator {
         generate_canonical_f32(&mut self.engine) * (self.max - self.min) + self.min
     }
 
+    /// One raw `std::mt19937` draw, the `u` that [`next`](Self::next)
+    /// maps into `[min, max)`.
+    #[inline]
+    pub fn next_draw(&mut self) -> u32 {
+        self.engine.next_u32()
+    }
+
     /// `seed(new_seed)`: reseeds the engine.
     pub fn seed(&mut self, new_seed: i32) {
         self.engine.seed(new_seed as u32);
