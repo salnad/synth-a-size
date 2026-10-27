@@ -239,6 +239,16 @@ pub trait EditorModel: Send + Sync + 'static {
     /// `SynthBase::loadInitPreset`.
     fn init_preset(&self) {}
 
+    /// `LoadSave::getFavorites`: the favourite presets' full paths.
+    fn favourites(&self) -> Vec<PathBuf> {
+        Vec::new()
+    }
+
+    /// `LoadSave::addFavorite` / `removeFavorite`.
+    fn set_favourite(&self, path: &Path, favourite: bool) {
+        let _ = (path, favourite);
+    }
+
     /// Moves on every preset load, init and host state restore (the edit
     /// bus's generation).
     fn preset_generation(&self) -> u64 {
@@ -444,6 +454,8 @@ pub struct Interface {
     preset_browser: PresetBrowser,
     /// `preset_browser_->isVisible()`.
     preset_browser_visible: bool,
+    /// The visibility the browser last saw (`visibilityChanged`).
+    preset_browser_was_visible: bool,
     preset_modified: preset_selector::Modified,
 }
 
@@ -470,8 +482,9 @@ impl Interface {
             locals: Arc::default(),
             effects: EffectsTab::default(),
             advanced: AdvancedTab::default(),
-            preset_browser: PresetBrowser,
+            preset_browser: PresetBrowser::default(),
             preset_browser_visible: false,
+            preset_browser_was_visible: false,
             preset_modified: preset_selector::Modified::default(),
         }
     }
@@ -486,6 +499,23 @@ impl Interface {
 
     pub fn set_tab(&mut self, tab: Tab) {
         self.tab = tab;
+    }
+
+    /// Reads the presets again when the browser next needs them, as a new
+    /// editor window does.
+    pub fn reload_presets(&mut self) {
+        self.preset_browser.reload();
+    }
+
+    /// The preset browser's list as it shows it.
+    pub fn browser_presets(&self) -> Vec<PathBuf> {
+        self.preset_browser.shown()
+    }
+
+    /// `PresetBrowser::externalPresetLoaded`: the arrows step through
+    /// `file`'s folder until a preset is picked from the list.
+    pub fn external_preset_loaded(&mut self, file: Option<PathBuf>) {
+        self.preset_browser.external_preset_loaded(file);
     }
 
     pub fn preset_browser_visible(&self) -> bool {
@@ -555,6 +585,10 @@ impl Interface {
         let pixels = PixelPainter::new(&painter, area, pixels_per_point);
 
         let model = host.model();
+        if self.preset_browser_visible != self.preset_browser_was_visible {
+            self.preset_browser.visibility_changed(model);
+            self.preset_browser_was_visible = self.preset_browser_visible;
+        }
         self.overlay
             .modulation
             .begin_frame(model.modulations(), model.edit_generation());
@@ -625,6 +659,7 @@ impl Interface {
             &mut panel,
             &layout.header,
             &mut self.preset_modified,
+            &mut self.preset_browser,
             self.preset_browser_visible,
         );
         if self.preset_browser_visible {

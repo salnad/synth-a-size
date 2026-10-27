@@ -15,13 +15,14 @@ use sas_preset::registry::registry;
 use sas_preset::user_folders::{self, Kind, PRESET_EXTENSION};
 
 use super::advanced;
+use super::preset_browser::PresetBrowser;
 use super::{MenuOwner, Panel};
 use crate::controls::file_dialog::{self, FileRequest};
 use crate::controls::path::Path;
 use crate::controls::paths;
 use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
 use crate::host::Host;
-use crate::interface::{user_folder, EditorModel};
+use crate::interface::user_folder;
 use crate::layout::{HeaderLayout, Rect};
 use crate::popup::{Menu, MenuItem};
 
@@ -45,6 +46,11 @@ fn export_dialog() -> egui::Id {
 
 fn data_folder_dialog() -> egui::Id {
     egui::Id::unique("data folder")
+}
+
+/// Set by the menu's "Initialize Preset" for [`show`] to answer.
+fn init_request() -> egui::Id {
+    egui::Id::unique("initialize preset")
 }
 
 /// Set by the menu's "Browse Presets" for [`show`] to answer.
@@ -132,29 +138,6 @@ impl Modified {
     }
 }
 
-/// `PresetBrowser::jumpToPreset(by)`: the preset `by` places from the
-/// active file among those beside it, wrapping round. Without an active
-/// file, the first (or last) preset in the user's preset folder.
-pub fn step_preset(model: &dyn EditorModel, by: i32) {
-    let next = match model.active_preset_file() {
-        Some(active) => user_folders::step(&active, by),
-        None => {
-            let folder = user_folder(model, Kind::Presets);
-            let files = folder.map_or_else(Vec::new, |folder| {
-                user_folders::files_in(&folder, PRESET_EXTENSION)
-            });
-            if by > 0 {
-                files.first().cloned()
-            } else {
-                files.last().cloned()
-            }
-        }
-    };
-    if let Some(path) = next {
-        let _ = model.load_preset_file(&path);
-    }
-}
-
 fn preset_filters() -> Vec<(String, Vec<String>)> {
     vec![("Preset".to_string(), vec![PRESET_EXTENSION.to_string()])]
 }
@@ -187,7 +170,11 @@ fn choose(host: &Host, ctx: &egui::Context, id: i32) {
             let request = FileRequest::save("Export Preset", preset_filters(), &file_name);
             file_dialog::open(ctx, export_dialog(), &request);
         }
-        INIT => model.init_preset(),
+        INIT => {
+            // initPreset: externalPresetLoaded(File()).
+            model.init_preset();
+            ctx.data_mut(|data| data.insert_temp(init_request(), true));
+        }
         LOAD_TUNING => advanced::open_tuning_file(ctx),
         CLEAR_TUNING => {
             let mut tuning: Tuning = model.tuning();
@@ -235,9 +222,10 @@ pub fn show(
     panel: &mut Panel,
     header: &HeaderLayout,
     modified: &mut Modified,
+    browser: &mut PresetBrowser,
     browser_visible: bool,
 ) -> Option<bool> {
-    let mut browser = None;
+    let mut visibility = None;
     let model = panel.host.model();
     let preset = header.preset;
     let colours = ShapeColours::icon(&panel.scope);
@@ -246,13 +234,13 @@ pub fn show(
         .shape_button("preset previous", arrow(Shape::Prev), preset.previous)
         .clicked
     {
-        step_preset(model, -1);
+        browser.jump_to_preset(model, -1);
     }
     if panel
         .shape_button("preset next", arrow(Shape::Next), preset.next)
         .clicked
     {
-        step_preset(model, 1);
+        browser.jump_to_preset(model, 1);
     }
 
     // The save button opens the save section (G7c).
@@ -283,20 +271,30 @@ pub fn show(
         Sense::click(),
     );
     if response.clicked_by(PointerButton::Primary) {
-        browser = Some(!browser_visible);
+        visibility = Some(!browser_visible);
     }
     if response.clicked_by(PointerButton::Secondary) {
         open_menu(panel, preset.text);
     }
 
     let ctx = panel.ui.ctx().clone();
+    // importPreset and exportPreset: the preset is external to the list.
     if let Some(Some(path)) = file_dialog::take_result(&ctx, open_dialog()) {
-        let _ = model.load_preset_file(&path);
+        if model.load_preset_file(&path).is_ok() {
+            browser.external_preset_loaded(Some(path));
+        }
     }
     if let Some(Some(path)) = file_dialog::take_result(&ctx, export_dialog()) {
-        if model.save_preset_file(&path).is_ok() {
+        if let Ok(written) = model.save_preset_file(&path) {
             modified.fresh();
+            browser.external_preset_loaded(Some(written));
         }
+    }
+    if ctx
+        .data_mut(|data| data.remove_temp::<bool>(init_request()))
+        .is_some()
+    {
+        browser.external_preset_loaded(None);
     }
     if let Some(Some(folder)) = file_dialog::take_result(&ctx, data_folder_dialog()) {
         model.set_data_directory(folder);
@@ -305,7 +303,7 @@ pub fn show(
         .data_mut(|data| data.remove_temp::<bool>(browse_request()))
         .is_some()
     {
-        browser = Some(true);
+        visibility = Some(true);
     }
-    browser
+    visibility
 }

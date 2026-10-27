@@ -34,6 +34,7 @@ pub mod constants;
 pub mod display;
 pub mod engine;
 mod json;
+pub mod preset_files;
 pub mod registry;
 pub mod sample;
 mod state;

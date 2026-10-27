@@ -8,13 +8,22 @@
 // Usage:
 //   ref-gui [--out frame.png] [--layout layout.jsonl] [--preset file.vital]
 //           [--tab voice|effects|matrix|advanced] [--width 1400] [--height 820] [--frames 30]
-//           [--effects-scroll 0] [--overlay preset_browser]
+//           [--effects-scroll 0] [--overlay preset_browser] [--data-dir folder]
 //
 // --effects-scroll scrolls the effects column down that many pixels (the
 // viewport keeps it within the column).
 //
 // --overlay preset_browser opens the preset browser over the tab, as the
 // header's preset selector does.
+//
+// --data-dir sets upstream's data folder (LoadSave::saveDataDirectory, in
+// the config under HOME) before the interface is built, so its browsers
+// read the presets there.
+//
+// ref-gui always runs with HOME in a fresh temporary folder and the XDG
+// folders unset (as the other reference tools' isolateUserEnvironment), so
+// upstream reads no config, favourites or presets from the machine, and
+// --data-dir never writes the user's own config.
 //
 // --layout writes the bounds of every named component, relative to the
 // interface, so the port's layout can be checked exactly. Without --out
@@ -39,6 +48,7 @@
 #include "default_look_and_feel.h"
 #include "effects_interface.h"
 #include "full_interface.h"
+#include "load_save.h"
 #include "sound_engine.h"
 #include "synth_base.h"
 #include "synth_gui_interface.h"
@@ -60,6 +70,27 @@ bool parseNumber(const std::string& text, double& value) {
   return !text.empty() && end == text.c_str() + text.size() && std::isfinite(value);
 }
 
+// harness::isolateUserEnvironment for ref-gui, keeping X's authority file,
+// which X finds through HOME when XAUTHORITY isn't set. Returns the new
+// HOME, removed at shutdown.
+std::string isolateUserEnvironment() {
+  const char* home = getenv("HOME");
+  if (getenv("XAUTHORITY") == nullptr && home != nullptr) {
+    std::string authority = std::string(home) + "/.Xauthority";
+    if (File(authority).existsAsFile())
+      setenv("XAUTHORITY", authority.c_str(), 1);
+  }
+  char templ[] = "/tmp/ref-gui-home-XXXXXX";
+  const char* dir = mkdtemp(templ);
+  if (dir == nullptr)
+    return "";
+  setenv("HOME", dir, 1);
+  unsetenv("XDG_CONFIG_HOME");
+  unsetenv("XDG_DATA_HOME");
+  unsetenv("XDG_CACHE_HOME");
+  return dir;
+}
+
 struct Options {
   std::string midi;
   double seconds = -1.0;
@@ -74,6 +105,7 @@ struct Options {
   int effects_scroll = 0;
   std::string layout;
   std::string overlay;
+  std::string data_dir;
 };
 
 int tabIndex(const std::string& tab) {
@@ -216,6 +248,9 @@ class RefGuiApplication : public JUCEApplication {
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise(const String& command_line) override {
+      home_ = isolateUserEnvironment();
+      if (home_.empty())
+        return fail("cannot isolate HOME");
       Options options;
       StringArray args = StringArray::fromTokens(command_line, true);
       for (int i = 0; i + 1 < args.size(); i += 2) {
@@ -257,6 +292,8 @@ class RefGuiApplication : public JUCEApplication {
           options.effects_scroll = std::stoi(value);
         else if (key == "--overlay")
           options.overlay = value;
+        else if (key == "--data-dir")
+          options.data_dir = value;
         else
           return fail("unknown option " + key);
       }
@@ -264,9 +301,16 @@ class RefGuiApplication : public JUCEApplication {
       if ((options.out.empty() && options.layout.empty()) || tab < 0)
         return fail("usage: ref-gui (--out frame.png | --layout layout.jsonl) [--preset file.vital] "
                     "[--tab voice|effects|matrix|advanced] [--width W] [--height H] [--frames N] "
-                    "[--effects-scroll Y] [--overlay preset_browser]");
+                    "[--effects-scroll Y] [--overlay preset_browser] [--data-dir folder]");
       if (!options.overlay.empty() && options.overlay != "preset_browser")
         return fail("unknown overlay " + options.overlay);
+
+      if (!options.data_dir.empty()) {
+        File folder = File::getCurrentWorkingDirectory().getChildFile(options.data_dir);
+        if (!folder.isDirectory())
+          return fail("no data folder " + options.data_dir);
+        LoadSave::saveDataDirectory(folder);
+      }
 
       synth_ = std::make_unique<RefGuiSynth>(options);
       if (options.preset.empty()) {
@@ -342,6 +386,8 @@ class RefGuiApplication : public JUCEApplication {
       if (synth_)
         synth_->removeAllChildren();
       synth_.reset();
+      if (!home_.empty())
+        File(home_).deleteRecursively();
     }
 
   private:
@@ -389,6 +435,7 @@ class RefGuiApplication : public JUCEApplication {
     }
 
     std::unique_ptr<RefGuiSynth> synth_;
+    std::string home_;
 };
 
 } // namespace

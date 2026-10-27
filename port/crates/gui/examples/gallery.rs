@@ -104,6 +104,12 @@ impl EditorModel for ViewPreset {
         self.name.clone()
     }
 
+    /// The authored presets ref-gui's views read too
+    /// (`gui_reference.py`'s `--data-dir`).
+    fn data_directory(&self) -> Option<PathBuf> {
+        Some(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../migration/corpus/gui/data"))
+    }
+
     fn modulations(&self) -> Arc<[Route]> {
         self.state
             .connection_order()

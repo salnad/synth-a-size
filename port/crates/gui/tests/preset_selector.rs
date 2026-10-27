@@ -16,6 +16,8 @@ use nice_plug::context::PluginApi;
 use nice_plug::prelude::{FloatParam, FloatRange, Param, ParamPtr, PluginState};
 use sas_engine::Tuning;
 use sas_gui::layout::{FullLayout, HeaderLayout, Rect};
+use sas_gui::scope::Scope;
+use sas_gui::sections::preset_browser::PresetBrowserLayout;
 use sas_gui::skin::Skin;
 use sas_gui::{EditorModel, Host, HostParam, Interface, OpenGestures, Tab};
 use sas_preset::registry::registry;
@@ -30,6 +32,7 @@ struct Synth {
     active_file: Mutex<Option<PathBuf>>,
     /// What the editor asked the synth to do with presets.
     calls: Mutex<Vec<String>>,
+    favourites: Mutex<Vec<PathBuf>>,
     generation: AtomicU64,
 }
 
@@ -54,6 +57,7 @@ impl Synth {
             data_directory: Mutex::new(None),
             active_file: Mutex::new(None),
             calls: Mutex::new(Vec::new()),
+            favourites: Mutex::new(Vec::new()),
             generation: AtomicU64::new(0),
         })
     }
@@ -115,6 +119,19 @@ impl EditorModel for Synth {
         self.calls.lock().unwrap().push("init".to_string());
         *self.active_file.lock().unwrap() = None;
         self.generation.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn favourites(&self) -> Vec<PathBuf> {
+        self.favourites.lock().unwrap().clone()
+    }
+
+    fn set_favourite(&self, path: &Path, favourite: bool) {
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        let state = if favourite { "on" } else { "off" };
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("favourite {name} {state}"));
     }
 
     fn preset_generation(&self) -> u64 {
@@ -268,17 +285,21 @@ impl Drop for Folder {
     }
 }
 
-/// The arrows step through the active preset's folder in natural order,
-/// wrapping round (`PresetBrowser::jumpToPreset`).
+/// After an external preset (Open External, Export), the arrows step
+/// through its folder in natural order, wrapping round
+/// (`PresetBrowser::jumpToPreset`).
 #[test]
-fn the_arrows_step_through_the_active_presets_folder() {
+fn the_arrows_step_through_an_external_presets_folder() {
     let folder = Folder::new(
         "arrows",
         &[preset("Bass 10"), preset("bass 2"), preset("Lead")],
     );
     let fixture = Fixture::new();
-    *fixture.synth.active_file.lock().unwrap() =
-        Some(folder.0.join("Presets").join(preset("bass 2")));
+    let external = folder.0.join("Presets").join(preset("bass 2"));
+    fixture
+        .interface
+        .borrow_mut()
+        .external_preset_loaded(Some(external));
     let mut harness = fixture.harness();
     let header = fixture.header();
     click(&mut harness, centre(header.preset.next));
@@ -294,19 +315,30 @@ fn the_arrows_step_through_the_active_presets_folder() {
     );
 }
 
-/// Without an active preset, the arrows start from the user preset folder
-/// under the data folder: previous loads its last preset.
+/// Without an external preset, the arrows move the browser list's
+/// selection (`PresetList::shiftSelectedPreset`), wrapping round; with
+/// nothing selected the index starts at -1, so previous goes to the second
+/// last.
 #[test]
-fn without_an_active_preset_the_arrows_start_from_the_user_folder() {
-    let folder = Folder::new("user", &[preset("b"), preset("a"), "c.txt".to_string()]);
+fn without_an_external_preset_the_arrows_step_through_the_list() {
+    let folder = Folder::new(
+        "list",
+        &[preset("b"), preset("a"), preset("c"), "d.txt".to_string()],
+    );
     let fixture = Fixture::new();
     *fixture.synth.data_directory.lock().unwrap() = Some(folder.0.clone());
     let mut harness = fixture.harness();
     let header = fixture.header();
     click(&mut harness, centre(header.preset.previous));
+    click(&mut harness, centre(header.preset.previous));
+    click(&mut harness, centre(header.preset.next));
     assert_eq!(
         *fixture.synth.calls.lock().unwrap(),
-        [format!("load {}", preset("b"))]
+        [
+            format!("load {}", preset("b")),
+            format!("load {}", preset("a")),
+            format!("load {}", preset("b")),
+        ]
     );
 }
 
@@ -410,4 +442,159 @@ fn escape_hides_the_browser() {
     });
     harness.step();
     assert!(!browser_visible(&fixture));
+}
+
+/// `migration/corpus/gui/data`: the authored presets the browser's views
+/// list.
+fn corpus_data() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../migration/corpus/gui/data")
+}
+
+fn browser_layout(fixture: &Fixture) -> PresetBrowserLayout {
+    let layout = FullLayout::new(&fixture.skin, 1400, 820);
+    PresetBrowserLayout::new(
+        &Scope::top(&fixture.skin, layout.size_ratio),
+        layout.browser,
+    )
+}
+
+fn shown(fixture: &Fixture) -> Vec<String> {
+    fixture
+        .interface
+        .borrow()
+        .browser_presets()
+        .iter()
+        .map(|path| path.file_stem().unwrap().to_string_lossy().into_owned())
+        .collect()
+}
+
+fn type_text(harness: &mut Harness, text: &str) {
+    harness.event(Event::Text(text.to_string()));
+    harness.step();
+    harness.step();
+}
+
+fn press_key(harness: &mut Harness, key: egui::Key) {
+    harness.event(Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    });
+    harness.step();
+}
+
+/// The list shows every preset under the data folder's Presets folders
+/// (banks' too) by name in natural order, ignoring case; a click on a
+/// column's title sorts by it, again reversing it, keeping the order of
+/// equal entries (`PresetList::leftClick`, `sort`).
+#[test]
+fn the_list_sorts_by_the_clicked_column() {
+    let fixture = Fixture::new();
+    *fixture.synth.data_directory.lock().unwrap() = Some(corpus_data());
+    fixture
+        .interface
+        .borrow_mut()
+        .set_preset_browser_visible(true);
+    let mut harness = fixture.harness();
+    assert_eq!(
+        shown(&fixture),
+        [
+            "bass 10",
+            "Bass One",
+            "Keys Soft",
+            "Lead 2",
+            "Pad",
+            "Sequence Run"
+        ]
+    );
+    let list = browser_layout(&fixture).list;
+    let width = list.width as f32;
+    let author_x = list.x as f32 + width * (0.04 + 0.35 + 0.18 + 0.1);
+    let title = Pos2::new(author_x, list.y as f32 + 5.0);
+    click(&mut harness, title);
+    assert_eq!(
+        shown(&fixture),
+        [
+            "Pad",
+            "Sequence Run",
+            "Bass One",
+            "Keys Soft",
+            "Lead 2",
+            "bass 10"
+        ]
+    );
+    click(&mut harness, title);
+    assert_eq!(
+        shown(&fixture),
+        [
+            "bass 10",
+            "Bass One",
+            "Keys Soft",
+            "Lead 2",
+            "Sequence Run",
+            "Pad"
+        ]
+    );
+}
+
+/// The style buttons and the search box filter the list: by the styles
+/// that are on, and by names or authors containing every word typed
+/// (`PresetList::filter`). Escape in the search box clears it and leaves
+/// the browser open (`textEditorEscapeKeyPressed`).
+#[test]
+fn styles_and_the_search_filter_the_list() {
+    let fixture = Fixture::new();
+    *fixture.synth.data_directory.lock().unwrap() = Some(corpus_data());
+    fixture
+        .interface
+        .borrow_mut()
+        .set_preset_browser_visible(true);
+    let mut harness = fixture.harness();
+    let layout = browser_layout(&fixture);
+    click(&mut harness, centre(layout.styles[0]));
+    assert_eq!(shown(&fixture), ["bass 10", "Bass One"]);
+    click(&mut harness, centre(layout.styles[0]));
+    assert_eq!(shown(&fixture).len(), 6);
+
+    click(&mut harness, centre(layout.search));
+    type_text(&mut harness, "corpus soft");
+    assert_eq!(shown(&fixture), ["Keys Soft"]);
+    press_key(&mut harness, egui::Key::Escape);
+    harness.step();
+    assert_eq!(shown(&fixture).len(), 6);
+    assert!(browser_visible(&fixture));
+}
+
+/// A click on a row loads its preset; a click on its star marks it a
+/// favourite instead (`PresetList::leftClick`).
+#[test]
+fn a_row_loads_and_its_star_marks_a_favourite() {
+    let fixture = Fixture::new();
+    *fixture.synth.data_directory.lock().unwrap() = Some(corpus_data());
+    fixture
+        .interface
+        .borrow_mut()
+        .set_preset_browser_visible(true);
+    let mut harness = fixture.harness();
+    let layout = browser_layout(&fixture);
+    let list = layout.list;
+    let row_y = |row: i32| {
+        (list.y + layout.title_width + row * layout.row_height) as f32
+            + layout.row_height as f32 / 2.0
+    };
+    click(
+        &mut harness,
+        Pos2::new((list.x + list.width / 2) as f32, row_y(1)),
+    );
+    let star_x = list.x as f32 + list.width as f32 * 0.02;
+    click(&mut harness, Pos2::new(star_x, row_y(0)));
+    assert_eq!(
+        *fixture.synth.calls.lock().unwrap(),
+        [
+            format!("load {}", preset("Bass One")),
+            format!("favourite {} on", preset("bass 10")),
+        ]
+    );
 }

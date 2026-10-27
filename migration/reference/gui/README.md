@@ -31,15 +31,19 @@ itself:
 ref-gui [--out frame.png] [--layout layout.jsonl] [--preset file.vital]
         [--tab voice|effects|matrix|advanced] [--width 1400] [--height 820] [--frames 30]
         [--midi file.mid] [--seconds S] [--block-size 64] [--animate on|off]
-        [--overlay preset_browser]
+        [--overlay preset_browser] [--data-dir folder]
 ```
 
 The interface draws with upstream's `DefaultLookAndFeel`, which the
 plugin's editor sets (`SynthEditor`), so components that don't set their
-own (text editors, scroll bars) look as they do in the plugin. The script
-runs `ref-gui` with `HOME` and `XDG_DATA_HOME` in an empty temporary folder,
-so upstream finds no config, favourites or presets on the machine running
-it.
+own (text editors, scroll bars) look as they do in the plugin. `ref-gui`
+always runs with `HOME` in a fresh temporary folder and the XDG folders
+unset (as the other reference tools' `isolateUserEnvironment`, keeping
+`XAUTHORITY`), so upstream finds no config, favourites or presets on the
+machine and `--data-dir` never writes the user's own config. Run through the
+script, it gets `--data-dir migration/corpus/gui/data`: authored presets
+(`migration/corpus/generate.py`) that the browser lists and the port's
+gallery reads too.
 
 `--overlay preset_browser` opens the preset browser over the tab, as the
 header's preset selector does; in `views.json`, `"overlay":

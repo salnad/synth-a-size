@@ -6,16 +6,27 @@
 //! list and the preset list. Ports `PresetBrowser` and `PresetList`
 //! (`vital/src/interface/editor_sections/preset_browser.cpp`).
 
+use std::cmp::Ordering;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
+
 use egui::Key;
+use sas_preset::preset_files;
+use sas_preset::user_folders::{self, compare_natural, Kind, PRESET_EXTENSION};
 
 use super::Panel;
 use crate::controls::button::SynthButton;
 use crate::controls::icon;
+use crate::controls::path::{EndCapStyle, JointStyle, Transform};
 use crate::controls::paths;
+use crate::controls::scroll_bar::ScrollBar;
+use crate::controls::text_editor;
 use crate::fonts::Face;
+use crate::interface::EditorModel;
 use crate::layout::Rect;
 use crate::local::{PRESET_STYLE_FILTERS, PRESET_STYLE_NAMES};
 use crate::paint::{PixelPainter, RectF};
+use crate::primitives::{Quad, QuadBatch, QuadKind};
 use crate::scope::Scope;
 use crate::section::{paint_body, paint_border, paint_tab_shadow};
 use crate::skin::{ColorId, Section, ValueId};
@@ -30,6 +41,9 @@ const TOP_PADDING: f32 = 24.0;
 const MIDDLE_PADDING: f32 = 15.0;
 const NAME_FONT_HEIGHT: f32 = 26.0;
 const AUTHOR_FONT_HEIGHT: f32 = 19.0;
+const COMMENTS_FONT_HEIGHT: f32 = 15.0;
+/// `PresetList::resized`'s `kScrollBarWidth`.
+const SCROLL_BAR_WIDTH: f32 = 15.0;
 
 /// `PresetList`'s column widths, as fractions of the list's width.
 const STAR_WIDTH_PERCENT: f32 = 0.04;
@@ -184,19 +198,6 @@ impl PresetBrowserLayout {
     }
 }
 
-/// `DefaultLookAndFeel::fillTextEditorBackground`: a text editor's rounded
-/// background and its one-pixel border.
-fn paint_text_editor_background(pixels: &PixelPainter, scope: &Scope, bounds: Rect) {
-    let rounding = scope.value(ValueId::WidgetRoundedCorner);
-    pixels.fill_rounded_rect(bounds, rounding, scope.color(ColorId::TextEditorBackground));
-    pixels.draw_rounded_rect(
-        RectF::from(bounds).reduced(0.5),
-        rounding,
-        1.0,
-        scope.color(ColorId::TextEditorBorder),
-    );
-}
-
 /// `PresetList::paintBackground`: the list's background, its title strip
 /// with the column dividers, and the column titles.
 fn paint_list_background(pixels: &PixelPainter, scope: &Scope, layout: &PresetBrowserLayout) {
@@ -287,24 +288,314 @@ pub fn paint_background(pixels: &PixelPainter, top: &Scope, layout: &PresetBrows
     );
 
     paint_list_background(pixels, &scope, layout);
-    paint_text_editor_background(pixels, &scope, layout.search);
-    paint_text_editor_background(pixels, &scope, layout.comments);
+    text_editor::paint_background(pixels, &scope, layout.search);
+    text_editor::paint_background(pixels, &scope, layout.comments);
 }
 
-/// `PresetBrowser`: what the browser shows and how it answers the mouse
-/// and keys.
-#[derive(Default)]
-pub struct PresetBrowser;
+/// `PresetList::Column`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Column {
+    Star,
+    Name,
+    Style,
+    Author,
+    Date,
+}
+
+/// A preset the list shows, with what `PresetInfoCache` keeps of it.
+#[derive(Clone, Debug)]
+struct Entry {
+    path: PathBuf,
+    /// The file name without its extension.
+    name: String,
+    author: String,
+    /// Lower case, as the cache keeps it.
+    style: String,
+    created: Option<i64>,
+}
+
+impl Entry {
+    fn read(path: PathBuf) -> Entry {
+        Entry {
+            name: path
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            author: preset_files::author_from_file(&path),
+            style: preset_files::style_from_file(&path).to_lowercase(),
+            created: preset_files::creation_time(&path),
+            path,
+        }
+    }
+}
+
+/// JUCE's `compareNatural`, which ignores case.
+fn natural(a: &str, b: &str) -> Ordering {
+    compare_natural(&a.to_lowercase(), &b.to_lowercase())
+}
+
+/// The `PresetList` comparators, ascending. Favourites come first, and the
+/// newer file (`FileDateAscendingComparator`).
+fn compare(column: Column, favourites: &BTreeSet<PathBuf>, a: &Entry, b: &Entry) -> Ordering {
+    match column {
+        Column::Star => favourites
+            .contains(&b.path)
+            .cmp(&favourites.contains(&a.path)),
+        Column::Name => natural(&a.name, &b.name),
+        Column::Style => natural(&a.style, &b.style),
+        Column::Author => natural(&a.author, &b.author),
+        Column::Date => b.created.cmp(&a.created),
+    }
+}
+
+/// `PresetBrowser` with its `PresetList`: what the browser shows and how
+/// it answers the mouse and keys.
+pub struct PresetBrowser {
+    /// Whether `presets` has been read since the editor window opened
+    /// (upstream builds the list with the editor).
+    loaded: bool,
+    /// `presets_`, in the order the last sort left them.
+    presets: Vec<Entry>,
+    /// `filtered_presets_`, as indices into `presets`.
+    filtered: Vec<usize>,
+    favourites: BTreeSet<PathBuf>,
+    sort_column: Column,
+    sort_ascending: bool,
+    /// `filter_string_`'s source: the search box's text.
+    search: String,
+    /// `filter_styles_`.
+    filter_styles: BTreeSet<String>,
+    scroll: ScrollBar,
+    /// `hover_preset_`: the filtered row under the pointer.
+    hover: Option<usize>,
+    /// `selected_preset_`.
+    selected: Option<PathBuf>,
+    /// `external_preset_`: the preset loaded from outside the list (Open
+    /// External, Export, the arrows stepping through its folder), or none
+    /// after a pick from the list or Initialize Preset.
+    external: Option<PathBuf>,
+}
+
+impl Default for PresetBrowser {
+    fn default() -> PresetBrowser {
+        PresetBrowser {
+            loaded: false,
+            presets: Vec::new(),
+            filtered: Vec::new(),
+            favourites: BTreeSet::new(),
+            sort_column: Column::Name,
+            sort_ascending: true,
+            search: String::new(),
+            filter_styles: BTreeSet::new(),
+            scroll: ScrollBar::default(),
+            hover: None,
+            selected: None,
+            external: None,
+        }
+    }
+}
 
 impl PresetBrowser {
-    /// Draws the browser's parts over its background. Returns true when
-    /// Escape asks to hide it (`keyPressed`).
+    /// Reads the presets again when next needed, as a new editor window's
+    /// browser does.
+    pub fn reload(&mut self) {
+        self.loaded = false;
+    }
+
+    fn ensure_loaded(&mut self, model: &dyn EditorModel) {
+        if self.loaded {
+            return;
+        }
+        self.load_presets(model);
+    }
+
+    /// `PresetBrowser::loadPresets`: the search cleared, every preset read
+    /// again, sorted and shown unfiltered (the style buttons keep their
+    /// state until they next filter).
+    pub fn load_presets(&mut self, model: &dyn EditorModel) {
+        self.loaded = true;
+        self.search.clear();
+        self.favourites = model.favourites().into_iter().collect();
+        self.presets = user_folders::root(model.data_directory().as_deref())
+            .map(|root| preset_files::all_files(&root, Kind::Presets, PRESET_EXTENSION))
+            .unwrap_or_default()
+            .into_iter()
+            .map(Entry::read)
+            .collect();
+        self.sort();
+        self.filter(&BTreeSet::new());
+    }
+
+    /// The preset paths in the order the list shows them.
+    pub fn shown(&self) -> Vec<PathBuf> {
+        self.filtered
+            .iter()
+            .map(|&index| self.presets[index].path.clone())
+            .collect()
+    }
+
+    /// `PresetList::sort`: a stable sort of the list's presets by the sort
+    /// column, then the filter again.
+    fn sort(&mut self) {
+        let (column, favourites) = (self.sort_column, &self.favourites);
+        if self.sort_ascending {
+            self.presets
+                .sort_by(|a, b| compare(column, favourites, a, b));
+        } else {
+            self.presets
+                .sort_by(|a, b| compare(column, favourites, b, a));
+        }
+        let styles = self.filter_styles.clone();
+        self.filter(&styles);
+    }
+
+    /// `PresetList::filter`: presets whose name or author contains every
+    /// word of the search (ignoring case) and, with styles chosen, whose
+    /// style is one of them.
+    fn filter(&mut self, styles: &BTreeSet<String>) {
+        self.filter_styles = styles.clone();
+        let search = self.search.to_lowercase();
+        let tokens: Vec<&str> = search.split(' ').collect();
+        self.filtered = (0..self.presets.len())
+            .filter(|&index| {
+                let entry = &self.presets[index];
+                if !styles.is_empty() && !styles.contains(&entry.style) {
+                    return false;
+                }
+                let name = entry.name.to_lowercase();
+                let author = entry.author.to_lowercase();
+                tokens
+                    .iter()
+                    .all(|token| name.contains(token) || author.contains(token))
+            })
+            .collect();
+    }
+
+    /// `PresetBrowser::filterPresets`: the search and the style buttons that
+    /// are on.
+    fn filter_presets(&mut self, styles: BTreeSet<String>) {
+        self.filter(&styles);
+    }
+
+    fn selected_index(&self) -> Option<usize> {
+        let selected = self.selected.as_ref()?;
+        self.filtered
+            .iter()
+            .position(|&index| &self.presets[index].path == selected)
+    }
+
+    /// `PresetBrowser::externalPresetLoaded`.
+    pub fn external_preset_loaded(&mut self, file: Option<PathBuf>) {
+        self.external = file;
+    }
+
+    /// `SynthPresetSelector::newPresetSelected`: a preset picked in the list
+    /// (or shifted to) loads, and the arrows step through the list again.
+    fn new_preset_selected(&mut self, model: &dyn EditorModel, path: PathBuf) {
+        self.external = None;
+        let _ = model.load_preset_file(&path);
+        self.selected = Some(path);
+    }
+
+    /// `PresetBrowser::jumpToPreset`: with an external preset whose folder
+    /// exists, the preset `by` places from it among those beside it;
+    /// otherwise the list's selection moves `by` rows, wrapping round
+    /// (`PresetList::shiftSelectedPreset`).
+    pub fn jump_to_preset(&mut self, model: &dyn EditorModel, by: i32) {
+        if let Some(external) = self.external.clone() {
+            if external.parent().is_some_and(Path::is_dir) {
+                if let Some(next) = user_folders::step(&external, by) {
+                    let _ = model.load_preset_file(&next);
+                    self.external = Some(next);
+                }
+                return;
+            }
+        }
+        self.ensure_loaded(model);
+        let count = self.filtered.len() as i32;
+        if count == 0 {
+            return;
+        }
+        let selected = self.selected_index().map_or(-1, |index| index as i32);
+        let index = (selected + count + by).rem_euclid(count) as usize;
+        let path = self.presets[self.filtered[index]].path.clone();
+        self.new_preset_selected(model, path);
+    }
+
+    /// `visibilityChanged`: the search box empties (and the list refilters)
+    /// whenever the browser shows or hides.
+    pub fn visibility_changed(&mut self, model: &dyn EditorModel) {
+        self.ensure_loaded(model);
+        self.search.clear();
+        let styles = self.filter_styles.clone();
+        self.filter_presets(styles);
+    }
+
+    /// Draws the browser's parts over its background and handles the mouse
+    /// and keys. Returns true when Escape asks to hide it (`keyPressed`).
     pub fn show(&mut self, panel: &mut Panel, layout: &PresetBrowserLayout) -> bool {
         let scope = panel.scope;
         let model = panel.host.model();
+        self.ensure_loaded(model);
+        self.show_info(panel, layout);
 
-        // loadPresetInfo: the synth's name and author, or their prompts in
-        // the lightened body colour.
+        let search = text_editor::single_line(
+            panel.ui,
+            panel.pixels,
+            &scope,
+            "preset search",
+            layout.search,
+            &mut self.search,
+            "Search",
+        );
+        if search.escape {
+            // textEditorEscapeKeyPressed.
+            self.search.clear();
+        }
+
+        let mut styles = BTreeSet::new();
+        for ((name, label), bounds) in PRESET_STYLE_FILTERS
+            .iter()
+            .zip(PRESET_STYLE_NAMES)
+            .zip(layout.styles)
+        {
+            panel.button(&SynthButton::text(name, label), bounds);
+            if panel.host.value(name) != 0.0 {
+                styles.insert(label.to_lowercase());
+            }
+        }
+        // textEditorTextChanged and buttonClicked: filterPresets.
+        if search.changed || search.escape || styles != self.filter_styles {
+            self.filter_presets(styles);
+        }
+
+        self.show_list(panel, layout);
+
+        // keyPressed, while the search box doesn't have the keyboard.
+        if search.has_focus {
+            return false;
+        }
+        let (escape, previous, next) = panel.ui.input(|input| {
+            (
+                input.key_pressed(Key::Escape),
+                input.key_pressed(Key::ArrowUp) || input.key_pressed(Key::ArrowLeft),
+                input.key_pressed(Key::ArrowDown) || input.key_pressed(Key::ArrowRight),
+            )
+        });
+        if previous {
+            self.jump_to_preset(model, -1);
+        }
+        if next {
+            self.jump_to_preset(model, 1);
+        }
+        escape
+    }
+
+    /// `loadPresetInfo`: the synth's name and author, or their prompts in
+    /// the lightened body colour, and its comments.
+    fn show_info(&self, panel: &mut Panel, layout: &PresetBrowserLayout) {
+        let scope = panel.scope;
+        let model = panel.host.model();
         let lighten = scope
             .color(ColorId::Body)
             .overlaid_with(scope.color(ColorId::LightenScreen));
@@ -339,38 +630,281 @@ impl PresetBrowser {
             );
         }
 
-        // The search box's prompt (`setTextToShowWhenEmpty`), in its font
-        // (half its height, `OpenGlTextEditor::applyFont`) inside its
-        // indents.
-        let search = layout.search;
-        let body_text = scope.color(ColorId::BodyText);
-        let left_indent = (search.height as f32 * 0.2) as i32;
-        let top_indent = (search.height as f32 * 0.15) as i32;
-        panel.pixels.text_line(
-            "Search",
-            Rect::new(
-                search.x + left_indent,
-                search.y + top_indent,
-                search.width - left_indent,
-                search.height - top_indent,
-            ),
-            (
-                Face::Light,
-                search.height as f32 / 2.0,
-                body_text.with_multiplied_alpha(0.5),
-            ),
-            Justify::Left,
-            Overflow::Curtail,
-        );
+        // comments_: read-only and multi-line, in the light face at
+        // kCommentsFontHeight, inside its indents.
+        let comments = model.preset_comments();
+        if !comments.is_empty() {
+            let indent = scope.value(ValueId::LabelBackgroundRounding) as i32;
+            let bounds = layout.comments;
+            let inner = Rect::new(
+                bounds.x + indent,
+                bounds.y + indent,
+                bounds.width - 2 * indent,
+                bounds.height - 2 * indent,
+            );
+            let pixels = panel.pixels;
+            let rect = pixels.rect(inner.into());
+            let font = Face::Light.at(pixels.points(COMMENTS_FONT_HEIGHT * scope.size_ratio()));
+            let galley = pixels
+                .painter()
+                .layout(comments, font, regular.to_egui(), rect.width());
+            pixels
+                .painter()
+                .with_clip_rect(pixels.rect(bounds.into()))
+                .galley(rect.min, galley, regular.to_egui());
+        }
+    }
 
-        for ((name, label), bounds) in PRESET_STYLE_FILTERS
-            .iter()
-            .zip(PRESET_STYLE_NAMES)
-            .zip(layout.styles)
-        {
-            panel.button(&SynthButton::text(name, label), bounds);
+    /// `PresetList`: the rows, their highlights and the scroll bar, and the
+    /// list's mouse handling.
+    fn show_list(&mut self, panel: &mut Panel, layout: &PresetBrowserLayout) {
+        let scope = panel.scope;
+        let model = panel.host.model();
+        let list = layout.list;
+        let title_width = layout.title_width;
+        let row_height = layout.row_height.max(1);
+        let view = Rect::new(
+            list.x,
+            list.y + title_width,
+            list.width,
+            list.height - title_width,
+        );
+        let scroll_bar_width = (SCROLL_BAR_WIDTH * scope.size_ratio()) as i32;
+        let bar = Rect::new(
+            list.right() - scroll_bar_width,
+            view.y,
+            scroll_bar_width,
+            view.height,
+        );
+        let total = (row_height * self.filtered.len() as i32) as f32;
+        let visible = view.height as f32;
+
+        let ppp = panel.pixels.pixels_per_point();
+        let id = panel.ui.scope_id().with("preset list scroll bar");
+        self.scroll
+            .handle(panel.ui, panel.pixels, id, view, bar, total, visible, ppp);
+        let position = self.scroll.position.round() as i32;
+
+        // getRowFromPosition, for the pointer.
+        let pointer = panel.ui.input(|input| input.pointer.hover_pos());
+        let list_rect = panel.pixels.rect(list.into());
+        let to_pixels = |pos: egui::Pos2| {
+            let rect = panel.pixels.area();
+            ((pos.x - rect.min.x) * ppp, (pos.y - rect.min.y) * ppp)
+        };
+        let row_at = |y: f32| {
+            ((y - list.y as f32 + position as f32 - title_width as f32) / row_height as f32).floor()
+                as i32
+        };
+        self.hover = pointer
+            .filter(|pos| list_rect.contains(*pos))
+            .map(|pos| row_at(to_pixels(pos).1))
+            .filter(|&row| row >= 0 && (row as usize) < self.filtered.len())
+            .map(|row| row as usize);
+
+        let response = panel.ui.interact(
+            list_rect,
+            panel.ui.scope_id().with("preset list"),
+            egui::Sense::click(),
+        );
+        if response.clicked() {
+            if let Some((x, y)) = response.interact_pointer_pos().map(to_pixels) {
+                self.left_click(model, list, title_width, x - list.x as f32, y, row_at(y));
+            }
         }
 
-        panel.ui.input(|input| input.key_pressed(Key::Escape))
+        self.paint_rows(panel, layout, view, position);
+    }
+
+    /// `PresetList::leftClick`, at `x` from the list's left and `y` in
+    /// interface pixels.
+    fn left_click(
+        &mut self,
+        model: &dyn EditorModel,
+        list: Rect,
+        title_width: i32,
+        x: f32,
+        y: f32,
+        row: i32,
+    ) {
+        let width = list.width as f32;
+        let star_right = (STAR_WIDTH_PERCENT * width) as i32 as f32;
+        if y <= (list.y + title_width) as f32 {
+            let name_right = star_right + (NAME_WIDTH_PERCENT * width) as i32 as f32;
+            let style_right = name_right + (STYLE_WIDTH_PERCENT * width) as i32 as f32;
+            let author_right = style_right + (AUTHOR_WIDTH_PERCENT * width) as i32 as f32;
+            let column = if x < star_right {
+                Column::Star
+            } else if x < name_right {
+                Column::Name
+            } else if x < style_right {
+                Column::Style
+            } else if x < author_right {
+                Column::Author
+            } else {
+                Column::Date
+            };
+            self.sort_ascending = column != self.sort_column || !self.sort_ascending;
+            self.sort_column = column;
+            self.sort();
+            return;
+        }
+        if row < 0 || row as usize >= self.filtered.len() {
+            return;
+        }
+        let path = self.presets[self.filtered[row as usize]].path.clone();
+        if x < star_right {
+            let favourite = !self.favourites.contains(&path);
+            model.set_favourite(&path, favourite);
+            if favourite {
+                self.favourites.insert(path);
+            } else {
+                self.favourites.remove(&path);
+            }
+        } else {
+            self.new_preset_selected(model, path);
+        }
+    }
+
+    /// `loadBrowserCache` and `renderOpenGlComponents`: each visible row's
+    /// star, name, style, author and date, then the selected and hovered
+    /// rows' additive highlights and the scroll bar.
+    fn paint_rows(
+        &self,
+        panel: &mut Panel,
+        layout: &PresetBrowserLayout,
+        view: Rect,
+        position: i32,
+    ) {
+        let scope = panel.scope;
+        let list = layout.list;
+        let row_height = layout.row_height.max(1);
+        let clipped = panel
+            .pixels
+            .painter()
+            .with_clip_rect(panel.pixels.rect(view.into()));
+        let pixels = PixelPainter::new(
+            &clipped,
+            panel.pixels.area(),
+            panel.pixels.pixels_per_point(),
+        );
+
+        let width = list.width as f32;
+        let text_padding = (row_height as f32 / 2.0) as i32;
+        let star_width = (STAR_WIDTH_PERCENT * width) as i32;
+        let name_x = text_padding + star_width;
+        let name_width = (NAME_WIDTH_PERCENT * width) as i32;
+        let style_x = name_x + name_width;
+        let style_width = (STYLE_WIDTH_PERCENT * width) as i32;
+        let author_x = style_x + style_width;
+        let author_width = (AUTHOR_WIDTH_PERCENT * width) as i32;
+        let date_width = (DATE_WIDTH_PERCENT * width) as i32;
+        let date_x = list.width - date_width + text_padding;
+
+        let text_colour = scope.color(ColorId::TextComponentText);
+        let star_unselected = text_colour.with_multiplied_alpha(0.5);
+        let star_selected = scope.color(ColorId::WidgetPrimary1);
+        let style = (Face::Light, row_height as f32 * 0.5, text_colour);
+        let star_draw_width = row_height as f32 * 0.8;
+        let star_y = (row_height as f32 - star_draw_width) / 2.0;
+        // The star scaled to fit its square, stroked one pixel wide.
+        let star = paths::star();
+        let fit = star.transform_to_fit((0.0, 0.0, star_draw_width, star_draw_width));
+        let outline = star.stroked(1.0 / fit.scale, JointStyle::Curved, EndCapStyle::Butt);
+
+        let first = (position / row_height).max(0) as usize;
+        let last = ((position + view.height) / row_height + 1).max(0) as usize;
+        for row in first..last.min(self.filtered.len()) {
+            let entry = &self.presets[self.filtered[row]];
+            let y = view.y + row as i32 * row_height - position;
+            let text = |label: &str, x: i32, w: i32, justify: Justify| {
+                let rect = Rect::new(list.x + x, y, w, row_height);
+                pixels.text_line(label, rect, style, justify, Overflow::Ellipsis);
+            };
+
+            let transform = Transform {
+                scale: fit.scale,
+                dx: list.x as f32 + (star_width as f32 - star_draw_width) / 2.0 + fit.dx,
+                dy: y as f32 + star_y + fit.dy,
+            };
+            let key = format!("preset row star {row_height}");
+            if self.favourites.contains(&entry.path) {
+                icon::fill_path(&pixels, &key, star, transform, star_selected);
+                icon::fill_path(
+                    &pixels,
+                    &format!("{key} outline"),
+                    &outline,
+                    transform,
+                    star_selected,
+                );
+            } else {
+                icon::fill_path(
+                    &pixels,
+                    &format!("{key} outline"),
+                    &outline,
+                    transform,
+                    star_unselected,
+                );
+            }
+
+            let mut style_name = entry.style.clone();
+            if let Some(first) = style_name.get(..1) {
+                style_name = first.to_uppercase() + &style_name[1..];
+            }
+            let date = entry
+                .created
+                .map(preset_files::date_string)
+                .unwrap_or_default();
+            text(
+                &entry.name,
+                name_x,
+                name_width - 2 * text_padding,
+                Justify::Left,
+            );
+            text(
+                &style_name,
+                style_x,
+                style_width - 2 * text_padding,
+                Justify::Left,
+            );
+            text(
+                &entry.author,
+                author_x,
+                author_width - 2 * text_padding,
+                Justify::Left,
+            );
+            text(&date, date_x, date_width - 2 * text_padding, Justify::Right);
+        }
+
+        // highlight_ and hover_, added to what's under them.
+        let row_rect = |row: usize| {
+            RectF::new(
+                list.x as f32,
+                (view.y + row as i32 * row_height - position) as f32,
+                list.width as f32,
+                row_height as f32,
+            )
+        };
+        let mut highlights = QuadBatch::additive();
+        if let Some(selected) = self.selected_index() {
+            let colour = scope.color(ColorId::WidgetPrimary1).darker(0.8);
+            highlights.push(Quad::new(QuadKind::Color, row_rect(selected), colour));
+        }
+        if let Some(hover) = self.hover {
+            let colour = scope.color(ColorId::LightenScreen);
+            highlights.push(Quad::new(QuadKind::Color, row_rect(hover), colour));
+        }
+        highlights.paint(&pixels, RectF::from(view));
+
+        let total = (row_height * self.filtered.len() as i32) as f32;
+        let scroll_bar_width = (SCROLL_BAR_WIDTH * scope.size_ratio()) as i32;
+        let bar = Rect::new(
+            list.right() - scroll_bar_width,
+            view.y,
+            scroll_bar_width,
+            view.height,
+        );
+        self.scroll
+            .paint(panel.pixels, &scope, bar, total, view.height as f32);
     }
 }

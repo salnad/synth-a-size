@@ -75,7 +75,10 @@ repeat the check in FL Studio where the note says so.
 
 1. **Keyboard focus (G1).** Install the `...-focus-check` artifact in place
    of the normal bundle and follow its panel: does the text field receive
-   keys, with and without the window asking for focus?
+   keys, with and without the window asking for focus? Then, in the
+   normal bundle, click the preset browser's search box and type: it asks
+   for focus the way the chat's fields do (the chat's keyboard focus
+   setting).
    - *REAPER:* runs there too, but only answers for REAPER: each host
      routes keys to plugins its own way. Try it with the FX window's
      "Send all keyboard input to plug-in" option (its + menu) off, then

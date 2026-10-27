@@ -686,6 +686,23 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
 - **Approved:** coordinator (G7 plan's data_directory decision), on UI
   Reviewer's review of #148, 2026-10-26.
 
+### D25. The preset arrows do nothing in an external preset's empty folder
+
+- **Differs:** the header's previous and next arrows after an external
+  preset (Open External, Export) when its folder still exists but holds no
+  presets, for example because the file was deleted or renamed away.
+- **Upstream:** `PresetBrowser::jumpToPreset` lists the folder's presets and
+  takes `(index + indices + presets.size()) % presets.size()`, a modulo by
+  zero for an empty folder (undefined behaviour), then reads `presets[index]`.
+- **Port:** `user_folders::step` returns `None` for a folder with no presets,
+  and the arrow does nothing
+  (`port/crates/gui/src/sections/preset_browser.rs`, `jump_to_preset`).
+- **Why:** there is no defined result to reproduce. Doing nothing leaves the
+  current preset playing, which is what a folder with nothing to step to
+  suggests.
+- **Approved:** coordinator, relaying Voice Reviewer's review of #159,
+  2026-10-26.
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change

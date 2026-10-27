@@ -180,6 +180,37 @@ pub fn save_data_directory(path: &Path, folder: &Path) -> std::io::Result<()> {
     save_json_to_config(path, &data)
 }
 
+/// `LoadSave::getFavoritesFile`: beside the config file, with the
+/// `favorites` extension.
+pub fn favourites_file(config: &Path) -> PathBuf {
+    config.with_extension("favorites")
+}
+
+/// `LoadSave::getFavorites`: the favourite files' full paths, the keys of
+/// the favourites file's object.
+pub fn favourites(path: &Path) -> Vec<PathBuf> {
+    match read_config(path) {
+        Value::Object(entries) => entries.keys().map(PathBuf::from).collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// `LoadSave::addFavorite` / `removeFavorite`: rewrites the favourites
+/// file with `file` in or out (`{"<path>": 1, ...}`).
+pub fn save_favourite(path: &Path, file: &Path, favourite: bool) -> std::io::Result<()> {
+    let mut data = match read_config(path) {
+        Value::Object(entries) => entries,
+        _ => Default::default(),
+    };
+    let key = file.to_string_lossy().into_owned();
+    if favourite {
+        data.insert(key, Value::from(1));
+    } else if data.remove(&key).is_none() {
+        return Ok(());
+    }
+    save_json_to_config(path, &Value::Object(data))
+}
+
 /// The MIDI map part of `loadConfig`: the map saved in the config file, empty
 /// if there is none.
 pub fn load_midi_map_config(path: &Path) -> MidiLearnMap {
@@ -319,6 +350,22 @@ mod tests {
             Some(PathBuf::from("/tmp/my presets"))
         );
         assert!(display_hz_frequency(&path));
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// Favourites are the keys of an object in their own file beside the
+    /// config, added and removed one at a time.
+    #[test]
+    fn favourites_round_trip() {
+        let folder = std::env::temp_dir().join(format!("sas-favourites-{}", std::process::id()));
+        let path = favourites_file(&folder.join("test.config"));
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(path.extension().unwrap(), "favorites");
+        assert!(favourites(&path).is_empty());
+        save_favourite(&path, Path::new("/presets/b.vital"), true).unwrap();
+        save_favourite(&path, Path::new("/presets/a.vital"), true).unwrap();
+        save_favourite(&path, Path::new("/presets/b.vital"), false).unwrap();
+        assert_eq!(favourites(&path), [PathBuf::from("/presets/a.vital")]);
         let _ = std::fs::remove_dir_all(&folder);
     }
 }
