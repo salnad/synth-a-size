@@ -108,9 +108,3 @@ built on #195's generalised line editor (merged into this branch at
   the waveform display's last column (113 pixels), where upstream's faded
   waveform line reaches the edge and the port's doesn't. That is in the
   display, not the overlay, and is the same without the overlay.
-
-**Correction to G5e-4a**
-
-- Its ledger says `wavetable_editor_window` differs from upstream in no
-  pixel by more than 24 levels outside text. It differs in 3 anti-aliased
-  pixels at the waveform's top edge (Voice Reviewer).
