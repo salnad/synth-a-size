@@ -73,6 +73,18 @@ master_controls/DISPLAY/frequency_display
 master_controls/DISPLAY/skin
 master_controls/ANALYSIS
 MODULATION MATRIX
+MODULATION MATRIX/Container
+MODULATION MATRIX/Container/MOD 0
+MODULATION MATRIX/Container/MOD 0/source
+MODULATION MATRIX/Container/MOD 0/destination
+MODULATION MATRIX/Container/MOD 0/modulation_1_amount
+MODULATION MATRIX/Container/MOD 0/modulation_1_power
+MODULATION MATRIX/Container/MOD 0/modulation_1_bipolar
+MODULATION MATRIX/Container/MOD 0/modulation_1_stereo
+MODULATION MATRIX/Container/MOD 0/modulation_1_bypass
+MODULATION MATRIX/Container/MOD 1
+MODULATION MATRIX/Container/MOD 63
+MODULATION MATRIX/Container/MOD 63/modulation_64_amount
 effects
 modulation
 extra_mod_section

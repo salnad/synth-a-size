@@ -307,8 +307,48 @@ fn port_rect(skin: &Skin, layout: &FullLayout, path: &str, preset: Option<&str>)
         _ if path.starts_with("modulation/") => return modulation_rect(skin, layout, path),
         _ if path.starts_with("extra_mod_section/") => return extra_mod_rect(skin, layout, path),
         _ if path.starts_with("master_controls/") => return advanced_rect(skin, layout, path),
+        _ if path.starts_with("MODULATION MATRIX/") => return matrix_rect(skin, layout, path),
         _ if path.starts_with("preset_browser") => return browser_rect(skin, layout, path),
         _ => return synthesis_rect(skin, layout, path, phase_visible(preset)),
+    })
+}
+
+/// The Matrix tab's list and rows (`ModulationMatrix::resized`,
+/// `setRowPositions`, `ModulationMatrixRow::resized`), laid out with the
+/// init preset: no connections, so rows in slot order and one shown.
+fn matrix_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> {
+    use sas_gui::sections::matrix::{self, MatrixLayout, RowLayout};
+    let top = Scope::top(skin, layout.size_ratio);
+    let scope = top.within(matrix::SKIN);
+    let tab = MatrixLayout::new(&scope, layout.main);
+    let rest = path.strip_prefix("MODULATION MATRIX/Container")?;
+    if rest.is_empty() {
+        let viewport = tab.viewport;
+        return Some(Rect::new(
+            viewport.x,
+            viewport.y,
+            viewport.width,
+            tab.list_height(1),
+        ));
+    }
+    let rest = rest.strip_prefix("/MOD ")?;
+    let (index, control) = rest.split_once('/').unwrap_or((rest, ""));
+    let slot: usize = index.parse().ok()?;
+    let row = RowLayout::new(&scope, tab.row(slot, 0));
+    let number = slot + 1;
+    let control = control
+        .strip_prefix(&format!("modulation_{number}_"))
+        .unwrap_or(control);
+    Some(match control {
+        "" => row.bounds,
+        "source" => row.source,
+        "destination" => row.destination,
+        "amount" => row.amount,
+        "power" => row.power,
+        "bipolar" => row.bipolar,
+        "stereo" => row.stereo,
+        "bypass" => row.bypass,
+        _ => return None,
     })
 }
 
