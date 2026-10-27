@@ -810,6 +810,16 @@ impl Interface {
                 current.as_deref(),
             );
         }
+        if let Some((index, browser, section)) = self.modulation.take_lfo_browse_request() {
+            let current = self.modulation.lfo_file(index);
+            self.popup_browser.open(
+                host.model(),
+                BrowserOwner::Lfo(index),
+                browser,
+                section,
+                current.as_deref(),
+            );
+        }
         if !self.popup_browser.is_open() {
             return;
         }
@@ -817,9 +827,15 @@ impl Interface {
         let mut panel = Panel::new(ui, host, pixels, top, &mut self.overlay, bounds);
         let event = self.popup_browser.show(&mut panel, bounds);
         panel.finish();
-        if let Some(BrowserEvent::Load(BrowserOwner::Oscillator(index), file)) = event {
-            self.synthesis
-                .load_wavetable_file(host.model(), index, &file);
+        match event {
+            Some(BrowserEvent::Load(BrowserOwner::Oscillator(index), file)) => {
+                self.synthesis
+                    .load_wavetable_file(host.model(), index, &file);
+            }
+            Some(BrowserEvent::Load(BrowserOwner::Lfo(index), file)) => {
+                self.modulation.load_lfo_file(host.model(), index, &file);
+            }
+            None => {}
         }
     }
 
@@ -855,6 +871,11 @@ impl Interface {
         if preset_selector::take_save_request(ui.ctx()) || std::mem::take(&mut self.save_requested)
         {
             self.save_section.open(host, SaveTarget::Preset);
+        }
+        if let Some(data) = crate::controls::line_editor::take_save_request(ui.ctx()) {
+            if let Some(target) = SaveTarget::lfo(host.model(), data) {
+                self.save_section.open(host, target);
+            }
         }
         if let Some(oscillator) = self.synthesis.take_wavetable_save_request() {
             if let Some(target) = SaveTarget::wavetable(host.model(), oscillator) {

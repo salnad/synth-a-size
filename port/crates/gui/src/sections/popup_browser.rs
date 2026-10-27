@@ -10,8 +10,9 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use egui::{Key, Sense};
+use sas_common::line_generator::LineGenerator;
 use sas_engine::sas_oscillators::sas_wavetable::creator::AudioFileLoadStyle;
-use sas_preset::user_folders::{self, Kind, WAVETABLE_EXTENSION};
+use sas_preset::user_folders::{self, Kind, LFO_EXTENSION, WAVETABLE_EXTENSION};
 
 use super::selection_list::{Selection, SelectionEvent, SelectionList};
 use super::Panel;
@@ -34,11 +35,16 @@ const TOP_HEIGHT: f32 = 38.0;
 /// `vital::kWavetableExtensionsList`, without the dots.
 pub const WAVETABLE_EXTENSIONS: &[&str] = &[WAVETABLE_EXTENSION, "wav", "flac"];
 
+/// The LFO browser's `"*." + vital::kLfoExtension`.
+pub const LFO_EXTENSIONS: &[&str] = &[LFO_EXTENSION];
+
 /// The section a browser chooses a file for (`owner_`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BrowserOwner {
     /// An oscillator's wavetable (`OscillatorSection::textMouseDown`).
     Oscillator(usize),
+    /// An LFO's shape (`LfoSection::textMouseDown`).
+    Lfo(usize),
 }
 
 impl BrowserOwner {
@@ -46,6 +52,7 @@ impl BrowserOwner {
     pub fn kind(self) -> Kind {
         match self {
             BrowserOwner::Oscillator(_) => Kind::Wavetables,
+            BrowserOwner::Lfo(_) => Kind::Lfos,
         }
     }
 
@@ -53,6 +60,7 @@ impl BrowserOwner {
     pub fn extensions(self) -> &'static [&'static str] {
         match self {
             BrowserOwner::Oscillator(_) => WAVETABLE_EXTENSIONS,
+            BrowserOwner::Lfo(_) => LFO_EXTENSIONS,
         }
     }
 }
@@ -414,6 +422,31 @@ pub fn load_wavetable_file(model: &dyn EditorModel, oscillator: usize, path: &Pa
     model.load_wavetable_json(oscillator, &data.dump())
 }
 
+/// `LfoSection::loadFile`: the file's shape, named after the file and
+/// remembering it (`setName`, `setLastBrowsedFile`), into LFO `lfo`.
+/// Returns false, changing nothing, when the file can't be read as a shape
+/// (upstream catches the JSON exception and returns).
+pub fn load_lfo_file(model: &dyn EditorModel, lfo: usize, path: &Path) -> bool {
+    let Some(data) = std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| sas_common::json::parse(&text).ok())
+    else {
+        return false;
+    };
+    let mut line = LineGenerator::new(LineGenerator::DEFAULT_RESOLUTION);
+    if line.from_json(&data).is_err() {
+        return false;
+    }
+    let name = path
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    line.set_name(&name);
+    line.set_last_browsed_file(&path.to_string_lossy());
+    line.render();
+    model.set_lfo_shape(lfo, line)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -428,6 +461,48 @@ mod tests {
         assert_eq!(layout.vertical_divider, Rect::new(400, 88, 1, 360));
         assert_eq!(layout.search, Rect::new(100, 50, 300, 38));
         assert_eq!(layout.exit, Rect::new(662, 50, 38, 38));
+    }
+
+    struct DataFolder(PathBuf);
+
+    impl EditorModel for DataFolder {
+        fn preset_name(&self) -> String {
+            String::new()
+        }
+
+        fn data_directory(&self) -> Option<PathBuf> {
+            Some(self.0.clone())
+        }
+    }
+
+    /// A folder chosen in an oscillator's browser isn't carried into an
+    /// LFO's: `loadPresets`' `folder_list_->filter("")` clears a selection
+    /// the new folders don't hold, and then every `.vitallfo` file is
+    /// listed, as upstream's does.
+    #[test]
+    fn a_folder_chosen_for_one_owner_is_cleared_for_another() {
+        let root = std::env::temp_dir().join(format!("sas-popup-owners-{}", std::process::id()));
+        let table = root.join(format!("Wavetables/Table.{WAVETABLE_EXTENSION}"));
+        let shape = root.join(format!("LFOs/Shape.{LFO_EXTENSION}"));
+        for path in [&table, &shape] {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "").unwrap();
+        }
+        let model = DataFolder(root.clone());
+        let area = Rect::new(0, 0, 100, 100);
+        let mut browser = PopupBrowser::default();
+        browser.open(&model, BrowserOwner::Oscillator(0), area, area, None);
+        let wavetables = root.join("Wavetables");
+        browser
+            .folders
+            .set_selected(Some(Selection::Path(wavetables.clone())));
+        browser.list_folder(&wavetables);
+        assert_eq!(browser.file_rows(), [Selection::Path(table)]);
+
+        browser.open(&model, BrowserOwner::Lfo(0), area, area, None);
+        assert_eq!(browser.folders.selected(), None);
+        assert_eq!(browser.file_rows(), [Selection::Path(shape)]);
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]

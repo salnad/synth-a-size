@@ -73,6 +73,9 @@ pub mod menu {
     pub const REMOVE_POINT: i32 = 1;
     pub const RESET_POWER: i32 = 4;
     pub const COPY: i32 = 5;
+    pub const PASTE: i32 = 6;
+    pub const SAVE: i32 = 7;
+    pub const INIT: i32 = 8;
     pub const FLIP_HORIZONTAL: i32 = 9;
     pub const FLIP_VERTICAL: i32 = 10;
     pub const SET_PHASE_TO_POINT: i32 = 11;
@@ -533,6 +536,45 @@ pub struct LineEditorEvent {
     pub smooth: bool,
 }
 
+/// The shape in clipboard `text`, if it holds one
+/// (`hasMatchingSystemClipboard`, `LineGenerator::isValidJson`).
+pub fn pasted_shape(text: &str) -> Option<LineGenerator> {
+    let data = sas_common::json::parse(text).ok()?;
+    if !LineGenerator::is_valid_json(&data) {
+        return None;
+    }
+    let mut line = LineGenerator::new(LineGenerator::DEFAULT_RESOLUTION);
+    line.from_json(&data).ok()?;
+    Some(line)
+}
+
+fn save_request() -> egui::Id {
+    egui::Id::unique("line editor save")
+}
+
+/// The shape "Save to LFOs" asked to save since the last call, as JSON
+/// (`FullInterface::saveLfo`).
+pub fn take_save_request(ctx: &egui::Context) -> Option<String> {
+    ctx.data_mut(|data| data.remove_temp::<String>(save_request()))
+}
+
+thread_local! {
+    /// How the editors read the clipboard: the system's, or a test's.
+    static READ_CLIPBOARD: std::cell::Cell<fn() -> Option<String>> =
+        std::cell::Cell::new(crate::controls::wavetable_3d::system_clipboard_text);
+}
+
+/// Reads the clipboard with `read` instead of the system's, on this thread
+/// (tests).
+pub fn set_clipboard_reader(read: fn() -> Option<String>) {
+    READ_CLIPBOARD.with(|reader| reader.set(read));
+}
+
+/// `SystemClipboard::getTextFromClipboard`.
+fn system_clipboard_text() -> Option<String> {
+    READ_CLIPBOARD.with(|reader| reader.get())()
+}
+
 /// The init LFO shape (`LineGenerator`'s constructor).
 fn init_shape() -> LineGenerator {
     let mut line = LineGenerator::new(LineGenerator::DEFAULT_RESOLUTION);
@@ -793,7 +835,13 @@ impl LineEditor {
         } else if state.active_grid_section >= 0 {
             items.push(MenuItem::new(menu::SET_PHASE_TO_GRID, "Set Start Point"));
         }
+        // allow_file_loading_: the LFO editors.
         items.push(MenuItem::new(menu::COPY, "Copy"));
+        if pasted_shape(&system_clipboard_text().unwrap_or_default()).is_some() {
+            items.push(MenuItem::new(menu::PASTE, "Paste"));
+        }
+        items.push(MenuItem::new(menu::SAVE, "Save to LFOs"));
+        items.push(MenuItem::new(menu::INIT, "Initialize"));
         items.push(MenuItem::new(menu::FLIP_HORIZONTAL, "Flip Horizontal"));
         items.push(MenuItem::new(menu::FLIP_VERTICAL, "Flip Vertical"));
         let ppp = panel.pixels.pixels_per_point();
@@ -865,6 +913,30 @@ impl LineEditor {
             menu::COPY => {
                 panel.ui.ctx().copy_text(line.to_json().dump());
                 false
+            }
+            menu::PASTE => {
+                // kPaste: the clipboard's shape, if it is one.
+                let Some(pasted) = pasted_shape(&system_clipboard_text().unwrap_or_default())
+                else {
+                    return false;
+                };
+                *line = pasted;
+                line.render();
+                true
+            }
+            menu::SAVE => {
+                // kSave: FullInterface::saveLfo.
+                let data = line.to_json().dump();
+                panel
+                    .ui
+                    .ctx()
+                    .data_mut(|memory| memory.insert_temp(save_request(), data));
+                false
+            }
+            menu::INIT => {
+                line.init_linear();
+                line.render();
+                true
             }
             menu::FLIP_HORIZONTAL => {
                 line.flip_horizontal();

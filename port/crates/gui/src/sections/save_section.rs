@@ -9,7 +9,7 @@
 use std::path::{Path, PathBuf};
 
 use egui::Sense;
-use sas_preset::user_folders::{Kind, PRESET_EXTENSION, WAVETABLE_EXTENSION};
+use sas_preset::user_folders::{Kind, LFO_EXTENSION, PRESET_EXTENSION, WAVETABLE_EXTENSION};
 
 use super::Panel;
 use crate::controls::button::SynthButton;
@@ -266,6 +266,19 @@ impl SaveTarget {
             extension: WAVETABLE_EXTENSION,
             folder,
             data: model.wavetable_json(oscillator)?,
+        })
+    }
+
+    /// `FullInterface::saveLfo`: a `.vitallfo` in the user's LFOs folder,
+    /// made if missing (`getUserLfoDirectory`), from the shape's JSON.
+    pub fn lfo(model: &dyn EditorModel, data: String) -> Option<SaveTarget> {
+        let folder = user_folder(model, Kind::Lfos)?;
+        let _ = std::fs::create_dir_all(&folder);
+        Some(SaveTarget::File {
+            file_type: "LFO",
+            extension: LFO_EXTENSION,
+            folder,
+            data,
         })
     }
 
