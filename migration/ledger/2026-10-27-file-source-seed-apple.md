@@ -38,3 +38,10 @@ reference.
   ends. For 1,000 draws, the generic path equals the old
   `next() * (INT_MAX / kPi)` bit for bit, so x86 and every other
   non-Apple target are unchanged.
+- The PR's advisory macOS run (40491246349) passed `wavetable_edit`, so the
+  port's saved `random_seed` now equals the macOS official reference's. Its
+  aarch64 hashes for `wavetable/edit` (48 keys, `add_sources` included) are
+  committed from that run's `macos-hashes` patch. The macOS no-fast-math
+  justification still flags `add_sources:artifact/saved.json` (official
+  209652480, no-fast-math 209652560): that difference comes from the
+  compiler fold itself, as A13 records.
