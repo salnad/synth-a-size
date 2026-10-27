@@ -847,14 +847,16 @@ MCP server) extends this entry when it lands.*
 ### D30. The saved window size isn't kept within the screen
 
 - **Differs:** a saved window size larger than the screen the window opens
-  on.
+  on, and a corner drag past the screen's edge.
 - **Upstream:** `SynthEditor`'s constructor, run each time the window
   opens, reads the config's `window_size` and keeps it within the desktop's
   total bounds less 50 pixels of height
   (`Desktop::getInstance().getDisplays().getTotalBounds`) before opening at
   1400 × 820 times it.
 - **Port:** each window opens at 1400 × 820 times the saved size (at least
-  0.25), as upstream's does, without the screen bound.
+  0.25), as upstream's does, without the screen bound. Upstream also keeps
+  a size dragged with the corner resizer within the display
+  (`BorderBoundsConstrainer::checkBounds`); the port's corner doesn't.
 - **Why:** baseview, which opens the window, reports no screen or display
   size, so there is nothing to bound it by before the window opens. A size
   saved on a large screen can open larger than a smaller one; the host can
