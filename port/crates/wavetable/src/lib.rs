@@ -23,7 +23,7 @@ pub mod wavetable;
 pub use complex::Complex;
 pub use fourier_transform::FourierTransform;
 pub use wave_frame::{PredefinedShape, PredefinedWaveFrames, WaveFrame};
-pub use wavetable::{Wavetable, WavetableData};
+pub use wavetable::{Wavetable, WavetableData, WavetableFrame};
 
 /// `vital::kNumOscillatorWaveFrames` (`synth_constants.h`).
 pub const NUM_OSCILLATOR_WAVE_FRAMES: i32 = 257;

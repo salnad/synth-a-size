@@ -183,6 +183,11 @@ fn producer(edits: EditHandle, stop: Arc<AtomicBool>, routing: bool) -> usize {
             let creator = wavetables[(count / 40) % wavetables.len()].clone();
             retry(|| edits.set_wavetable((count / 40) % 3, creator.clone()));
         }
+        if count % 4 == 1 {
+            // Drawing on a wavetable: one frame at a time.
+            let creator = wavetables[count % wavetables.len()].clone();
+            retry(|| edits.set_wavetable_frame(count % 3, creator.clone(), (count * 7) % 257));
+        }
         if count % 60 == 0 {
             let sample = SampleState {
                 name: format!("sample {count}"),

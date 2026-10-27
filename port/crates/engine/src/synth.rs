@@ -27,7 +27,7 @@ use sas_dsp_core::{Output, ProcessorRef, StatusOutput};
 use sas_effects::reorderable_effect_chain::ReorderableEffectChain;
 use sas_modulation::ModulationConnectionProcessor;
 use sas_oscillators::sas_wavetable::creator::WavetableCreator;
-use sas_oscillators::sas_wavetable::Wavetable;
+use sas_oscillators::sas_wavetable::{Wavetable, WavetableFrame};
 use sas_oscillators::Sample;
 use sas_preset::{lookup, registry, PresetState, SampleState, SlotValues};
 
@@ -623,6 +623,20 @@ impl Synth {
     pub fn swap_wavetable(&mut self, oscillator: usize, rendered: &mut Wavetable) {
         let wavetable = self.with_svh(|svh| svh.wavetable(oscillator));
         wavetable.borrow_mut().take_rendered(rendered);
+    }
+
+    /// Writes one rendered frame over frame `position` of oscillator
+    /// `oscillator`'s wavetable ([`Wavetable::write_frame`]), as upstream's
+    /// editor renders a frame into the playing table while drawing
+    /// (`WavetableCreator::render(position)`). Nothing is allocated.
+    pub fn set_wavetable_frame(
+        &mut self,
+        oscillator: usize,
+        position: usize,
+        frame: &WavetableFrame,
+    ) {
+        let wavetable = self.with_svh(|svh| svh.wavetable(oscillator));
+        wavetable.borrow_mut().write_frame(position, frame);
     }
 
     /// Swaps in a loaded sample ([`Sample::swap_loaded`]). `loaded` gets the

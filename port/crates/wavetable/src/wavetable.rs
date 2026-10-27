@@ -59,6 +59,16 @@ impl WavetableData {
     }
 }
 
+/// One frame of a table, as `loadWaveFrame` stores it: its waveform and its
+/// three frequency arrays, for copying a frame from one table to another.
+#[derive(Clone, Debug, PartialEq)]
+pub struct WavetableFrame {
+    pub wave: [f32; WAVEFORM_SIZE],
+    pub frequency_amplitudes: [f32; FREQUENCY_FLOATS],
+    pub normalized_frequencies: [f32; FREQUENCY_FLOATS],
+    pub phases: [f32; FREQUENCY_FLOATS],
+}
+
 /// `vital::Wavetable`.
 #[derive(Clone, Debug)]
 pub struct Wavetable {
@@ -237,6 +247,32 @@ impl Wavetable {
         }
 
         self.data.wave_data[index].copy_from_slice(&wave_frame.time_domain[..WAVEFORM_SIZE]);
+    }
+
+    /// A copy of frame `index`, or None past the last frame.
+    pub fn frame(&self, index: usize) -> Option<WavetableFrame> {
+        if index >= self.data.num_frames {
+            return None;
+        }
+        Some(WavetableFrame {
+            wave: self.data.wave_data[index],
+            frequency_amplitudes: self.data.frequency_amplitudes[index],
+            normalized_frequencies: self.data.normalized_frequencies[index],
+            phases: self.data.phases[index],
+        })
+    }
+
+    /// Writes `frame` over frame `index`, as `loadWaveFrame` would have
+    /// stored it; ignored past the last frame. The version stays: the frame
+    /// count doesn't change. Nothing is allocated.
+    pub fn write_frame(&mut self, index: usize, frame: &WavetableFrame) {
+        if index >= self.data.num_frames {
+            return;
+        }
+        self.data.wave_data[index] = frame.wave;
+        self.data.frequency_amplitudes[index] = frame.frequency_amplitudes;
+        self.data.normalized_frequencies[index] = frame.normalized_frequencies;
+        self.data.phases[index] = frame.phases;
     }
 
     /// `postProcess(max_span)`: scales every frame by `2 / max_span` (when

@@ -17,7 +17,7 @@ use sas_engine::synth::Synth;
 use sas_engine::synth_voice_handler::SynthVoiceHandler;
 use sas_engine::Tuning;
 use sas_oscillators::sas_wavetable::creator::WavetableCreator;
-use sas_oscillators::sas_wavetable::Wavetable;
+use sas_oscillators::sas_wavetable::{Wavetable, WavetableFrame};
 use sas_oscillators::{RandomValues, Sample};
 use sas_preset::{InitContent, SampleState, SaveInfo, SlotValues};
 
@@ -38,6 +38,8 @@ enum Call {
     LineMapping(usize, String),
     Values(usize, SlotValues),
     Wavetable(usize, usize),
+    /// A drawn frame: the oscillator, the position and its first sample.
+    Frame(usize, usize, f32),
     Sample(String),
     Tuning(String),
     Load(String),
@@ -73,6 +75,10 @@ impl EditTarget for Recorder {
     fn swap_wavetable(&mut self, oscillator: usize, rendered: &mut Wavetable) {
         self.0
             .push(Call::Wavetable(oscillator, rendered.num_frames()));
+    }
+    fn set_wavetable_frame(&mut self, oscillator: usize, position: usize, frame: &WavetableFrame) {
+        self.0
+            .push(Call::Frame(oscillator, position, frame.wave[0]));
     }
     fn swap_sample(&mut self, loaded: &mut Sample) {
         self.0.push(Call::Sample(loaded.name().to_string()));
@@ -828,4 +834,129 @@ fn a_bus_tuning_plays_like_one_set_in_place() {
 
     let default = render(&mut fresh_synth(), &[]);
     assert_ne!(default, expected, "the tuning changes the sound");
+}
+
+/// The corpus wavetable with its first keyframe's line made a rising saw, so a
+/// frame drawn from it differs from the committed table's.
+fn drawn_creator() -> WavetableCreator {
+    let mut creator = corpus_wavetable();
+    if let sas_oscillators::sas_wavetable::creator::component::WavetableComponent::LineSource(
+        line,
+    ) = &mut creator.groups[0].components[0]
+    {
+        line.keyframes.keyframes[0]
+            .data
+            .line_generator
+            .init_saw_up();
+    } else {
+        panic!("the corpus wavetable starts with a line source");
+    }
+    creator
+}
+
+/// `set_wavetable_frame` renders only the drawn frame (upstream's
+/// `render(position)`) into the shared table and sends it to the engine,
+/// which writes it over that frame; the document takes the creator.
+#[test]
+fn a_drawn_frame_reaches_the_engine_and_the_shared_table() {
+    let _rng = ENGINE_RNG.lock().unwrap_or_else(|p| p.into_inner());
+    let mut synth = fresh_synth();
+    let (edits, mut consumer) = EditBus::new(init_document());
+    edits.set_wavetable(0, corpus_wavetable()).unwrap();
+    consumer.drain(&mut synth);
+    let before = edits.wavetable(0).unwrap();
+
+    let creator = drawn_creator();
+    let mut expected = (*before).clone();
+    creator.clone().render_frame(&mut expected, 3);
+    edits.set_wavetable_frame(0, creator.clone(), 3).unwrap();
+    let shared = edits.wavetable(0).unwrap();
+    assert_eq!(shared.frame(3), expected.frame(3));
+    assert_ne!(shared.frame(3), before.frame(3));
+    assert_eq!(shared.frame(2), before.frame(2));
+    assert_eq!(shared.num_frames(), before.num_frames());
+    edits.with_document(|document| {
+        assert_eq!(
+            document.state.wavetables[0].to_json().dump(),
+            creator.to_json().dump()
+        );
+    });
+
+    consumer.drain(&mut synth);
+    let engine = with_svh(&synth, |svh| svh.wavetable(0));
+    let engine = engine.borrow();
+    assert_eq!(engine.frame(3), shared.frame(3));
+    assert_eq!(engine.frame(2), before.frame(2));
+    drop(engine);
+    edits.collect_retired();
+    assert_eq!(edits.leaked_payloads(), 0);
+}
+
+/// A newer frame replaces one the engine hasn't taken, and frames keep
+/// their order against whole tables.
+#[test]
+fn drawn_frames_coalesce_and_keep_their_order() {
+    let (edits, mut consumer) = EditBus::new(init_document());
+    edits.set_wavetable(1, corpus_wavetable()).unwrap();
+    let mut recorder = Recorder::default();
+    consumer.drain(&mut recorder);
+    recorder.0.clear();
+
+    let creator = drawn_creator();
+    edits.set_wavetable_frame(1, creator.clone(), 2).unwrap();
+    edits.set_wavetable_frame(1, creator.clone(), 5).unwrap();
+    consumer.drain(&mut recorder);
+    let first = edits.wavetable(1).unwrap().frame(5).unwrap().wave[0];
+    assert_eq!(recorder.0, vec![Call::Frame(1, 5, first)]);
+
+    recorder.0.clear();
+    edits.set_wavetable(1, corpus_wavetable()).unwrap();
+    edits.set_wavetable_frame(1, creator.clone(), 4).unwrap();
+    let drawn = edits.wavetable(1).unwrap().frame(4).unwrap().wave[0];
+    let frames = edits.wavetable(1).unwrap().num_frames();
+    edits.set_wavetable(1, corpus_wavetable()).unwrap();
+    consumer.drain(&mut recorder);
+    // The newest whole table supersedes the first, but lands after the
+    // frame, as the queue has them.
+    assert_eq!(
+        recorder.0,
+        vec![Call::Frame(1, 4, drawn), Call::Wavetable(1, frames)]
+    );
+}
+
+/// A restore drops a frame queued before it; a frame past the table's last
+/// changes only the creator; bad indices change nothing.
+#[test]
+fn drawn_frames_respect_restores_and_bounds() {
+    let (edits, mut consumer) = EditBus::new(init_document());
+    let mut recorder = Recorder::default();
+    edits.set_wavetable_frame(0, drawn_creator(), 0).unwrap();
+    edits.begin_restore(init_document());
+    consumer.drain(&mut recorder);
+    assert_eq!(recorder.0, vec![Call::Load(String::new())]);
+
+    recorder.0.clear();
+    let revision = edits.revision();
+    // The init table has one frame.
+    edits.set_wavetable_frame(0, drawn_creator(), 100).unwrap();
+    assert!(edits.revision() > revision);
+    consumer.drain(&mut recorder);
+    assert!(recorder.0.is_empty());
+    edits.with_document(|document| {
+        assert_eq!(
+            document.state.wavetables[0].to_json().dump(),
+            drawn_creator().to_json().dump()
+        );
+    });
+
+    let revision = edits.revision();
+    assert_eq!(
+        edits.set_wavetable_frame(3, drawn_creator(), 0),
+        Err(EditError::BadIndex(3))
+    );
+    assert_eq!(
+        edits.set_wavetable_frame(0, drawn_creator(), 257),
+        Err(EditError::BadIndex(257))
+    );
+    assert_eq!(edits.revision(), revision);
 }
