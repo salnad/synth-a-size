@@ -33,8 +33,13 @@ opens, and a new size is saved once it holds, as
   drag, constrained as `ComponentBoundsConstrainer::checkBounds` constrains
   a bottom-right stretch (the minimum size, then upstream's ratio on the
   side the old ratio picks), with the drawer's share when it's docked.
-  Letting go saves the editor's width over 1400, as `resizeEnd` does; so
-  does a press without a drag, as upstream's `mouseUp` does.
+  Letting go saves the editor's width over 1400 as the window has it, as
+  `resizeEnd` reads the editor's width: a host that refused the last size
+  (a CLAP host puts the view back at once) left the window as it was, and
+  that is saved, not the size asked for. When the last size went out with
+  the release, the save waits a frame for the host's answer (UI Reviewer,
+  #181). A press without a drag saves too, as upstream's `mouseUp` does.
+  Sizes round as JUCE's `roundToInt` does, halves to even.
 - **Saving** happens only there: sizes the host sets (VST3's `onSize`, a
   docker's 1900 × 400) are never saved, as upstream's aren't (UI Reviewer,
   #181, against an earlier save of every size that held).
@@ -50,8 +55,12 @@ opens, and a new size is saved once it holds, as
   it's open; untouched without a config), `the_state_opens_at_the_saved_size`,
   and `the_corner_saves_the_size_and_the_host_doesnt` (frames in a 1900 ×
   400 docker save nothing; a drag of the corner by 140 × 82 asks for
-  1540 × 902 and saves 1.1 on release).
-- `resizable_corner` `a_corner_drag_keeps_the_ratio_and_the_minimum` and
+  1540 × 902, and with the window following, 1.1 is saved on release).
+- `editor` `a_refused_corner_size_isnt_saved`: the window doesn't follow
+  the drag, and its own 1.0 is saved; with the last move in the release's
+  frame, the save comes a frame later.
+- `resizable_corner` `a_corner_drag_keeps_the_ratio_and_the_minimum` (with
+  heights of exactly a half rounding to even) and
   `the_corner_takes_presses_below_its_diagonal`.
 - `sas-plugin` `the_window_size_is_kept_in_the_config`.
 

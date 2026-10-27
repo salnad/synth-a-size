@@ -18,13 +18,14 @@ use crate::layout::{DEFAULT_HEIGHT, DEFAULT_WIDTH};
 pub const SIZE: f32 = 18.0;
 
 /// What the corner did this frame.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum CornerEvent {
-    /// `mouseDrag`: the editor's new size, constrained.
-    Resize(Vec2),
-    /// `mouseUp` (`resizeEnd`): the editor's size to save, as
-    /// `saveWindowSize(gui width / kDefaultWindowWidth)`.
-    End(Vec2),
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct CornerEvent {
+    /// `mouseDrag`: the editor's new size, constrained, to ask of the host.
+    pub resize: Option<Vec2>,
+    /// `mouseUp` (`resizeEnd`): the drag ended, and the editor's size is to
+    /// be saved as the window has it (`saveWindowSize(gui width /
+    /// kDefaultWindowWidth)`), once the host has answered `resize`.
+    pub ended: bool,
 }
 
 /// The corner's state between frames: where a drag started.
@@ -34,6 +35,11 @@ pub struct ResizableCorner {
     drag: Option<(Vec2, Pos2)>,
     /// The size the drag last asked for.
     last: Option<Vec2>,
+}
+
+/// JUCE's `roundToInt`, which rounds halves to even.
+fn round_to_int(value: f64) -> i32 {
+    value.round_ties_even() as i32
 }
 
 /// `ComponentBoundsConstrainer::checkBounds` for a drag of the bottom right
@@ -54,16 +60,16 @@ pub fn constrain(bounds: (i32, i32), old: (i32, i32)) -> (i32, i32) {
     };
     let new_ratio = (width as f64 / height as f64).abs();
     if old_ratio > new_ratio {
-        width = (height as f64 * aspect).round() as i32;
+        width = round_to_int(height as f64 * aspect);
         if width > MAX || width < min_w {
             width = width.clamp(min_w, MAX);
-            height = (width as f64 / aspect).round() as i32;
+            height = round_to_int(width as f64 / aspect);
         }
     } else {
-        height = (width as f64 / aspect).round() as i32;
+        height = round_to_int(width as f64 / aspect);
         if height > MAX || height < min_h {
             height = height.clamp(min_h, MAX);
-            width = (height as f64 * aspect).round() as i32;
+            width = round_to_int(height as f64 * aspect);
         }
     }
     (width, height)
@@ -80,7 +86,7 @@ pub fn hits(x: i32, y: i32) -> bool {
 impl ResizableCorner {
     /// The corner at the bottom right of `editor` (points): drawn on top,
     /// and its presses and drags handled.
-    pub fn show(&mut self, ui: &mut egui::Ui, editor: Rect) -> Option<CornerEvent> {
+    pub fn show(&mut self, ui: &mut egui::Ui, editor: Rect) -> CornerEvent {
         let rect = Rect::from_min_size(editor.max - Vec2::splat(SIZE), Vec2::splat(SIZE));
         let id = ui.scope_id().with("resizable corner");
         let inside = |pos: Pos2| {
@@ -95,7 +101,7 @@ impl ResizableCorner {
         // press in the square's other half reaches the editor beneath.
         let on_top = (over || self.drag.is_some())
             && ui.interact(rect, id, Sense::click_and_drag()).hovered();
-        let mut event = None;
+        let mut event = CornerEvent::default();
         if pressed && over && on_top {
             let at = ui.input(|input| input.pointer.press_origin()).or(pointer);
             if let Some(at) = at {
@@ -107,22 +113,22 @@ impl ResizableCorner {
             if let Some(now) = pointer {
                 let delta = now - start;
                 let asked = (
-                    (original.x + delta.x).round() as i32,
-                    (original.y + delta.y).round() as i32,
+                    round_to_int(f64::from(original.x + delta.x)),
+                    round_to_int(f64::from(original.y + delta.y)),
                 );
                 let old = (
-                    editor.width().round() as i32,
-                    editor.height().round() as i32,
+                    round_to_int(f64::from(editor.width())),
+                    round_to_int(f64::from(editor.height())),
                 );
                 let (width, height) = constrain(asked, old);
                 let size = Vec2::new(width as f32, height as f32);
                 if self.last != Some(size) && (delta.x != 0.0 || delta.y != 0.0) {
                     self.last = Some(size);
-                    event = Some(CornerEvent::Resize(size));
+                    event.resize = Some(size);
                 }
             }
             if released {
-                event = Some(CornerEvent::End(self.last.unwrap_or(original)));
+                event.ended = true;
                 self.drag = None;
                 self.last = None;
             }
@@ -180,6 +186,9 @@ mod tests {
         // Taller: the height stays and the width follows.
         assert_eq!(constrain((1500, 1000), (1400, 820)), (1707, 1000));
         assert_eq!(constrain((100, 50), (1400, 820)), (350, 205));
+        // A height of exactly a half rounds to even, as `roundToInt` does.
+        assert_eq!(constrain((455, 266), (1400, 820)), (455, 266));
+        assert_eq!(constrain((595, 348), (1400, 820)), (595, 348));
         // From a host's 1900 × 400 docker, a small drag gives a window in
         // the ratio again.
         assert_eq!(constrain((1910, 405), (1900, 400)), (691, 405));

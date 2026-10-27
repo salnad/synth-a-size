@@ -46,7 +46,7 @@ use crate::fonts;
 use crate::host::{Host, OpenGestures};
 use crate::interface::{EditorModel, Interface, PRODUCT_NAME};
 use crate::layout::{DEFAULT_HEIGHT, DEFAULT_WIDTH};
-use crate::resizable_corner::{CornerEvent, ResizableCorner};
+use crate::resizable_corner::ResizableCorner;
 
 /// `vital::kMinWindowWidth` / `kMinWindowHeight`.
 pub const MIN_WIDTH: f32 = 350.0;
@@ -130,6 +130,9 @@ pub struct App {
     resize_pending: Option<drawer::PendingResize>,
     /// The corner resizer at the editor's bottom right.
     corner: ResizableCorner,
+    /// The corner's drag ended as it asked for a size: save the editor's
+    /// size next frame, once the host has answered.
+    save_next_frame: bool,
     #[cfg(feature = "focus-spike")]
     focus_spike: crate::focus_spike::FocusSpike,
 }
@@ -148,6 +151,7 @@ impl App {
             drawer,
             resize_pending: None,
             corner: ResizableCorner::default(),
+            save_next_frame: false,
             #[cfg(feature = "focus-spike")]
             focus_spike: Default::default(),
         }
@@ -196,25 +200,35 @@ impl App {
     /// The corner resizer at the bottom right of the editor's part of the
     /// window: a drag asks the host for the editor's new size, with the
     /// drawer's share when it is docked, and letting go saves the editor's
-    /// width over 1400 (`resizeEnd`). Nothing else saves the size, so sizes
+    /// width over 1400 (`resizeEnd`) as the window has it. A host that
+    /// refused the last size left the window as it was, and that is what's
+    /// saved; when the last size went out with the release, the save waits
+    /// a frame for the host's answer. Nothing else saves the size, so sizes
     /// the host sets aren't saved, as upstream's aren't.
     fn resizable_corner(&mut self, ui: &mut egui::Ui, window: egui::Rect) {
         let ppp = ui.ctx().pixels_per_point();
         let split = drawer::split(window, ppp, self.interface.drawer_open());
-        match self.corner.show(ui, split.editor) {
-            Some(CornerEvent::Resize(editor)) => {
-                let drawer = match split.drawer {
-                    Some(_) => drawer::width_pixels(editor.y * ppp, ppp) / ppp,
-                    None => 0.0,
-                };
-                let size = egui::vec2(editor.x + drawer, editor.y);
-                ui.ctx()
-                    .send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+        let editor_size = split.editor.width() / DEFAULT_WIDTH as f32;
+        if std::mem::take(&mut self.save_next_frame) {
+            self.model.save_window_size(editor_size);
+        }
+        let event = self.corner.show(ui, split.editor);
+        if let Some(editor) = event.resize {
+            let drawer = match split.drawer {
+                Some(_) => drawer::width_pixels(editor.y * ppp, ppp) / ppp,
+                None => 0.0,
+            };
+            let size = egui::vec2(editor.x + drawer, editor.y);
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+        }
+        if event.ended {
+            if event.resize.is_some() {
+                self.save_next_frame = true;
+                ui.ctx().request_repaint();
+            } else {
+                self.model.save_window_size(editor_size);
             }
-            Some(CornerEvent::End(editor)) => {
-                self.model.save_window_size(editor.x / DEFAULT_WIDTH as f32);
-            }
-            None => {}
         }
     }
 }
@@ -877,8 +891,8 @@ mod tests {
 
     /// `ResizableCornerComponent`: a drag of the corner asks the host for the
     /// editor's new size in upstream's ratio, and letting go saves its width
-    /// over 1400 (`resizeEnd`). Sizes the host sets save nothing: a 1900 ×
-    /// 400 docker leaves the saved size alone.
+    /// over 1400 (`resizeEnd`) as the window has it. Sizes the host sets save
+    /// nothing: a 1900 × 400 docker leaves the saved size alone.
     #[test]
     fn the_corner_saves_the_size_and_the_host_doesnt() {
         let model = Arc::new(SizeRecorder::default());
@@ -886,13 +900,13 @@ mod tests {
         let ctx = egui::Context::default();
         for time in 0..4 {
             let docker = egui::vec2(1900.0, 400.0);
-            let commands = corner_frame(&ctx, &mut app, time as f64, docker, Vec::new());
-            assert!(commands.is_empty(), "{commands:?}");
+            assert!(corner_frame(&ctx, &mut app, time as f64, docker, Vec::new()).is_empty());
         }
         let window = egui::vec2(1400.0, 820.0);
         corner_frame(&ctx, &mut app, 5.0, window, Vec::new());
         assert_eq!(*model.0.lock().unwrap(), Vec::<f32>::new());
 
+        // The host takes the size: the window follows, and that is saved.
         let at = egui::pos2(1395.0, 815.0);
         let to = egui::pos2(1535.0, 897.0);
         let moved = |pos| egui::Event::PointerMoved(pos);
@@ -903,8 +917,47 @@ mod tests {
             commands,
             [egui::ViewportCommand::InnerSize(egui::vec2(1540.0, 902.0))]
         );
-        corner_frame(&ctx, &mut app, 6.3, window, vec![button(to, false)]);
+        let wider = egui::vec2(1540.0, 902.0);
+        corner_frame(&ctx, &mut app, 6.3, wider, vec![button(to, false)]);
         assert_eq!(*model.0.lock().unwrap(), [1.1]);
+    }
+
+    /// A host that refuses the corner's size (a CLAP host puts the view back
+    /// at once) leaves the window as it was, and the window's own size is
+    /// saved, not the one asked for; when the last size goes out with the
+    /// release, the save waits a frame for the answer.
+    #[test]
+    fn a_refused_corner_size_isnt_saved() {
+        let model = Arc::new(SizeRecorder::default());
+        let mut app = App::new(model.clone(), DrawerState::default());
+        let ctx = egui::Context::default();
+        let window = egui::vec2(1400.0, 820.0);
+        let at = egui::pos2(1395.0, 815.0);
+        let to = egui::pos2(1535.0, 897.0);
+        let moved = |pos| egui::Event::PointerMoved(pos);
+        corner_frame(&ctx, &mut app, 0.0, window, vec![moved(at)]);
+        corner_frame(&ctx, &mut app, 0.1, window, vec![button(at, true)]);
+        corner_frame(&ctx, &mut app, 0.2, window, vec![moved(to)]);
+        corner_frame(&ctx, &mut app, 0.3, window, vec![button(to, false)]);
+        assert_eq!(*model.0.lock().unwrap(), [1.0]);
+
+        // The last move and the release in one frame: the size asked for
+        // then isn't known to be taken until the next frame, whose window
+        // is the one saved.
+        model.0.lock().unwrap().clear();
+        corner_frame(&ctx, &mut app, 1.0, window, vec![moved(at)]);
+        corner_frame(&ctx, &mut app, 1.1, window, vec![button(at, true)]);
+        let commands = corner_frame(
+            &ctx,
+            &mut app,
+            1.2,
+            window,
+            vec![moved(to), button(to, false)],
+        );
+        assert_eq!(commands.len(), 1);
+        assert_eq!(*model.0.lock().unwrap(), Vec::<f32>::new());
+        corner_frame(&ctx, &mut app, 1.3, window, Vec::new());
+        assert_eq!(*model.0.lock().unwrap(), [1.0]);
     }
 
     /// Only VST3's answer is awaited: CLAP accepts without a call, and
