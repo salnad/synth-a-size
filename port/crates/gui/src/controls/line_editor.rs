@@ -403,6 +403,10 @@ struct LineState {
     /// The shape's render count and the editor's size when the wave path
     /// was last rebuilt (`reset_positions_`).
     wrap_key: Option<WrapKey>,
+    /// The egui frame the animation last stepped in, and what it drew then:
+    /// upstream steps once per render, and egui may run a frame in more
+    /// than one pass.
+    animated: Option<(u64, Option<Frame>)>,
 }
 
 impl Default for LineState {
@@ -428,6 +432,7 @@ impl Default for LineState {
             last_phase: [0.0; 4],
             last_voice: [-1.0; 4],
             wrap_key: None,
+            animated: None,
         }
     }
 }
@@ -1056,6 +1061,12 @@ impl LineEditor {
         size: (i32, i32),
     ) -> Option<Frame> {
         let animation = self.target.animation()?;
+        let frame_nr = panel.ui.ctx().cumulative_frame_nr();
+        if let Some((frame, drawn)) = &state.animated {
+            if *frame == frame_nr {
+                return drawn.clone();
+            }
+        }
         let model = panel.host.model();
         let telemetry = model.telemetry();
         let read = |name: &str| {
@@ -1160,10 +1171,12 @@ impl LineEditor {
             &mut state.wrap_key,
         );
         state.boosts = renderer.boosts();
-        frame.map(|frame| Frame {
+        let frame = frame.map(|frame| Frame {
             boosts: state.boosts.clone(),
             ..frame
-        })
+        });
+        state.animated = Some((frame_nr, frame.clone()));
+        frame
     }
 
     /// Sends the editor's copy to the synth if it changed.
