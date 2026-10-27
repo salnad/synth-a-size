@@ -2829,7 +2829,10 @@ mod tests {
             overlay(ComponentType::WaveWindow),
             Some(OverlayKind::Window)
         );
-        assert_eq!(overlay(ComponentType::FileSource), None);
+        assert_eq!(
+            overlay(ComponentType::FileSource),
+            Some(OverlayKind::FileSource)
+        );
         let all = Obscured {
             time_domain: true,
             amplitudes: true,
