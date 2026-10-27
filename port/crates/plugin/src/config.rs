@@ -200,6 +200,43 @@ pub fn save_author(path: &Path, author: &str) -> std::io::Result<()> {
     save_json_to_config(path, &data)
 }
 
+/// `LoadSave::kAdditionalWavetableFoldersName` and
+/// `kAdditionalSampleFoldersName`: the config keys of the folders added to
+/// the wavetable and sample browsers.
+pub const WAVETABLE_FOLDERS: &str = "wavetable_folders";
+pub const SAMPLE_FOLDERS: &str = "sample_folders";
+
+/// `LoadSave::getAdditionalFolders`: the folders under `name`, in the order
+/// they were added.
+pub fn additional_folders(path: &Path, name: &str) -> Vec<PathBuf> {
+    match read_config(path).get(name) {
+        Ok(Value::Array(folders)) => folders
+            .iter()
+            .filter_map(|folder| folder.to_str().ok().map(PathBuf::from))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// `LoadSave::saveAdditionalFolders`: rewrites the config's `name` with
+/// `folders`, keeping every other key.
+pub fn save_additional_folders(
+    path: &Path,
+    name: &str,
+    folders: &[PathBuf],
+) -> std::io::Result<()> {
+    let mut data = read_config(path);
+    if !data.is_null() && !data.is_object() {
+        data = Value::Null;
+    }
+    let folders = folders
+        .iter()
+        .map(|folder| Value::from(folder.to_string_lossy().into_owned()))
+        .collect();
+    data.set(name, Value::Array(folders));
+    save_json_to_config(path, &data)
+}
+
 /// `LoadSave::getFavoritesFile`: beside the config file, with the
 /// `favorites` extension.
 pub fn favourites_file(config: &Path) -> PathBuf {
@@ -375,6 +412,21 @@ mod tests {
 
     /// Favourites are the keys of an object in their own file beside the
     /// config, added and removed one at a time.
+    #[test]
+    fn additional_folders_round_trip() {
+        let dir = std::env::temp_dir().join(format!("sas-config-folders-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        save_author(&path, "Someone").unwrap();
+        assert!(additional_folders(&path, WAVETABLE_FOLDERS).is_empty());
+        let folders = [PathBuf::from("/b/Tables"), PathBuf::from("/a/More")];
+        save_additional_folders(&path, WAVETABLE_FOLDERS, &folders).unwrap();
+        assert_eq!(additional_folders(&path, WAVETABLE_FOLDERS), folders);
+        assert!(additional_folders(&path, SAMPLE_FOLDERS).is_empty());
+        assert_eq!(author(&path), "Someone");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn favourites_round_trip() {
         let folder = std::env::temp_dir().join(format!("sas-favourites-{}", std::process::id()));

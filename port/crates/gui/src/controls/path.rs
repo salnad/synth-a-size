@@ -313,7 +313,7 @@ impl Path {
         let (mut position, mut line_length, mut line_end) = (0.0f32, 0.0f32, 0.0f32);
         let (mut start, mut end) = ((0.0f32, 0.0f32), (0.0f32, 0.0f32));
         loop {
-            let solid = dash % 2 == 0;
+            let solid = dash.is_multiple_of(2);
             let length = dash_lengths[dash % dash_lengths.len()];
             dash += 1;
             if length <= 0.0 {
