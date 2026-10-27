@@ -332,6 +332,25 @@ fn matrix_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> {
     let top = Scope::top(skin, layout.size_ratio);
     let scope = top.within(matrix::SKIN);
     let tab = MatrixLayout::new(&scope, layout.main);
+    let remap = tab.remap_layout(&scope);
+    let part = path.strip_prefix("MODULATION MATRIX/")?;
+    let remap_part = match part {
+        "remap_name" => Some(remap.name),
+        "paint" => Some(remap.paint),
+        "paint_pattern" => Some(remap.paint_pattern),
+        "grid_size_x" => Some(remap.grid_size_x),
+        "grid_size_y" => Some(remap.grid_size_y),
+        "smooth" => Some(remap.smooth),
+        "preset_selector" => Some(remap.preset_selector.bounds),
+        "preset_selector/Text" => Some(remap.preset_selector.text),
+        "preset_selector/Prev" => Some(remap.preset_selector.previous),
+        "preset_selector/Next" => Some(remap.preset_selector.next),
+        "modulation_source_1" => Some(remap.editor),
+        _ => None,
+    };
+    if remap_part.is_some() {
+        return remap_part;
+    }
     let rest = path.strip_prefix("MODULATION MATRIX/Container")?;
     if rest.is_empty() {
         let viewport = tab.viewport;

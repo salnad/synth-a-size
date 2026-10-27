@@ -17,6 +17,7 @@ use sas_preset::user_folders::{self, Kind, LFO_EXTENSION, WAVETABLE_EXTENSION};
 use super::selection_list::{Selection, SelectionEvent, SelectionList};
 use super::Panel;
 use crate::controls::file_dialog::{self, FileRequest};
+use crate::controls::line_editor::LineTarget;
 use crate::controls::paths;
 use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
 use crate::controls::text_editor;
@@ -96,6 +97,8 @@ pub enum BrowserOwner {
     Oscillator(usize),
     /// An LFO's shape (`LfoSection::textMouseDown`).
     Lfo(usize),
+    /// A modulation slot's remap curve (`ModulationMatrix::textMouseDown`).
+    Remap(usize),
     /// The sample (`SampleSection::textMouseDown`).
     Sample,
     /// An oscillator's wavetable, from its wavetable editor's name
@@ -108,7 +111,7 @@ impl BrowserOwner {
     pub fn kind(self) -> Kind {
         match self {
             BrowserOwner::Oscillator(_) | BrowserOwner::WavetableEditor(_) => Kind::Wavetables,
-            BrowserOwner::Lfo(_) => Kind::Lfos,
+            BrowserOwner::Lfo(_) | BrowserOwner::Remap(_) => Kind::Lfos,
             BrowserOwner::Sample => Kind::Samples,
         }
     }
@@ -116,14 +119,14 @@ impl BrowserOwner {
     /// Whether folders can be added to its browser: upstream passes an
     /// additional folders name for wavetables and samples, none for LFOs.
     pub fn takes_added_folders(self) -> bool {
-        !matches!(self, BrowserOwner::Lfo(_))
+        !matches!(self, BrowserOwner::Lfo(_) | BrowserOwner::Remap(_))
     }
 
     /// The file extensions it lists (`vital::kWavetableExtensionsList`).
     pub fn extensions(self) -> &'static [&'static str] {
         match self {
             BrowserOwner::Oscillator(_) | BrowserOwner::WavetableEditor(_) => WAVETABLE_EXTENSIONS,
-            BrowserOwner::Lfo(_) => LFO_EXTENSIONS,
+            BrowserOwner::Lfo(_) | BrowserOwner::Remap(_) => LFO_EXTENSIONS,
             BrowserOwner::Sample => SAMPLE_EXTENSIONS,
         }
     }
@@ -582,6 +585,12 @@ fn load_wavetable_contents(model: &dyn EditorModel, oscillator: usize, path: &Pa
 /// Returns false, changing nothing, when the file can't be read as a shape
 /// (upstream catches the JSON exception and returns).
 pub fn load_lfo_file(model: &dyn EditorModel, lfo: usize, path: &Path) -> bool {
+    load_line_file(model, LineTarget::Lfo(lfo), path)
+}
+
+/// `loadFile` for any line editor (`LfoSection`'s, `ModulationMatrix`'s):
+/// the file's shape, named after the file, replaces `target`'s.
+pub fn load_line_file(model: &dyn EditorModel, target: LineTarget, path: &Path) -> bool {
     let Some(data) = std::fs::read_to_string(path)
         .ok()
         .and_then(|text| sas_common::json::parse(&text).ok())
@@ -599,7 +608,7 @@ pub fn load_lfo_file(model: &dyn EditorModel, lfo: usize, path: &Path) -> bool {
     line.set_name(&name);
     line.set_last_browsed_file(&path.to_string_lossy());
     line.render();
-    model.set_lfo_shape(lfo, line)
+    target.write(model, line)
 }
 
 #[cfg(test)]

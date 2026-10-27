@@ -171,6 +171,32 @@ fn infos() -> &'static HashMap<String, ParamInfo> {
                 infos.insert(info.name.clone(), info);
             }
         }
+        for info in [
+            local_info(
+                MATRIX_GRID_SIZE_X,
+                1.0,
+                MAX_GRID_SIZE_X,
+                DEFAULT_GRID_SIZE_X,
+                "X Grid",
+            ),
+            local_info(
+                MATRIX_GRID_SIZE_Y,
+                1.0,
+                MAX_GRID_SIZE_Y,
+                DEFAULT_GRID_SIZE_Y,
+                "Y Grid",
+            ),
+            local_info(
+                MATRIX_PAINT_PATTERN,
+                0.0,
+                NUM_PAINT_PATTERNS - 1.0,
+                0.0,
+                "Paint Pattern",
+            ),
+            local_info(MATRIX_PAINT, 0.0, 1.0, 0.0, "Paint"),
+        ] {
+            infos.insert(info.name.clone(), info);
+        }
         for controls in WAVE_SOURCE_CONTROLS.iter().flatten() {
             for info in [
                 local_info(
@@ -230,6 +256,15 @@ pub const GRID_SIZE_X: [&str; NUM_LFOS] = lfo_names!("grid_size_x");
 pub const GRID_SIZE_Y: [&str; NUM_LFOS] = lfo_names!("grid_size_y");
 pub const PAINT_PATTERN: [&str; NUM_LFOS] = lfo_names!("paint_pattern");
 pub const PAINT: [&str; NUM_LFOS] = lfo_names!("paint");
+
+/// The Matrix tab's remap editor's grid width and height
+/// (`ModulationMatrix`'s `kDefaultGridSizeX` / `kDefaultGridSizeY`, the
+/// same as an LFO's), paint pattern (never set upstream, so the first) and
+/// paint button.
+pub const MATRIX_GRID_SIZE_X: &str = "modulation_matrix_grid_size_x";
+pub const MATRIX_GRID_SIZE_Y: &str = "modulation_matrix_grid_size_y";
+pub const MATRIX_PAINT_PATTERN: &str = "modulation_matrix_paint_pattern";
+pub const MATRIX_PAINT: &str = "modulation_matrix_paint";
 
 /// The local control called `name`, if there is one.
 pub fn info(name: &str) -> Option<&'static ParamInfo> {

@@ -13,21 +13,32 @@ use egui::Ui;
 use sas_preset::constants::MAX_MODULATION_CONNECTIONS;
 use sas_preset::registry::ValueScale;
 
+use std::path::{Path as FsPath, PathBuf};
+
+use sas_preset::user_folders::{self, Kind};
+
+use super::lfo::{grid_slider, show_line_controls, LineControls, LineControlsLayout};
+use super::popup_browser;
 use crate::controls::button::SynthButton;
+use crate::controls::line_editor::{LineEditor, LineTarget};
 use crate::controls::modulation_button::menu_source_display_name;
 use crate::controls::paths::Icon;
 use crate::controls::scroll_bar::ScrollBar;
+use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
 use crate::controls::slider::{Slider, SliderStyle};
 use crate::fonts::Face;
 use crate::host::Host;
+use crate::interface::EditorModel;
 use crate::interface::Route;
 use crate::layer::Layer;
-use crate::layout::Rect;
+use crate::layout::{PresetSelectorLayout, Rect};
+use crate::local;
 use crate::modulation::slot_control;
 use crate::paint::{PixelPainter, RectF};
 use crate::popup::{DualMenu, DualMenuGroup, Menu, MenuItem};
 use crate::primitives::{Quad, QuadKind};
 use crate::scope::Scope;
+use crate::section::{label_font, paint_widget_background};
 use crate::section::{paint_body, paint_border, paint_tab_shadow, title_width};
 use crate::sections::{MenuOwner, Overlay, Panel};
 use crate::skin::{ColorId, Section, ValueId};
@@ -61,6 +72,23 @@ pub struct MatrixLayout {
     /// The remap section below it.
     pub remap: Rect,
     pub scroll_bar: Rect,
+}
+
+/// The remap section: its header (`remap_name_`, `paint_`,
+/// `paint_pattern_`, the grid sizes, `smooth_` and the LFO file strip) and
+/// the selected row's curve editor (`map_editors_`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RemapLayout {
+    pub name: Rect,
+    /// `remap_name_->setTextSize`.
+    pub name_size: f32,
+    pub paint: Rect,
+    pub paint_pattern: Rect,
+    pub grid_size_x: Rect,
+    pub grid_size_y: Rect,
+    pub smooth: Rect,
+    pub preset_selector: PresetSelectorLayout,
+    pub editor: Rect,
 }
 
 impl MatrixLayout {
@@ -106,6 +134,43 @@ impl MatrixLayout {
     /// padding around each, at least the viewport's.
     pub fn list_height(&self, shown: usize) -> i32 {
         (ROW_PADDING + shown as i32 * (self.row_height + ROW_PADDING)).max(self.viewport.height)
+    }
+
+    /// The remap section's parts (`resized`, `setRowPositions`).
+    pub fn remap_layout(&self, scope: &Scope) -> RemapLayout {
+        let (x, width) = (self.bounds.x, self.bounds.width);
+        let widget_margin = scope.widget_margin() as i32;
+        let title_width = self.title_width;
+        let preset_x = width / 2;
+        let top_bar_height = title_width - 2 * widget_margin;
+        let top_bar_y = self.remap.y + widget_margin;
+        let at = |left: i32, w: i32| Rect::new(x + left, top_bar_y, w, top_bar_height);
+        let smooth_x = preset_x - title_width - widget_margin;
+        let grid_y_x = smooth_x - title_width - widget_margin;
+        let grid_x_x = grid_y_x - title_width - widget_margin;
+        let paint_pattern_width = 3 * top_bar_height;
+        let paint_pattern_x = grid_x_x - paint_pattern_width - widget_margin;
+        let paint_x = paint_pattern_x - top_bar_height;
+        let editor_y = self.remap.y + title_width;
+        RemapLayout {
+            name: at(widget_margin, paint_x - 2 * widget_margin),
+            name_size: title_width as f32 * 0.45,
+            paint: at(paint_x, top_bar_height),
+            paint_pattern: at(paint_pattern_x, paint_pattern_width),
+            grid_size_x: at(grid_x_x, title_width),
+            grid_size_y: at(grid_y_x, title_width),
+            smooth: at(smooth_x, title_width),
+            preset_selector: PresetSelectorLayout::new(at(
+                preset_x,
+                width - preset_x - widget_margin,
+            )),
+            editor: Rect::new(
+                x + widget_margin,
+                editor_y,
+                width - 2 * widget_margin,
+                self.bounds.bottom() - editor_y - widget_margin,
+            ),
+        }
     }
 
     /// The row at `position` in the list (`setRowPositions`), scrolled up by
@@ -456,6 +521,13 @@ pub struct MatrixTab {
     generation: Option<u64>,
     /// Whether each row's morph curve was last drawn bipolar.
     curves_bipolar: std::cell::RefCell<Vec<bool>>,
+    grid_size_x: Slider,
+    grid_size_y: Slider,
+    /// `current_file_`: the LFO file last loaded into a curve.
+    current_file: Option<PathBuf>,
+    /// The popup browser asked for since the last call: the slot, the
+    /// browser's bounds and the section's (`textMouseDown`).
+    browse_request: Option<(usize, Rect, Rect)>,
 }
 
 impl Default for MatrixTab {
@@ -472,6 +544,10 @@ impl Default for MatrixTab {
             toggles: vec![[false; 3]; MAX_MODULATION_CONNECTIONS],
             generation: None,
             curves_bipolar: std::cell::RefCell::new(vec![false; MAX_MODULATION_CONNECTIONS]),
+            grid_size_x: grid_slider(local::MATRIX_GRID_SIZE_X, "X Grid"),
+            grid_size_y: grid_slider(local::MATRIX_GRID_SIZE_Y, "Y Grid"),
+            current_file: None,
+            browse_request: None,
         }
     }
 }
@@ -489,6 +565,155 @@ impl MatrixTab {
 
     pub fn sort_column(&self) -> (SortColumn, bool) {
         (self.sort_column, self.sort_ascending)
+    }
+
+    /// `getCurrentFile`.
+    pub fn current_file(&self) -> Option<PathBuf> {
+        self.current_file.clone()
+    }
+
+    /// The popup browser asked for since the last call: the slot whose
+    /// curve it loads, the browser's bounds and the section's.
+    pub fn take_browse_request(&mut self) -> Option<(usize, Rect, Rect)> {
+        self.browse_request.take()
+    }
+
+    /// `loadFile`: an existing `file` becomes the current file, and its
+    /// shape, named after it, replaces slot `slot`'s curve.
+    pub fn load_file(&mut self, model: &dyn EditorModel, slot: usize, file: &FsPath) {
+        if !file.exists() {
+            return;
+        }
+        self.current_file = Some(file.to_path_buf());
+        popup_browser::load_line_file(model, LineTarget::Remap(slot), file);
+    }
+
+    /// The remap section (`paintBackground`'s part for it, then its
+    /// controls): the selected row's curve, the header that sets it up, and
+    /// the LFO file strip.
+    #[allow(clippy::too_many_arguments)]
+    fn show_remap(
+        &mut self,
+        ui: &mut Ui,
+        host: &Host,
+        pixels: &PixelPainter,
+        scope: Scope,
+        overlay: &mut Overlay,
+        layout: &MatrixLayout,
+        routes: &[Route],
+    ) {
+        let remap = layout.remap_layout(&scope);
+        let rounding = scope.value(ValueId::WidgetRoundedCorner) as i32 as f32;
+        let popup_background = scope.color(ColorId::PopupSelectorBackground);
+        paint_widget_background(pixels, &scope, remap.editor);
+        pixels.fill_rounded_rect(
+            remap.preset_selector.bounds,
+            scope.value(ValueId::WidgetRoundedCorner),
+            popup_background,
+        );
+        pixels.fill_rounded_rect(
+            Rect::new(
+                remap.paint.x,
+                remap.paint.y,
+                remap.paint_pattern.right() - remap.paint.x,
+                remap.paint.height,
+            ),
+            rounding,
+            popup_background,
+        );
+        let grid = Rect::new(
+            remap.grid_size_x.x,
+            remap.grid_size_x.y,
+            (remap.grid_size_y.right() - remap.grid_size_x.x).max(1),
+            remap.grid_size_x.height,
+        );
+        pixels.fill_rounded_rect(grid, rounding, popup_background);
+        let (face, size, colour) = label_font(&scope);
+        pixels.text_centred("-", grid, face, size, colour);
+
+        let slot = self.selected;
+        let editor = LineEditor {
+            target: LineTarget::Remap(slot),
+        };
+        let mut panel = Panel::new(ui, host, pixels, scope, overlay, layout.remap);
+        panel.text_centred(
+            &format!("MOD REMAP {}", slot + 1),
+            remap.name,
+            Face::Title,
+            remap.name_size,
+            scope.color(ColorId::HeadingText),
+        );
+        let controls = LineControls {
+            editor: &editor,
+            grid_size_x: &self.grid_size_x,
+            grid_size_y: &self.grid_size_y,
+            paint: local::MATRIX_PAINT,
+            paint_pattern: local::MATRIX_PAINT_PATTERN,
+            phase: None,
+            active: routes.iter().any(|route| route.slot == slot),
+        };
+        let controls_layout = LineControlsLayout {
+            editor: remap.editor,
+            grid_size_x: remap.grid_size_x,
+            grid_size_y: remap.grid_size_y,
+            paint: remap.paint,
+            paint_pattern: remap.paint_pattern,
+            smooth: remap.smooth,
+            preset_selector: remap.preset_selector,
+        };
+        show_line_controls(&mut panel, &controls, &controls_layout);
+
+        // prevClicked and nextClicked: getShiftedFile among the user's LFOs.
+        let preset = remap.preset_selector;
+        let ui_colours = ShapeColours::ui(&panel.scope);
+        let mut shift = 0;
+        for (shape, rect, step) in [
+            (Shape::Prev, preset.previous, -1),
+            (Shape::Next, preset.next, 1),
+        ] {
+            let button = ShapeButton {
+                shape,
+                colours: ui_colours,
+            };
+            if panel
+                .shape_button(("matrix remap file", step), button, rect)
+                .clicked
+            {
+                shift = step;
+            }
+        }
+        let model = host.model();
+        if shift != 0 {
+            let directories = user_folders::root(model.data_directory().as_deref())
+                .map(|root| user_folders::directories(&root, Kind::Lfos))
+                .unwrap_or_default();
+            let files = user_folders::files_of_type(&directories, popup_browser::LFO_EXTENSIONS);
+            let current = self.current_file();
+            if let Some(file) = user_folders::shifted_file(files, current.as_deref(), shift) {
+                self.load_file(model, slot, &file);
+            }
+        }
+        // textMouseDown: the browser to the right of the strip, at its top.
+        let text = panel.pixels.rect(preset.text.into());
+        let response = panel.ui.interact(
+            text,
+            panel.ui.scope_id().with("matrix remap name"),
+            egui::Sense::click(),
+        );
+        if response.hovered() && panel.ui.input(|input| input.pointer.primary_pressed()) {
+            /// `textMouseDown`'s `kBrowserWidth` and `kBrowserHeight`.
+            const BROWSER_WIDTH: f32 = 500.0;
+            const BROWSER_HEIGHT: f32 = 250.0;
+            let ratio = scope.size_ratio();
+            let browser = Rect::new(
+                preset.bounds.right(),
+                preset.bounds.y,
+                (BROWSER_WIDTH * ratio) as i32,
+                (BROWSER_HEIGHT * ratio) as i32,
+            );
+            self.browse_request = Some((slot, browser, layout.bounds));
+        }
+        panel.finish();
     }
 
     /// Whether row `slot`'s morph curve was last drawn bipolar.
@@ -751,6 +976,7 @@ impl MatrixTab {
             .paint(pixels, &scope, layout.scroll_bar, total, visible);
         paint_border(pixels, &scope, layout.matrix);
         paint_border(pixels, &scope, layout.remap);
+        self.show_remap(ui, host, pixels, scope, overlay, &layout, &routes);
     }
 
     /// `ModulationMatrixRow`: its background (`paintBackground`), the

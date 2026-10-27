@@ -228,6 +228,9 @@ pub struct LineSettings {
     /// The LFO's phase control, which "Set Start Point" sets. None for a
     /// remap curve, whose menu has no such item.
     pub phase: Option<&'static str>,
+    /// `setActive`: off draws the line, its fill and its points in the
+    /// disabled colours (`LineMapEditor::render`, `renderPoints`).
+    pub active: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -1278,13 +1281,27 @@ impl LineEditor {
         let size_ratio = scope.size_ratio();
         let looping = self.looping();
         let lighten = scope.color(ColorId::LightenScreen);
-        let line_left = scope.color(ColorId::WidgetPrimary1);
-        let line_right = scope.color(ColorId::WidgetPrimary2);
-        let center = scope.color(ColorId::WidgetCenterLine);
+        let (line_left, line_right, center) = if settings.active {
+            (
+                scope.color(ColorId::WidgetPrimary1),
+                scope.color(ColorId::WidgetPrimary2),
+                scope.color(ColorId::WidgetCenterLine),
+            )
+        } else {
+            let disabled = scope.color(ColorId::WidgetPrimaryDisabled);
+            (disabled, disabled, disabled)
+        };
         let background = scope.color(ColorId::WidgetBackground);
         let fill_fade = scope.value(ValueId::WidgetFillFade);
-        let fill_left = scope.color(ColorId::WidgetSecondary1);
-        let fill_right = scope.color(ColorId::WidgetSecondary2);
+        let (fill_left, fill_right) = if settings.active {
+            (
+                scope.color(ColorId::WidgetSecondary1),
+                scope.color(ColorId::WidgetSecondary2),
+            )
+        } else {
+            let disabled = scope.color(ColorId::WidgetSecondaryDisabled);
+            (disabled, disabled)
+        };
         let accent1 = scope.color(ColorId::WidgetAccent1);
         let accent2 = scope.color(ColorId::WidgetAccent2);
         let line_width = self.target.line_width(&scope);

@@ -18,7 +18,8 @@ use super::{popup_browser, MenuOwner, Panel};
 use crate::colour::Colour;
 use crate::controls::icon::fill_path;
 use crate::controls::line_editor::{
-    paint_pattern as line_paint_pattern, LineEditor, LineSettings, LineTarget, PAINT_PATTERN_NAMES,
+    paint_pattern as line_paint_pattern, LineEditor, LineEditorEvent, LineSettings, LineTarget,
+    PAINT_PATTERN_NAMES,
 };
 use crate::controls::path::{Path, Transform};
 use crate::controls::paths::Icon;
@@ -279,7 +280,7 @@ const BROWSER_WIDTH: f32 = 500.0;
 const BROWSER_HEIGHT: f32 = 250.0;
 
 /// `LfoSection`'s grid size sliders.
-fn grid_slider(name: &'static str, prefix: &'static str) -> Slider {
+pub(crate) fn grid_slider(name: &'static str, prefix: &'static str) -> Slider {
     let mut slider = Slider::new(name, SliderStyle::Text)
         .sensitivity(0.2)
         .popup_prefix(prefix);
@@ -535,97 +536,148 @@ impl LfoSection {
     /// The editor and the controls that set it up: the grid sizes, paint
     /// and its pattern, smooth, and the shape's name in the strip.
     fn show_editor(&self, panel: &mut Panel, layout: &LfoLayout) {
-        let host = panel.host;
-        let settings = LineSettings {
-            grid_size_x: host.value(local::GRID_SIZE_X[self.index]) as usize,
-            grid_size_y: host.value(local::GRID_SIZE_Y[self.index]) as usize,
-            paint: host.value(local::PAINT[self.index]) != 0.0,
-            paint_pattern: host.value(local::PAINT_PATTERN[self.index]) as usize,
+        let controls = LineControls {
+            editor: &self.editor,
+            grid_size_x: &self.grid_size_x,
+            grid_size_y: &self.grid_size_y,
+            paint: local::PAINT[self.index],
+            paint_pattern: local::PAINT_PATTERN[self.index],
             phase: Some(self.names.phase),
+            active: true,
         };
-        let event = self.editor.show(panel, layout.editor, settings, None);
-        panel.slider(&self.grid_size_x, layout.grid_size_x);
-        panel.slider(&self.grid_size_y, layout.grid_size_y);
-
-        let colours = ShapeColours::icon(&panel.scope);
-        let button = ShapeButton {
-            shape: Shape::None,
-            colours,
+        let layout = LineControlsLayout {
+            editor: layout.editor,
+            grid_size_x: layout.grid_size_x,
+            grid_size_y: layout.grid_size_y,
+            paint: layout.paint,
+            paint_pattern: layout.paint_pattern,
+            smooth: layout.smooth,
+            preset_selector: layout.preset_selector,
         };
-        let toggled = |on: bool| {
-            if on {
-                ShapeColours::icon_on(&panel.scope)
-            } else {
-                colours
-            }
-        };
-        let paint = ShapeButton {
-            shape: Shape::from(Icon::PaintBrush),
-            colours: toggled(event.painting),
-        };
-        let smooth = ShapeButton {
-            shape: Shape::from(Icon::HalfSinCurve),
-            colours: toggled(event.smooth),
-        };
-        if panel
-            .shape_button(("lfo paint", self.index), paint, layout.paint)
-            .clicked
-        {
-            host.set_once(
-                local::PAINT[self.index],
-                if event.painting { 0.0 } else { 1.0 },
-            );
-        }
-        if panel
-            .shape_button(("lfo smooth", self.index), smooth, layout.smooth)
-            .clicked
-        {
-            self.editor.set_smooth(panel, !event.smooth);
-        }
-
-        // PaintPatternSelector: the pattern's shape; a click lists them.
-        if panel
-            .shape_button(
-                ("lfo paint pattern", self.index),
-                button,
-                layout.paint_pattern,
-            )
-            .pressed
-        {
-            let items = PAINT_PATTERN_NAMES
-                .iter()
-                .enumerate()
-                .map(|(i, name)| MenuItem::new(i as i32, *name))
-                .collect();
-            panel.overlay.menu = Some(Menu::new(
-                items,
-                egui::pos2(
-                    layout.paint_pattern.x as f32,
-                    layout.paint_pattern.bottom() as f32,
-                ),
-                MenuOwner::Control {
-                    name: local::PAINT_PATTERN[self.index],
-                    then: None,
-                },
-            ));
-        }
-        paint_pattern_selector(
-            panel,
-            layout.paint_pattern,
-            settings.paint_pattern,
-            event.painting,
-        );
-
-        let preset = layout.preset_selector;
-        let name = self.editor.shape(panel).name().to_string();
-        panel.text_centred(
-            &name,
-            preset.text,
-            Face::Title,
-            preset.text_size,
-            panel.scope.color(ColorId::PresetText),
-        );
+        show_line_controls(panel, &controls, &layout);
     }
+}
+
+/// A line editor and the controls that set it up (`LfoSection`'s and
+/// `ModulationMatrix`'s): the grid sizes and paint pattern (local
+/// controls), paint, smooth, and the shape's name in the strip.
+pub(crate) struct LineControls<'a> {
+    pub editor: &'a LineEditor,
+    pub grid_size_x: &'a Slider,
+    pub grid_size_y: &'a Slider,
+    pub paint: &'static str,
+    pub paint_pattern: &'static str,
+    /// The LFO's phase control, for "Set Start Point".
+    pub phase: Option<&'static str>,
+    /// `setActive`: drawn in the disabled colours when off.
+    pub active: bool,
+}
+
+/// Where [`show_line_controls`] puts its parts.
+pub(crate) struct LineControlsLayout {
+    pub editor: Rect,
+    pub grid_size_x: Rect,
+    pub grid_size_y: Rect,
+    pub paint: Rect,
+    pub paint_pattern: Rect,
+    pub smooth: Rect,
+    pub preset_selector: PresetSelectorLayout,
+}
+
+/// Shows a line editor and its controls; the section shows the strip's
+/// arrows and handles its browser.
+pub(crate) fn show_line_controls(
+    panel: &mut Panel,
+    controls: &LineControls,
+    layout: &LineControlsLayout,
+) -> LineEditorEvent {
+    let host = panel.host;
+    let editor = controls.editor;
+    let target = editor.target;
+    let settings = LineSettings {
+        grid_size_x: host.value(controls.grid_size_x.name) as usize,
+        grid_size_y: host.value(controls.grid_size_y.name) as usize,
+        paint: host.value(controls.paint) != 0.0,
+        paint_pattern: host.value(controls.paint_pattern) as usize,
+        phase: controls.phase,
+        active: controls.active,
+    };
+    let event = editor.show(panel, layout.editor, settings, None);
+    panel.slider(controls.grid_size_x, layout.grid_size_x);
+    panel.slider(controls.grid_size_y, layout.grid_size_y);
+
+    let colours = ShapeColours::icon(&panel.scope);
+    let button = ShapeButton {
+        shape: Shape::None,
+        colours,
+    };
+    let toggled = |on: bool| {
+        if on {
+            ShapeColours::icon_on(&panel.scope)
+        } else {
+            colours
+        }
+    };
+    let paint = ShapeButton {
+        shape: Shape::from(Icon::PaintBrush),
+        colours: toggled(event.painting),
+    };
+    let smooth = ShapeButton {
+        shape: Shape::from(Icon::HalfSinCurve),
+        colours: toggled(event.smooth),
+    };
+    if panel
+        .shape_button(("line paint", target), paint, layout.paint)
+        .clicked
+    {
+        host.set_once(controls.paint, if event.painting { 0.0 } else { 1.0 });
+    }
+    if panel
+        .shape_button(("line smooth", target), smooth, layout.smooth)
+        .clicked
+    {
+        editor.set_smooth(panel, !event.smooth);
+    }
+
+    // PaintPatternSelector: the pattern's shape; a click lists them.
+    if panel
+        .shape_button(("line paint pattern", target), button, layout.paint_pattern)
+        .pressed
+    {
+        let items = PAINT_PATTERN_NAMES
+            .iter()
+            .enumerate()
+            .map(|(i, name)| MenuItem::new(i as i32, *name))
+            .collect();
+        panel.overlay.menu = Some(Menu::new(
+            items,
+            egui::pos2(
+                layout.paint_pattern.x as f32,
+                layout.paint_pattern.bottom() as f32,
+            ),
+            MenuOwner::Control {
+                name: controls.paint_pattern,
+                then: None,
+            },
+        ));
+    }
+    paint_pattern_selector(
+        panel,
+        layout.paint_pattern,
+        settings.paint_pattern,
+        event.painting,
+    );
+
+    let preset = layout.preset_selector;
+    let name = editor.shape(panel).name().to_string();
+    panel.text_centred(
+        &name,
+        preset.text,
+        Face::Title,
+        preset.text_size,
+        panel.scope.color(ColorId::PresetText),
+    );
+    event
 }
 
 /// `PaintPatternSelector::paint`: the pattern filled and outlined, in the
