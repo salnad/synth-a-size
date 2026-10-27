@@ -42,6 +42,7 @@ use sas_engine::sas_oscillators::sas_wavetable::{
 };
 use sas_preset::user_folders::{self, Kind, WAVETABLE_EXTENSION};
 
+use super::phase_window_overlays::{PhaseLayout, PhaseOverlay, WindowLayout, WindowOverlay};
 use super::wave_source_overlay::{
     paint_wave_source_overlay, show_wave_source_overlay, FrameEdit, OverlayLayout,
     WaveSourceOverlay, WaveSourcePart,
@@ -349,6 +350,10 @@ pub enum OverlayKind {
     /// A `WaveSourceOverlay`, for a Wave Source (0) or a Shepard Tone
     /// source (1): the index of the section's overlay state.
     WaveSource(usize),
+    /// A Phase Shift's `PhaseModifierOverlay`.
+    Phase,
+    /// A Wave Window's `WaveWindowOverlay`.
+    Window,
 }
 
 impl OverlayKind {
@@ -357,6 +362,8 @@ impl OverlayKind {
         match component {
             WavetableComponent::WaveSource(_) => Some(OverlayKind::WaveSource(0)),
             WavetableComponent::ShepardToneSource(_) => Some(OverlayKind::WaveSource(1)),
+            WavetableComponent::PhaseModifier(_) => Some(OverlayKind::Phase),
+            WavetableComponent::WaveWindow(_) => Some(OverlayKind::Window),
             _ => None,
         }
     }
@@ -370,6 +377,13 @@ impl OverlayKind {
                 time_domain: true,
                 amplitudes: true,
                 phases: true,
+            },
+            // Its phase editor draws over the waveform, but
+            // `setTimeDomainBounds` returns false.
+            OverlayKind::Phase => Obscured::default(),
+            OverlayKind::Window => Obscured {
+                time_domain: true,
+                ..Obscured::default()
             },
         }
     }
@@ -525,6 +539,9 @@ pub struct WavetableEditSection {
     /// A keyframe to select once the creator is read (the reference
     /// tool's `--wavetable-select`).
     requested_selection: Option<KeyframeRef>,
+    /// The Phase Shift and Wave Window overlays.
+    phase: PhaseOverlay,
+    window: WindowOverlay,
 }
 
 impl WavetableEditSection {
@@ -550,6 +567,8 @@ impl WavetableEditSection {
             browse_request: None,
             save_request: false,
             requested_selection: None,
+            phase: PhaseOverlay::new(local::MODIFIER_CONTROLS[oscillator.min(2)]),
+            window: WindowOverlay::new(local::MODIFIER_CONTROLS[oscillator.min(2)]),
         }
     }
 
@@ -618,9 +637,10 @@ impl WavetableEditSection {
         {
             return false;
         }
-        if !loaded
-            && (self.organizer.is_some() || self.wave_source.iter().any(WaveSourceOverlay::pressed))
-        {
+        let overlay_pressed = self.wave_source.iter().any(WaveSourceOverlay::pressed)
+            || self.phase.pressed()
+            || self.window.pressed();
+        if !loaded && (self.organizer.is_some() || overlay_pressed) {
             // A keyframe drag, or drawing on an overlay, edits the copy
             // until it's committed.
             return false;
@@ -1557,6 +1577,38 @@ impl WavetableEditSection {
                 self.apply_interpolation(panel, index, keyframe);
                 self.edit_wave_source(panel, layout, index, keyframe);
             }
+            OverlayKind::Phase => {
+                let phase_layout = PhaseLayout::new(&panel.scope, layout);
+                let (selections, salt) = (self.frame_selections, self.oscillator);
+                let Some(WavetableComponent::PhaseModifier(modifier)) =
+                    component_mut(&mut self.creator, keyframe)
+                else {
+                    return;
+                };
+                self.phase.sync(panel.host, selections, keyframe, modifier);
+                let edit = self.phase.handle(
+                    panel,
+                    layout,
+                    &phase_layout,
+                    modifier,
+                    keyframe.keyframe,
+                    salt,
+                );
+                self.frame_edited(panel.host.model(), edit);
+            }
+            OverlayKind::Window => {
+                let (selections, salt) = (self.frame_selections, self.oscillator);
+                let Some(WavetableComponent::WaveWindow(modifier)) =
+                    component_mut(&mut self.creator, keyframe)
+                else {
+                    return;
+                };
+                self.window.sync(panel.host, selections, keyframe, modifier);
+                let edit = self
+                    .window
+                    .handle(panel, layout, modifier, keyframe.keyframe, salt);
+                self.frame_edited(panel.host.model(), edit);
+            }
         }
     }
 
@@ -1577,6 +1629,9 @@ impl WavetableEditSection {
                 &self.wave_source[index],
                 self.wave_frame(keyframe),
             ),
+            OverlayKind::Phase | OverlayKind::Window => {
+                self.paint_modifier_overlay(panel, layout, kind, keyframe, false)
+            }
         }
     }
 
@@ -1598,6 +1653,51 @@ impl WavetableEditSection {
                 &self.wave_source[index],
                 self.wave_frame(keyframe),
             ),
+            OverlayKind::Phase | OverlayKind::Window => {
+                self.paint_modifier_overlay(panel, layout, kind, keyframe, true)
+            }
+        }
+    }
+
+    /// The Phase Shift or Wave Window overlay's drawing; the second also
+    /// hands its controls their input.
+    fn paint_modifier_overlay(
+        &self,
+        panel: &mut Panel,
+        layout: &WavetableEditLayout,
+        kind: OverlayKind,
+        keyframe: KeyframeRef,
+        handle_controls: bool,
+    ) {
+        let component = self.creator().and_then(|creator| {
+            creator
+                .groups
+                .get(keyframe.group)?
+                .components
+                .get(keyframe.component)
+        });
+        match (kind, component) {
+            (OverlayKind::Phase, Some(WavetableComponent::PhaseModifier(modifier))) => {
+                let phase = modifier
+                    .keyframes
+                    .keyframes
+                    .get(keyframe.keyframe)
+                    .map(|data| data.data.phase);
+                let phase_layout = PhaseLayout::new(&panel.scope, layout);
+                self.phase
+                    .paint(panel, layout, &phase_layout, phase, handle_controls);
+            }
+            (OverlayKind::Window, Some(WavetableComponent::WaveWindow(modifier))) => {
+                let window = modifier
+                    .keyframes
+                    .keyframes
+                    .get(keyframe.keyframe)
+                    .map(|data| (data.data.left_position, data.data.right_position));
+                let window_layout = WindowLayout::new(&panel.scope, layout);
+                self.window
+                    .paint(panel, layout, &window_layout, window, handle_controls);
+            }
+            _ => {}
         }
     }
 
@@ -1792,7 +1892,9 @@ impl WavetableEditSection {
                 phases.set_y(i, phase);
             }
         }
-        waveform.paint(panel.pixels, layout.waveform.into(), true);
+        let mut nudged: RectF = layout.waveform.into();
+        nudged.y += GL_TIE_NUDGE;
+        waveform.paint(panel.pixels, nudged, true);
         amplitudes.paint(panel.pixels, layout.amplitudes.into());
         phases.paint(panel.pixels, layout.phases.into());
     }
@@ -2122,6 +2224,25 @@ const WAVE_FRAME_NAMES: [&str; 3] = ["osc_1_wave_frame", "osc_2_wave_frame", "os
 
 fn wave_frame_name(oscillator: usize) -> &'static str {
     WAVE_FRAME_NAMES[oscillator.min(WAVE_FRAME_NAMES.len() - 1)]
+}
+
+/// How far a waveform is nudged down so that an edge exactly between two
+/// rows fills the lower one, as GL's rasterizer does (the fill meets its
+/// centre on a row boundary at odd display heights), in pixels.
+pub(super) const GL_TIE_NUDGE: f32 = 0.01;
+
+/// The component `keyframe` belongs to, in `creator`, to edit.
+fn component_mut(
+    creator: &mut Option<(u64, WavetableCreator)>,
+    keyframe: KeyframeRef,
+) -> Option<&mut WavetableComponent> {
+    creator
+        .as_mut()?
+        .1
+        .groups
+        .get_mut(keyframe.group)?
+        .components
+        .get_mut(keyframe.component)
 }
 
 /// `pos` (points) in interface pixels.

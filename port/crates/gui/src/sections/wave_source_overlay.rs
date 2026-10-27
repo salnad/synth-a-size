@@ -31,7 +31,7 @@ use sas_engine::sas_oscillators::sas_wavetable::wave_frame::{
 };
 use sas_engine::sas_oscillators::sas_wavetable::Complex;
 
-use super::wavetable_edit::{to_pixels, EditMenu, KeyframeRef, WavetableEditLayout};
+use super::wavetable_edit::{to_pixels, EditMenu, KeyframeRef, WavetableEditLayout, GL_TIE_NUDGE};
 use super::{MenuOwner, Panel};
 use crate::colour::Colour;
 use crate::controls::bars::BarRenderer;
@@ -61,10 +61,6 @@ const INTERPOLATION_TEXT_HEIGHT: f32 = 0.4;
 const DEFAULT_PHASE: f32 = -0.5;
 /// `WaveSourceEditor::getSnapRadius`'s `kGridProximity`.
 const GRID_PROXIMITY: f32 = 0.2;
-
-/// How far the waveform is nudged down so that ties between rows go the way
-/// GL's do, in pixels.
-const GL_TIE_NUDGE: f32 = 0.01;
 
 /// The controls background's titles: the interpolation selector has none.
 const TITLES: [&str; 3] = ["", "GRID X", "GRID Y"];
@@ -98,11 +94,7 @@ impl OverlayLayout {
     /// is the section's.
     pub fn wave_source(scope: &Scope, edit: &WavetableEditLayout) -> OverlayLayout {
         let bounds = edit.bounds;
-        // The overlay's padding is an int (`setPadding(getPadding())`).
-        let padding = scope.padding() as i32;
-        let edit_height = (edit.amplitudes.height as f32 * 0.33) as i32;
-        let edit_y = ((edit.waveform.bottom() - bounds.y) as f32 + scope.padding()) as i32;
-        let strip = Rect::new(bounds.x, bounds.y + edit_y, bounds.width, edit_height);
+        let (strip, padding) = edit_strip(scope, edit);
 
         let height = strip.height;
         let interpolation_width = (height as f32 * INTERPOLATION_WIDTH_HEIGHT_RATIO) as i32;
@@ -165,6 +157,30 @@ impl OverlayLayout {
             grid_y_buttons: buttons(grid_y),
         }
     }
+}
+
+/// `WavetableEditSection::setOverlayPosition`'s `edit_bounds_`, the strip
+/// below the waveform an overlay's controls sit in, and the overlay's
+/// padding (an int: `setPadding(getPadding())`).
+pub fn edit_strip(scope: &Scope, edit: &WavetableEditLayout) -> (Rect, i32) {
+    let bounds = edit.bounds;
+    let padding = scope.padding() as i32;
+    let edit_height = (edit.amplitudes.height as f32 * 0.33) as i32;
+    let edit_y = ((edit.waveform.bottom() - bounds.y) as f32 + scope.padding()) as i32;
+    let strip = Rect::new(bounds.x, bounds.y + edit_y, bounds.width, edit_height);
+    (strip, padding)
+}
+
+/// The controls background's title rects for divider `lines` (x in the
+/// background) in `controls`, `title_height` high (`setPositions`).
+pub fn title_bounds(controls: Rect, lines: &[i32], title_height: i32) -> Vec<Rect> {
+    (0..=lines.len())
+        .map(|i| {
+            let start = if i > 0 { lines[i - 1] } else { 0 };
+            let end = lines.get(i).copied().unwrap_or(controls.width);
+            Rect::new(controls.x + start, controls.y, end - start, title_height)
+        })
+        .collect()
 }
 
 /// `ControlsBackground::setPositions` and its quads: the body in a rounded
@@ -701,18 +717,18 @@ impl WaveSourceOverlay {
 }
 
 /// The pointer over one of the editors this frame, in its own pixels.
-struct EditorInput {
+pub(super) struct EditorInput {
     /// The pointer, rounded as `MouseEvent::getPosition` is.
-    pos: Option<(i32, i32)>,
-    hovered: bool,
+    pub pos: Option<(i32, i32)>,
+    pub hovered: bool,
     /// A button went down over it this frame.
-    pressed: bool,
-    popup: bool,
+    pub pressed: bool,
+    pub popup: bool,
     /// A button is still down.
-    held: bool,
+    pub held: bool,
 }
 
-fn editor_input(
+pub(super) fn editor_input(
     panel: &mut Panel,
     bounds: Rect,
     salt: impl std::hash::Hash + std::fmt::Debug,

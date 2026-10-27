@@ -16,6 +16,7 @@ use sas_gui::sections::filter::{self, FilterLayout, Kind};
 use sas_gui::sections::lfo::{self, LfoLayout};
 use sas_gui::sections::modulation::{ModulationInterface, ModulationLayout};
 use sas_gui::sections::oscillator::{self, OscillatorLayout};
+use sas_gui::sections::phase_window_overlays::{PhaseLayout, WindowLayout};
 use sas_gui::sections::popup_browser::{self, PopupBrowserLayout};
 use sas_gui::sections::portamento::{self, PortamentoLayout};
 use sas_gui::sections::preset_browser::PresetBrowserLayout;
@@ -442,6 +443,8 @@ fn wavetable_editor_rect(
     );
     let edit = WavetableEditLayout::new(&top, bounds);
     let overlay = OverlayLayout::wave_source(&top, &edit);
+    let phase = PhaseLayout::new(&top, &edit);
+    let window = WindowLayout::new(&top, &edit);
     let mut state = PresetState::new(&InitContent { sample_seed: 0 });
     if let Some(preset) = preset {
         state
@@ -496,6 +499,16 @@ fn wavetable_editor_rect(
         "oscillator 1/WAVE SOURCE/wave_source_vertical_grid" => overlay.grid_y,
         // The horizontal grid's increment and decrement, then the
         // vertical's.
+        "oscillator 1/PHASE SHIFTER" | "oscillator 1/WAVE WINDOW" => overlay.overlay,
+        "oscillator 1/PHASE SHIFTER/background" => phase.controls,
+        "oscillator 1/PHASE SHIFTER/background/text" => *phase.titles.get(instance - 1)?,
+        "oscillator 1/PHASE SHIFTER/Harmonic Phase" => phase.style,
+        "oscillator 1/PHASE SHIFTER/Phase Mix" => phase.mix,
+        "oscillator 1/WAVE WINDOW/background" => window.controls,
+        "oscillator 1/WAVE WINDOW/background/text" => *window.titles.get(instance - 1)?,
+        "oscillator 1/WAVE WINDOW/Window Shape" => window.shape,
+        "oscillator 1/WAVE WINDOW/Left Position" => window.left,
+        "oscillator 1/WAVE WINDOW/Right Position" => window.right,
         "oscillator 1/WAVE SOURCE/Increment" => *[
             overlay.grid_x_buttons[0],
             overlay.grid_x_buttons[1],

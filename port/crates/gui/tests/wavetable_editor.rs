@@ -25,9 +25,10 @@ use sas_engine::sas_oscillators::sas_wavetable::creator::component::{
 use sas_engine::sas_oscillators::sas_wavetable::creator::group::WavetableGroup;
 use sas_engine::sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_gui::layout::{FullLayout, Rect};
-use sas_gui::local::WAVE_SOURCE_CONTROLS;
+use sas_gui::local::{MODIFIER_CONTROLS, WAVE_SOURCE_CONTROLS};
 use sas_gui::scope::Scope;
 use sas_gui::sections::oscillator::{self, OscillatorLayout};
+use sas_gui::sections::phase_window_overlays::{PhaseLayout, WindowLayout};
 use sas_gui::sections::popup_browser::{self, PopupBrowserLayout};
 use sas_gui::sections::selection_list::Selection;
 use sas_gui::sections::synthesis::SynthesisLayout;
@@ -1458,4 +1459,229 @@ fn a_requested_keyframe_is_selected_when_the_editor_shows() {
     let mut harness = opened(&other);
     harness.step();
     assert_eq!(other.selected(0), [FIRST]);
+}
+
+/// A wave source, a Phase Shift and a Wave Window, each with a keyframe at
+/// 0, as oscillator 1's table, with the editor open on the modifier in row
+/// `row` (its keyframe selected, so its overlay shows).
+fn modifier_selected(fixture: &Fixture, row: usize) -> Harness<'_> {
+    let mut creator = WavetableCreator::new();
+    creator.clear();
+    let mut group = WavetableGroup::new();
+    for kind in [
+        ComponentType::WaveSource,
+        ComponentType::PhaseModifier,
+        ComponentType::WaveWindow,
+    ] {
+        let mut component = WavetableComponent::new(kind);
+        component.insert_new_keyframe(0);
+        group.add_component(component);
+    }
+    creator.add_group(group);
+    fixture.synth.set_creator(0, creator);
+    let mut harness = opened(fixture);
+    let layout = fixture.editor_layout();
+    click(&mut harness, organizer_point(&layout, row as i32, 0));
+    let keyframe = KeyframeRef {
+        group: 0,
+        component: row,
+        keyframe: 0,
+    };
+    assert_eq!(fixture.overlay_frame(0), Some(keyframe));
+    harness
+}
+
+fn phase_keyframe(fixture: &Fixture) -> (f32, f32, i32) {
+    let creator = fixture.synth.wavetable_creator(0).unwrap();
+    let WavetableComponent::PhaseModifier(modifier) = &creator.groups[0].components[1] else {
+        panic!("row 1 is the Phase Shift");
+    };
+    let data = &modifier.keyframes.keyframes[0].data;
+    (data.phase, data.mix, modifier.settings.phase_style)
+}
+
+fn window_keyframe(fixture: &Fixture) -> (f32, f32) {
+    let creator = fixture.synth.wavetable_creator(0).unwrap();
+    let WavetableComponent::WaveWindow(modifier) = &creator.groups[0].components[2] else {
+        panic!("row 2 is the Wave Window");
+    };
+    let data = &modifier.keyframes.keyframes[0].data;
+    (data.left_position, data.right_position)
+}
+
+fn phase_layout(fixture: &Fixture) -> PhaseLayout {
+    let top = Scope::top(&fixture.skin, fixture.layout().size_ratio);
+    PhaseLayout::new(&top, &fixture.editor_layout())
+}
+
+/// The auditions so far all played oscillator 1's playhead frame (0), and
+/// there was at least one.
+fn auditioned_the_playhead(fixture: &Fixture) -> bool {
+    let auditions = fixture.synth.auditions.lock().unwrap();
+    !auditions.is_empty()
+        && auditions
+            .iter()
+            .all(|(oscillator, position, _)| (*oscillator, *position) == (0, 0))
+}
+
+/// `PhaseEditor` over the waveform: a drag turns the phase by a whole
+/// turn per display width (`updatePhase`), auditioning as it goes
+/// (`phaseChanged(phase, false)`), and the release commits once.
+#[test]
+fn dragging_over_the_waveform_shifts_the_phase() {
+    let fixture = Fixture::new();
+    let mut harness = modifier_selected(&fixture, 1);
+    let layout = fixture.editor_layout();
+    let width = layout.waveform.width;
+    let y = layout.waveform.height / 2;
+    drag(
+        &mut harness,
+        waveform_point(&layout, width / 4, y),
+        waveform_point(&layout, width / 4 + width / 8, y),
+    );
+
+    let (phase, mix, _) = phase_keyframe(&fixture);
+    let expected = 2.0 * std::f32::consts::PI * (width / 8) as f32 / width as f32;
+    assert!((phase - expected).abs() < 1e-5, "{phase} != {expected}");
+    assert_eq!(mix, 1.0);
+    assert!(auditioned_the_playhead(&fixture));
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+    assert!(fixture.synth.ends.lock().unwrap().is_empty());
+    assert!(log_is_empty(&fixture));
+}
+
+/// The controls' phase editor turns the same phase, by a turn per its own
+/// width.
+#[test]
+fn the_controls_phase_editor_shifts_the_phase() {
+    let fixture = Fixture::new();
+    let mut harness = modifier_selected(&fixture, 1);
+    let slider = phase_layout(&fixture).slider;
+    let from = centre(slider);
+    let to = Pos2::new(from.x - (slider.width / 4) as f32, from.y);
+    drag(&mut harness, from, to);
+
+    let (phase, _, _) = phase_keyframe(&fixture);
+    let expected = -2.0 * std::f32::consts::PI * (slider.width / 4) as f32 / slider.width as f32;
+    assert!((phase - expected).abs() < 1e-5, "{phase} != {expected}");
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+    assert!(log_is_empty(&fixture));
+}
+
+/// The mix slider (`sliderValueChanged`) auditions while it drags and
+/// commits once when the drag ends (`sliderDragEnded`); it's a local
+/// control, so the host hears nothing.
+#[test]
+fn the_mix_slider_commits_when_its_drag_ends() {
+    let fixture = Fixture::new();
+    let mut harness = modifier_selected(&fixture, 1);
+    let mix = phase_layout(&fixture).mix;
+    let from = centre(mix);
+    let to = Pos2::new(mix.x as f32 + 2.0, from.y);
+    drag(&mut harness, from, to);
+
+    let (phase, mix_value, _) = phase_keyframe(&fixture);
+    assert_eq!(phase, 0.0);
+    assert!(mix_value < 1.0);
+    assert_eq!(fixture.local(MODIFIER_CONTROLS[0].phase_mix), mix_value);
+    assert!(auditioned_the_playhead(&fixture));
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+    assert!(log_is_empty(&fixture));
+}
+
+/// The style selector sets the modifier's phase style and commits once.
+#[test]
+fn the_style_selector_sets_the_phase_style() {
+    let fixture = Fixture::new();
+    let mut harness = modifier_selected(&fixture, 1);
+    let style = phase_layout(&fixture).style;
+    click(&mut harness, centre(style));
+    choose_row(
+        &mut harness,
+        Pos2::new(style.x as f32, style.bottom() as f32),
+        2,
+    );
+    for _ in 0..3 {
+        harness.step();
+    }
+
+    assert_eq!(fixture.local(MODIFIER_CONTROLS[0].phase_style), 2.0);
+    assert_eq!(phase_keyframe(&fixture).2, 2);
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+    assert!(log_is_empty(&fixture));
+}
+
+/// `WaveWindowEditor`: a press near an edge grabs it (`getHover`) and the
+/// drag moves it, auditioning; the release commits once, and the position
+/// sliders follow (`windowChanged`).
+#[test]
+fn dragging_a_window_edge_moves_it() {
+    let fixture = Fixture::new();
+    let mut harness = modifier_selected(&fixture, 2);
+    let layout = fixture.editor_layout();
+    let width = layout.waveform.width;
+    let y = layout.waveform.height / 2;
+    let left = (0.25 * width as f32) as i32;
+    let to = width / 2;
+    drag(
+        &mut harness,
+        waveform_point(&layout, left + 1, y),
+        waveform_point(&layout, to, y),
+    );
+
+    let (left_position, right_position) = window_keyframe(&fixture);
+    assert_eq!(left_position, to as f32 / width as f32);
+    assert_eq!(right_position, 0.75);
+    let controls = MODIFIER_CONTROLS[0];
+    assert_eq!(fixture.local(controls.window_left), left_position);
+    assert_eq!(fixture.local(controls.window_right), 0.75);
+    assert!(auditioned_the_playhead(&fixture));
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+    assert!(log_is_empty(&fixture));
+}
+
+/// A press away from both edges grabs nothing: no audition, no commit.
+#[test]
+fn a_press_between_the_edges_grabs_nothing() {
+    let fixture = Fixture::new();
+    let mut harness = modifier_selected(&fixture, 2);
+    let layout = fixture.editor_layout();
+    let width = layout.waveform.width;
+    let y = layout.waveform.height / 2;
+    drag(
+        &mut harness,
+        waveform_point(&layout, width / 2, y),
+        waveform_point(&layout, width / 2 + 20, y),
+    );
+
+    assert_eq!(window_keyframe(&fixture), (0.25, 0.75));
+    assert!(fixture.synth.auditions.lock().unwrap().is_empty());
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 0);
+}
+
+/// The shape selector sets the modifier's window shape and commits once.
+#[test]
+fn the_shape_selector_sets_the_window_shape() {
+    let fixture = Fixture::new();
+    let mut harness = modifier_selected(&fixture, 2);
+    let top = Scope::top(&fixture.skin, fixture.layout().size_ratio);
+    let shape = WindowLayout::new(&top, &fixture.editor_layout()).shape;
+    click(&mut harness, centre(shape));
+    choose_row(
+        &mut harness,
+        Pos2::new(shape.x as f32, shape.bottom() as f32),
+        3,
+    );
+    for _ in 0..3 {
+        harness.step();
+    }
+
+    assert_eq!(fixture.local(MODIFIER_CONTROLS[0].window_shape), 3.0);
+    let creator = fixture.synth.wavetable_creator(0).unwrap();
+    let WavetableComponent::WaveWindow(modifier) = &creator.groups[0].components[2] else {
+        panic!("row 2 is the Wave Window");
+    };
+    assert_eq!(modifier.settings.window_shape, 3);
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+    assert!(log_is_empty(&fixture));
 }

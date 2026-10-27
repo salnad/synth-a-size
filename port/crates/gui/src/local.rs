@@ -64,6 +64,46 @@ macro_rules! wave_source_controls {
     };
 }
 
+/// The Phase Shift overlay's styles (`phase_style_lookup`).
+pub const PHASE_STYLES: [&str; 5] = [
+    "Normal",
+    "+Even/-Odd",
+    "Harmonic",
+    "Harm +Even/-Odd",
+    "Clear",
+];
+/// The Wave Window overlay's shapes (`kWindowShapeLookup`).
+pub const WINDOW_SHAPES: [&str; 5] = ["Raised Cos", "Half Sin", "Linear", "Square", "Wiggle"];
+
+/// One oscillator's Phase Shift and Wave Window overlay controls.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ModifierControls {
+    pub phase_style: &'static str,
+    pub phase_mix: &'static str,
+    pub window_shape: &'static str,
+    pub window_left: &'static str,
+    pub window_right: &'static str,
+}
+
+macro_rules! modifier_controls {
+    ($prefix:literal) => {
+        ModifierControls {
+            phase_style: concat!($prefix, "phase_style"),
+            phase_mix: concat!($prefix, "phase_mix"),
+            window_shape: concat!($prefix, "window_shape"),
+            window_left: concat!($prefix, "window_left_position"),
+            window_right: concat!($prefix, "window_right_position"),
+        }
+    };
+}
+
+/// Each oscillator's Phase Shift and Wave Window overlay controls.
+pub const MODIFIER_CONTROLS: [ModifierControls; 3] = [
+    modifier_controls!("osc_1_"),
+    modifier_controls!("osc_2_"),
+    modifier_controls!("osc_3_"),
+];
+
 /// Each oscillator's Wave Source overlay controls: `[oscillator][0]` for
 /// Wave Sources, `[oscillator][1]` for Shepard Tone sources.
 pub const WAVE_SOURCE_CONTROLS: [[WaveSourceControls; 2]; 3] = [
@@ -224,6 +264,33 @@ fn infos() -> &'static HashMap<String, ParamInfo> {
                 infos.insert(info.name.clone(), info);
             }
         }
+        for controls in MODIFIER_CONTROLS {
+            let continuous = |name: &str, default_value: f32, display_name: &str| ParamInfo {
+                value_scale: ValueScale::Linear,
+                ..local_info(name, 0.0, 1.0, default_value, display_name)
+            };
+            for info in [
+                local_info(
+                    controls.phase_style,
+                    0.0,
+                    PHASE_STYLES.len() as f32 - 1.0,
+                    0.0,
+                    "Harmonic Phase",
+                ),
+                continuous(controls.phase_mix, 1.0, "Phase Mix"),
+                local_info(
+                    controls.window_shape,
+                    0.0,
+                    WINDOW_SHAPES.len() as f32 - 1.0,
+                    0.0,
+                    "Window Shape",
+                ),
+                continuous(controls.window_left, 0.0, "Left Position"),
+                continuous(controls.window_right, 1.0, "Right Position"),
+            ] {
+                infos.insert(info.name.clone(), info);
+            }
+        }
         for (name, display_name) in PRESET_STYLE_FILTERS
             .iter()
             .chain(&SAVE_STYLE_BUTTONS)
@@ -284,13 +351,18 @@ impl LocalValues {
         Some(values.get(name).copied().unwrap_or(info.default_value))
     }
 
-    /// Sets a local control, clamped and rounded to its range. False when
+    /// Sets a local control, clamped to its range and, unless continuous,
+    /// rounded. False when
     /// `name` isn't one.
     pub fn set(&self, name: &str, value: f32) -> bool {
         let Some(info) = info(name) else {
             return false;
         };
-        let value = value.round().clamp(info.min, info.max);
+        let value = match info.value_scale {
+            ValueScale::Indexed => value.round(),
+            _ => value,
+        }
+        .clamp(info.min, info.max);
         let mut values = self.values.lock().unwrap_or_else(|p| p.into_inner());
         values.insert(name.to_string(), value);
         true
