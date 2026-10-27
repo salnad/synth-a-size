@@ -112,7 +112,7 @@ impl TextEntry {
     /// A text entry over `bounds` (interface pixels) holding the slider's
     /// current value (`getRawTextFromValue`).
     pub fn new(host: &Host, slider: &Slider, bounds: Rect) -> TextEntry {
-        let value = host.value(slider.name);
+        let value = slider.host_value(host);
         TextEntry {
             slider: *slider,
             bounds,
@@ -404,6 +404,11 @@ impl<'a, 'b> Panel<'a, 'b> {
                     MenuOwner::ModulationAmount(*slider, entry_bounds, slot),
                 )
             });
+        // A drag's connection shows the values the host hears when it ends.
+        let value = match self.overlay.modulation.pending_value(knob.slider.name) {
+            Some(pending) => pending / knob.slider.value_scale,
+            None => value,
+        };
         let middle = self
             .ui
             .input(|input| input.pointer.button_pressed(egui::PointerButton::Middle));
@@ -436,7 +441,7 @@ impl<'a, 'b> Panel<'a, 'b> {
     ) -> (f32, bool) {
         let slider = &slider.displayed(self.host.model().hz_frequency_display());
         let event = slider.interact(self.ui, self.host, self.pixels, bounds);
-        let value = event.value.unwrap_or_else(|| self.host.value(slider.name));
+        let value = event.value.unwrap_or_else(|| slider.host_value(self.host));
         if event.popup {
             let popup = ValuePopup {
                 text: slider.popup_text(value),

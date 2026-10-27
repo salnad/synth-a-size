@@ -1252,7 +1252,7 @@ fn show_text_entry(
         let slider = entry.slider;
         if !entry.text.is_empty() {
             let value = format::value_from_text(slider.info, &slider.format, &entry.text);
-            host.set_once(slider.name, slider.constrain(value) as f32);
+            host.set_once(slider.name, slider.to_host(slider.constrain(value) as f32));
         }
         overlay.text_entry = None;
     }

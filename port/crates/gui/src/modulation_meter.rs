@@ -452,6 +452,7 @@ mod tests {
             SliderStyle::ModulationKnob {
                 arc: crate::colour::Colour(0xffffffff),
                 bypass: false,
+                aux: false,
             },
         );
         assert!(meter_quad(

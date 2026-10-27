@@ -756,6 +756,27 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
 - **Approved:** coordinator, relaying Voice Reviewer's review of #159,
   2026-10-26.
 
+### D27. A cycle of modulation amounts reads at a share instead of hanging
+
+- **Differs:** amount knobs whose connections modulate each other's amounts
+  in a loop, which a preset can hold. For example, slot 3 on
+  `modulation_4_amount` and slot 4 on `modulation_3_amount`.
+- **Upstream:** only a connection to its own slot's amount is rejected
+  (`isInvalidConnection`). `ModulationManager::getAuxMultiplier`, and the
+  walks in `sliderValueChanged`, `setModulationSliderValues` and
+  `setModulationSliderScale`, follow `aux_connections_to_from_` or
+  `aux_connections_from_to_` in a `while` loop. Around a cycle that loop
+  never ends, so dragging or loading such a knob hangs the interface.
+- **Port:** `AuxLinks::driven` and `AuxLinks::display_end` stop before the
+  first slot they would revisit (`port/crates/gui/src/modulation.rs`,
+  `walk`). In the example, each knob drives the other slot's amount at half
+  its shown value, as a one-step chain does.
+- **Why:** there is no defined result to reproduce. Stopping where the chain
+  turns back on itself gives each knob the share of the longest chain
+  without repeats, so it shows and moves a sensible amount.
+- **Approved:** coordinator, relaying Voice Reviewer's review of #170,
+  2026-10-26.
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change
