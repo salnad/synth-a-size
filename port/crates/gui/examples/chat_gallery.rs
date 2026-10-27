@@ -3,7 +3,9 @@
 //! conversation with an edit held for confirmation) and
 //! `chat-settings.png` (the settings form opened from a working chat), and
 //! the conversation in a small window (`chat-small.png`, 350×205) and a
-//! letterboxed one (`chat-letterboxed.png`, 1400×700).
+//! letterboxed one (`chat-letterboxed.png`, 1400×700), and the editor
+//! with the drawer open in a window widened for it (`chat-drawer.png`,
+//! 1760×820).
 //!
 //!     cargo run -p sas-gui --example chat_gallery -- OUT [--scale 2]
 //!
@@ -134,6 +136,7 @@ fn settings() -> FixedHost {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render(
     out: &Path,
     name: &str,
@@ -141,8 +144,10 @@ fn render(
     scale: f32,
     host: FixedHost,
     open_settings: bool,
+    drawer: bool,
 ) {
     let interface = RefCell::new(Interface::default());
+    interface.borrow_mut().set_drawer_open(drawer);
     let panel = RefCell::new(ChatPanel::default());
     panel.borrow_mut().set_open(true);
     let state = egui_kittest::wgpu::create_render_state(
@@ -198,15 +203,24 @@ fn main() {
     }
     std::fs::create_dir_all(&out).unwrap();
     let full = (1400.0, 820.0);
-    render(&out, "chat-off", full, scale, off(), false);
-    render(&out, "chat-confirm", full, scale, conversation(), false);
-    render(&out, "chat-settings", full, scale, settings(), true);
+    render(&out, "chat-off", full, scale, off(), false, false);
+    render(
+        &out,
+        "chat-confirm",
+        full,
+        scale,
+        conversation(),
+        false,
+        false,
+    );
+    render(&out, "chat-settings", full, scale, settings(), true, false);
     render(
         &out,
         "chat-small",
         (350.0, 205.0),
         scale,
         conversation(),
+        false,
         false,
     );
     render(
@@ -216,5 +230,15 @@ fn main() {
         scale,
         conversation(),
         false,
+        false,
+    );
+    render(
+        &out,
+        "chat-drawer",
+        (1760.0, 820.0),
+        scale,
+        conversation(),
+        false,
+        true,
     );
 }

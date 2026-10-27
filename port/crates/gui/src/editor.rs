@@ -9,6 +9,10 @@
 //! it opens at the default 1400 × 820 and the host may resize it down to
 //! 350 × 205, keeping the 1400:820 aspect ratio. Upstream also scales the
 //! first size by a factor saved in its config file; the port does not yet.
+//!
+//! The chat's drawer (D13) widens the window beside that layout while it is
+//! open ([`crate::drawer`]): the editor asks the host for the wider window,
+//! and the sizes it accepts keep room for the drawer.
 
 use std::cell::Cell;
 use std::error::Error;
@@ -30,7 +34,8 @@ use nice_plug_egui::{
     Frame, NiceEguiApp,
 };
 
-use crate::chat::ChatPanel;
+use crate::chat::{ChatHost, ChatPanel};
+use crate::drawer::{self, DrawerState};
 use crate::fonts;
 use crate::host::{Host, OpenGestures};
 use crate::interface::{EditorModel, Interface, PRODUCT_NAME};
@@ -40,17 +45,28 @@ use crate::layout::{DEFAULT_HEIGHT, DEFAULT_WIDTH};
 pub const MIN_WIDTH: f32 = 350.0;
 pub const MIN_HEIGHT: f32 = 205.0;
 
-/// The editor's size state at the default size. Keep one per plugin
-/// instance so the size survives closing and reopening the window.
-pub fn default_state() -> Arc<EguiEditorState> {
-    EguiEditorState::from_size(
-        LogicalSize::new(DEFAULT_WIDTH as f64, DEFAULT_HEIGHT as f64),
-        1.0,
-    )
+/// What a plugin instance keeps of its editor while the window is closed:
+/// the window's size and whether the chat's drawer is open.
+#[derive(Clone, Debug)]
+pub struct EditorState {
+    pub window: Arc<EguiEditorState>,
+    pub drawer: DrawerState,
+}
+
+/// The editor's state at the default size, with the drawer closed. Keep one
+/// per plugin instance so they survive closing and reopening the window.
+pub fn default_state() -> EditorState {
+    EditorState {
+        window: EguiEditorState::from_size(
+            LogicalSize::new(DEFAULT_WIDTH as f64, DEFAULT_HEIGHT as f64),
+            1.0,
+        ),
+        drawer: DrawerState::default(),
+    }
 }
 
 /// The editor for one plugin instance.
-pub fn create(state: Arc<EguiEditorState>, model: Arc<dyn EditorModel>) -> Option<Editor> {
+pub fn create(state: EditorState, model: Arc<dyn EditorModel>) -> Option<Editor> {
     let resize_hint = nice_plug::prelude::ResizeHint {
         preserve_aspect_ratio: true,
         ..nice_plug::prelude::ResizeHint::resizable()
@@ -60,7 +76,11 @@ pub fn create(state: Arc<EguiEditorState>, model: Arc<dyn EditorModel>) -> Optio
     let settings = EguiNiceSettings::default()
         .with_tile(PRODUCT_NAME)
         .with_resize_hint(resize_hint);
-    create_egui_editor(state, Default::default(), settings, App::new(model)).map(Editor)
+    let app = App::new(model, state.drawer.clone());
+    create_egui_editor(state.window, Default::default(), settings, app).map(|editor| Editor {
+        inner: editor,
+        drawer: state.drawer,
+    })
 }
 
 /// The egui app behind [`Editor`].
@@ -71,22 +91,111 @@ pub struct App {
     gui_context: Option<GuiContext>,
     open_gestures: Arc<OpenGestures>,
     chat: ChatPanel,
+    /// The drawer state the window's width last followed (`None` before
+    /// the first frame).
+    drawer_followed: Option<bool>,
+    drawer: DrawerState,
+    /// A size asked of the host for the drawer, until it answers.
+    resize_pending: Option<drawer::PendingResize>,
     #[cfg(feature = "focus-spike")]
     focus_spike: crate::focus_spike::FocusSpike,
 }
 
 impl App {
-    fn new(model: Arc<dyn EditorModel>) -> App {
+    fn new(model: Arc<dyn EditorModel>, drawer: DrawerState) -> App {
+        let mut interface = Interface::default();
+        interface.set_drawer_state(drawer.clone());
         App {
             model,
-            interface: Interface::default(),
+            interface,
             gui_context: None,
             open_gestures: Arc::default(),
             chat: ChatPanel::default(),
+            drawer_followed: None,
+            drawer,
+            resize_pending: None,
             #[cfg(feature = "focus-spike")]
             focus_spike: Default::default(),
         }
     }
+}
+
+impl App {
+    /// Asks the host to widen the window by the drawer's width when the
+    /// drawer opens, and to give the width back when it closes. A host that
+    /// refuses leaves the window as it was, and the chat overlays the
+    /// editor instead (`drawer::split`).
+    fn follow_drawer(&mut self, ctx: &egui::Context, window: egui::Rect) {
+        let now = ctx.input(|input| input.time);
+        if let Some(pending) = self.resize_pending {
+            match pending.answer(self.drawer.host_size(), now) {
+                drawer::HostAnswer::Waiting => {
+                    ctx.request_repaint_after(std::time::Duration::from_millis(100));
+                }
+                drawer::HostAnswer::Answered => self.resize_pending = None,
+                drawer::HostAnswer::Refused => {
+                    self.resize_pending = None;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(pending.previous));
+                }
+            }
+        }
+        let open = self.interface.drawer_open();
+        if let Some(size) =
+            drawer_resize(self.drawer_followed, open, window, ctx.pixels_per_point())
+        {
+            self.drawer.forget_host_size();
+            self.resize_pending = Some(drawer::PendingResize {
+                previous: window.size(),
+                asked_at: now,
+            });
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
+        self.drawer_followed = Some(open);
+    }
+}
+
+/// One frame of the chat in a window at `window` (points), after the
+/// interface's: the panel's toggle opens and closes the drawer, whose state
+/// the interface keeps.
+pub fn show_chat(
+    interface: &mut Interface,
+    panel: &mut ChatPanel,
+    ctx: &egui::Context,
+    window: egui::Rect,
+    host: &dyn ChatHost,
+    request_focus: &mut dyn FnMut(),
+) {
+    let placement = interface.chat_placement(window, ctx.pixels_per_point());
+    panel.set_open(interface.drawer_open());
+    panel.show(ctx, &placement, host, request_focus);
+    interface.set_drawer_open(panel.is_open());
+}
+
+/// The window size (points) to ask for when the drawer's state goes from
+/// `followed` to `open` in a window at `window`: wider by the drawer when it
+/// opens without room, narrower by it when it closes docked. Nothing on the
+/// first frame, which keeps the size the instance saved.
+pub fn drawer_resize(
+    followed: Option<bool>,
+    open: bool,
+    window: egui::Rect,
+    pixels_per_point: f32,
+) -> Option<egui::Vec2> {
+    if followed.is_none_or(|followed| followed == open) {
+        return None;
+    }
+    let docked = drawer::split(window, pixels_per_point, true)
+        .drawer
+        .is_some();
+    let width = drawer::width_pixels(window.height() * pixels_per_point, pixels_per_point)
+        / pixels_per_point;
+    let new_width = match (open, docked) {
+        (true, false) => window.width() + width,
+        (false, true) => window.width() - width,
+        _ => return None,
+    };
+    Some(egui::vec2(new_width, window.height()))
 }
 
 impl NiceEguiApp for App {
@@ -177,13 +286,18 @@ impl NiceEguiApp for App {
             }
         }
         if let Some(chat) = self.model.chat() {
-            let placement = self
-                .interface
-                .chat_placement(area, ui.ctx().pixels_per_point());
-            self.chat.show(ui.ctx(), &placement, chat, &mut || {
-                let _ = frame.baseview_window().focus();
-            });
+            show_chat(
+                &mut self.interface,
+                &mut self.chat,
+                ui.ctx(),
+                area,
+                chat,
+                &mut || {
+                    let _ = frame.baseview_window().focus();
+                },
+            );
         }
+        self.follow_drawer(ui.ctx(), area);
         #[cfg(feature = "focus-spike")]
         self.focus_spike.show(ui, frame);
     }
@@ -225,10 +339,16 @@ impl OpenWindow {
 /// methods), where a panic aborts the host. egui-baseview guards the
 /// window's own callbacks; this covers nice-plug-egui's setup in `spawn`,
 /// baseview's window creation and teardown, and the rest of the editor API.
-pub struct Editor(EguiEditor<App>);
+pub struct Editor {
+    inner: EguiEditor<App>,
+    drawer: DrawerState,
+}
 
 /// [`Editor`]'s handle, its calls guarded the same way.
-pub struct EditorHandle(EguiEditorHandle);
+pub struct EditorHandle {
+    inner: EguiEditorHandle,
+    drawer: DrawerState,
+}
 
 /// The editor's window, dropped (closed) under `catch_unwind`: closing it
 /// drops the window's app and renderer, and on X11 joins its thread,
@@ -296,7 +416,7 @@ impl nice_plug::editor::Editor for Editor {
             "opening the window",
             || Err("opening the editor window panicked".into()),
             || {
-                let spawned = self.0.spawn(
+                let spawned = self.inner.spawn(
                     parent,
                     wait_for_parent,
                     fallback_scale_factor,
@@ -304,7 +424,10 @@ impl nice_plug::editor::Editor for Editor {
                     host,
                 )?;
                 Ok(SpawnedEditor {
-                    handle: EditorHandle(spawned.handle),
+                    handle: EditorHandle {
+                        inner: spawned.handle,
+                        drawer: self.drawer.clone(),
+                    },
                     window: EditorWindow(ManuallyDrop::new(spawned.window)),
                 })
             },
@@ -318,13 +441,13 @@ impl nice_plug::editor::Editor for Editor {
                 let size = LogicalSize::new(DEFAULT_WIDTH as f64, DEFAULT_HEIGHT as f64);
                 NativeSize::from_size(size.into(), 1.0)
             },
-            || self.0.size(),
+            || self.inner.size(),
         )
     }
 
     fn resize_hint(&self) -> ResizeHint {
         guarded("reporting its resize hint", ResizeHint::default, || {
-            self.0.resize_hint()
+            self.inner.resize_hint()
         })
     }
 
@@ -332,7 +455,7 @@ impl nice_plug::editor::Editor for Editor {
         guarded(
             "taking track info",
             || (),
-            || self.0.track_info_updated(info),
+            || self.inner.track_info_updated(info),
         )
     }
 
@@ -341,7 +464,7 @@ impl nice_plug::editor::Editor for Editor {
         guarded(
             "going standalone",
             || (),
-            || unsafe { self.0.assume_standalone_in_process() },
+            || unsafe { self.inner.assume_standalone_in_process() },
         )
     }
 }
@@ -365,16 +488,16 @@ impl nice_plug::editor::EditorHandle for EditorHandle {
         window: &EditorWindow,
     ) -> Result<(), EditorError> {
         window_call("setting its parent", || {
-            self.0.set_parent(parent, &window.0)
+            self.inner.set_parent(parent, &window.0)
         })
     }
 
     fn show(&self, window: &EditorWindow) -> Result<(), EditorError> {
-        window_call("showing the window", || self.0.show(&window.0))
+        window_call("showing the window", || self.inner.show(&window.0))
     }
 
     fn hide(&self, window: &EditorWindow) -> Result<(), EditorError> {
-        window_call("hiding the window", || self.0.hide(&window.0))
+        window_call("hiding the window", || self.inner.hide(&window.0))
     }
 
     fn set_size(
@@ -382,8 +505,11 @@ impl nice_plug::editor::EditorHandle for EditorHandle {
         new_size: NativeSize<u32>,
         window: &EditorWindow,
     ) -> Result<(), EditorError> {
+        // The host sets the size (VST3's `onSize`), answering any the
+        // editor asked for.
+        self.drawer.host_resized(new_size.width, new_size.height);
         window_call("resizing the window", || {
-            self.0.set_size(new_size, &window.0)
+            self.inner.set_size(new_size, &window.0)
         })
     }
 
@@ -391,7 +517,7 @@ impl nice_plug::editor::EditorHandle for EditorHandle {
         guarded(
             "running a main-thread callback",
             || (),
-            || self.0.host_main_thread_callback(&window.0),
+            || self.inner.host_main_thread_callback(&window.0),
         )
     }
 
@@ -403,7 +529,29 @@ impl nice_plug::editor::EditorHandle for EditorHandle {
         guarded(
             "adjusting a size",
             || None,
-            || self.0.adjust_size(new_size, &window.0),
+            || {
+                // An open drawer keeps its width beside upstream's sizes.
+                if !self.drawer.is_open() {
+                    return self.inner.adjust_size(new_size, &window.0);
+                }
+                let scale_factor = window.0.size().scale_factor as f32;
+                let mut refused = false;
+                let (width, height) = drawer::adjust_size(
+                    (new_size.width, new_size.height),
+                    scale_factor,
+                    |(width, height)| {
+                        let size = NativeSize { width, height };
+                        match self.inner.adjust_size(size, &window.0) {
+                            Some(size) => (size.width, size.height),
+                            None => {
+                                refused = true;
+                                (width, height)
+                            }
+                        }
+                    },
+                );
+                (!refused).then_some(NativeSize { width, height })
+            },
         )
     }
 
@@ -413,7 +561,8 @@ impl nice_plug::editor::EditorHandle for EditorHandle {
         window: &EditorWindow,
     ) -> Result<(), EditorError> {
         window_call("setting its scale factor", || {
-            self.0.set_fallback_scale_factor(scale_factor, &window.0)
+            self.inner
+                .set_fallback_scale_factor(scale_factor, &window.0)
         })
     }
 
@@ -427,21 +576,25 @@ impl nice_plug::editor::EditorHandle for EditorHandle {
             "taking a host key",
             || false,
             || {
-                self.0
+                self.inner
                     .on_virtual_key_from_host(key_code, is_down, modifiers)
             },
         )
     }
 
     fn state_changed(&self) {
-        guarded("taking a state change", || (), || self.0.state_changed())
+        guarded(
+            "taking a state change",
+            || (),
+            || self.inner.state_changed(),
+        )
     }
 
     fn param_value_changed(&self, id: &str, normalized_value: f32) {
         guarded(
             "taking a parameter change",
             || (),
-            || self.0.param_value_changed(id, normalized_value),
+            || self.inner.param_value_changed(id, normalized_value),
         )
     }
 
@@ -449,7 +602,7 @@ impl nice_plug::editor::EditorHandle for EditorHandle {
         guarded(
             "taking a modulation change",
             || (),
-            || self.0.param_modulation_changed(id, modulation_offset),
+            || self.inner.param_modulation_changed(id, modulation_offset),
         )
     }
 }

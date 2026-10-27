@@ -1656,6 +1656,78 @@ fn the_open_chat_panel_composes_with_the_editor() {
         .contains(&"begin portamento_time".to_string()));
 }
 
+/// With the drawer docked in a window widened for it, upstream's layout is
+/// where it is in a window without it: its controls answer at the same
+/// positions, and a drag in the drawer reaches none of them.
+#[test]
+fn a_docked_drawer_leaves_upstream_its_layout_and_input() {
+    let fixture = Fixture::new();
+    fixture.interface.borrow_mut().set_drawer_open(true);
+    let panel = RefCell::new(sas_gui::ChatPanel::default());
+    let mut harness = Harness::builder()
+        .with_size((1760.0, 820.0))
+        .with_step_dt(1.0 / 60.0)
+        .with_context_setup(|ctx| ctx.set_fonts(sas_gui::fonts::definitions()))
+        .build_ui(|ui| {
+            let screen = ui.ctx().content_rect();
+            fixture.recorder.apply_pending();
+            let host = Host::tracking(
+                fixture.synth.as_ref(),
+                Some(&fixture.context),
+                &fixture.open,
+            );
+            fixture.interface.borrow_mut().show_in(ui, screen, &host);
+            sas_gui::show_chat(
+                &mut fixture.interface.borrow_mut(),
+                &mut panel.borrow_mut(),
+                ui.ctx(),
+                screen,
+                &IdleChat,
+                &mut || {},
+            );
+        });
+    harness.step();
+    let placement = fixture.interface.borrow().chat_placement(
+        egui::Rect::from_min_size(Pos2::ZERO, egui::vec2(1760.0, 820.0)),
+        1.0,
+    );
+    assert_eq!(
+        placement.editor,
+        egui::Rect::from_min_size(Pos2::ZERO, egui::vec2(1400.0, 820.0))
+    );
+    assert_eq!(
+        placement.mode,
+        sas_gui::ChatMode::Docked(egui::Rect::from_min_max(
+            Pos2::new(1400.0, 0.0),
+            Pos2::new(1760.0, 820.0)
+        ))
+    );
+    assert!(panel.borrow().is_open());
+    fixture.take_log();
+
+    let inside = Pos2::new(1580.0, 600.0);
+    drag(
+        &mut harness,
+        inside,
+        inside + egui::vec2(0.0, -40.0),
+        Modifiers::NONE,
+    );
+    assert!(fixture.take_log().is_empty());
+
+    let knob = centre(oscillator_layout(&fixture, 0).distortion_amount);
+    drag(
+        &mut harness,
+        knob,
+        knob + egui::vec2(0.0, -40.0),
+        Modifiers::NONE,
+    );
+    let log = fixture.take_log();
+    assert!(
+        log.contains(&"begin osc_1_distortion_amount".to_string()),
+        "{log:?}"
+    );
+}
+
 fn oscillator_layout(fixture: &Fixture, index: usize) -> OscillatorLayout {
     let interface = fixture.interface.borrow();
     let layout = FullLayout::new(interface.skin(), 1400, 820);

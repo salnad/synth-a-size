@@ -106,6 +106,19 @@ pub struct ChatPlacement {
     /// the panel's text follows within limits.
     pub scale: f32,
     pub style: ChatStyle,
+    /// Whether the panel docks in the drawer or overlays the editor.
+    pub mode: ChatMode,
+}
+
+/// Where the open panel goes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ChatMode {
+    /// In the drawer at the window's right (points, pixel-aligned), beside
+    /// upstream's layout: the drawer is open and the window was widened.
+    Docked(egui::Rect),
+    /// Over the editor's right side ([`ChatPlacement::panel`]): the drawer
+    /// is closed, or the host kept the window's width.
+    Overlay,
 }
 
 impl ChatPlacement {
