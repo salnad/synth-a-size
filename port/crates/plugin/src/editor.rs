@@ -10,6 +10,7 @@ use nice_plug::context::gui::GuiContext;
 use sas_common::json;
 use sas_common::line_generator::LineGenerator;
 use sas_engine::document::PresetDocument;
+use sas_engine::edit_bus::{AuditionToken, EditError, EditHandle};
 use sas_engine::keyboard::KeyboardHandle;
 use sas_engine::sas_oscillators::sas_wavetable::creator::{AudioFileLoadStyle, WavetableCreator};
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
@@ -322,6 +323,27 @@ impl EditorModel for PluginModel {
             .edit_handle()
             .set_wavetable(oscillator, creator)
             .is_ok()
+    }
+
+    fn wavetable_audition_token(&self, oscillator: usize) -> Option<AuditionToken> {
+        self.params.edit_handle().audition_token(oscillator).ok()
+    }
+
+    fn audition_wavetable_frame(
+        &self,
+        oscillator: usize,
+        creator: WavetableCreator,
+        position: usize,
+        token: AuditionToken,
+    ) -> bool {
+        self.params
+            .edit_handle()
+            .set_wavetable_frame(oscillator, creator, position, token)
+            .unwrap_or(false)
+    }
+
+    fn end_wavetable_audition(&self, oscillator: usize, token: AuditionToken) {
+        end_audition(self.params.edit_handle().clone(), oscillator, token);
     }
 
     fn wavetable_json(&self, oscillator: usize) -> Option<String> {
@@ -662,6 +684,46 @@ fn additional_folders_name(kind: Kind) -> Option<&'static str> {
     }
 }
 
+/// `EditHandle::end_audition`, kept trying while the edit queue is full: a
+/// drag's auditioned table mustn't outlive it, or the synth would play what
+/// a save doesn't store. The retries run off the GUI thread, which may be
+/// closing the window, until the end goes through or the token goes stale
+/// (a commit, restore or another end replaced the table).
+fn end_audition(edits: EditHandle, oscillator: usize, token: AuditionToken) {
+    /// How long a full queue is waited out, and how often it is tried.
+    const RETRY: std::time::Duration = std::time::Duration::from_millis(5);
+    const LOG_AFTER: u32 = 200;
+    match edits.end_audition(oscillator, token) {
+        Err(EditError::QueueFull) => {}
+        Err(error) => {
+            nice_plug::nice_warn!("cannot end the wavetable audition: {error}");
+            return;
+        }
+        Ok(_) => return,
+    }
+    std::thread::spawn(move || {
+        let mut tries = 0u32;
+        loop {
+            std::thread::sleep(RETRY);
+            match edits.end_audition(oscillator, token) {
+                Err(EditError::QueueFull) => {
+                    tries += 1;
+                    if tries == LOG_AFTER {
+                        nice_plug::nice_warn!(
+                            "the wavetable audition is still waiting for room in the edit queue"
+                        );
+                    }
+                }
+                Err(error) => {
+                    nice_plug::nice_warn!("cannot end the wavetable audition: {error}");
+                    return;
+                }
+                Ok(_) => return,
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -871,6 +933,59 @@ mod tests {
         params.edit_handle().set_wavetable(1, renamed).unwrap();
         assert_eq!(model.wavetable_creator(1).unwrap().name, "Renamed");
         assert!(model.wavetable_creator(3).is_none());
+    }
+
+    /// A wavetable drag's frames play and draw without touching the saved
+    /// creator, and ending the drag puts the saved table back, even when the
+    /// edit queue is full when it ends: the end is retried until it goes
+    /// through.
+    #[test]
+    fn an_ended_wavetable_audition_goes_back_to_the_saved_table() {
+        let (edits, mut consumer) =
+            EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+        let params = Arc::new(SynthParams::new(edits));
+        let (_writer, telemetry) = Telemetry::new(Arc::default());
+        let model = PluginModel::new(
+            params.clone(),
+            telemetry,
+            keyboard().0,
+            Arc::new(MidiLearn::in_memory()),
+            None,
+        );
+        let saved_json = model.wavetable_json(0).unwrap();
+        let saved = model.wavetable(0).unwrap().frame(0).unwrap();
+        let mut drawn = model.wavetable_creator(0).unwrap();
+        if let sas_engine::sas_oscillators::sas_wavetable::creator::component::WavetableComponent::WaveSource(source) =
+            &mut drawn.groups[0].components[0]
+        {
+            let frame = &mut source.keyframes.keyframes[0].data.wave_frame;
+            frame.time_domain[..1024].fill(1.0);
+            frame.to_frequency_domain();
+        }
+
+        let token = model.wavetable_audition_token(0).unwrap();
+        assert!(model.audition_wavetable_frame(0, drawn.clone(), 0, token));
+        assert_ne!(model.wavetable(0).unwrap().frame(0).unwrap(), saved);
+        assert_eq!(model.wavetable_json(0).unwrap(), saved_json);
+
+        // Nothing drains the queue, so it fills up.
+        while model.audition_wavetable_frame(0, drawn.clone(), 0, token) {}
+        model.end_wavetable_audition(0, token);
+        assert_ne!(model.wavetable(0).unwrap().frame(0).unwrap(), saved);
+
+        let mut synth = sas_engine::synth::Synth::new();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while model.wavetable(0).unwrap().frame(0).unwrap() != saved {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the audition never ended"
+            );
+            consumer.drain(&mut synth);
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert_eq!(model.wavetable_json(0).unwrap(), saved_json);
+        // The drag's token is stale now.
+        assert!(!model.audition_wavetable_frame(0, drawn, 0, token));
     }
 
     #[test]

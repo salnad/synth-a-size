@@ -17,6 +17,8 @@ use egui_kittest::Harness;
 use nice_plug::context::gui::{GuiContext, GuiContextInner};
 use nice_plug::context::PluginApi;
 use nice_plug::prelude::{FloatParam, FloatRange, Param, ParamPtr, PluginState};
+use sas_engine::document::PresetDocument;
+use sas_engine::edit_bus::{AuditionToken, EditBus, EditHandle};
 use sas_engine::sas_oscillators::sas_wavetable::creator::component::{
     ComponentType, WavetableComponent,
 };
@@ -35,6 +37,7 @@ use sas_gui::skin::{Skin, ValueId};
 use sas_gui::{EditorModel, Host, HostParam, Interface, OpenGestures, Tab};
 use sas_preset::registry::registry;
 use sas_preset::user_folders::Kind;
+use sas_preset::InitContent;
 
 /// Every registry control, and a wavetable creator per oscillator.
 struct Synth {
@@ -52,6 +55,13 @@ struct Synth {
     loads: Mutex<Vec<String>>,
     /// The oscillators "Synthesize Preset to Table" asked for.
     resyntheses: Mutex<Vec<usize>>,
+    /// An edit bus, for audition tokens.
+    edits: EditHandle,
+    /// The frames the editor auditioned: oscillator, position and the
+    /// creator they were drawn from.
+    auditions: Mutex<Vec<(usize, usize, WavetableCreator)>>,
+    /// The oscillators whose auditions the editor ended.
+    ends: Mutex<Vec<usize>>,
 }
 
 impl Synth {
@@ -86,6 +96,9 @@ impl Synth {
             last_files: Mutex::default(),
             loads: Mutex::new(Vec::new()),
             resyntheses: Mutex::new(Vec::new()),
+            edits: EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 })).0,
+            auditions: Mutex::new(Vec::new()),
+            ends: Mutex::new(Vec::new()),
         })
     }
 
@@ -125,6 +138,28 @@ impl EditorModel for Synth {
         self.commits.fetch_add(1, Ordering::Relaxed);
         self.set_creator(oscillator, creator);
         true
+    }
+
+    fn wavetable_audition_token(&self, oscillator: usize) -> Option<AuditionToken> {
+        self.edits.audition_token(oscillator).ok()
+    }
+
+    fn audition_wavetable_frame(
+        &self,
+        oscillator: usize,
+        creator: WavetableCreator,
+        position: usize,
+        _token: AuditionToken,
+    ) -> bool {
+        self.auditions
+            .lock()
+            .unwrap()
+            .push((oscillator, position, creator));
+        true
+    }
+
+    fn end_wavetable_audition(&self, oscillator: usize, _token: AuditionToken) {
+        self.ends.lock().unwrap().push(oscillator);
     }
 
     fn content_revision(&self) -> u64 {
@@ -1142,4 +1177,177 @@ fn the_exports_write_the_json_and_the_rendered_frames() {
         sas_gui::wavetable_export::clm_text().as_bytes()
     );
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// Oscillator 1's first keyframe's waveform, as committed.
+fn committed_samples(fixture: &Fixture) -> Vec<f32> {
+    let creator = fixture.synth.wavetable_creator(0).unwrap();
+    let WavetableComponent::WaveSource(source) = &creator.groups[0].components[0] else {
+        panic!("the init preset starts with a wave source");
+    };
+    source.keyframes.keyframes[0].data.wave_frame.time_domain[..2048].to_vec()
+}
+
+/// A point in oscillator 1's waveform display, from its top left.
+fn waveform_point(layout: &WavetableEditLayout, x: i32, y: i32) -> Pos2 {
+    Pos2::new(
+        (layout.waveform.x + x) as f32,
+        (layout.waveform.y + y) as f32,
+    )
+}
+
+/// `WaveSourceEditor`'s drawing with the default 6 by 4 grid: a press
+/// snaps to the nearest grid point, a move that isn't near one draws
+/// nothing new, and reaching the next draws the line between them. Each
+/// change auditions the frame under the playhead (`frameChanged`); the
+/// release commits once (`frameDoneEditing`), with nothing ended and
+/// nothing written to the host.
+#[test]
+fn drawing_on_the_waveform_snaps_to_the_grid_and_commits_on_release() {
+    let fixture = Fixture::new();
+    let mut harness = opened(&fixture);
+    let layout = fixture.editor_layout();
+    let (width, height) = (layout.waveform.width, layout.waveform.height);
+    // getSnappedPoint: width * round(x) / grid, truncated.
+    let column = |i: i32| (width as f32 * i as f32 / 6.0) as i32;
+    let row = (height as f32 / 4.0) as i32;
+    let from = waveform_point(&layout, column(3) + 2, row + 1);
+    let to = waveform_point(&layout, column(4) - 1, row - 2);
+    drag(&mut harness, from, to);
+
+    let samples = committed_samples(&fixture);
+    let expected = -2.0 * row as f32 / height as f32 + 1.0;
+    let index = |x: i32| (2048.0 * x as f32 / width as f32).floor() as usize;
+    for (i, &sample) in samples
+        .iter()
+        .enumerate()
+        .take(index(column(4)))
+        .skip(index(column(3)))
+    {
+        assert_eq!(sample, expected, "sample {i}");
+    }
+    assert_ne!(samples[index(column(4)) + 10], expected);
+    let auditions = fixture.synth.auditions.lock().unwrap();
+    assert!(!auditions.is_empty());
+    assert!(auditions
+        .iter()
+        .all(|(oscillator, position, _)| (*oscillator, *position) == (0, 0)));
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+    assert!(fixture.synth.ends.lock().unwrap().is_empty());
+    assert!(log_is_empty(&fixture));
+}
+
+/// Without a grid, a press draws where it is.
+#[test]
+fn without_a_grid_drawing_follows_the_pointer() {
+    let fixture = Fixture::new();
+    let mut harness = opened(&fixture);
+    let overlay = fixture.overlay_layout();
+    for _ in 0..6 {
+        click(&mut harness, centre(overlay.grid_x_buttons[1]));
+        for _ in 0..30 {
+            harness.step();
+        }
+    }
+    assert_eq!(fixture.local(WAVE_SOURCE_CONTROLS[0][0].grid_x), 0.0);
+    let layout = fixture.editor_layout();
+    let width = layout.waveform.width;
+    let point = waveform_point(&layout, width / 3, 0);
+    click(&mut harness, point);
+    let index = (2048.0 * (width / 3) as f32 / width as f32).floor() as usize;
+    assert_eq!(committed_samples(&fixture)[index], 1.0);
+}
+
+/// The waveform's menu: Flip Vertical negates the keyframe's waveform.
+/// The right-click's release commits first, as upstream's `mouseUp` reports
+/// `valuesChanged` after a popup-menu press too, then the choice commits.
+#[test]
+fn flip_vertical_negates_the_waveform() {
+    let fixture = Fixture::new();
+    let before = committed_samples(&fixture);
+    let mut harness = opened(&fixture);
+    let layout = fixture.editor_layout();
+    let press = centre(layout.waveform);
+    right_click(&mut harness, press);
+    choose_row(&mut harness, press, 1);
+    let after = committed_samples(&fixture);
+    for (b, a) in before.iter().zip(&after) {
+        assert_eq!(*a, -*b);
+    }
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 2);
+}
+
+/// The amplitudes' menu: Clear sets every harmonic to nothing, so the
+/// frame falls silent; a right-click on the bars commits nothing itself.
+#[test]
+fn clearing_the_amplitudes_silences_the_frame() {
+    let fixture = Fixture::new();
+    let mut harness = opened(&fixture);
+    let layout = fixture.editor_layout();
+    let press = centre(layout.amplitudes);
+    right_click(&mut harness, press);
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 0);
+    choose_row(&mut harness, press, 0);
+    assert!(committed_samples(&fixture)
+        .iter()
+        .all(|&sample| sample == 0.0));
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+}
+
+/// Drawing on the amplitudes auditions while dragging and commits on
+/// release, the frame rebuilt from the bars and normalised.
+#[test]
+fn drawing_on_the_amplitudes_rebuilds_the_frame() {
+    let fixture = Fixture::new();
+    let before = committed_samples(&fixture);
+    let mut harness = opened(&fixture);
+    let layout = fixture.editor_layout();
+    let bars = layout.amplitudes;
+    // Below the gear in the display's corner.
+    let y = (bars.y + layout.settings.height + 4) as f32;
+    let from = Pos2::new((bars.x + 3) as f32, y);
+    let to = Pos2::new((bars.x + 60) as f32, y);
+    drag(&mut harness, from, to);
+    let after = committed_samples(&fixture);
+    assert_ne!(after, before);
+    let peak = after
+        .iter()
+        .fold(0.0f32, |peak, &sample| peak.max(sample.abs()));
+    assert!((peak - 1.0).abs() < 1e-3, "{peak}");
+    assert!(!fixture.synth.auditions.lock().unwrap().is_empty());
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+}
+
+/// A window that closes during a drag ends its audition
+/// (`EditorModel::end_wavetable_audition`), once; a committed drag leaves
+/// nothing to end.
+#[test]
+fn closing_during_a_drag_ends_the_audition() {
+    let fixture = Fixture::new();
+    let mut harness = opened(&fixture);
+    let layout = fixture.editor_layout();
+    let row = layout.waveform.height / 2;
+    let from = waveform_point(&layout, 5, row);
+    let to = waveform_point(&layout, layout.waveform.width / 3, row);
+    drag(&mut harness, from, to);
+    let auditions = fixture.interface.borrow().pending_auditions();
+    for audition in &auditions {
+        audition.end(fixture.synth.as_ref());
+    }
+    assert!(fixture.synth.ends.lock().unwrap().is_empty());
+
+    for _ in 0..30 {
+        harness.step();
+    }
+    harness.event(Event::PointerMoved(from));
+    harness.step();
+    press(&mut harness, from, PointerButton::Primary, true);
+    harness.event(Event::PointerMoved(to));
+    harness.step();
+    assert!(!fixture.synth.auditions.lock().unwrap().is_empty());
+    for audition in &auditions {
+        audition.end(fixture.synth.as_ref());
+        audition.end(fixture.synth.as_ref());
+    }
+    assert_eq!(*fixture.synth.ends.lock().unwrap(), [0]);
 }

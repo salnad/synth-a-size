@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use sas_common::line_generator::LineGenerator;
+use sas_engine::edit_bus::AuditionToken;
 use sas_engine::sas_oscillators::sas_wavetable::creator::{AudioFileLoadStyle, WavetableCreator};
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::telemetry::Telemetry;
@@ -430,6 +431,37 @@ pub trait EditorModel: Send + Sync + 'static {
         false
     }
 
+    /// The token a drag on oscillator `oscillator`'s wavetable passes to
+    /// [`Self::audition_wavetable_frame`] and [`Self::end_wavetable_audition`],
+    /// read when the drag starts. None without an engine.
+    fn wavetable_audition_token(&self, _oscillator: usize) -> Option<AuditionToken> {
+        None
+    }
+
+    /// While the editor draws on oscillator `oscillator`'s wavetable: frame
+    /// `position` of `creator` alone is rendered into the playing and drawn
+    /// tables (`WavetableEditSection::render(position)`), without changing
+    /// the saved creator; the drag's release commits the whole table with
+    /// [`Self::set_wavetable_creator`]. Returns false when the frame couldn't
+    /// be sent (a full queue or a stale token), which a later frame or the
+    /// commit makes up for.
+    fn audition_wavetable_frame(
+        &self,
+        _oscillator: usize,
+        _creator: WavetableCreator,
+        _position: usize,
+        _token: AuditionToken,
+    ) -> bool {
+        false
+    }
+
+    /// Ends a drag that won't be committed (the editor closed, failed or
+    /// was reset during it): the playing and drawn tables go back to the
+    /// saved creator. It must not be dropped, so an implementation keeps
+    /// trying while the edit queue is full, until it goes through or the
+    /// token is stale.
+    fn end_wavetable_audition(&self, _oscillator: usize, _token: AuditionToken) {}
+
     /// Oscillator `oscillator`'s wavetable creator as upstream's JSON
     /// (`FullInterface::getWavetableJson`), for copying. None past the
     /// oscillators, or without an engine.
@@ -727,6 +759,15 @@ impl Interface {
         self.wavetable_editor = oscillator.filter(|&index| index < NUM_OSCILLATORS);
     }
 
+    /// Each wavetable editor's auditioning drag, for the window to end if
+    /// it closes or fails during one.
+    pub fn pending_auditions(&self) -> Vec<crate::sections::wavetable_edit::PendingAudition> {
+        self.wavetable_edits
+            .iter()
+            .map(|section| section.pending_audition())
+            .collect()
+    }
+
     /// Oscillator `oscillator`'s wavetable editor.
     pub fn wavetable_edit_section(&self, oscillator: usize) -> &WavetableEditSection {
         &self.wavetable_edits[oscillator]
@@ -829,7 +870,7 @@ impl Interface {
         }
         for (index, section) in self.wavetable_edits.iter_mut().enumerate() {
             if self.wavetable_editor != Some(index) {
-                section.hidden();
+                section.hidden(model);
             }
         }
         if let Some(index) = self.wavetable_editor {
