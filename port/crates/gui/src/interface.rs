@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use sas_common::line_generator::LineGenerator;
-use sas_engine::sas_oscillators::sas_wavetable::creator::AudioFileLoadStyle;
+use sas_engine::sas_oscillators::sas_wavetable::creator::{AudioFileLoadStyle, WavetableCreator};
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::telemetry::Telemetry;
 use sas_engine::Tuning;
@@ -47,6 +47,7 @@ use crate::sections::effects::EffectsTab;
 use crate::sections::extra_mod::{self, ExtraModLayout, ExtraModSection};
 use crate::sections::keyboard::{self, KeyboardLayout, PlayingNote};
 use crate::sections::modulation::ModulationInterface;
+use crate::sections::oscillator::NUM_OSCILLATORS;
 use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
 use crate::sections::preset_browser::{self, PresetBrowser, PresetBrowserLayout};
 use crate::sections::preset_selector;
@@ -54,6 +55,7 @@ use crate::sections::save_section::{self, SaveOutcome, SaveSection, SaveTarget};
 use crate::sections::synthesis::SynthesisInterface;
 use crate::sections::voice::{self, VoiceLayout, VoiceSection};
 use crate::sections::volume::{PeakLevels, VolumeLayout, VolumeSection};
+use crate::sections::wavetable_edit::{self, WavetableEditLayout, WavetableEditSection};
 use crate::sections::{Overlay, Panel};
 use crate::skin::{ColorId, Section, Skin, ValueId};
 use crate::text::{Justify, Overflow};
@@ -345,6 +347,14 @@ pub trait EditorModel: Send + Sync + 'static {
         String::new()
     }
 
+    /// A copy of oscillator `oscillator`'s wavetable creator, for the
+    /// wavetable editor to show (`WavetableEditSection`'s
+    /// `wavetable_creator_`). None past the oscillators, or without an
+    /// engine.
+    fn wavetable_creator(&self, _oscillator: usize) -> Option<WavetableCreator> {
+        None
+    }
+
     /// Oscillator `oscillator`'s wavetable creator as upstream's JSON
     /// (`FullInterface::getWavetableJson`), for copying. None past the
     /// oscillators, or without an engine.
@@ -511,6 +521,11 @@ pub struct Interface {
     /// Whether the chat's drawer is open, shared with the editor so it is
     /// kept while the window is closed.
     drawer: DrawerState,
+    /// `wavetable_edits_`, one per oscillator.
+    wavetable_edits: [WavetableEditSection; NUM_OSCILLATORS],
+    /// The oscillator whose wavetable editor shows in place of the
+    /// interface (`showWavetableEditSection(index)`), if one does.
+    wavetable_editor: Option<usize>,
 }
 
 impl Default for Interface {
@@ -539,6 +554,8 @@ impl Interface {
             preset_browser: PresetBrowser::default(),
             preset_browser_visible: false,
             preset_browser_was_visible: false,
+            wavetable_edits: std::array::from_fn(WavetableEditSection::new),
+            wavetable_editor: None,
             delete_section: None,
             save_section: SaveSection::default(),
             save_requested: false,
@@ -607,6 +624,22 @@ impl Interface {
     /// `file`'s folder until a preset is picked from the list.
     pub fn external_preset_loaded(&mut self, file: Option<PathBuf>) {
         self.preset_browser.external_preset_loaded(file);
+    }
+
+    /// The oscillator whose wavetable editor is showing, if one is.
+    pub fn wavetable_editor(&self) -> Option<usize> {
+        self.wavetable_editor
+    }
+
+    /// `showWavetableEditSection(index)`, or `hideWavetableEditSection`
+    /// for None.
+    pub fn show_wavetable_editor(&mut self, oscillator: Option<usize>) {
+        self.wavetable_editor = oscillator.filter(|&index| index < NUM_OSCILLATORS);
+    }
+
+    /// Oscillator `oscillator`'s wavetable editor.
+    pub fn wavetable_edit_section(&self, oscillator: usize) -> &WavetableEditSection {
+        &self.wavetable_edits[oscillator]
     }
 
     pub fn preset_browser_visible(&self) -> bool {
@@ -689,6 +722,19 @@ impl Interface {
             self.preset_browser.visibility_changed(model);
             self.preset_browser_was_visible = self.preset_browser_visible;
         }
+        for (index, section) in self.wavetable_edits.iter_mut().enumerate() {
+            if self.wavetable_editor != Some(index) {
+                section.hidden();
+            }
+        }
+        if let Some(index) = self.wavetable_editor {
+            // The editor replaces the header and every section; the
+            // interface's own background still shows around it.
+            self.paint_background(&pixels, &layout, width, height);
+            self.show_wavetable_edit_section(ui, host, &pixels, &layout, index);
+            self.show_overlay(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
+            return;
+        }
         self.overlay
             .modulation
             .begin_frame(model.modulations(), model.edit_generation());
@@ -711,6 +757,10 @@ impl Interface {
         self.overlay.modulation.paint_drag(host, &pixels, &top);
         self.show_overlay(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
         self.show_save_section(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
+        if let Some(index) = self.overlay.open_wavetable_editor.take() {
+            self.show_wavetable_editor(Some(index));
+            ui.ctx().request_repaint();
+        }
         // The delete overlay, over everything (deleteRequested, fileDeleted).
         if let Some(file) = self.preset_browser.take_delete_request() {
             self.delete_section = Some(DeleteSection { file });
@@ -776,6 +826,38 @@ impl Interface {
             self.save_section.is_open(),
             self.save_section.is_overwriting(),
         )
+    }
+
+    /// Oscillator `index`'s wavetable editor, over the whole height
+    /// (`FullInterface::resized` gives it the letterbox's left edge and
+    /// width, and the window's top).
+    fn show_wavetable_edit_section(
+        &mut self,
+        ui: &mut Ui,
+        host: &Host,
+        pixels: &PixelPainter,
+        layout: &FullLayout,
+        index: usize,
+    ) {
+        let top = Scope::top(&self.skin, layout.size_ratio);
+        let bounds = Rect::new(
+            layout.bounds.x,
+            0,
+            layout.bounds.width,
+            layout.bounds.height,
+        );
+        let edit_layout = WavetableEditLayout::new(&top, bounds);
+        let section = &mut self.wavetable_edits[index];
+        section.update(host.model());
+        section.paint_background(pixels, &top, &edit_layout);
+        let scope = top.within(wavetable_edit::SKIN);
+        let mut panel = Panel::new(ui, host, pixels, scope, &mut self.overlay, bounds);
+        let exit = section.show(&mut panel, &edit_layout);
+        panel.finish();
+        if exit {
+            self.wavetable_editor = None;
+            ui.ctx().request_repaint();
+        }
     }
 
     /// The header's live parts: the volume section and the oscilloscope.

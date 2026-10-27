@@ -658,6 +658,53 @@ pub fn menu(width: i32) -> Path {
     path
 }
 
+/// `Paths::plus(width)`: a cross across a `width`-pixel square, snapped to
+/// whole pixels.
+pub fn plus(width: i32) -> Path {
+    const BUFFER: f32 = 0.35;
+    const LINE_WIDTH: f32 = 0.04;
+    let buffer = (width as f32 * BUFFER).round();
+    let line_width = ((width as f32 * LINE_WIDTH) as i32).max(1);
+    let center = (line_width % 2) as f32 * 0.5 + (width / 2) as f32;
+    let (w, lw) = (width as f32, line_width as f32);
+    let mut path = Path::new();
+    path.add_line_segment((buffer, center), (w - buffer, center), lw);
+    path.add_line_segment((center, buffer), (center, w - buffer), lw);
+    path.add_line_segment((0.0, 0.0), (0.0, 0.0), 0.2);
+    path.add_line_segment((w, w), (w, w), 0.2);
+    path
+}
+
+/// `Paths::gear`: a ring with eight teeth in the unit square.
+pub fn gear() -> &'static Path {
+    static PATH: OnceLock<Path> = OnceLock::new();
+    PATH.get_or_init(|| {
+        const RADIUS: f32 = 0.3;
+        const GEAR_OUTER_RATIO: f32 = 1.2;
+        const NUM_GEAR_TEETH: usize = 8;
+        let mut path = Path::new();
+        path.add_line_segment((0.0, 0.0), (0.0, 0.0), 0.2);
+        path.add_line_segment((1.0, 1.0), (1.0, 1.0), 0.2);
+        let offset = 0.5 - RADIUS;
+        let diameter = 2.0 * RADIUS;
+        path.add_pie_segment(offset, offset, diameter, diameter, 0.0, 2.0 * PI, 0.5);
+        for i in 0..NUM_GEAR_TEETH {
+            let phase = 2.0 * i as f32 * PI / NUM_GEAR_TEETH as f32;
+            let x_offset = RADIUS * phase.cos();
+            let y_offset = RADIUS * phase.sin();
+            path.add_line_segment(
+                (0.5 + x_offset, 0.5 + y_offset),
+                (
+                    0.5 + GEAR_OUTER_RATIO * x_offset,
+                    0.5 + GEAR_OUTER_RATIO * y_offset,
+                ),
+                0.13,
+            );
+        }
+        path
+    })
+}
+
 /// `Paths::save(width)`: a downward arrow into an open box, stroked with
 /// curved joints and rounded ends, in a `width`-pixel square.
 pub fn save(width: i32) -> Path {

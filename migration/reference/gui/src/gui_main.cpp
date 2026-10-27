@@ -8,7 +8,7 @@
 // Usage:
 //   ref-gui [--out frame.png] [--layout layout.jsonl] [--preset file.vital]
 //           [--tab voice|effects|matrix|advanced] [--width 1400] [--height 820] [--frames 30]
-//           [--effects-scroll 0] [--overlay preset_browser|save_section]
+//           [--effects-scroll 0] [--overlay preset_browser|save_section|wavetable_editor]
 //           [--data-dir folder]
 //
 // --effects-scroll scrolls the effects column down that many pixels (the
@@ -19,6 +19,8 @@
 // section for a preset, as the header's save button does, without
 // SaveSection::setIsPreset: that makes the user's preset folder inside the
 // data folder.
+// --overlay wavetable_editor opens oscillator 1's wavetable editor in place of
+// the interface, as its edit button does.
 //
 // --data-dir sets upstream's data folder (LoadSave::saveDataDirectory, in
 // the config under HOME) before the interface is built, so its browsers
@@ -316,10 +318,10 @@ class RefGuiApplication : public JUCEApplication {
       if ((options.out.empty() && options.layout.empty()) || tab < 0)
         return fail("usage: ref-gui (--out frame.png | --layout layout.jsonl) [--preset file.vital] "
                     "[--tab voice|effects|matrix|advanced] [--width W] [--height H] [--frames N] "
-                    "[--effects-scroll Y] [--overlay preset_browser|save_section] "
+                    "[--effects-scroll Y] [--overlay preset_browser|save_section|wavetable_editor] "
                     "[--data-dir folder]");
       if (!options.overlay.empty() && options.overlay != "preset_browser" &&
-          options.overlay != "save_section")
+          options.overlay != "save_section" && options.overlay != "wavetable_editor")
         return fail("unknown overlay " + options.overlay);
 
       if (!options.data_dir.empty()) {
@@ -393,6 +395,8 @@ class RefGuiApplication : public JUCEApplication {
         save->setFileExtension(vital::kPresetExtension);
         save->setVisible(true);
       }
+      if (options.overlay == "wavetable_editor")
+        gui->showWavetableEditSection(0);
 
       if (!options.layout.empty()) {
         std::string out;

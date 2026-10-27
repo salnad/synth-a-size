@@ -1,5 +1,5 @@
 {
-  "description": "Views rendered from upstream's interface by migration/scripts/gui_reference.py frames, and from the port's editor by sas-gui's gallery test, for side-by-side comparison. A preset, when given, is a path from the repository root to authored content (never a factory preset). effects_scroll scrolls the effects column down that many pixels, kept within the column. overlay opens the preset browser (\"preset_browser\") or the save section for a preset (\"save_section\") over the tab. midi (an authored file in migration/corpus/midi/) and seconds run the engine before the frame, on both sides, at 44.1 kHz and 120 BPM in 64-sample blocks; animate draws the animated views from it (it needs midi, or seconds above 0).",
+  "description": "Views rendered from upstream's interface by migration/scripts/gui_reference.py frames, and from the port's editor by sas-gui's gallery test, for side-by-side comparison. A preset, when given, is a path from the repository root to authored content (never a factory preset). effects_scroll scrolls the effects column down that many pixels, kept within the column. overlay opens the preset browser (\"preset_browser\") or the save section for a preset (\"save_section\") over the tab, or oscillator 1's wavetable editor (\"wavetable_editor\") in place of the interface. midi (an authored file in migration/corpus/midi/) and seconds run the engine before the frame, on both sides, at 44.1 kHz and 120 BPM in 64-sample blocks; animate draws the animated views from it (it needs midi, or seconds above 0).",
   "views": [
     { "name": "init_voice", "tab": "voice" },
     { "name": "init_effects", "tab": "effects" },
@@ -17,6 +17,7 @@
     { "name": "modulations_aux", "tab": "voice", "preset": "migration/corpus/gui/presets/modulations_aux.vital", "seconds": 0.05, "animate": true },
     { "name": "preset_browser", "tab": "voice", "overlay": "preset_browser" },
     { "name": "save_section", "tab": "voice", "overlay": "save_section" },
-    { "name": "all_effects_live", "tab": "effects", "preset": "migration/corpus/gui/presets/all_effects.vital", "midi": "migration/corpus/midi/chord_progression.mid", "seconds": 2, "animate": true }
+    { "name": "all_effects_live", "tab": "effects", "preset": "migration/corpus/gui/presets/all_effects.vital", "midi": "migration/corpus/midi/chord_progression.mid", "seconds": 2, "animate": true },
+    { "name": "wavetable_editor", "tab": "voice", "overlay": "wavetable_editor" }
   ]
 }

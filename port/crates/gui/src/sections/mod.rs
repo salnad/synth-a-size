@@ -32,6 +32,7 @@ pub mod selection_list;
 pub mod synthesis;
 pub mod voice;
 pub mod volume;
+pub mod wavetable_edit;
 
 use egui::Ui;
 
@@ -137,6 +138,9 @@ pub struct Overlay {
     /// A wavetable view's menu choice, (oscillator, item), for the view to
     /// carry out on its next frame (`Wavetable3d::respondToMenuCallback`).
     pub wavetable_action: Option<(usize, i32)>,
+    /// An oscillator's edit button was clicked: the wavetable editor to
+    /// show (`FullInterface::showWavetableEditSection`).
+    pub open_wavetable_editor: Option<usize>,
     /// The modulation sources: the selected one and a drag in progress.
     pub modulation: ModulationManager,
 }
