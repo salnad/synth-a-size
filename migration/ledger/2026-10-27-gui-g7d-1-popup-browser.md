@@ -61,6 +61,10 @@ LFO come in G7d-2; the added folders ("Add Folder") in G7d-3.
   - `set_selected`, `select_next` and `select_previous`;
   - `reset_scroll_position`;
   - a double-click event.
+- `SelectionList` senses drags as well as clicks, so a drag on a row
+  reaches nothing beneath; the popup browser's lists cover their owner's
+  section, and a drag there moved oscillator 1's morph knobs (UI Reviewer,
+  #172).
 - `user_folders::files_of_type` (`getAllFilesOfTypeInDirectories`: every
   file of the given types under the folders, recursively, matched ignoring
   case as on macOS) and `shifted_file` (`getShiftedFile`).
@@ -95,7 +99,9 @@ LFO come in G7d-2; the added folders ("Add Folder") in G7d-3.
   - a folder lists its files, the search filters, and a double click
     closes;
   - Escape and a press outside close the browser, and the oscillator's
-    arrows work with it open.
+    arrows work with it open;
+  - a drag on a list row over the oscillator reaches none of its controls
+    (it fails with click-only sensing).
 - `tests/layout.rs`: the popup browser's parts at every size.
 - `test_gui_reference.py`: `@overlay` lines, and the `popup_browser`
   overlay.

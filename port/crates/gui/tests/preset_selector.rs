@@ -1225,6 +1225,34 @@ fn the_browser_closes_outside_its_owner_and_on_escape() {
     assert!(!browser_visible(&fixture));
 }
 
+/// The browser's lists take drags: one on a folder row over oscillator 1's
+/// section reaches none of its controls, as upstream's `SelectionList` takes
+/// the mouse.
+#[test]
+fn a_drag_on_the_browsers_lists_reaches_nothing_beneath() {
+    let fixture = Fixture::new();
+    let _data = wavetable_data(&fixture, "popup-drag");
+    let mut harness = fixture.harness();
+    let (osc, browser) = oscillator_browser(&fixture);
+    click(&mut harness, centre(osc.preset_selector.text));
+    let row = popup_row(browser.folders, 0);
+    // The row lies over the oscillator's section, its passthrough area.
+    assert!(row.y < osc.bounds.bottom() as f32 && row.x < osc.bounds.right() as f32);
+    fixture.recorder.log.lock().unwrap().clear();
+    harness.event(Event::PointerMoved(row));
+    harness.step();
+    button(&mut harness, row, true);
+    for step in 1..=4 {
+        harness.event(Event::PointerMoved(
+            row + egui::vec2(0.0, 6.0 * step as f32),
+        ));
+        harness.step();
+    }
+    button(&mut harness, row + egui::vec2(0.0, 24.0), false);
+    harness.step();
+    assert_eq!(*fixture.recorder.log.lock().unwrap(), Vec::<String>::new());
+}
+
 /// Drags `from` 40 pixels up, step by step.
 fn drag_up(harness: &mut Harness, from: Pos2) {
     harness.event(Event::PointerMoved(from));

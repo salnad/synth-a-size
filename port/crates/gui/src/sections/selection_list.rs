@@ -332,7 +332,14 @@ impl SelectionList {
 
         let response = panel
             .ui
-            .interact(rect, panel.ui.scope_id().with(salt), Sense::click());
+            // Drags too, so none reaches a control beneath the list (the
+            // popup browser's lists cover their owner's section): egui gives
+            // a press to the top drag-sensing widget separately.
+            .interact(
+                rect,
+                panel.ui.scope_id().with(salt),
+                Sense::click_and_drag(),
+            );
         let mut event = None;
         // getSelection and leftClick.
         let clicked = |button| {
