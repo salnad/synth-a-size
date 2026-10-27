@@ -113,9 +113,13 @@ class OverlayArgsTest(unittest.TestCase):
         self.assertEqual(gui_reference.overlay_args({"name": "v", "overlay": "preset_browser"}),
                          ["--overlay", "preset_browser"])
 
+    def test_the_save_section(self):
+        self.assertEqual(gui_reference.overlay_args({"name": "v", "overlay": "save_section"}),
+                         ["--overlay", "save_section"])
+
     def test_an_unknown_overlay_fails(self):
         with self.assertRaises(SystemExit):
-            gui_reference.overlay_args({"name": "v", "overlay": "save_section"})
+            gui_reference.overlay_args({"name": "v", "overlay": "about_section"})
 
 
 class RunRefGuiTest(unittest.TestCase):

@@ -148,6 +148,32 @@ impl EditorModel for PluginModel {
         self.with_info(|info| info.comments.clone())
     }
 
+    fn preset_style(&self) -> String {
+        self.with_info(|info| info.style.clone())
+    }
+
+    fn set_preset_info(&self, author: &str, comments: &str, style: &str) {
+        let edits = self.params.edit_handle();
+        let mut info = edits.with_document(|document| document.state.info.clone());
+        info.author = author.to_string();
+        info.comments = comments.to_string();
+        info.style = style.to_string();
+        edits.set_info(info);
+    }
+
+    fn default_author(&self) -> String {
+        self.midi_learn
+            .config_file()
+            .map(crate::config::author)
+            .unwrap_or_default()
+    }
+
+    fn save_default_author(&self, author: &str) {
+        if let Some(path) = self.midi_learn.config_file() {
+            let _ = crate::config::save_author(path, author);
+        }
+    }
+
     fn telemetry(&self) -> Option<Telemetry> {
         Some(self.telemetry.clone())
     }
@@ -546,6 +572,37 @@ mod tests {
             model.load_preset_file(&newer),
             Err("Preset was created with a newer version.".to_string())
         );
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    /// The save section's details reach the saved file and the synth
+    /// (`setAuthor`, `setComments`, `setStyle`, then `saveToFile`).
+    #[test]
+    fn a_saved_preset_carries_its_author_comments_and_style() {
+        let (edits, _consumer) =
+            EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+        let params = Arc::new(SynthParams::new(edits));
+        let (_writer, telemetry) = Telemetry::new(Arc::default());
+        let model = PluginModel::new(
+            params,
+            telemetry,
+            keyboard().0,
+            Arc::new(MidiLearn::in_memory()),
+            None,
+        );
+        let folder = std::env::temp_dir().join(format!("sas-save-info-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        model.set_preset_info("Someone", "Warm and slow", "Pad");
+        let written = model.save_preset_file(&folder.join("Saved.vital")).unwrap();
+        let data = sas_common::json::parse(&std::fs::read_to_string(&written).unwrap()).unwrap();
+        assert_eq!(data.get("author").unwrap().to_str().unwrap(), "Someone");
+        assert_eq!(
+            data.get("comments").unwrap().to_str().unwrap(),
+            "Warm and slow"
+        );
+        assert_eq!(data.get("preset_style").unwrap().to_str().unwrap(), "Pad");
+        assert_eq!(model.preset_style(), "Pad");
+        assert_eq!(model.preset_name(), "Saved");
         std::fs::remove_dir_all(&folder).unwrap();
     }
 

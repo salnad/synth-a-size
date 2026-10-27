@@ -27,6 +27,7 @@ pub mod preset_browser;
 pub mod preset_selector;
 pub mod random;
 pub mod sample;
+pub mod save_section;
 pub mod selection_list;
 pub mod synthesis;
 pub mod voice;

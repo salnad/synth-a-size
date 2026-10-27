@@ -56,6 +56,19 @@ pub const PRESET_STYLE_FILTERS: [&str; 9] = [
     "preset_style_template",
 ];
 
+/// The save section's style buttons, of which at most one is on.
+pub const SAVE_STYLE_BUTTONS: [&str; 9] = [
+    "save_style_bass",
+    "save_style_lead",
+    "save_style_keys",
+    "save_style_pad",
+    "save_style_percussion",
+    "save_style_sequence",
+    "save_style_experiment",
+    "save_style_sfx",
+    "save_style_template",
+];
+
 fn local_info(name: &str, min: f32, max: f32, default_value: f32, display_name: &str) -> ParamInfo {
     ParamInfo {
         name: name.to_string(),
@@ -106,7 +119,11 @@ fn infos() -> &'static HashMap<String, ParamInfo> {
                 infos.insert(info.name.clone(), info);
             }
         }
-        for (name, display_name) in PRESET_STYLE_FILTERS.iter().zip(PRESET_STYLE_NAMES) {
+        for (name, display_name) in PRESET_STYLE_FILTERS
+            .iter()
+            .chain(&SAVE_STYLE_BUTTONS)
+            .zip(PRESET_STYLE_NAMES.iter().cycle())
+        {
             let info = local_info(name, 0.0, 1.0, 0.0, display_name);
             infos.insert(info.name.clone(), info);
         }

@@ -20,6 +20,7 @@ use sas_gui::sections::portamento::{self, PortamentoLayout};
 use sas_gui::sections::preset_browser::PresetBrowserLayout;
 use sas_gui::sections::random::{self, RandomLayout};
 use sas_gui::sections::sample::{self, SampleLayout};
+use sas_gui::sections::save_section::SaveLayout;
 use sas_gui::sections::synthesis::SynthesisLayout;
 use sas_gui::sections::voice::{self, VoiceLayout};
 use sas_gui::sections::volume::VolumeLayout;
@@ -327,6 +328,28 @@ fn browser_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> {
             let name = path.strip_prefix("preset_browser/")?;
             let index = PRESET_STYLE_NAMES.iter().position(|style| *style == name)?;
             browser.styles[index]
+        }
+    })
+}
+
+/// The save section's parts for a preset (`SaveSection::setSaveBounds`),
+/// over the whole window (`FullInterface::resized`'s `bounds`).
+fn save_rect(layout: &FullLayout, width: i32, height: i32, path: &str) -> Option<Rect> {
+    let bounds = Rect::new(0, 0, width, height);
+    let save = SaveLayout::new(layout.size_ratio, bounds, true);
+    Some(match path.strip_prefix("save_section/")? {
+        "Name" => save.name,
+        "Author" => save.author,
+        "Comments" => save.comments,
+        "Save" => save.save,
+        "Cancel" => save.cancel,
+        "Preset" => save.name_label,
+        "Author#2" => save.author_label,
+        "Style" => save.style_label,
+        "Comments#2" => save.comments_label,
+        name => {
+            let index = PRESET_STYLE_NAMES.iter().position(|style| *style == name)?;
+            save.styles[index]
         }
     })
 }
@@ -659,6 +682,7 @@ fn layout_matches_upstream_at_every_size() {
             let preset = entry.get("preset").map(|preset| preset.as_str().unwrap());
             let actual = match preset {
                 Some(effects::ALL_EFFECTS) => effects::all_effects_rect(&skin, &layout, path),
+                _ if path.starts_with("save_section/") => save_rect(&layout, width, height, path),
                 _ => port_rect(&skin, &layout, path, preset),
             }
             .unwrap_or_else(|| panic!("{}: no port rectangle for {path}", file.display()));

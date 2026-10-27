@@ -180,6 +180,26 @@ pub fn save_data_directory(path: &Path, folder: &Path) -> std::io::Result<()> {
     save_json_to_config(path, &data)
 }
 
+/// `LoadSave::getAuthor`: the config's `"author"`, empty if unset.
+pub fn author(path: &Path) -> String {
+    read_config(path)
+        .get("author")
+        .ok()
+        .and_then(|value| value.to_str().ok().map(str::to_string))
+        .unwrap_or_default()
+}
+
+/// `LoadSave::saveAuthor`: rewrites the config's `"author"`, keeping every
+/// other key.
+pub fn save_author(path: &Path, author: &str) -> std::io::Result<()> {
+    let mut data = read_config(path);
+    if !data.is_null() && !data.is_object() {
+        data = Value::Null;
+    }
+    data.set("author", author.to_string());
+    save_json_to_config(path, &data)
+}
+
 /// `LoadSave::getFavoritesFile`: beside the config file, with the
 /// `favorites` extension.
 pub fn favourites_file(config: &Path) -> PathBuf {
@@ -366,6 +386,18 @@ mod tests {
         save_favourite(&path, Path::new("/presets/a.vital"), true).unwrap();
         save_favourite(&path, Path::new("/presets/b.vital"), false).unwrap();
         assert_eq!(favourites(&path), [PathBuf::from("/presets/a.vital")]);
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// The author saved with round-trips through the config file.
+    #[test]
+    fn the_author_round_trips() {
+        let folder = std::env::temp_dir().join(format!("sas-author-{}", std::process::id()));
+        let path = folder.join("test.config");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(author(&path), "");
+        save_author(&path, "Someone").unwrap();
+        assert_eq!(author(&path), "Someone");
         let _ = std::fs::remove_dir_all(&folder);
     }
 }

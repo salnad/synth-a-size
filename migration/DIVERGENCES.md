@@ -717,7 +717,14 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
   folder doesn't exist. The preset menu ends with "Choose Data Folder...",
   which picks a folder and saves it as `data_directory`
   (`port/crates/gui/src/sections/preset_selector.rs`). Export Preset's
-  dialog starts with `<preset name>.vital`.
+  dialog starts with `<preset name>.vital`. Presets, wavetables, samples
+  and LFOs live directly under the root (`<root>/Presets`,
+  `<root>/Wavetables`, `<root>/Samples`, `<root>/LFOs`), where upstream
+  keeps the user's own under a `User` folder (`LoadSave::getUserDirectory`)
+  beside its factory folders; the save section and the chat's preset tools
+  write there and share these folders. A data folder from upstream, whose
+  content sits in `User/…`, still shows up: `user_folders::directories`
+  reads each folder directly inside the root as a bank, `User` included.
 - **Why:**
   - The folder name follows the product name (migration/AGENTS.md rule 2).
   - One location keeps the editor's folders and the chat's preset tools on
@@ -727,6 +734,8 @@ L6 (the listen loop). Later LLM milestones (L7, L8) extend this entry.*
   - The installer that let upstream's users choose the folder isn't ported
     (rule 3), so the menu item takes its place.
   - The pre-filled export name saves typing; the result is the same file.
+  - The port ships no factory folders, so a `User` folder would have
+    nothing to sit beside.
 - **Approved:** coordinator (G7 plan's data_directory decision), on UI
   Reviewer's review of #148, 2026-10-26.
 

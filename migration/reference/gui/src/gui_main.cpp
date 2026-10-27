@@ -8,13 +8,17 @@
 // Usage:
 //   ref-gui [--out frame.png] [--layout layout.jsonl] [--preset file.vital]
 //           [--tab voice|effects|matrix|advanced] [--width 1400] [--height 820] [--frames 30]
-//           [--effects-scroll 0] [--overlay preset_browser] [--data-dir folder]
+//           [--effects-scroll 0] [--overlay preset_browser|save_section]
+//           [--data-dir folder]
 //
 // --effects-scroll scrolls the effects column down that many pixels (the
 // viewport keeps it within the column).
 //
 // --overlay preset_browser opens the preset browser over the tab, as the
-// header's preset selector does.
+// header's preset selector does. --overlay save_section opens the save
+// section for a preset, as the header's save button does, without
+// SaveSection::setIsPreset: that makes the user's preset folder inside the
+// data folder.
 //
 // --data-dir sets upstream's data folder (LoadSave::saveDataDirectory, in
 // the config under HOME) before the interface is built, so its browsers
@@ -49,6 +53,7 @@
 #include "effects_interface.h"
 #include "full_interface.h"
 #include "load_save.h"
+#include "save_section.h"
 #include "sound_engine.h"
 #include "synth_base.h"
 #include "synth_gui_interface.h"
@@ -122,6 +127,16 @@ EffectsViewport* findEffectsViewport(Component* component) {
     return viewport;
   for (Component* child : component->getChildren()) {
     if (EffectsViewport* found = findEffectsViewport(child))
+      return found;
+  }
+  return nullptr;
+}
+
+SaveSection* findSaveSection(Component* component) {
+  if (auto* save = dynamic_cast<SaveSection*>(component))
+    return save;
+  for (Component* child : component->getChildren()) {
+    if (SaveSection* found = findSaveSection(child))
       return found;
   }
   return nullptr;
@@ -301,8 +316,10 @@ class RefGuiApplication : public JUCEApplication {
       if ((options.out.empty() && options.layout.empty()) || tab < 0)
         return fail("usage: ref-gui (--out frame.png | --layout layout.jsonl) [--preset file.vital] "
                     "[--tab voice|effects|matrix|advanced] [--width W] [--height H] [--frames N] "
-                    "[--effects-scroll Y] [--overlay preset_browser] [--data-dir folder]");
-      if (!options.overlay.empty() && options.overlay != "preset_browser")
+                    "[--effects-scroll Y] [--overlay preset_browser|save_section] "
+                    "[--data-dir folder]");
+      if (!options.overlay.empty() && options.overlay != "preset_browser" &&
+          options.overlay != "save_section")
         return fail("unknown overlay " + options.overlay);
 
       if (!options.data_dir.empty()) {
@@ -368,6 +385,14 @@ class RefGuiApplication : public JUCEApplication {
 
       if (options.overlay == "preset_browser")
         gui->setPresetBrowserVisibility(true, tab);
+      if (options.overlay == "save_section") {
+        SaveSection* save = findSaveSection(gui);
+        if (save == nullptr)
+          return fail("save section not found");
+        save->setFileType("Preset");
+        save->setFileExtension(vital::kPresetExtension);
+        save->setVisible(true);
+      }
 
       if (!options.layout.empty()) {
         std::string out;

@@ -1,5 +1,5 @@
 {
-  "description": "Views rendered from upstream's interface by migration/scripts/gui_reference.py frames, and from the port's editor by sas-gui's gallery test, for side-by-side comparison. A preset, when given, is a path from the repository root to authored content (never a factory preset). effects_scroll scrolls the effects column down that many pixels, kept within the column. overlay opens the preset browser (\"preset_browser\") over the tab.",
+  "description": "Views rendered from upstream's interface by migration/scripts/gui_reference.py frames, and from the port's editor by sas-gui's gallery test, for side-by-side comparison. A preset, when given, is a path from the repository root to authored content (never a factory preset). effects_scroll scrolls the effects column down that many pixels, kept within the column. overlay opens the preset browser (\"preset_browser\") or the save section for a preset (\"save_section\") over the tab.",
   "views": [
     { "name": "init_voice", "tab": "voice" },
     { "name": "init_effects", "tab": "effects" },
@@ -14,6 +14,7 @@
     { "name": "sample_on", "tab": "voice", "preset": "migration/corpus/gui/presets/sample_on.vital" },
     { "name": "modulations", "tab": "voice", "preset": "migration/corpus/gui/presets/modulations.vital", "seconds": 0.05, "animate": true },
     { "name": "modulations_many", "tab": "voice", "preset": "migration/corpus/gui/presets/modulations_many.vital", "seconds": 0.05, "animate": true },
-    { "name": "preset_browser", "tab": "voice", "overlay": "preset_browser" }
+    { "name": "preset_browser", "tab": "voice", "overlay": "preset_browser" },
+    { "name": "save_section", "tab": "voice", "overlay": "save_section" }
   ]
 }

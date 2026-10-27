@@ -19,8 +19,11 @@ use sas_gui::controls::{file_dialog, text_editor};
 use sas_gui::layout::{FullLayout, HeaderLayout, Rect};
 use sas_gui::scope::Scope;
 use sas_gui::sections::delete_section::DeleteLayout;
+use sas_gui::sections::oscillator::{self, OscillatorLayout};
 use sas_gui::sections::preset_browser::PresetBrowserLayout;
+use sas_gui::sections::save_section::{OverwriteLayout, SaveLayout};
 use sas_gui::sections::selection_list::Selection;
+use sas_gui::sections::synthesis::SynthesisLayout;
 use sas_gui::skin::Skin;
 use sas_gui::{EditorModel, Host, HostParam, Interface, OpenGestures, Tab};
 use sas_preset::registry::registry;
@@ -37,6 +40,7 @@ struct Synth {
     calls: Mutex<Vec<String>>,
     favourites: Mutex<Vec<PathBuf>>,
     generation: AtomicU64,
+    default_author: Mutex<String>,
 }
 
 impl Synth {
@@ -62,6 +66,7 @@ impl Synth {
             calls: Mutex::new(Vec::new()),
             favourites: Mutex::new(Vec::new()),
             generation: AtomicU64::new(0),
+            default_author: Mutex::new("Someone".to_string()),
         })
     }
 
@@ -142,6 +147,46 @@ impl EditorModel for Synth {
 
     fn preset_generation(&self) -> u64 {
         self.generation.load(Ordering::Relaxed)
+    }
+
+    fn preset_comments(&self) -> String {
+        "Old comments".to_string()
+    }
+
+    fn preset_style(&self) -> String {
+        "Keys".to_string()
+    }
+
+    fn set_preset_info(&self, author: &str, comments: &str, style: &str) {
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("info {author}|{comments}|{style}"));
+    }
+
+    fn default_author(&self) -> String {
+        self.default_author.lock().unwrap().clone()
+    }
+
+    fn save_default_author(&self, author: &str) {
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("default author {author}"));
+        *self.default_author.lock().unwrap() = author.to_string();
+    }
+
+    fn save_preset_file(&self, path: &Path) -> Result<PathBuf, String> {
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        self.calls.lock().unwrap().push(format!("save {name}"));
+        std::fs::write(path, "").map_err(|error| error.to_string())?;
+        Ok(path.to_path_buf())
+    }
+
+    fn wavetable_json(&self, oscillator: usize) -> Option<String> {
+        Some(format!(
+            r#"{{"version":"1.0.0","name":"Table {oscillator}","groups":[]}}"#
+        ))
     }
 }
 
@@ -349,14 +394,14 @@ fn without_an_external_preset_the_arrows_step_through_the_list() {
 }
 
 /// The menu opens on mouse down below its button; "Initialize Preset" is
-/// its fifth row (after a divider).
+/// its sixth row (after a divider).
 #[test]
 fn the_menu_initializes_the_preset() {
     let fixture = Fixture::new();
     let mut harness = fixture.harness();
     let menu = fixture.header().menu_button;
     click(&mut harness, centre(menu));
-    choose_row(&mut harness, menu.x as f32, menu.bottom() as f32, 4);
+    choose_row(&mut harness, menu.x as f32, menu.bottom() as f32, 5);
     assert_eq!(*fixture.synth.calls.lock().unwrap(), ["init"]);
 }
 
@@ -394,7 +439,7 @@ fn a_load_clears_the_mark() {
     let menu = fixture.header().menu_button;
     click(&mut harness, centre(menu));
     set_from_host(&fixture, "osc_1_level", 0.75);
-    choose_row(&mut harness, menu.x as f32, menu.bottom() as f32, 4);
+    choose_row(&mut harness, menu.x as f32, menu.bottom() as f32, 5);
     harness.step();
     harness.step();
     assert!(!fixture.interface.borrow().preset_modified());
@@ -793,4 +838,184 @@ fn a_preset_that_doesnt_load_says_why_when_picked() {
         [format!("load {}", preset("broken"))]
     );
     assert!(file_dialog::queued_alerts(&harness.ctx).is_empty());
+}
+
+/// The save section's state: (open, asking before overwriting).
+fn save_state(fixture: &Fixture) -> (bool, bool) {
+    fixture.interface.borrow().save_section_state()
+}
+
+fn save_layout(preset: bool) -> SaveLayout {
+    SaveLayout::new(1.0, Rect::new(0, 0, 1400, 820), preset)
+}
+
+fn calls(fixture: &Fixture) -> Vec<String> {
+    std::mem::take(&mut *fixture.synth.calls.lock().unwrap())
+}
+
+/// A data folder with an empty Presets folder, as the synth's.
+fn data_folder(fixture: &Fixture, tag: &str, presets: &[String]) -> Folder {
+    let folder = Folder::new(tag, presets);
+    *fixture.synth.data_directory.lock().unwrap() = Some(folder.0.clone());
+    folder
+}
+
+/// The save button opens the save section with the synth's name, comments
+/// and style and the saved author (`savePreset`, `setVisible`). Save sets
+/// the author, comments and style, remembers the author and writes the
+/// preset into the user's Presets folder, then the section closes and the
+/// header's `*` clears (`save`, `HeaderSection::save`). A style button
+/// turns the others off.
+#[test]
+fn the_save_button_saves_the_preset_with_its_details() {
+    let fixture = Fixture::new();
+    let data = data_folder(&fixture, "save", &[]);
+    let mut harness = fixture.harness();
+    set_from_host(&fixture, "osc_1_level", 0.25);
+    harness.step();
+    assert!(fixture.interface.borrow().preset_modified());
+
+    click(&mut harness, centre(fixture.header().save_button));
+    assert_eq!(save_state(&fixture), (true, false));
+    // The name field has the keyboard.
+    type_text(&mut harness, "My Patch");
+    let layout = save_layout(true);
+    // Keys, from the synth, then Lead, then Pad: one at a time.
+    click(&mut harness, centre(layout.styles[1]));
+    click(&mut harness, centre(layout.styles[3]));
+    click(&mut harness, centre(layout.author));
+    type_text(&mut harness, " Else");
+    click(&mut harness, centre(layout.save));
+    harness.step();
+
+    assert_eq!(save_state(&fixture), (false, false));
+    assert_eq!(
+        calls(&fixture),
+        [
+            "default author Someone Else",
+            "info Someone Else|Old comments|Pad",
+            &format!("save {}", preset("My Patch")),
+        ]
+    );
+    assert!(data.0.join("Presets").join(preset("My Patch")).exists());
+    assert!(!fixture.interface.borrow().preset_modified());
+}
+
+/// "Save Preset" in the menu opens the save section too.
+#[test]
+fn the_menus_save_preset_opens_the_save_section() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let menu = fixture.header().menu_button;
+    click(&mut harness, centre(menu));
+    choose_row(&mut harness, menu.x as f32, menu.bottom() as f32, 1);
+    assert_eq!(save_state(&fixture), (true, false));
+}
+
+/// Saving over an existing preset asks first (`setOverwriteBounds`), and
+/// Overwrite saves; Return in the name field saves as the button does.
+#[test]
+fn saving_over_a_preset_asks_first() {
+    let fixture = Fixture::new();
+    let _data = data_folder(&fixture, "overwrite", &[preset("Taken")]);
+    let mut harness = fixture.harness();
+    click(&mut harness, centre(fixture.header().save_button));
+    type_text(&mut harness, "Taken");
+    press_key(&mut harness, egui::Key::Enter);
+    harness.step();
+    assert_eq!(save_state(&fixture), (true, true));
+    assert!(calls(&fixture).is_empty());
+
+    let overwrite = OverwriteLayout::new(1.0, Rect::new(0, 0, 1400, 820));
+    click(&mut harness, centre(overwrite.overwrite));
+    harness.step();
+    assert_eq!(save_state(&fixture), (false, false));
+    assert!(calls(&fixture).contains(&format!("save {}", preset("Taken"))));
+}
+
+/// Without a name, Save does nothing; a click outside the box closes it
+/// (`mouseUp`), saving nothing.
+#[test]
+fn an_unnamed_preset_isnt_saved_and_a_click_outside_closes() {
+    let fixture = Fixture::new();
+    let _data = data_folder(&fixture, "unnamed", &[]);
+    let mut harness = fixture.harness();
+    click(&mut harness, centre(fixture.header().save_button));
+    type_text(&mut harness, "   ");
+    click(&mut harness, centre(save_layout(true).save));
+    assert_eq!(save_state(&fixture), (true, false));
+    click(&mut harness, Pos2::new(20.0, 400.0));
+    assert_eq!(save_state(&fixture), (false, false));
+    assert!(calls(&fixture).is_empty());
+}
+
+/// "Save to Wavetables" in an oscillator's wavetable view opens the save
+/// section for a wavetable (name and author only), which writes the
+/// wavetable's JSON with them into the user's Wavetables folder
+/// (`FullInterface::saveWavetable`).
+#[test]
+fn save_to_wavetables_writes_the_wavetable() {
+    let fixture = Fixture::new();
+    let data = data_folder(&fixture, "wavetable", &[]);
+    let mut harness = fixture.harness();
+    let skin = Skin::default();
+    let layout = FullLayout::new(&skin, 1400, 820);
+    let top = Scope::top(&skin, layout.size_ratio);
+    let synthesis = SynthesisLayout::new(&top, layout.main);
+    let view = OscillatorLayout::new(
+        &top.within(oscillator::SKIN),
+        synthesis.oscillators[1],
+        false,
+    )
+    .wavetable;
+    let at = centre(view);
+    harness.event(Event::PointerMoved(at));
+    harness.step();
+    for pressed in [true, false] {
+        harness.event(Event::PointerButton {
+            pos: at,
+            button: PointerButton::Secondary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        });
+        harness.step();
+    }
+    choose_row(&mut harness, at.x, at.y, 0);
+    assert_eq!(save_state(&fixture), (true, false));
+    type_text(&mut harness, "Table");
+    click(&mut harness, centre(save_layout(false).save));
+    harness.step();
+
+    assert_eq!(save_state(&fixture), (false, false));
+    let written =
+        std::fs::read_to_string(data.0.join("Wavetables").join("Table.vitaltable")).unwrap();
+    assert!(written.contains(r#""name":"Table""#), "{written}");
+    assert!(written.contains(r#""author":"Someone""#), "{written}");
+    assert!(written.contains(r#""groups":[]"#), "{written}");
+    assert!(calls(&fixture).is_empty());
+}
+
+/// While the save section has the keyboard, the browser behind it takes no
+/// keys: the arrows move the name's caret, not the browser's selection.
+#[test]
+fn the_browser_takes_no_keys_while_saving() {
+    let fixture = Fixture::new();
+    let _data = data_folder(&fixture, "keys", &[preset("A"), preset("B")]);
+    fixture
+        .interface
+        .borrow_mut()
+        .set_preset_browser_visible(true);
+    let mut harness = fixture.harness();
+    harness.step();
+    press_key(&mut harness, egui::Key::ArrowDown);
+    assert_eq!(calls(&fixture), [format!("load {}", preset("A"))]);
+
+    click(&mut harness, centre(fixture.header().save_button));
+    type_text(&mut harness, "Name");
+    press_key(&mut harness, egui::Key::ArrowDown);
+    press_key(&mut harness, egui::Key::ArrowLeft);
+    press_key(&mut harness, egui::Key::Escape);
+    assert!(calls(&fixture).is_empty());
+    assert!(browser_visible(&fixture));
+    assert_eq!(save_state(&fixture), (true, false));
 }

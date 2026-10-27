@@ -35,6 +35,7 @@ const INIT: i32 = 2;
 const LOAD_TUNING: i32 = 3;
 const CLEAR_TUNING: i32 = 4;
 const DATA_FOLDER: i32 = 5;
+const SAVE: i32 = 7;
 
 fn open_dialog() -> egui::Id {
     egui::Id::unique("open external preset")
@@ -56,6 +57,18 @@ fn init_request() -> egui::Id {
 /// Set by the menu's "Browse Presets" for [`show`] to answer.
 fn browse_request() -> egui::Id {
     egui::Id::unique("browse presets")
+}
+
+fn save_request() -> egui::Id {
+    egui::Id::unique("save preset")
+}
+
+/// The save button or "Save Preset" was chosen since the last call
+/// (`SynthPresetSelector::savePreset`): the save section opens for the
+/// preset.
+pub fn take_save_request(ctx: &egui::Context) -> bool {
+    ctx.data_mut(|data| data.remove_temp::<bool>(save_request()))
+        .is_some()
 }
 
 /// The pixel-snapped menu and save icons (`Paths::menu(height)`,
@@ -149,6 +162,9 @@ fn choose(host: &Host, ctx: &egui::Context, id: i32) {
         BROWSE => {
             ctx.data_mut(|data| data.insert_temp(browse_request(), true));
         }
+        SAVE => {
+            ctx.data_mut(|data| data.insert_temp(save_request(), true));
+        }
         OPEN_EXTERNAL => {
             // importPreset: starts beside the active file.
             let folder = model
@@ -197,6 +213,7 @@ fn open_menu(panel: &mut Panel, anchor: Rect) {
     let model = panel.host.model();
     let mut items = vec![
         MenuItem::new(BROWSE, "Browse Presets"),
+        MenuItem::new(SAVE, "Save Preset"),
         MenuItem::new(OPEN_EXTERNAL, "Open External Preset"),
         MenuItem::new(EXPORT, "Export Preset"),
         MenuItem::divider(),
@@ -243,13 +260,19 @@ pub fn show(
         browser.jump_to_preset(&panel.ui.ctx().clone(), model, 1);
     }
 
-    // The save button opens the save section (G7c).
+    // The save button opens the save section (savePreset).
     let (key, path) = sized_icon(true, header.save_button.height);
-    panel.shape_button(
-        "preset save",
-        arrow(Shape::Icon { key, path }),
-        header.save_button,
-    );
+    if panel
+        .shape_button(
+            "preset save",
+            arrow(Shape::Icon { key, path }),
+            header.save_button,
+        )
+        .clicked
+    {
+        let ctx = panel.ui.ctx().clone();
+        ctx.data_mut(|data| data.insert_temp(save_request(), true));
+    }
     // The menu button is triggered on mouse down.
     let (key, path) = sized_icon(false, header.menu_button.height);
     if panel
