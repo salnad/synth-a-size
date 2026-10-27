@@ -30,7 +30,7 @@ use sas_gui::sections::popup_browser::{self, PopupBrowserLayout};
 use sas_gui::sections::selection_list::Selection;
 use sas_gui::sections::synthesis::SynthesisLayout;
 use sas_gui::sections::wave_source_overlay::OverlayLayout;
-use sas_gui::sections::wavetable_edit::{KeyframeRef, WavetableEditLayout};
+use sas_gui::sections::wavetable_edit::{self, KeyframeRef, WavetableEditLayout};
 use sas_gui::skin::{Skin, ValueId};
 use sas_gui::{EditorModel, Host, HostParam, Interface, OpenGestures, Tab};
 use sas_preset::registry::registry;
@@ -50,6 +50,8 @@ struct Synth {
     last_files: Mutex<[Option<PathBuf>; 3]>,
     /// The wavetables loaded, by file name.
     loads: Mutex<Vec<String>>,
+    /// The oscillators "Synthesize Preset to Table" asked for.
+    resyntheses: Mutex<Vec<usize>>,
 }
 
 impl Synth {
@@ -83,6 +85,7 @@ impl Synth {
             added_folders: Mutex::new(Vec::new()),
             last_files: Mutex::default(),
             loads: Mutex::new(Vec::new()),
+            resyntheses: Mutex::new(Vec::new()),
         })
     }
 
@@ -165,6 +168,14 @@ impl EditorModel for Synth {
             .unwrap()
             .push(format!("{oscillator} audio {name}"));
         true
+    }
+
+    fn wavetable_json(&self, oscillator: usize) -> Option<String> {
+        Some(self.creators.lock().unwrap()[oscillator].to_json().dump())
+    }
+
+    fn resynthesize_to_wavetable(&self, oscillator: usize) {
+        self.resyntheses.lock().unwrap().push(oscillator);
     }
 
     fn last_wavetable_file(&self, oscillator: usize) -> Option<PathBuf> {
@@ -1083,4 +1094,52 @@ fn the_editor_loads_flac_and_upper_case_wav_as_audio() {
         Some(folder.join("Echo.WAV"))
     );
     std::fs::remove_dir_all(&root).unwrap();
+}
+
+/// The title menu (`showPopupMenu`): "Save As Wavetable" opens the save
+/// section for the wavetable over the editor (`saveWavetable`), and
+/// "Synthesize Preset to Table" renders the patch into the oscillator's
+/// wavetable (`resynthesizeToWavetable`).
+#[test]
+fn the_title_menu_saves_and_resynthesizes() {
+    let fixture = Fixture::new();
+    let root = wavetable_folders(&fixture, "title-menu");
+    let mut harness = opened(&fixture);
+    let menu = fixture.editor_layout().menu;
+    let below = Pos2::new(menu.x as f32, menu.bottom() as f32);
+    click(&mut harness, centre(menu));
+    choose_row(&mut harness, below, 4);
+    assert_eq!(*fixture.synth.resyntheses.lock().unwrap(), [0]);
+
+    assert!(!fixture.interface.borrow().save_section_state().0);
+    click(&mut harness, centre(menu));
+    choose_row(&mut harness, below, 0);
+    harness.step();
+    assert!(fixture.interface.borrow().save_section_state().0);
+    assert_eq!(fixture.editor(), Some(0));
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+/// "Export Wavetable" writes the wavetable's JSON with the wavetable
+/// extension, and "Export to .wav File" 256 rendered frames at 88.2 kHz
+/// with the frame size in the `clm ` chunk, each in place of the extension
+/// the dialog gave (`withFileExtension`).
+#[test]
+fn the_exports_write_the_json_and_the_rendered_frames() {
+    let fixture = Fixture::new();
+    let dir = std::env::temp_dir().join(format!("sas-editor-exports-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let model = fixture.synth.as_ref();
+    wavetable_edit::export_wavetable(model, 0, &dir.join("Table.txt")).unwrap();
+    let written = std::fs::read_to_string(dir.join("Table.vitaltable")).unwrap();
+    assert_eq!(written, model.wavetable_json(0).unwrap());
+
+    wavetable_edit::export_wav(model, 0, &dir.join("Frames")).unwrap();
+    let bytes = std::fs::read(dir.join("Frames.wav")).unwrap();
+    assert_eq!(bytes.len(), 154 + 256 * 2048 * 2);
+    assert_eq!(
+        &bytes[104..145],
+        sas_gui::wavetable_export::clm_text().as_bytes()
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
 }

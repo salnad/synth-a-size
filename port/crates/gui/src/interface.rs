@@ -839,6 +839,7 @@ impl Interface {
             self.show_wavetable_edit_section(ui, host, &pixels, &layout, index);
             self.show_popup_browser(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
             self.show_overlay(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
+            self.show_save_section(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
             return;
         }
         self.overlay
@@ -1014,7 +1015,10 @@ impl Interface {
                 self.save_section.open(host, target);
             }
         }
-        if let Some(oscillator) = self.synthesis.take_wavetable_save_request() {
+        let editor_save = self
+            .wavetable_editor
+            .filter(|&index| self.wavetable_edits[index].take_save_request());
+        if let Some(oscillator) = self.synthesis.take_wavetable_save_request().or(editor_save) {
             if let Some(target) = SaveTarget::wavetable(host.model(), oscillator) {
                 self.save_section.open(host, target);
             }

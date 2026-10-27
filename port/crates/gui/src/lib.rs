@@ -34,6 +34,7 @@ pub mod section;
 pub mod sections;
 pub mod skin;
 pub mod text;
+pub mod wavetable_export;
 
 pub use chat::{
     ChatHost, ChatMode, ChatPanel, ChatPlacement, ChatSettingsView, ChatStyle, ChatView, FocusMode,
