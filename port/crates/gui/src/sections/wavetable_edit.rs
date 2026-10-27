@@ -39,7 +39,7 @@ use sas_engine::sas_oscillators::sas_wavetable::wave_frame::{NUM_REAL_COMPLEX, W
 use sas_engine::sas_oscillators::sas_wavetable::{
     WaveFrame, Wavetable, NUM_OSCILLATOR_WAVE_FRAMES,
 };
-use sas_preset::user_folders::{self, Kind};
+use sas_preset::user_folders::{self, Kind, WAVETABLE_EXTENSION};
 
 use super::wave_source_overlay::{
     paint_wave_source_overlay, show_wave_source_overlay, OverlayLayout, WaveSourceSliders,
@@ -48,6 +48,7 @@ use super::wave_source_overlay::{
 use super::{popup_browser, MenuOwner, Panel};
 use crate::controls::bars::BarRenderer;
 use crate::controls::clicks::Clicks;
+use crate::controls::file_dialog::{self, DialogKind, FileRequest};
 use crate::controls::icon;
 use crate::controls::path::Path;
 use crate::controls::paths;
@@ -110,6 +111,12 @@ pub const MENU_POWER_SCALE: i32 = 1;
 pub const MENU_AMPLITUDE_SCALE: i32 = 2;
 pub const MENU_ZOOM_1: i32 = 3;
 pub const MENU_ZOOM_16: i32 = 7;
+/// The title menu's items (`MenuItems`).
+pub const MENU_SAVE_AS_WAVETABLE: i32 = 1;
+pub const MENU_IMPORT_WAVETABLE: i32 = 2;
+pub const MENU_EXPORT_WAVETABLE: i32 = 3;
+pub const MENU_EXPORT_WAV: i32 = 4;
+pub const MENU_RESYNTHESIZE: i32 = 5;
 
 /// `textMouseDown`'s `kBrowserWidth` and `kBrowserHeight`, before the size
 /// ratio.
@@ -351,6 +358,8 @@ pub enum EditMenu {
     /// The gear's menu over the amplitudes
     /// (`frequency_amplitude_settings_`).
     Settings,
+    /// The title's menu, beside the name (`showPopupMenu`).
+    Title,
 }
 
 /// What a press on the organizer is doing (`WavetableOrganizer::MouseMode`).
@@ -457,6 +466,9 @@ pub struct WavetableEditSection {
     /// The popup browser a press on the name asked for since the last
     /// call: its bounds and the section's (`textMouseDown`).
     browse_request: Option<(Rect, Rect)>,
+    /// "Save As Wavetable" was chosen since the last call
+    /// (`FullInterface::saveWavetable`).
+    save_request: bool,
 }
 
 impl WavetableEditSection {
@@ -480,6 +492,7 @@ impl WavetableEditSection {
                 .map(WaveSourceSliders::new),
             interpolation_seen: [0.0; 2],
             browse_request: None,
+            save_request: false,
         }
     }
 
@@ -514,6 +527,11 @@ impl WavetableEditSection {
     /// bounds and the section's.
     pub fn take_browse_request(&mut self) -> Option<(Rect, Rect)> {
         self.browse_request.take()
+    }
+
+    /// Whether "Save As Wavetable" was chosen since the last call.
+    pub fn take_save_request(&mut self) -> bool {
+        std::mem::take(&mut self.save_request)
     }
 
     /// The creator as last read from the model.
@@ -759,11 +777,27 @@ impl WavetableEditSection {
             self.load_shifted_file(model, shift);
         }
         let (key, path) = sized_path("wavetable menu", layout.menu.height, paths::menu);
-        panel.shape_button(
+        let menu = panel.shape_button(
             "wavetable menu",
             shape(Shape::Icon { key, path }),
             layout.menu,
         );
+        if menu.clicked {
+            let items = vec![
+                MenuItem::new(MENU_SAVE_AS_WAVETABLE, "Save As Wavetable"),
+                MenuItem::new(MENU_IMPORT_WAVETABLE, "Import Wavetable"),
+                MenuItem::new(MENU_EXPORT_WAVETABLE, "Export Wavetable"),
+                MenuItem::new(MENU_EXPORT_WAV, "Export to .wav File"),
+                MenuItem::new(MENU_RESYNTHESIZE, "Synthesize Preset to Table"),
+            ];
+            let position = Pos2::new(layout.menu.x as f32, layout.menu.bottom() as f32);
+            panel.overlay.menu = Some(Menu::new(
+                items,
+                position,
+                MenuOwner::WavetableEdit(self.oscillator, EditMenu::Title),
+            ));
+        }
+        self.take_dialog_answers(panel);
         let exit = panel.shape_button(
             "wavetable exit",
             shape(Shape::Icon {
@@ -788,6 +822,27 @@ impl WavetableEditSection {
         self.show_organizer(panel, layout, &rows, scroll);
         self.show_playhead(panel, layout);
         exit.clicked
+    }
+
+    /// The title menu's dialogs, once answered: an imported file loads
+    /// (`importWavetable`), and the exports are written
+    /// (`exportWavetable`, `exportToWav`).
+    fn take_dialog_answers(&self, panel: &Panel) {
+        let ctx = panel.ui.ctx();
+        let model = panel.host.model();
+        let oscillator = self.oscillator;
+        if let Some(Some(file)) = file_dialog::take_result(ctx, dialog_id("import", oscillator)) {
+            if file.exists() {
+                popup_browser::editor_load_wavetable_file(model, oscillator, &file);
+            }
+        }
+        if let Some(Some(file)) = file_dialog::take_result(ctx, dialog_id("export", oscillator)) {
+            let _ = export_wavetable(model, oscillator, &file);
+        }
+        if let Some(Some(file)) = file_dialog::take_result(ctx, dialog_id("export wav", oscillator))
+        {
+            let _ = export_wav(model, oscillator, &file);
+        }
     }
 
     /// `prevClicked` and `nextClicked`: the wavetable `shift` places from the
@@ -1226,6 +1281,36 @@ impl WavetableEditSection {
         }
         panel.overlay.wavetable_edit_action = None;
         let model = panel.host.model();
+        if menu == EditMenu::Title {
+            // menuCallback.
+            let ctx = panel.ui.ctx().clone();
+            match id {
+                MENU_SAVE_AS_WAVETABLE => self.save_request = true,
+                MENU_IMPORT_WAVETABLE => {
+                    let filters = vec![(
+                        "Wavetable".to_string(),
+                        popup_browser::WAVETABLE_EXTENSIONS
+                            .iter()
+                            .map(|extension| extension.to_string())
+                            .collect(),
+                    )];
+                    let request = FileRequest::open("Import Wavetable", filters);
+                    file_dialog::open(&ctx, dialog_id("import", self.oscillator), &request);
+                }
+                MENU_EXPORT_WAVETABLE => {
+                    let request =
+                        save_request("Export Wavetable", "Wavetable", WAVETABLE_EXTENSION);
+                    file_dialog::open(&ctx, dialog_id("export", self.oscillator), &request);
+                }
+                MENU_EXPORT_WAV => {
+                    let request = save_request("Export to .wav File", "WAV", "wav");
+                    file_dialog::open(&ctx, dialog_id("export wav", self.oscillator), &request);
+                }
+                MENU_RESYNTHESIZE => model.resynthesize_to_wavetable(self.oscillator),
+                _ => {}
+            }
+            return;
+        }
         if menu == EditMenu::Settings {
             // barViewerCallback.
             match id {
@@ -1939,6 +2024,59 @@ fn ui_button(
 }
 
 /// A key for an add button's id.
+/// The title menu's dialog `what` for oscillator `oscillator`.
+fn dialog_id(what: &str, oscillator: usize) -> egui::Id {
+    egui::Id::unique("wavetable editor dialog")
+        .with(what)
+        .with(oscillator)
+}
+
+/// A save dialog for `extension` files with no name in it, as upstream's
+/// `FileChooser(title, File(), "*.<extension>")`.
+fn save_request(title: &str, filter: &str, extension: &str) -> FileRequest {
+    FileRequest {
+        kind: DialogKind::Save,
+        file_name: None,
+        ..FileRequest::open(
+            title,
+            vec![(filter.to_string(), vec![extension.to_string()])],
+        )
+    }
+}
+
+/// `exportWavetable`: the wavetable's JSON (`stateToJson`), written to
+/// `file` with the wavetable extension in place of any it has.
+pub fn export_wavetable(
+    model: &dyn EditorModel,
+    oscillator: usize,
+    file: &std::path::Path,
+) -> std::io::Result<()> {
+    let Some(data) = model.wavetable_json(oscillator) else {
+        return Ok(());
+    };
+    std::fs::write(file.with_extension(WAVETABLE_EXTENSION), data)
+}
+
+/// `exportToWav`: the wavetable rendered to 256 frames
+/// (`renderToBuffer`), written to `file` with the `.wav` extension in
+/// place of any it has, as a mono 16-bit file at 88.2 kHz with the frame
+/// size in its `clm ` chunk ([`crate::wavetable_export`]).
+pub fn export_wav(
+    model: &dyn EditorModel,
+    oscillator: usize,
+    file: &std::path::Path,
+) -> std::io::Result<()> {
+    use crate::wavetable_export::{clm_text, wav_bytes, NUM_FRAMES, SAMPLE_RATE};
+    let Some(mut creator) = model.wavetable_creator(oscillator) else {
+        return Ok(());
+    };
+    let samples = creator.render_to_buffer(NUM_FRAMES);
+    std::fs::write(
+        file.with_extension("wav"),
+        wav_bytes(&samples, SAMPLE_RATE, &clm_text()),
+    )
+}
+
 fn menu_key(menu: EditMenu) -> usize {
     match menu {
         EditMenu::AddModifier(group) => group,
