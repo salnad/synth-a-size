@@ -136,7 +136,6 @@ fn settings() -> FixedHost {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn render(
     out: &Path,
     name: &str,
@@ -144,12 +143,12 @@ fn render(
     scale: f32,
     host: FixedHost,
     open_settings: bool,
-    drawer: bool,
 ) {
     let interface = RefCell::new(Interface::default());
-    interface.borrow_mut().set_drawer_open(drawer);
+    // The panel opens with the drawer: docked in a window widened for it,
+    // over the editor in any other.
+    interface.borrow_mut().set_drawer_open(true);
     let panel = RefCell::new(ChatPanel::default());
-    panel.borrow_mut().set_open(true);
     let state = egui_kittest::wgpu::create_render_state(
         egui_kittest::wgpu::default_wgpu_setup(),
         egui_wgpu::RendererOptions::PREDICTABLE,
@@ -166,12 +165,14 @@ fn render(
             let screen = ui.ctx().content_rect();
             let editor_host = Host::new(&InitPreset, None);
             interface.borrow_mut().show_in(ui, screen, &editor_host);
-            let placement = interface
-                .borrow()
-                .chat_placement(screen, ui.ctx().pixels_per_point());
-            panel
-                .borrow_mut()
-                .show(ui.ctx(), &placement, &host, &mut || {});
+            sas_gui::show_chat(
+                &mut interface.borrow_mut(),
+                &mut panel.borrow_mut(),
+                ui.ctx(),
+                screen,
+                &host,
+                &mut || {},
+            );
         });
     harness.run_steps(2);
     if open_settings {
@@ -203,24 +204,15 @@ fn main() {
     }
     std::fs::create_dir_all(&out).unwrap();
     let full = (1400.0, 820.0);
-    render(&out, "chat-off", full, scale, off(), false, false);
-    render(
-        &out,
-        "chat-confirm",
-        full,
-        scale,
-        conversation(),
-        false,
-        false,
-    );
-    render(&out, "chat-settings", full, scale, settings(), true, false);
+    render(&out, "chat-off", full, scale, off(), false);
+    render(&out, "chat-confirm", full, scale, conversation(), false);
+    render(&out, "chat-settings", full, scale, settings(), true);
     render(
         &out,
         "chat-small",
         (350.0, 205.0),
         scale,
         conversation(),
-        false,
         false,
     );
     render(
@@ -230,7 +222,6 @@ fn main() {
         scale,
         conversation(),
         false,
-        false,
     );
     render(
         &out,
@@ -239,6 +230,5 @@ fn main() {
         scale,
         conversation(),
         false,
-        true,
     );
 }
