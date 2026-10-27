@@ -10,10 +10,12 @@
 //! 350 × 205, keeping the 1400:820 aspect ratio. Upstream also scales the
 //! first size by a factor saved in its config file; the port does not yet.
 
+use std::cell::Cell;
 use std::error::Error;
 use std::fmt;
 use std::mem::ManuallyDrop;
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use nice_plug::context::gui::GuiContext;
@@ -122,14 +124,23 @@ impl NiceEguiApp for App {
                 playing_note.release(model.as_ref());
             }
         };
-        frame.on_failure(release.clone());
-        let model = self.model.clone();
+        // A window that stopped after a panic no longer forwards learned MIDI
+        // moves, so it stops counting as open then rather than at close.
+        let window = OpenWindow::new(self.model.clone());
+        frame.on_failure({
+            let (window, release) = (window.clone(), release.clone());
+            move || {
+                window.close();
+                release();
+            }
+        });
         let dialogs = egui_ctx.clone();
+        let closing = window.clone();
         frame.on_close(move || {
             // The window handle (on X11, with its connection) goes with the
             // window.
             crate::controls::file_dialog::set_parent(&dialogs, None);
-            model.set_editor_open(false);
+            closing.close();
             release();
         });
         let repaint = egui_ctx.clone();
@@ -138,7 +149,7 @@ impl NiceEguiApp for App {
             Box::new(move || repaint.request_repaint()),
         );
         self.gui_context = Some(gui_context);
-        self.model.set_editor_open(true);
+        window.open();
         Ok(())
     }
 
@@ -175,6 +186,36 @@ impl NiceEguiApp for App {
         }
         #[cfg(feature = "focus-spike")]
         self.focus_spike.show(ui, frame);
+    }
+}
+
+/// One window's share of the model's open-editor count
+/// ([`EditorModel::set_editor_open`]): taken by [`open`](Self::open) and
+/// given back once, by the first [`close`](Self::close) after it.
+#[derive(Clone)]
+struct OpenWindow {
+    model: Arc<dyn EditorModel>,
+    counted: Rc<Cell<bool>>,
+}
+
+impl OpenWindow {
+    fn new(model: Arc<dyn EditorModel>) -> OpenWindow {
+        OpenWindow {
+            model,
+            counted: Rc::default(),
+        }
+    }
+
+    fn open(&self) {
+        if !self.counted.replace(true) {
+            self.model.set_editor_open(true);
+        }
+    }
+
+    fn close(&self) {
+        if self.counted.replace(false) {
+            self.model.set_editor_open(false);
+        }
     }
 }
 
@@ -410,5 +451,56 @@ impl nice_plug::editor::EditorHandle for EditorHandle {
             || (),
             || self.0.param_modulation_changed(id, modulation_offset),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use super::*;
+
+    /// Records `set_editor_open` calls.
+    #[derive(Default)]
+    struct Recorder(Mutex<Vec<bool>>);
+
+    impl EditorModel for Recorder {
+        fn preset_name(&self) -> String {
+            String::new()
+        }
+
+        fn set_editor_open(&self, open: bool) {
+            self.0.lock().unwrap().push(open);
+        }
+    }
+
+    fn calls(model: &Recorder) -> Vec<bool> {
+        model.0.lock().unwrap().clone()
+    }
+
+    #[test]
+    fn a_failed_window_stops_counting_as_open_once() {
+        let model = Arc::new(Recorder::default());
+        let window = OpenWindow::new(model.clone());
+        let at_close = window.clone();
+        window.open();
+        // The failure hook, then the host closing the inert window.
+        window.close();
+        at_close.close();
+        assert_eq!(calls(&model), [true, false]);
+    }
+
+    #[test]
+    fn a_window_counts_from_open_to_its_first_close() {
+        let model = Arc::new(Recorder::default());
+        let window = OpenWindow::new(model.clone());
+        // Closed before it opened (build failed part-way): nothing to give
+        // back.
+        window.close();
+        assert_eq!(calls(&model), Vec::<bool>::new());
+        window.open();
+        window.open();
+        window.close();
+        assert_eq!(calls(&model), [true, false]);
     }
 }
