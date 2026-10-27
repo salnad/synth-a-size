@@ -77,6 +77,12 @@ pub struct HeaderLayout {
     pub menu_button: Rect,
     pub volume: Rect,
     pub oscilloscope: Rect,
+    /// `exit_temporary_button_`, shown in place of the tabs while a
+    /// temporary tab (the preset browser) is open.
+    pub exit_temporary: Rect,
+    /// `temporary_tab_`, the temporary tab's name, and its text size.
+    pub temporary: Rect,
+    pub temporary_text_size: f32,
 }
 
 /// `PresetSelector`'s parts, in interface coordinates.
@@ -110,6 +116,10 @@ pub struct FullLayout {
     pub bend: Rect,
     pub extra_mod: Rect,
     pub keyboard: Rect,
+    /// `preset_browser_` (and `bank_exporter_`): from the main column's left
+    /// edge to the interface's width, which a letterbox's left offset
+    /// narrows as upstream's does.
+    pub browser: Rect,
     /// `FullInterface::paintBackground`'s two bars between the columns.
     pub bars: [Rect; 2],
 }
@@ -199,6 +209,7 @@ impl FullLayout {
         );
 
         let header = HeaderLayout::new(skin, ratio, header_bounds, tab_offset);
+        let browser = Rect::new(main.x, main.y, width - main.x, main.height);
 
         let bar_width = 6 * padding;
         let bar_y = header.bounds.bottom();
@@ -220,6 +231,7 @@ impl FullLayout {
             bend,
             extra_mod,
             keyboard,
+            browser,
             bars,
         }
     }
@@ -266,6 +278,11 @@ impl HeaderLayout {
 
         let tabs_width = preset_selector_x - component_padding - tab_offset;
         let tabs = Rect::new(tab_offset, 0, tabs_width, height);
+        let exit_temporary = Rect::new(tab_offset, 0, height, height);
+        const TEXT_HEIGHT_RATIO: f32 = 0.3;
+        const PADDING_LEFT: f32 = 0.25;
+        let temporary_x = exit_temporary.right() + (height as f32 * PADDING_LEFT) as i32;
+        let temporary = Rect::new(temporary_x, 0, preset_selector_x - temporary_x, height);
 
         // SynthPresetSelector::resized.
         let selector_height = preset_selector.height;
@@ -294,6 +311,9 @@ impl HeaderLayout {
         HeaderLayout {
             bounds,
             logo: logo.translated(dx, dy),
+            exit_temporary: exit_temporary.translated(dx, dy),
+            temporary: temporary.translated(dx, dy),
+            temporary_text_size: height as f32 * TEXT_HEIGHT_RATIO,
             tabs: tabs.translated(dx, dy),
             preset_selector: preset_selector.translated(dx, dy),
             preset: PresetSelectorLayout::new(selector.translated(px, py)),

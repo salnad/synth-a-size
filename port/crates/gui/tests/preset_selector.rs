@@ -311,14 +311,14 @@ fn without_an_active_preset_the_arrows_start_from_the_user_folder() {
 }
 
 /// The menu opens on mouse down below its button; "Initialize Preset" is
-/// its fourth row (after a divider).
+/// its fifth row (after a divider).
 #[test]
 fn the_menu_initializes_the_preset() {
     let fixture = Fixture::new();
     let mut harness = fixture.harness();
     let menu = fixture.header().menu_button;
     click(&mut harness, centre(menu));
-    choose_row(&mut harness, menu.x as f32, menu.bottom() as f32, 3);
+    choose_row(&mut harness, menu.x as f32, menu.bottom() as f32, 4);
     assert_eq!(*fixture.synth.calls.lock().unwrap(), ["init"]);
 }
 
@@ -356,11 +356,58 @@ fn a_load_clears_the_mark() {
     let menu = fixture.header().menu_button;
     click(&mut harness, centre(menu));
     set_from_host(&fixture, "osc_1_level", 0.75);
-    choose_row(&mut harness, menu.x as f32, menu.bottom() as f32, 3);
+    choose_row(&mut harness, menu.x as f32, menu.bottom() as f32, 4);
     harness.step();
     harness.step();
     assert!(!fixture.interface.borrow().preset_modified());
     set_from_host(&fixture, "osc_1_level", 0.5);
     harness.step();
     assert!(fixture.interface.borrow().preset_modified());
+}
+
+fn browser_visible(fixture: &Fixture) -> bool {
+    fixture.interface.borrow().preset_browser_visible()
+}
+
+/// A left click on the name shows and hides the browser (`textMouseUp`),
+/// "Browse Presets" shows it, and the header's exit button hides it
+/// (`clearTemporaryTab`).
+#[test]
+fn the_name_the_menu_and_the_exit_button_show_and_hide_the_browser() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let header = fixture.header();
+    click(&mut harness, centre(header.preset.text));
+    assert!(browser_visible(&fixture));
+    click(&mut harness, centre(header.preset.text));
+    assert!(!browser_visible(&fixture));
+
+    let menu = header.menu_button;
+    click(&mut harness, centre(menu));
+    choose_row(&mut harness, menu.x as f32, menu.bottom() as f32, 0);
+    harness.step();
+    assert!(browser_visible(&fixture));
+    click(&mut harness, centre(header.exit_temporary));
+    assert!(!browser_visible(&fixture));
+}
+
+/// Escape hides the browser (`PresetBrowser::keyPressed`).
+#[test]
+fn escape_hides_the_browser() {
+    let fixture = Fixture::new();
+    fixture
+        .interface
+        .borrow_mut()
+        .set_preset_browser_visible(true);
+    let mut harness = fixture.harness();
+    assert!(browser_visible(&fixture));
+    harness.event(Event::Key {
+        key: egui::Key::Escape,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    });
+    harness.step();
+    assert!(!browser_visible(&fixture));
 }

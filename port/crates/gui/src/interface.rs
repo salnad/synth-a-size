@@ -26,8 +26,11 @@ use sas_preset::user_folders::{self, Kind};
 use sas_preset::{GuiConnection, SampleState, SlotValues};
 
 use crate::chat::{ChatPlacement, ChatStyle};
+use crate::colour::Colour;
 use crate::controls::format;
 use crate::controls::oscilloscope;
+use crate::controls::paths;
+use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
 use crate::controls::tab_selector::{self, TabSelector};
 use crate::fonts::Face;
 use crate::host::{Host, HostParam};
@@ -42,6 +45,7 @@ use crate::sections::extra_mod::{self, ExtraModLayout, ExtraModSection};
 use crate::sections::keyboard::{self, KeyboardLayout, PlayingNote};
 use crate::sections::modulation::ModulationInterface;
 use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
+use crate::sections::preset_browser::{self, PresetBrowser, PresetBrowserLayout};
 use crate::sections::preset_selector;
 use crate::sections::synthesis::SynthesisInterface;
 use crate::sections::voice::{self, VoiceLayout, VoiceSection};
@@ -64,6 +68,16 @@ pub trait EditorModel: Send + Sync + 'static {
     /// `SynthBase::getPresetName`: the loaded preset's name, empty for the
     /// init preset.
     fn preset_name(&self) -> String;
+
+    /// `SynthBase::getAuthor`.
+    fn preset_author(&self) -> String {
+        String::new()
+    }
+
+    /// `SynthBase::getComments`.
+    fn preset_comments(&self) -> String {
+        String::new()
+    }
 
     /// The host parameter for synth control `name` (its registry name).
     /// The pointer must stay valid as long as the model does.
@@ -420,6 +434,9 @@ pub struct Interface {
     locals: Arc<LocalValues>,
     effects: EffectsTab,
     advanced: AdvancedTab,
+    preset_browser: PresetBrowser,
+    /// `preset_browser_->isVisible()`.
+    preset_browser_visible: bool,
     preset_modified: preset_selector::Modified,
 }
 
@@ -446,6 +463,8 @@ impl Interface {
             locals: Arc::default(),
             effects: EffectsTab::default(),
             advanced: AdvancedTab::default(),
+            preset_browser: PresetBrowser,
+            preset_browser_visible: false,
             preset_modified: preset_selector::Modified::default(),
         }
     }
@@ -460,6 +479,17 @@ impl Interface {
 
     pub fn set_tab(&mut self, tab: Tab) {
         self.tab = tab;
+    }
+
+    pub fn preset_browser_visible(&self) -> bool {
+        self.preset_browser_visible
+    }
+
+    /// `FullInterface::setPresetBrowserVisibility`: the browser in place of
+    /// the tab, the modulation column and the voice and portamento
+    /// sections, with the header's temporary tab naming it.
+    pub fn set_preset_browser_visible(&mut self, visible: bool) {
+        self.preset_browser_visible = visible;
     }
 
     /// Scrolls the Effects tab's column down `y` pixels.
@@ -584,8 +614,32 @@ impl Interface {
             &mut self.overlay,
             layout.header.bounds,
         );
-        preset_selector::show(&mut panel, &layout.header, &mut self.preset_modified);
+        let browse = preset_selector::show(
+            &mut panel,
+            &layout.header,
+            &mut self.preset_modified,
+            self.preset_browser_visible,
+        );
+        if self.preset_browser_visible {
+            // exit_temporary_button_: clearTemporaryTab.
+            let exit = ShapeButton {
+                shape: Shape::Icon {
+                    key: "header exit",
+                    path: paths::exit_x(),
+                },
+                colours: ShapeColours::icon(&header),
+            };
+            if panel
+                .shape_button("exit temporary", exit, layout.header.exit_temporary)
+                .clicked
+            {
+                self.preset_browser_visible = false;
+            }
+        }
         panel.finish();
+        if let Some(visible) = browse {
+            self.preset_browser_visible = visible;
+        }
         advanced::poll_tuning_file(host, ui.ctx());
     }
 
@@ -601,6 +655,18 @@ impl Interface {
         live: Option<&Live>,
     ) {
         let top = Scope::top(&self.skin, layout.size_ratio);
+        if self.preset_browser_visible {
+            let browser_layout = PresetBrowserLayout::new(&top, layout.browser);
+            preset_browser::paint_background(pixels, &top, &browser_layout);
+            let scope = top.within(preset_browser::SKIN);
+            let mut panel = Panel::new(ui, host, pixels, scope, &mut self.overlay, layout.browser);
+            let hide = self.preset_browser.show(&mut panel, &browser_layout);
+            panel.finish();
+            if hide {
+                self.preset_browser_visible = false;
+            }
+            return;
+        }
         match self.tab {
             Tab::Voice => {
                 self.synthesis
@@ -635,9 +701,12 @@ impl Interface {
         layout: &FullLayout,
     ) {
         let top = Scope::top(&self.skin, layout.size_ratio);
+        let browsing = self.preset_browser_visible;
 
-        self.modulation
-            .show(ui, host, pixels, &top, &mut self.overlay, layout.modulation);
+        if !browsing {
+            self.modulation
+                .show(ui, host, pixels, &top, &mut self.overlay, layout.modulation);
+        }
 
         let extra_layout = ExtraModLayout::new(&top, layout.extra_mod);
         self.extra_mod.paint_background(pixels, &top, &extra_layout);
@@ -652,12 +721,14 @@ impl Interface {
         self.extra_mod.show(&mut panel, &extra_layout);
         panel.finish();
 
-        let scope = top.within(voice::SKIN);
-        let voice_layout = VoiceLayout::new(&scope, layout.voice);
-        self.voice.paint_background(pixels, &scope, &voice_layout);
-        let mut panel = Panel::new(ui, host, pixels, scope, &mut self.overlay, layout.voice);
-        self.voice.show(&mut panel, &voice_layout);
-        panel.finish();
+        if !browsing {
+            let scope = top.within(voice::SKIN);
+            let voice_layout = VoiceLayout::new(&scope, layout.voice);
+            self.voice.paint_background(pixels, &scope, &voice_layout);
+            let mut panel = Panel::new(ui, host, pixels, scope, &mut self.overlay, layout.voice);
+            self.voice.show(&mut panel, &voice_layout);
+            panel.finish();
+        }
 
         let scope = top.within(bend::SKIN);
         let bend_layout = BendLayout::new(&scope, layout.bend);
@@ -674,6 +745,9 @@ impl Interface {
         keyboard::show(&mut panel, &keyboard_layout, held, &self.playing_note);
         panel.finish();
 
+        if browsing {
+            return;
+        }
         let scope = top.within(portamento::SKIN);
         let portamento_layout = PortamentoLayout::new(&scope, layout.portamento);
         self.portamento
@@ -809,7 +883,11 @@ impl Interface {
         );
 
         self.paint_logo(pixels, layout);
-        self.paint_tabs(pixels, layout);
+        if self.preset_browser_visible {
+            self.paint_temporary_tab(pixels, layout, "PRESET BROWSER");
+        } else {
+            self.paint_tabs(pixels, layout);
+        }
         self.paint_preset_selector(pixels, layout, model);
     }
 
@@ -829,6 +907,19 @@ impl Interface {
                 logo.color(ColorId::WidgetPrimary1),
             ),
             Justify::Centred,
+            Overflow::Fit,
+        );
+    }
+
+    /// `HeaderSection::setTemporaryTab`: the temporary tab's name
+    /// (`temporary_tab_`, white light text) beside its exit button.
+    fn paint_temporary_tab(&self, pixels: &PixelPainter, layout: &FullLayout, name: &str) {
+        let header = &layout.header;
+        pixels.text_line(
+            name,
+            header.temporary,
+            (Face::Light, header.temporary_text_size, Colour(0xffff_ffff)),
+            Justify::Left,
             Overflow::Fit,
         );
     }
@@ -878,6 +969,9 @@ impl Interface {
     /// pointer is selected as soon as the button goes down, and follows a
     /// drag.
     fn handle_tabs(&mut self, ui: &mut Ui, pixels: &PixelPainter, layout: &FullLayout) {
+        if self.preset_browser_visible {
+            return;
+        }
         let mut selected = self.tab.index();
         let id = ui.scope_id().with("tabs");
         if HEADER_TABS.interact(ui, pixels, id, layout.header.tabs, &mut selected) {

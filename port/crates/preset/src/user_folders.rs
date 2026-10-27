@@ -66,6 +66,26 @@ pub fn folder(root: &Path, kind: Kind) -> PathBuf {
     root.join(kind.folder_name())
 }
 
+/// `LoadSave::getDirectories`: the folder for `kind` under `root` and under
+/// each folder directly inside it (where imported banks go), those that
+/// exist. The root's comes first, then the rest in natural order (upstream
+/// takes them in the file system's order).
+pub fn directories(root: &Path, kind: Kind) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return Vec::new();
+    };
+    let mut sub_folders: Vec<PathBuf> = entries
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| path.is_dir())
+        .collect();
+    sub_folders.sort_by(|a, b| compare_paths(a, b));
+    std::iter::once(root.to_path_buf())
+        .chain(sub_folders)
+        .map(|folder| folder.join(kind.folder_name()))
+        .filter(|folder| folder.is_dir())
+        .collect()
+}
+
 /// `LoadSave::FileSorterAscending`: the lower-cased full paths in natural
 /// order (runs of digits compare as numbers).
 pub fn compare_paths(a: &Path, b: &Path) -> Ordering {
@@ -181,6 +201,35 @@ mod tests {
         assert_eq!(step(&folder.join("Lead.vital"), 1), Some(bass_2.clone()));
         assert_eq!(files_in(&folder, PRESET_EXTENSION).len(), 3);
         std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    /// The kind's folder under the root comes first, then those under the
+    /// root's own folders (banks); folders without one are skipped.
+    #[test]
+    fn directories_include_banks() {
+        let root = std::env::temp_dir().join(format!("sas-dirs-{}", std::process::id()));
+        for folder in [
+            "Presets",
+            "Bank 10/Presets",
+            "Bank 2/Presets",
+            "Bank 3/Wavetables",
+        ] {
+            std::fs::create_dir_all(root.join(folder)).unwrap();
+        }
+        assert_eq!(
+            directories(&root, Kind::Presets),
+            [
+                root.join("Presets"),
+                root.join("Bank 2/Presets"),
+                root.join("Bank 10/Presets"),
+            ]
+        );
+        assert_eq!(
+            directories(&root, Kind::Wavetables),
+            [root.join("Bank 3/Wavetables")]
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(directories(&root, Kind::Presets).is_empty());
     }
 
     #[test]

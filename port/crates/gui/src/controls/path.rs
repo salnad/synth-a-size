@@ -225,6 +225,27 @@ impl Path {
 
     /// `Path::addLineSegment`: a rectangle `thickness` wide around the line.
     /// A zero-length line adds no area, only its point to the bounds (as
+    /// `Path::addStar`: a closed star of `points` points round `centre`,
+    /// alternating `outer` and `inner` radii, the first outer point straight
+    /// up.
+    pub fn add_star(&mut self, centre: (f32, f32), points: usize, inner: f32, outer: f32) {
+        let between = std::f32::consts::TAU / points as f32;
+        for i in 0..points * 2 {
+            let angle = i as f32 * between * 0.5;
+            let radius = if i & 1 == 1 { inner } else { outer };
+            let (x, y) = (
+                centre.0 + radius * angle.sin(),
+                centre.1 - radius * angle.cos(),
+            );
+            if i == 0 {
+                self.move_to(x, y);
+            } else {
+                self.line_to(x, y);
+            }
+        }
+        self.close();
+    }
+
     /// upstream uses it to pad icons to the unit square).
     pub fn add_line_segment(&mut self, start: (f32, f32), end: (f32, f32), thickness: f32) {
         let half = thickness * 0.5;

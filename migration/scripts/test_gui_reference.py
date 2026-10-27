@@ -105,5 +105,18 @@ class LiveArgsTest(unittest.TestCase):
                 gui_reference.live_args({"name": "v", "seconds": seconds})
 
 
+class OverlayArgsTest(unittest.TestCase):
+    def test_a_view_without_an_overlay_adds_nothing(self):
+        self.assertEqual(gui_reference.overlay_args({"name": "v"}), [])
+
+    def test_the_preset_browser(self):
+        self.assertEqual(gui_reference.overlay_args({"name": "v", "overlay": "preset_browser"}),
+                         ["--overlay", "preset_browser"])
+
+    def test_an_unknown_overlay_fails(self):
+        with self.assertRaises(SystemExit):
+            gui_reference.overlay_args({"name": "v", "overlay": "save_section"})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -7,6 +7,9 @@
 //! the limits in `editor_components/line_editor.h`). They behave as sliders
 //! through [`crate::host::Host`], which stores their values here instead of
 //! in the host, so they aren't saved or automated, as upstream's aren't.
+//! The preset browser's style filters
+//! (`vital/src/interface/editor_sections/preset_browser.cpp`) are kept here
+//! too.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -25,6 +28,33 @@ const DEFAULT_PAINT_PATTERN: f32 = 2.0;
 const NUM_PAINT_PATTERNS: f32 = 5.0;
 /// `vital::kNumLfos`.
 const NUM_LFOS: usize = 8;
+
+/// `strings::kPresetStyleNames`: the preset browser's style filters.
+pub const PRESET_STYLE_NAMES: [&str; 9] = [
+    "Bass",
+    "Lead",
+    "Keys",
+    "Pad",
+    "Percussion",
+    "Sequence",
+    "Experiment",
+    "SFX",
+    "Template",
+];
+
+/// The preset browser's style filter buttons, on while filtering by that
+/// style.
+pub const PRESET_STYLE_FILTERS: [&str; 9] = [
+    "preset_style_bass",
+    "preset_style_lead",
+    "preset_style_keys",
+    "preset_style_pad",
+    "preset_style_percussion",
+    "preset_style_sequence",
+    "preset_style_experiment",
+    "preset_style_sfx",
+    "preset_style_template",
+];
 
 fn local_info(name: &str, min: f32, max: f32, default_value: f32, display_name: &str) -> ParamInfo {
     ParamInfo {
@@ -75,6 +105,10 @@ fn infos() -> &'static HashMap<String, ParamInfo> {
             ] {
                 infos.insert(info.name.clone(), info);
             }
+        }
+        for (name, display_name) in PRESET_STYLE_FILTERS.iter().zip(PRESET_STYLE_NAMES) {
+            let info = local_info(name, 0.0, 1.0, 0.0, display_name);
+            infos.insert(info.name.clone(), info);
         }
         infos
     })

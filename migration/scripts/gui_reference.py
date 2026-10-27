@@ -15,7 +15,11 @@ Commands:
            OUT/<name>.png. These show upstream's branding, so they are CI
            artifacts only and are never committed. A view may run the engine
            first ("midi", "seconds") and draw the animated views from it
-           ("animate"); see live_args.
+           ("animate"); see live_args. A view may open an overlay over its
+           tab ("overlay": "preset_browser"); see overlay_args.
+
+ref-gui runs with HOME and XDG_DATA_HOME in a fresh temporary folder, so
+upstream reads no config, favourites or presets from the machine running it.
 
 Without a DISPLAY the script re-runs itself under xvfb-run. Mesa's software
 OpenGL (LIBGL_ALWAYS_SOFTWARE=1) is used either way.
@@ -73,8 +77,16 @@ def build():
 def run_ref_gui(args):
     if not REF_GUI.exists():
         sys.exit(f"gui_reference.py: {REF_GUI} missing; run '{sys.argv[0]} build' first")
-    env = dict(os.environ, LIBGL_ALWAYS_SOFTWARE="1")
-    subprocess.run([str(REF_GUI), *args], check=True, env=env, timeout=300)
+    with tempfile.TemporaryDirectory() as home:
+        data = Path(home) / "data"
+        data.mkdir()
+        env = dict(os.environ, LIBGL_ALWAYS_SOFTWARE="1", HOME=home, XDG_DATA_HOME=str(data))
+        # X clients find ~/.Xauthority through HOME when XAUTHORITY isn't set
+        # (an existing desktop display, not xvfb-run's).
+        authority = Path.home() / ".Xauthority"
+        if "XAUTHORITY" not in env and authority.exists():
+            env["XAUTHORITY"] = str(authority)
+        subprocess.run([str(REF_GUI), *args], check=True, env=env, timeout=300)
 
 
 def check_preset(preset, where):
@@ -110,6 +122,20 @@ def live_args(view):
             sys.exit(f"gui_reference.py: {VIEWS.name}: {name}: animate needs midi or seconds above 0")
         args += ["--animate", "on"]
     return args
+
+
+OVERLAYS = ("preset_browser",)
+
+
+def overlay_args(view):
+    """ref-gui options for the overlay a view opens over its tab: "overlay"
+    is one of OVERLAYS."""
+    overlay = view.get("overlay")
+    if overlay is None:
+        return []
+    if overlay not in OVERLAYS:
+        sys.exit(f"gui_reference.py: {VIEWS.name}: {view.get('name', '?')}: unknown overlay {overlay}")
+    return ["--overlay", overlay]
 
 
 def layout_paths():
@@ -197,6 +223,7 @@ def frames(out):
                 "--width", str(view.get("width", 1400)),
                 "--height", str(view.get("height", 820))]
         args += live_args(view)
+        args += overlay_args(view)
         if view.get("preset"):
             check_preset(view["preset"], VIEWS.name)
             args += ["--preset", str(REPO / view["preset"])]

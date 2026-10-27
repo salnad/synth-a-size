@@ -34,6 +34,8 @@ pub enum Justify {
     /// `Justification::centred`: whitespace is left out of the extent it
     /// centres.
     Centred,
+    /// `Justification::centredRight`, measured as `Centred` is.
+    Right,
 }
 
 /// A line as JUCE lays it out in a box.

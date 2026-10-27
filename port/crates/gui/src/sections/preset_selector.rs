@@ -27,6 +27,7 @@ use crate::popup::{Menu, MenuItem};
 
 /// The menu's choices (`SynthPresetSelector`'s menu ids, for the items
 /// ported so far).
+const BROWSE: i32 = 6;
 const OPEN_EXTERNAL: i32 = 0;
 const EXPORT: i32 = 1;
 const INIT: i32 = 2;
@@ -44,6 +45,11 @@ fn export_dialog() -> egui::Id {
 
 fn data_folder_dialog() -> egui::Id {
     egui::Id::unique("data folder")
+}
+
+/// Set by the menu's "Browse Presets" for [`show`] to answer.
+fn browse_request() -> egui::Id {
+    egui::Id::unique("browse presets")
 }
 
 /// The pixel-snapped menu and save icons (`Paths::menu(height)`,
@@ -157,6 +163,9 @@ fn preset_filters() -> Vec<(String, Vec<String>)> {
 fn choose(host: &Host, ctx: &egui::Context, id: i32) {
     let model = host.model();
     match id {
+        BROWSE => {
+            ctx.data_mut(|data| data.insert_temp(browse_request(), true));
+        }
         OPEN_EXTERNAL => {
             // importPreset: starts beside the active file.
             let folder = model
@@ -200,6 +209,7 @@ fn choose(host: &Host, ctx: &egui::Context, id: i32) {
 fn open_menu(panel: &mut Panel, anchor: Rect) {
     let model = panel.host.model();
     let mut items = vec![
+        MenuItem::new(BROWSE, "Browse Presets"),
         MenuItem::new(OPEN_EXTERNAL, "Open External Preset"),
         MenuItem::new(EXPORT, "Export Preset"),
         MenuItem::divider(),
@@ -218,9 +228,16 @@ fn open_menu(panel: &mut Panel, anchor: Rect) {
     panel.overlay.menu = Some(Menu::new(items, pos, MenuOwner::Setting(choose)));
 }
 
-/// The arrows, the save and menu buttons, the name's right-click menu, and
-/// the answers from the dialogs the menu opens.
-pub fn show(panel: &mut Panel, header: &HeaderLayout, modified: &mut Modified) {
+/// The arrows, the save and menu buttons, the name's clicks, and the
+/// answers from the dialogs the menu opens. Returns the preset browser's
+/// new visibility when a click or the menu changes it.
+pub fn show(
+    panel: &mut Panel,
+    header: &HeaderLayout,
+    modified: &mut Modified,
+    browser_visible: bool,
+) -> Option<bool> {
+    let mut browser = None;
     let model = panel.host.model();
     let preset = header.preset;
     let colours = ShapeColours::icon(&panel.scope);
@@ -257,13 +274,17 @@ pub fn show(panel: &mut Panel, header: &HeaderLayout, modified: &mut Modified) {
     {
         open_menu(panel, header.menu_button);
     }
-    // textMouseUp: a right-click on the name opens the menu below it.
+    // textMouseUp: a right-click on the name opens the menu below it, and
+    // a left click shows or hides the browser.
     let rect = panel.pixels.rect(preset.text.into());
     let response = panel.ui.interact(
         rect,
         panel.ui.scope_id().with("preset name"),
         Sense::click(),
     );
+    if response.clicked_by(PointerButton::Primary) {
+        browser = Some(!browser_visible);
+    }
     if response.clicked_by(PointerButton::Secondary) {
         open_menu(panel, preset.text);
     }
@@ -280,4 +301,11 @@ pub fn show(panel: &mut Panel, header: &HeaderLayout, modified: &mut Modified) {
     if let Some(Some(folder)) = file_dialog::take_result(&ctx, data_folder_dialog()) {
         model.set_data_directory(folder);
     }
+    if ctx
+        .data_mut(|data| data.remove_temp::<bool>(browse_request()))
+        .is_some()
+    {
+        browser = Some(true);
+    }
+    browser
 }
