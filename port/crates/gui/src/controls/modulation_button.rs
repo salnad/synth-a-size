@@ -62,7 +62,7 @@ pub fn menu_source_display_name(name: &str) -> String {
 }
 
 /// `ModulationButton::getMeterBounds`, in the button's coordinates.
-fn meter_bounds(width: i32, height: i32) -> Rect {
+pub(crate) fn meter_bounds(width: i32, height: i32) -> Rect {
     const MIN_METER_WIDTH: i32 = 4;
     let meter_width =
         MIN_METER_WIDTH.max(((width as f32 * METER_AREA_RATIO / 2.0).round() * 2.0) as i32);
