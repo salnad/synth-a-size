@@ -546,8 +546,8 @@ impl Default for MatrixTab {
             toggles: vec![[false; 3]; MAX_MODULATION_CONNECTIONS],
             generation: None,
             curves_bipolar: std::cell::RefCell::new(vec![false; MAX_MODULATION_CONNECTIONS]),
-            grid_size_x: grid_slider(local::MATRIX_GRID_SIZE_X, "X Grid"),
-            grid_size_y: grid_slider(local::MATRIX_GRID_SIZE_Y, "Y Grid"),
+            grid_size_x: grid_slider(local::MATRIX_GRID_SIZE_X, None),
+            grid_size_y: grid_slider(local::MATRIX_GRID_SIZE_Y, None),
             current_file: None,
             browse_request: None,
         }

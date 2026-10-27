@@ -140,6 +140,8 @@ impl TextEntry {
 pub struct Overlay {
     /// The value bubble and the slider showing it.
     pub value_popup: Option<(&'static str, ValuePopup)>,
+    /// The frame the value bubble was last shown in by a slider.
+    pub value_popup_pass: Option<u64>,
     pub menu: Option<Menu<MenuOwner>>,
     /// The two-column selector (`FullInterface::dualPopupSelector`).
     pub dual_menu: Option<DualMenu<MenuOwner>>,
@@ -163,6 +165,15 @@ pub struct Overlay {
 }
 
 impl Overlay {
+    /// `hidePopupDisplay(true)` from a slider's `mouseExit`: whichever value
+    /// bubble shows, unless another slider showed it in this frame, `pass`
+    /// (JUCE sends the old slider's exit before the new one's enter).
+    pub fn hide_value_popup(&mut self, pass: u64) {
+        if self.value_popup_pass != Some(pass) {
+            self.value_popup = None;
+        }
+    }
+
     /// The selection menu, if open, and what its selection does.
     pub fn show_menu(
         &mut self,
@@ -481,22 +492,19 @@ impl<'a, 'b> Panel<'a, 'b> {
         let slider = &slider.displayed(self.host.model().hz_frequency_display());
         let event = slider.interact(self.ui, self.host, self.pixels, bounds);
         let value = event.value.unwrap_or_else(|| slider.host_value(self.host));
+        // mouseExit, which JUCE sends once the pointer is outside and no
+        // button is held on the slider (`isMouseOverOrDragging`).
+        let inside_id = self.ui.scope_id().with(("slider inside", slider.name));
+        let was_inside = self
+            .ui
+            .data(|data| data.get_temp::<bool>(inside_id).unwrap_or(false));
+        self.ui
+            .data_mut(|data| data.insert_temp(inside_id, event.hover));
         if event.popup {
-            let popup = ValuePopup {
-                text: slider.popup_text(value),
-                source: bounds,
-                placement: slider.popup_placement,
-            };
-            self.overlay.value_popup = Some((slider.name, popup));
-        } else if !event.hover
-            && self
-                .overlay
-                .value_popup
-                .as_ref()
-                .is_some_and(|(name, _)| *name == slider.name)
-        {
-            // SynthSlider::mouseExit hides the popup.
-            self.overlay.value_popup = None;
+            self.show_value_popup(slider, bounds, value);
+        } else if was_inside && !event.hover {
+            self.overlay
+                .hide_value_popup(self.ui.ctx().cumulative_pass_nr());
         }
         if let Some(position) = event.menu_at {
             let area = self.pixels.area();
@@ -548,6 +556,18 @@ impl<'a, 'b> Panel<'a, 'b> {
             &self.scope,
             bounds,
         )
+    }
+
+    /// `SynthSlider::showPopup(true)`: `slider`'s value bubble, at
+    /// `value`, over `bounds`.
+    pub fn show_value_popup(&mut self, slider: &Slider, bounds: Rect, value: f32) {
+        let popup = ValuePopup {
+            text: slider.popup_text(value),
+            source: bounds,
+            placement: slider.popup_placement,
+        };
+        self.overlay.value_popup = Some((slider.name, popup));
+        self.overlay.value_popup_pass = Some(self.ui.ctx().cumulative_pass_nr());
     }
 
     /// A quad drawn with the section's controls.

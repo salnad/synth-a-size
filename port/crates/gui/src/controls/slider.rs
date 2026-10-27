@@ -97,20 +97,48 @@ pub enum Placement {
     Right,
 }
 
-/// A mouse wheel move, as JUCE's `MouseWheelDetails` gives it: a wheel
-/// that clicks (`isSmooth` false), or a smooth one such as a trackpad, by
-/// its `deltaY`.
+/// A mouse wheel move, as JUCE's `MouseWheelDetails` gives it: its
+/// deltas, and whether it is smooth (a trackpad) or clicks (`isSmooth`).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Wheel {
-    Stepped(f32),
-    Smooth(f32),
+pub struct Wheel {
+    pub delta_x: f32,
+    pub delta_y: f32,
+    pub smooth: bool,
 }
 
 impl Wheel {
-    /// The wheel moves egui reports this frame. A physical wheel clicks; a
-    /// trackpad and its momentum are smooth; an unknown source is smooth
-    /// when it reports points. Smooth points are scaled as JUCE's macOS peer
-    /// scales precise deltas (0.5 / 256 per point), smooth lines as its
+    /// A wheel that clicks, by `delta_y`.
+    pub fn stepped(delta_y: f32) -> Wheel {
+        Wheel {
+            delta_x: 0.0,
+            delta_y,
+            smooth: false,
+        }
+    }
+
+    /// A smooth wheel, by `delta_x` and `delta_y`.
+    pub fn smooth(delta_x: f32, delta_y: f32) -> Wheel {
+        Wheel {
+            delta_x,
+            delta_y,
+            smooth: true,
+        }
+    }
+
+    /// `Slider::mouseWheelMove`'s amount: `-deltaX` when the horizontal
+    /// part is the larger, else `deltaY`.
+    fn amount(self) -> f32 {
+        if self.delta_x.abs() > self.delta_y.abs() {
+            -self.delta_x
+        } else {
+            self.delta_y
+        }
+    }
+
+    /// The wheel moves egui reports this frame, in JUCE's units. A physical
+    /// wheel clicks; a trackpad and its momentum are smooth; an unknown
+    /// source is smooth when it reports points. Points are scaled as JUCE's
+    /// macOS peer scales precise deltas (0.5 / 256 per point), lines as its
     /// Linux peer scales a wheel's (50 / 256 per line).
     pub fn events(input: &egui::InputState) -> Vec<Wheel> {
         use egui::{MouseWheelSource, MouseWheelUnit};
@@ -130,14 +158,15 @@ impl Wheel {
                         MouseWheelSource::Trackpad | MouseWheelSource::Momentum => true,
                         _ => *unit == MouseWheelUnit::Point,
                     };
-                    Some(if smooth {
-                        Wheel::Smooth(if *unit == MouseWheelUnit::Point {
-                            delta.y * 0.5 / 256.0
-                        } else {
-                            delta.y * 50.0 / 256.0
-                        })
+                    let scale = if *unit == MouseWheelUnit::Point {
+                        0.5 / 256.0
                     } else {
-                        Wheel::Stepped(delta.y)
+                        50.0 / 256.0
+                    };
+                    Some(Wheel {
+                        delta_x: delta.x * scale,
+                        delta_y: delta.y * scale,
+                        smooth,
                     })
                 }
                 _ => None,
@@ -382,39 +411,41 @@ impl Slider {
         }
     }
 
-    /// `SynthSlider::mouseWheelMove` from `value`: a stepped wheel moves an
-    /// indexed control one step, up when `deltaY` is positive and down
+    /// `SynthSlider::mouseWheelMove` from `value`: a clicking wheel moves
+    /// an indexed control one step, up when `deltaY` is positive and down
     /// otherwise; any other wheel takes JUCE's `Slider::mouseWheelMove`,
-    /// 0.15 of the range per unit and at least the interval. None when
-    /// JUCE's move would be nothing. (No slider here sets a shift index or
-    /// a wheel movement other than 1.)
-    pub fn wheel_value(&self, value: f32, wheel: Wheel) -> Option<f32> {
+    /// which moves nothing while a mouse button is down and otherwise 0.15
+    /// of the range per unit of [`Wheel::amount`], at least the interval.
+    /// None when nothing moves. (No slider here sets a shift index or a
+    /// wheel movement other than 1.)
+    pub fn wheel_value(&self, value: f32, wheel: Wheel, button_down: bool) -> Option<f32> {
         let interval = self.interval();
         let value = value as f64;
-        match wheel {
-            Wheel::Stepped(delta_y) if interval > 0.0 => {
-                let moved = if delta_y > 0.0 {
-                    value + interval
-                } else {
-                    value - interval
-                };
-                Some(self.constrain(moved) as f32)
+        if !wheel.smooth && interval > 0.0 {
+            let moved = if wheel.delta_y > 0.0 {
+                value + interval
+            } else {
+                value - interval
+            };
+            return Some(self.constrain(moved) as f32);
+        }
+        if button_down {
+            return None;
+        }
+        let amount = wheel.amount();
+        {
+            let (min, max) = (self.info.min as f64, self.info.max as f64);
+            if max <= min {
+                return None;
             }
-            Wheel::Stepped(amount) | Wheel::Smooth(amount) => {
-                let (min, max) = (self.info.min as f64, self.info.max as f64);
-                if max <= min {
-                    return None;
-                }
-                // getMouseWheelDelta.
-                let position =
-                    (self.proportion(value as f32) + amount as f64 * 0.15).clamp(0.0, 1.0);
-                let delta = min + (max - min) * position - value;
-                if delta == 0.0 {
-                    return None;
-                }
-                let moved = value + interval.max(delta.abs()) * delta.signum();
-                Some(self.constrain(moved) as f32)
+            // getMouseWheelDelta.
+            let position = (self.proportion(value as f32) + amount as f64 * 0.15).clamp(0.0, 1.0);
+            let delta = min + (max - min) * position - value;
+            if delta == 0.0 {
+                return None;
             }
+            let moved = value + interval.max(delta.abs()) * delta.signum();
+            Some(self.constrain(moved) as f32)
         }
     }
 
@@ -449,10 +480,15 @@ impl Slider {
     /// `SynthSlider::getTextFromValue`, which the popup shows: a text
     /// slider already shows its value, so its popup names the parameter.
     pub fn popup_text(&self, value: f32) -> String {
+        // has_parameter_assignment_: the editor's own controls have none, so
+        // their text shows the value (`getSliderTextFromValue`).
+        let assigned = crate::local::info(self.name).is_none();
         if self.style == SliderStyle::Text {
             if let Some(prefix) = self.popup_prefix {
                 return prefix.to_string();
             }
+        }
+        if self.style == SliderStyle::Text && assigned {
             if self.info.local_description.is_empty() {
                 return self.info.display_name.clone();
             }
@@ -1051,15 +1087,23 @@ mod tests {
     #[test]
     fn the_wheel_steps_an_indexed_control() {
         let grid = Slider::new(crate::local::GRID_SIZE_X[0], SliderStyle::Text);
-        assert_eq!(grid.wheel_value(8.0, Wheel::Stepped(1.0)), Some(9.0));
-        assert_eq!(grid.wheel_value(8.0, Wheel::Stepped(-1.0)), Some(7.0));
-        assert_eq!(grid.wheel_value(8.0, Wheel::Stepped(0.0)), Some(7.0));
-        assert_eq!(grid.wheel_value(32.0, Wheel::Stepped(1.0)), Some(32.0));
-        assert_eq!(grid.wheel_value(1.0, Wheel::Stepped(-1.0)), Some(1.0));
-        assert_eq!(grid.wheel_value(8.0, Wheel::Smooth(0.01)), Some(9.0));
+        let step = |value, wheel| grid.wheel_value(value, wheel, false);
+        assert_eq!(step(8.0, Wheel::stepped(1.0)), Some(9.0));
+        assert_eq!(step(8.0, Wheel::stepped(-1.0)), Some(7.0));
+        assert_eq!(step(8.0, Wheel::stepped(0.0)), Some(7.0));
+        assert_eq!(step(32.0, Wheel::stepped(1.0)), Some(32.0));
+        assert_eq!(step(1.0, Wheel::stepped(-1.0)), Some(1.0));
+        assert_eq!(step(8.0, Wheel::smooth(0.0, 0.01)), Some(9.0));
         // 0.075 of the range down from 8, rounded.
-        assert_eq!(grid.wheel_value(8.0, Wheel::Smooth(-0.5)), Some(6.0));
-        assert_eq!(grid.wheel_value(8.0, Wheel::Smooth(0.0)), None);
+        assert_eq!(step(8.0, Wheel::smooth(0.0, -0.5)), Some(6.0));
+        assert_eq!(step(8.0, Wheel::smooth(0.0, 0.0)), None);
+        // The larger horizontal part moves it by -deltaX.
+        assert_eq!(step(8.0, Wheel::smooth(0.5, 0.01)), Some(6.0));
+        assert_eq!(step(8.0, Wheel::smooth(-0.5, 0.01)), Some(10.0));
+        // JUCE's move skips a wheel while a button is down; SynthSlider's
+        // step doesn't look.
+        assert_eq!(grid.wheel_value(8.0, Wheel::smooth(0.0, 0.5), true), None);
+        assert_eq!(grid.wheel_value(8.0, Wheel::stepped(1.0), true), Some(9.0));
     }
 
     #[test]
