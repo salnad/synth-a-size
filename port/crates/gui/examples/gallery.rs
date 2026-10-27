@@ -279,6 +279,9 @@ fn live_view(
     live
 }
 
+/// `ref-gui`'s default `--frames`.
+const REF_GUI_FRAMES: usize = 30;
+
 fn tab(name: &str) -> Tab {
     match name {
         "voice" => Tab::Voice,
@@ -319,6 +322,7 @@ fn main() {
             .map(|p| repo.join(p));
         let mut model = ViewPreset::new(preset_path.as_deref());
         model.live = live_view(name, view, &repo, &model.state);
+        let live = model.live.is_some();
         let width = view.get("width").and_then(|v| v.as_f64()).unwrap_or(1400.0) as f32;
         let height = view.get("height").and_then(|v| v.as_f64()).unwrap_or(820.0) as f32;
         let interface = RefCell::new(Interface::default());
@@ -361,7 +365,9 @@ fn main() {
                 let host = Host::new(&model, None);
                 interface.borrow_mut().show_in(ui, screen, &host)
             });
-        harness.run_steps(2);
+        // ref-gui draws 30 frames (`--frames`) before it reads one back, so
+        // an animated view's decays have run as long in both.
+        harness.run_steps(if live { REF_GUI_FRAMES } else { 2 });
         let image = harness
             .render()
             .unwrap_or_else(|e| panic!("{name}: render failed: {e}"));
