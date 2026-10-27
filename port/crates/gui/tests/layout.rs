@@ -13,6 +13,7 @@ use sas_gui::sections::bend::{self, BendLayout};
 use sas_gui::sections::envelope::{self, EnvelopeLayout};
 use sas_gui::sections::extra_mod::ExtraModLayout;
 use sas_gui::sections::filter::{self, FilterLayout, Kind};
+use sas_gui::sections::filter_slew_fold_warp_overlays::{SliderModifier, SliderModifierLayout};
 use sas_gui::sections::lfo::{self, LfoLayout};
 use sas_gui::sections::line_source_overlay::LineSourceLayout;
 use sas_gui::sections::modulation::{ModulationInterface, ModulationLayout};
@@ -445,6 +446,11 @@ fn wavetable_editor_rect(
     let edit = WavetableEditLayout::new(&top, bounds);
     let overlay = OverlayLayout::wave_source(&top, &edit);
     let phase = PhaseLayout::new(&top, &edit);
+    let modifier = |kind| SliderModifierLayout::new(kind, &top, &edit);
+    let filter = modifier(SliderModifier::Filter);
+    let slew = modifier(SliderModifier::Slew);
+    let fold = modifier(SliderModifier::Fold);
+    let warp = modifier(SliderModifier::Warp);
     let window = WindowLayout::new(&top, &edit);
     let line = LineSourceLayout::new(&top, &edit);
     let mut state = PresetState::new(&InitContent { sample_seed: 0 });
@@ -525,6 +531,29 @@ fn wavetable_editor_rect(
         "oscillator 1/WAVE WINDOW/Window Shape" => window.shape,
         "oscillator 1/WAVE WINDOW/Left Position" => window.left,
         "oscillator 1/WAVE WINDOW/Right Position" => window.right,
+        "oscillator 1/FREQUENCY FILTER"
+        | "oscillator 1/SLEW LIMITER"
+        | "oscillator 1/WAVE FOLDER"
+        | "oscillator 1/WAVE WARPER" => overlay.overlay,
+        "oscillator 1/FREQUENCY FILTER/background" => filter.controls,
+        "oscillator 1/FREQUENCY FILTER/background/text" => *filter.titles.get(instance - 1)?,
+        "oscillator 1/FREQUENCY FILTER/Filter Style" => filter.sliders[0],
+        "oscillator 1/FREQUENCY FILTER/Frequency Filter Cutoff" => filter.sliders[1],
+        "oscillator 1/FREQUENCY FILTER/Frequency Filter Shape" => filter.sliders[2],
+        "oscillator 1/FREQUENCY FILTER/NORMALIZE" => filter.toggles[0],
+        "oscillator 1/SLEW LIMITER/background" => slew.controls,
+        "oscillator 1/SLEW LIMITER/background/text" => *slew.titles.get(instance - 1)?,
+        "oscillator 1/SLEW LIMITER/up_slew_limit" => slew.sliders[0],
+        "oscillator 1/SLEW LIMITER/down_slew_limit" => slew.sliders[1],
+        "oscillator 1/WAVE FOLDER/background" => fold.controls,
+        "oscillator 1/WAVE FOLDER/background/text" => *fold.titles.get(instance - 1)?,
+        "oscillator 1/WAVE FOLDER/wave_fold_amount" => fold.sliders[0],
+        "oscillator 1/WAVE WARPER/background" => warp.controls,
+        "oscillator 1/WAVE WARPER/background/text" => *warp.titles.get(instance - 1)?,
+        "oscillator 1/WAVE WARPER/X Asymmetric" => warp.toggles[0],
+        "oscillator 1/WAVE WARPER/wave_warp_horizontal" => warp.sliders[0],
+        "oscillator 1/WAVE WARPER/Y Asymmetric" => warp.toggles[1],
+        "oscillator 1/WAVE WARPER/wave_warp_vertical" => warp.sliders[1],
         "oscillator 1/WAVE SOURCE/Increment" => *[
             overlay.grid_x_buttons[0],
             overlay.grid_x_buttons[1],

@@ -26,11 +26,13 @@ use sas_engine::sas_oscillators::sas_wavetable::creator::group::WavetableGroup;
 use sas_engine::sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_gui::layout::{FullLayout, Rect};
 use sas_gui::local::{
-    FILE_SOURCE_CONTROLS, LINE_SOURCE_CONTROLS, MODIFIER_CONTROLS, WAVE_SOURCE_CONTROLS,
+    FILE_SOURCE_CONTROLS, LINE_SOURCE_CONTROLS, MODIFIER_CONTROLS, SLIDER_MODIFIER_CONTROLS,
+    WAVE_SOURCE_CONTROLS,
 };
 use sas_gui::nice_plug_egui::file_drop::DroppedPath;
 use sas_gui::scope::Scope;
 use sas_gui::sections::file_source_overlay::{FileSourceLayout, MAX_FILE_SAMPLES};
+use sas_gui::sections::filter_slew_fold_warp_overlays::{SliderModifier, SliderModifierLayout};
 use sas_gui::sections::line_source_overlay::LineSourceLayout;
 use sas_gui::sections::oscillator::{self, OscillatorLayout};
 use sas_gui::sections::phase_window_overlays::{PhaseLayout, WindowLayout};
@@ -2195,6 +2197,103 @@ fn dragging_the_viewer_moves_the_start_position() {
     assert!(log_is_empty(&fixture));
 }
 
+/// Oscillator 1's wavetable as one group of a Wave Source, a Frequency
+/// Filter, a Slew Limiter, a Wave Folder and a Wave Warp (rows 0 to 4),
+/// each with a keyframe at 0, the editor open and row `row`'s keyframe
+/// clicked.
+fn slider_modifier_selected(fixture: &Fixture, row: usize) -> Harness<'_> {
+    let mut creator = WavetableCreator::new();
+    let mut group = WavetableGroup::new();
+    for kind in [
+        ComponentType::WaveSource,
+        ComponentType::FrequencyFilter,
+        ComponentType::SlewLimiter,
+        ComponentType::WaveFolder,
+        ComponentType::WaveWarp,
+    ] {
+        let mut component = WavetableComponent::new(kind);
+        component.insert_new_keyframe(0);
+        group.add_component(component);
+    }
+    creator.add_group(group);
+    fixture.synth.set_creator(0, creator);
+    let mut harness = opened(fixture);
+    let layout = fixture.editor_layout();
+    click(&mut harness, organizer_point(&layout, row as i32, 0));
+    let keyframe = KeyframeRef {
+        group: 0,
+        component: row,
+        keyframe: 0,
+    };
+    assert_eq!(fixture.overlay_frame(0), Some(keyframe));
+    harness
+}
+
+fn slider_modifier_layout(fixture: &Fixture, kind: SliderModifier) -> SliderModifierLayout {
+    let top = Scope::top(&fixture.skin, fixture.layout().size_ratio);
+    SliderModifierLayout::new(kind, &top, &fixture.editor_layout())
+}
+
+fn modifier_component(fixture: &Fixture, row: usize) -> WavetableComponent {
+    fixture.synth.wavetable_creator(0).unwrap().groups[0].components[row].clone()
+}
+
+/// `frameSelected`: each overlay's sliders load from its keyframe (the
+/// filter style from the modifier), with nothing committed or written to
+/// the host.
+#[test]
+fn the_modifier_overlays_load_their_keyframes() {
+    let controls = SLIDER_MODIFIER_CONTROLS[0];
+    let fixture = Fixture::new();
+    let _harness = slider_modifier_selected(&fixture, 1);
+    assert_eq!(fixture.local(controls.filter_style), 0.0);
+    assert_eq!(fixture.local(controls.filter_cutoff), 4.0);
+    assert_eq!(fixture.local(controls.filter_shape), 0.5);
+    for (row, expected) in [
+        (2, vec![(controls.slew_up, 0.0), (controls.slew_down, 0.0)]),
+        (3, vec![(controls.fold_amount, 1.0)]),
+        (
+            4,
+            vec![
+                (controls.warp_horizontal, 0.0),
+                (controls.warp_vertical, 0.0),
+            ],
+        ),
+    ] {
+        let fixture = Fixture::new();
+        let _harness = slider_modifier_selected(&fixture, row);
+        for (name, value) in expected {
+            assert_eq!(fixture.local(name), value, "{name}");
+        }
+        assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 0);
+        assert!(log_is_empty(&fixture));
+    }
+}
+
+/// The Frequency Filter's cutoff (`sliderValueChanged`) auditions while it
+/// drags and commits once when the drag ends (`sliderDragEnded`).
+#[test]
+fn the_cutoff_slider_auditions_and_commits_once() {
+    let fixture = Fixture::new();
+    let mut harness = slider_modifier_selected(&fixture, 1);
+    let cutoff = slider_modifier_layout(&fixture, SliderModifier::Filter).sliders[1];
+    let from = centre(cutoff);
+    drag(&mut harness, from, Pos2::new(from.x, from.y - 30.0));
+
+    let WavetableComponent::FrequencyFilter(filter) = modifier_component(&fixture, 1) else {
+        panic!("row 1 is the Frequency Filter");
+    };
+    let value = filter.keyframes.keyframes[0].data.cutoff;
+    assert!(value > 4.0, "{value}");
+    assert_eq!(
+        fixture.local(SLIDER_MODIFIER_CONTROLS[0].filter_cutoff),
+        value
+    );
+    assert!(auditioned_the_playhead(&fixture));
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+    assert!(log_is_empty(&fixture));
+}
+
 /// A window fade drag with another change to the model after its last move:
 /// the overlay counts as pressed until the drag's commit, so the committed
 /// fade is the drag's, as without the change.
@@ -2230,4 +2329,102 @@ fn a_refresh_during_a_window_fade_drag_keeps_the_drag() {
     let without = committed_fade(false);
     assert_ne!(without, 1.0);
     assert_eq!(committed_fade(true), without);
+}
+
+/// The filter style selector sets the modifier's style and commits once,
+/// without an audition.
+#[test]
+fn the_filter_style_selector_commits() {
+    let fixture = Fixture::new();
+    let mut harness = slider_modifier_selected(&fixture, 1);
+    let style = slider_modifier_layout(&fixture, SliderModifier::Filter).sliders[0];
+    click(&mut harness, centre(style));
+    choose_row(
+        &mut harness,
+        Pos2::new(style.x as f32, style.bottom() as f32),
+        2,
+    );
+    for _ in 0..3 {
+        harness.step();
+    }
+
+    let WavetableComponent::FrequencyFilter(filter) = modifier_component(&fixture, 1) else {
+        panic!("row 1 is the Frequency Filter");
+    };
+    assert_eq!(filter.settings.style, 2);
+    assert!(fixture.synth.auditions.lock().unwrap().is_empty());
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+    assert!(log_is_empty(&fixture));
+}
+
+/// `buttonClicked`: NORMALIZE turns the filter's normalize off (on by
+/// default), and X Asymmetric turns the warp's horizontal asymmetry on;
+/// each click commits once.
+#[test]
+fn the_toggles_set_the_modifiers_and_commit() {
+    let fixture = Fixture::new();
+    let mut harness = slider_modifier_selected(&fixture, 1);
+    let normalize = slider_modifier_layout(&fixture, SliderModifier::Filter).toggles[0];
+    click(&mut harness, centre(normalize));
+    let WavetableComponent::FrequencyFilter(filter) = modifier_component(&fixture, 1) else {
+        panic!("row 1 is the Frequency Filter");
+    };
+    assert!(!filter.settings.normalize);
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+
+    let fixture = Fixture::new();
+    let mut harness = slider_modifier_selected(&fixture, 4);
+    let asymmetric = slider_modifier_layout(&fixture, SliderModifier::Warp).toggles[0];
+    click(&mut harness, centre(asymmetric));
+    let WavetableComponent::WaveWarp(warp) = modifier_component(&fixture, 4) else {
+        panic!("row 4 is the Wave Warp");
+    };
+    assert!(warp.settings.horizontal_asymmetric);
+    assert!(!warp.settings.vertical_asymmetric);
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+    assert!(log_is_empty(&fixture));
+}
+
+/// Upstream lays the up limit out first, under the "DOWN LIMIT" title: the
+/// left slider sets the keyframe's up run-rise.
+#[test]
+fn the_left_slew_slider_is_the_up_limit() {
+    let fixture = Fixture::new();
+    let mut harness = slider_modifier_selected(&fixture, 2);
+    let left = slider_modifier_layout(&fixture, SliderModifier::Slew).sliders[0];
+    let from = centre(left);
+    drag(&mut harness, from, Pos2::new(from.x, from.y - 30.0));
+
+    let WavetableComponent::SlewLimiter(slew) = modifier_component(&fixture, 2) else {
+        panic!("row 2 is the Slew Limiter");
+    };
+    let data = &slew.keyframes.keyframes[0].data;
+    assert!(data.slew_up_run_rise > 0.0);
+    assert_eq!(data.slew_down_run_rise, 0.0);
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+}
+
+/// The fold amount and the warps audition and commit like the cutoff.
+#[test]
+fn the_fold_and_warp_sliders_commit_once() {
+    for (row, kind) in [(3, SliderModifier::Fold), (4, SliderModifier::Warp)] {
+        let fixture = Fixture::new();
+        let mut harness = slider_modifier_selected(&fixture, row);
+        let slider = slider_modifier_layout(&fixture, kind).sliders[0];
+        let from = centre(slider);
+        drag(&mut harness, from, Pos2::new(from.x, from.y - 30.0));
+        let changed = match modifier_component(&fixture, row) {
+            WavetableComponent::WaveFolder(fold) => {
+                fold.keyframes.keyframes[0].data.wave_fold_boost > 1.0
+            }
+            WavetableComponent::WaveWarp(warp) => {
+                warp.keyframes.keyframes[0].data.horizontal_power > 0.0
+            }
+            _ => false,
+        };
+        assert!(changed, "{kind:?}");
+        assert!(auditioned_the_playhead(&fixture));
+        assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+        assert!(log_is_empty(&fixture));
+    }
 }

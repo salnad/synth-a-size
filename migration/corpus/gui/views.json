@@ -26,6 +26,10 @@
     { "name": "wavetable_editor_groups", "tab": "voice", "preset": "migration/corpus/gui/presets/wavetable_groups.vital", "overlay": "wavetable_editor" },
     { "name": "wavetable_editor_select", "tab": "voice", "preset": "migration/corpus/gui/presets/wavetable_groups.vital", "overlay": "wavetable_editor", "wavetable_select": "1:0:1" },
     { "name": "wavetable_editor_phase", "tab": "voice", "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:1" },
-    { "name": "wavetable_editor_window", "tab": "voice", "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:2" }
+    { "name": "wavetable_editor_window", "tab": "voice", "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:2" },
+    { "name": "wavetable_editor_frequency_filter", "tab": "voice", "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:3" },
+    { "name": "wavetable_editor_slew_limiter", "tab": "voice", "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:4" },
+    { "name": "wavetable_editor_wave_folder", "tab": "voice", "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:5" },
+    { "name": "wavetable_editor_wave_warp", "tab": "voice", "preset": "migration/corpus/gui/presets/wavetable_modifiers.vital", "overlay": "wavetable_editor", "wavetable_select": "0:6" }
   ]
 }

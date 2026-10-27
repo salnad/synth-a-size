@@ -18,6 +18,7 @@ pub mod envelope;
 pub mod extra_mod;
 pub mod file_source_overlay;
 pub mod filter;
+pub mod filter_slew_fold_warp_overlays;
 pub mod keyboard;
 pub mod lfo;
 pub mod line_source_overlay;

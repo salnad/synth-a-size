@@ -45,6 +45,9 @@ use sas_engine::sas_oscillators::sas_wavetable::{
 use sas_preset::user_folders::{self, Kind, WAVETABLE_EXTENSION};
 
 use super::file_source_overlay::{FileSourceLayout, FileSourceOverlay};
+use super::filter_slew_fold_warp_overlays::{
+    SliderModifier, SliderModifierLayout, SliderModifierOverlays,
+};
 use super::line_source_overlay::{LineSourceLayout, LineSourceOverlay};
 use super::phase_window_overlays::{PhaseLayout, PhaseOverlay, WindowLayout, WindowOverlay};
 use super::wave_source_overlay::{
@@ -362,6 +365,14 @@ pub enum OverlayKind {
     LineSource,
     /// A `FileSourceOverlay`, for an Audio File Source.
     FileSource,
+    /// A Frequency Filter's `FrequencyFilterOverlay`.
+    FrequencyFilter,
+    /// A Slew Limiter's `SlewLimiterOverlay`.
+    SlewLimiter,
+    /// A Wave Folder's `WaveFoldOverlay`.
+    WaveFolder,
+    /// A Wave Warp's `WaveWarpOverlay`.
+    WaveWarp,
 }
 
 impl OverlayKind {
@@ -374,6 +385,22 @@ impl OverlayKind {
             WavetableComponent::WaveWindow(_) => Some(OverlayKind::Window),
             WavetableComponent::LineSource(_) => Some(OverlayKind::LineSource),
             WavetableComponent::FileSource(_) => Some(OverlayKind::FileSource),
+            WavetableComponent::FrequencyFilter(_) => Some(OverlayKind::FrequencyFilter),
+            WavetableComponent::SlewLimiter(_) => Some(OverlayKind::SlewLimiter),
+            WavetableComponent::WaveFolder(_) => Some(OverlayKind::WaveFolder),
+            WavetableComponent::WaveWarp(_) => Some(OverlayKind::WaveWarp),
+            _ => None,
+        }
+    }
+
+    /// The Frequency Filter, Slew Limiter, Wave Folder or Wave Warp overlay
+    /// it is, if it's one of those.
+    fn slider_modifier(self) -> Option<SliderModifier> {
+        match self {
+            OverlayKind::FrequencyFilter => Some(SliderModifier::Filter),
+            OverlayKind::SlewLimiter => Some(SliderModifier::Slew),
+            OverlayKind::WaveFolder => Some(SliderModifier::Fold),
+            OverlayKind::WaveWarp => Some(SliderModifier::Warp),
             _ => None,
         }
     }
@@ -398,6 +425,15 @@ impl OverlayKind {
             // FileSourceOverlay keeps the base's bounds setters, which
             // return false.
             OverlayKind::FileSource => Obscured::default(),
+            // Only FrequencyFilterOverlay::setFrequencyAmplitudeBounds
+            // returns true; the others keep the base's setters.
+            OverlayKind::FrequencyFilter => Obscured {
+                amplitudes: true,
+                ..Obscured::default()
+            },
+            OverlayKind::SlewLimiter | OverlayKind::WaveFolder | OverlayKind::WaveWarp => {
+                Obscured::default()
+            }
         }
     }
 }
@@ -558,6 +594,9 @@ pub struct WavetableEditSection {
     phase: PhaseOverlay,
     window: WindowOverlay,
     line_source: LineSourceOverlay,
+    /// The Frequency Filter, Slew Limiter, Wave Folder and Wave Warp
+    /// overlays.
+    slider_modifiers: SliderModifierOverlays,
 }
 
 impl WavetableEditSection {
@@ -589,6 +628,9 @@ impl WavetableEditSection {
             line_source: LineSourceOverlay::new(
                 local::LINE_SOURCE_CONTROLS[oscillator.min(2)],
                 oscillator,
+            ),
+            slider_modifiers: SliderModifierOverlays::new(
+                local::SLIDER_MODIFIER_CONTROLS[oscillator.min(2)],
             ),
         }
     }
@@ -1647,6 +1689,28 @@ impl WavetableEditSection {
                 self.frame_edited(panel.host.model(), edit);
             }
             OverlayKind::FileSource => self.edit_file_source(panel, layout, keyframe),
+            OverlayKind::FrequencyFilter
+            | OverlayKind::SlewLimiter
+            | OverlayKind::WaveFolder
+            | OverlayKind::WaveWarp => {
+                let Some(modifier) = kind.slider_modifier() else {
+                    return;
+                };
+                let modifier_layout = SliderModifierLayout::new(modifier, &panel.scope, layout);
+                let selections = self.frame_selections;
+                let Some(component) = component_mut(&mut self.creator, keyframe) else {
+                    return;
+                };
+                let edit = self.slider_modifiers.input(
+                    modifier,
+                    panel,
+                    &modifier_layout,
+                    selections,
+                    keyframe,
+                    component,
+                );
+                self.frame_edited(panel.host.model(), edit);
+            }
         }
     }
 
@@ -1679,6 +1743,10 @@ impl WavetableEditSection {
                 self.file_source_component(keyframe),
                 false,
             ),
+            OverlayKind::FrequencyFilter
+            | OverlayKind::SlewLimiter
+            | OverlayKind::WaveFolder
+            | OverlayKind::WaveWarp => self.paint_slider_modifier(panel, layout, kind, false),
         }
     }
 
@@ -1723,6 +1791,26 @@ impl WavetableEditSection {
                 self.file_source_component(keyframe),
                 true,
             ),
+            OverlayKind::FrequencyFilter
+            | OverlayKind::SlewLimiter
+            | OverlayKind::WaveFolder
+            | OverlayKind::WaveWarp => self.paint_slider_modifier(panel, layout, kind, true),
+        }
+    }
+
+    /// The Frequency Filter, Slew Limiter, Wave Folder or Wave Warp
+    /// overlay's drawing; the second also hands its sliders their input.
+    fn paint_slider_modifier(
+        &self,
+        panel: &mut Panel,
+        layout: &WavetableEditLayout,
+        kind: OverlayKind,
+        handle_sliders: bool,
+    ) {
+        if let Some(modifier) = kind.slider_modifier() {
+            let modifier_layout = SliderModifierLayout::new(modifier, &panel.scope, layout);
+            self.slider_modifiers
+                .paint(modifier, panel, &modifier_layout, handle_sliders);
         }
     }
 
@@ -2864,6 +2952,37 @@ mod tests {
                 phases: false,
             }
         );
+    }
+
+    /// The Frequency Filter, Slew Limiter, Wave Folder and Wave Warp get
+    /// their overlays; only the Frequency Filter's covers a display, the
+    /// amplitudes (`setFrequencyAmplitudeBounds`).
+    #[test]
+    fn the_slider_modifiers_map_to_their_overlays() {
+        let overlay = |kind| OverlayKind::of(&WavetableComponent::new(kind));
+        for (component, kind) in [
+            (ComponentType::FrequencyFilter, OverlayKind::FrequencyFilter),
+            (ComponentType::SlewLimiter, OverlayKind::SlewLimiter),
+            (ComponentType::WaveFolder, OverlayKind::WaveFolder),
+            (ComponentType::WaveWarp, OverlayKind::WaveWarp),
+        ] {
+            assert_eq!(overlay(component), Some(kind));
+        }
+        assert_eq!(
+            OverlayKind::FrequencyFilter.obscures(),
+            Obscured {
+                time_domain: false,
+                amplitudes: true,
+                phases: false,
+            }
+        );
+        for kind in [
+            OverlayKind::SlewLimiter,
+            OverlayKind::WaveFolder,
+            OverlayKind::WaveWarp,
+        ] {
+            assert_eq!(kind.obscures(), Obscured::default(), "{kind:?}");
+        }
     }
 
     #[test]
