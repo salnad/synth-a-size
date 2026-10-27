@@ -522,6 +522,9 @@ pub struct WavetableEditSection {
     /// "Save As Wavetable" was chosen since the last call
     /// (`FullInterface::saveWavetable`).
     save_request: bool,
+    /// A keyframe to select once the creator is read (the reference
+    /// tool's `--wavetable-select`).
+    requested_selection: Option<KeyframeRef>,
 }
 
 impl WavetableEditSection {
@@ -546,6 +549,7 @@ impl WavetableEditSection {
             audition: PendingAudition::default(),
             browse_request: None,
             save_request: false,
+            requested_selection: None,
         }
     }
 
@@ -684,6 +688,22 @@ impl WavetableEditSection {
             self.select_default_frame();
         }
         self.visible = true;
+        if let Some(keyframe) = self.requested_selection.take() {
+            let exists = self
+                .creator()
+                .and_then(|creator| creator.groups.get(keyframe.group))
+                .and_then(|group| group.components.get(keyframe.component))
+                .is_some_and(|component| keyframe.keyframe < component.num_frames());
+            if exists {
+                self.select_frame(keyframe);
+            }
+        }
+    }
+
+    /// Selects `keyframe` when the section next shows, as a click on it in
+    /// the organizer does (`WavetableOrganizer::selectFrame`), if it exists.
+    pub fn request_selection(&mut self, keyframe: KeyframeRef) {
+        self.requested_selection = Some(keyframe);
     }
 
     /// The section stopped showing.

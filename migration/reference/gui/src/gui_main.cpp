@@ -10,7 +10,7 @@
 //           [--tab voice|effects|matrix|advanced] [--width 1400] [--height 820] [--frames 30]
 //           [--effects-scroll 0]
 //           [--overlay preset_browser|save_section|popup_browser|wavetable_editor]
-//           [--data-dir folder]
+//           [--wavetable-select group:component[:keyframe]] [--data-dir folder]
 //
 // --effects-scroll scrolls the effects column down that many pixels (the
 // viewport keeps it within the column).
@@ -24,6 +24,11 @@
 // (OscillatorSection::textMouseDown).
 // --overlay wavetable_editor opens oscillator 1's wavetable editor in place of
 // the interface, as its edit button does.
+//
+// --wavetable-select group:component[:keyframe] (zero-based; the keyframe
+// defaults to 0), with --overlay wavetable_editor, selects that keyframe of
+// oscillator 1's wavetable in the editor's organizer, as a click on it does
+// (WavetableOrganizer::selectFrame), so the overlay for its component shows.
 //
 // --data-dir sets upstream's data folder (LoadSave::saveDataDirectory, in
 // the config under HOME) before the interface is built, so its browsers
@@ -64,6 +69,8 @@
 #include "synth_base.h"
 #include "synth_gui_interface.h"
 #include "tab_selector.h"
+#include "wavetable_creator.h"
+#include "wavetable_organizer.h"
 
 #include "render_synth.h"
 
@@ -117,7 +124,48 @@ struct Options {
   std::string layout;
   std::string overlay;
   std::string data_dir;
+  std::string wavetable_select;
 };
+
+// WavetableOrganizer::selectFrame is private. An explicit instantiation may
+// name a private member, so this hands its address to selectFrameOf without
+// changing upstream's headers.
+using SelectFrame = void (WavetableOrganizer::*)(WavetableKeyframe*);
+struct OrganizerSelectFrame {
+  friend SelectFrame selectFrameOf(OrganizerSelectFrame);
+};
+template <SelectFrame member>
+struct ExposeSelectFrame {
+  friend SelectFrame selectFrameOf(OrganizerSelectFrame) { return member; }
+};
+template struct ExposeSelectFrame<&WavetableOrganizer::selectFrame>;
+
+// "group:component[:keyframe]", each a whole number >= 0.
+bool parseWavetableSelect(const std::string& text, int& group, int& component, int& keyframe) {
+  StringArray parts = StringArray::fromTokens(String(text), ":", "");
+  if (parts.size() != 2 && parts.size() != 3)
+    return false;
+  int values[3] = { 0, 0, 0 };
+  for (int i = 0; i < parts.size(); ++i) {
+    if (!parts[i].containsOnly("0123456789") || parts[i].isEmpty())
+      return false;
+    values[i] = parts[i].getIntValue();
+  }
+  group = values[0];
+  component = values[1];
+  keyframe = values[2];
+  return true;
+}
+
+WavetableOrganizer* findWavetableOrganizer(Component* component) {
+  if (auto* organizer = dynamic_cast<WavetableOrganizer*>(component))
+    return organizer;
+  for (Component* child : component->getChildren()) {
+    if (WavetableOrganizer* found = findWavetableOrganizer(child))
+      return found;
+  }
+  return nullptr;
+}
 
 int tabIndex(const std::string& tab) {
   static const char* kTabs[] = { "voice", "effects", "matrix", "advanced" };
@@ -333,6 +381,8 @@ class RefGuiApplication : public JUCEApplication {
           options.overlay = value;
         else if (key == "--data-dir")
           options.data_dir = value;
+        else if (key == "--wavetable-select")
+          options.wavetable_select = value;
         else
           return fail("unknown option " + key);
       }
@@ -342,11 +392,18 @@ class RefGuiApplication : public JUCEApplication {
                     "[--tab voice|effects|matrix|advanced] [--width W] [--height H] [--frames N] "
                     "[--effects-scroll Y] "
                     "[--overlay preset_browser|save_section|popup_browser|wavetable_editor] "
-                    "[--data-dir folder]");
+                    "[--wavetable-select group:component[:keyframe]] [--data-dir folder]");
       if (!options.overlay.empty() && options.overlay != "preset_browser" &&
           options.overlay != "save_section" && options.overlay != "popup_browser" &&
           options.overlay != "wavetable_editor")
         return fail("unknown overlay " + options.overlay);
+      int select_group = 0, select_component = 0, select_keyframe = 0;
+      if (!options.wavetable_select.empty()) {
+        if (options.overlay != "wavetable_editor")
+          return fail("--wavetable-select needs --overlay wavetable_editor");
+        if (!parseWavetableSelect(options.wavetable_select, select_group, select_component, select_keyframe))
+          return fail("--wavetable-select takes group:component[:keyframe]");
+      }
 
       if (!options.data_dir.empty()) {
         File folder = File::getCurrentWorkingDirectory().getChildFile(options.data_dir);
@@ -421,6 +478,21 @@ class RefGuiApplication : public JUCEApplication {
       }
       if (options.overlay == "wavetable_editor")
         gui->showWavetableEditSection(0);
+      if (!options.wavetable_select.empty()) {
+        WavetableCreator* creator = synth_->getWavetableCreator(0);
+        WavetableOrganizer* organizer = findWavetableOrganizer(gui);
+        if (organizer == nullptr)
+          return fail("the wavetable editor's organizer not found");
+        if (select_group >= creator->numGroups())
+          return fail("--wavetable-select: no group " + std::to_string(select_group));
+        WavetableGroup* group = creator->getGroup(select_group);
+        if (select_component >= group->numComponents())
+          return fail("--wavetable-select: no component " + std::to_string(select_component));
+        WavetableComponent* component = group->getComponent(select_component);
+        if (select_keyframe >= component->numFrames())
+          return fail("--wavetable-select: no keyframe " + std::to_string(select_keyframe));
+        (organizer->*selectFrameOf(OrganizerSelectFrame()))(component->getFrameAt(select_keyframe));
+      }
       if (options.overlay == "popup_browser") {
         // OscillatorSection::textMouseDown for oscillator 1.
         OscillatorSection* oscillator = findOscillatorSection(gui);

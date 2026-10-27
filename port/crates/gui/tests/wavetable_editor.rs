@@ -1420,3 +1420,42 @@ fn the_controls_background_takes_presses_over_the_bars() {
     assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 0);
     assert_eq!(committed_samples(&fixture), before);
 }
+
+/// The reference tool's `--wavetable-select`: a keyframe asked for before
+/// the editor shows is selected once it reads the creator, in place of the
+/// default first keyframe, and the overlays hear of it; one that doesn't
+/// exist leaves the default.
+#[test]
+fn a_requested_keyframe_is_selected_when_the_editor_shows() {
+    let fixture = Fixture::new();
+    let mut creator = fixture.synth.wavetable_creator(0).unwrap();
+    creator.groups[0].components[0].insert_new_keyframe(128);
+    fixture.synth.set_creator(0, creator);
+    let second = KeyframeRef {
+        group: 0,
+        component: 0,
+        keyframe: 1,
+    };
+    fixture
+        .interface
+        .borrow_mut()
+        .select_wavetable_keyframe(0, second);
+    let mut harness = opened(&fixture);
+    harness.step();
+    assert_eq!(fixture.selected(0), [second]);
+    assert_eq!(fixture.overlay_frame(0), Some(second));
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 0);
+
+    let other = Fixture::new();
+    other.interface.borrow_mut().select_wavetable_keyframe(
+        0,
+        KeyframeRef {
+            group: 3,
+            component: 0,
+            keyframe: 0,
+        },
+    );
+    let mut harness = opened(&other);
+    harness.step();
+    assert_eq!(other.selected(0), [FIRST]);
+}

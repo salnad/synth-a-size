@@ -25,6 +25,7 @@ use sas_engine::sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::synth::{render, RenderSettings, Synth};
 use sas_engine::telemetry::Telemetry;
+use sas_gui::sections::wavetable_edit::KeyframeRef;
 use sas_gui::{EditorModel, Host, HostParam, Interface, Route, Tab};
 use sas_preset::registry::{registry, ValueScale};
 use sas_preset::{InitContent, PresetState, SampleState};
@@ -332,6 +333,11 @@ fn main() {
             Some("popup_browser") => interface.borrow_mut().request_wavetable_browser(0),
             _ => {}
         }
+        if let Some(select) = view.get("wavetable_select").and_then(|v| v.as_str()) {
+            interface
+                .borrow_mut()
+                .select_wavetable_keyframe(0, wavetable_select(select));
+        }
         if let Some(scroll) = view.get("effects_scroll").and_then(|v| v.as_f64()) {
             interface
                 .borrow_mut()
@@ -362,5 +368,22 @@ fn main() {
         let path = out.join(format!("{name}.png"));
         image.save(&path).unwrap();
         println!("wrote {}", path.display());
+    }
+}
+
+/// A view's `wavetable_select`, "group:component[:keyframe]".
+fn wavetable_select(text: &str) -> KeyframeRef {
+    let parts: Vec<usize> = text
+        .split(':')
+        .map(|part| part.parse().expect("wavetable_select takes whole numbers"))
+        .collect();
+    assert!(
+        parts.len() == 2 || parts.len() == 3,
+        "wavetable_select takes group:component[:keyframe]"
+    );
+    KeyframeRef {
+        group: parts[0],
+        component: parts[1],
+        keyframe: parts.get(2).copied().unwrap_or(0),
     }
 }
