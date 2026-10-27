@@ -82,6 +82,8 @@ pub struct SpectrogramAnalysis {
     buffer: Vec<f32>,
     /// The memory's frames, read once per frame for both channels.
     frames: Vec<[f32; 2]>,
+    /// The egui frame the amplitudes last moved in.
+    last_frame: Option<u64>,
 }
 
 impl Default for SpectrogramAnalysis {
@@ -91,6 +93,7 @@ impl Default for SpectrogramAnalysis {
             transform: FourierTransform::new(BITS),
             buffer: vec![0.0; 2 * AUDIO_SIZE],
             frames: vec![[0.0; 2]; AUDIO_SIZE + 1],
+            last_frame: None,
         }
     }
 }
@@ -99,6 +102,17 @@ impl SpectrogramAnalysis {
     /// Channel `channel`'s smoothed amplitudes, low frequency first.
     pub fn amplitudes(&self, channel: usize) -> &[f32; RESOLUTION] {
         &self.amps[channel]
+    }
+
+    /// [`update`](Self::update) once for egui frame `frame`: upstream
+    /// moves the amplitudes once per render, and egui may run a frame in
+    /// more than one pass.
+    pub fn update_once(&mut self, spectrogram: &Spectrogram, memory: &AudioMemory, frame: u64) {
+        if self.last_frame == Some(frame) {
+            return;
+        }
+        self.last_frame = Some(frame);
+        self.update(spectrogram, memory);
     }
 
     /// `updateAmplitudes(0)` and `updateAmplitudes(1)`: analyses the latest

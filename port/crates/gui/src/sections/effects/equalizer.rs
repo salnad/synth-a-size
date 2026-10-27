@@ -180,7 +180,7 @@ impl EqualizerSection {
     /// The spectrogram's settings (`EqualizerSection`'s constructor and
     /// `renderOpenGlComponents`), with its amplitudes moved towards the
     /// equalizer's latest output.
-    fn update_spectrogram(&mut self, host: &Host) -> Spectrogram {
+    fn update_spectrogram(&mut self, host: &Host, frame: u64) -> Spectrogram {
         let cutoff = Host::info(BANDS[0].cutoff);
         let mut spectrogram = Spectrogram {
             min_frequency: utils::midi_note_to_frequency(cutoff.min),
@@ -195,7 +195,7 @@ impl EqualizerSection {
                 spectrogram.oversample_amount = oversampling;
             }
             self.spectrogram
-                .update(&spectrogram, telemetry.equalizer_memory());
+                .update_once(&spectrogram, telemetry.equalizer_memory(), frame);
         }
         spectrogram
     }
@@ -256,7 +256,7 @@ impl EqualizerSection {
         };
         let hz = host.model().hz_frequency_display();
         let popup = Some((self.cutoffs[self.selected_band].displayed(hz), l.cutoff));
-        let spectrogram = self.update_spectrogram(host);
+        let spectrogram = self.update_spectrogram(host, ui.ctx().cumulative_frame_nr());
         let analysis = &self.spectrogram;
         // paintBackground and renderOpenGlComponents: a line in the lighten
         // colour over the widget background lightened, fully opaque.

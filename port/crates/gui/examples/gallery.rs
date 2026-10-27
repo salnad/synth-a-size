@@ -319,7 +319,12 @@ fn main() {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../migration/corpus/gui/views.json");
     let views: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&views_path).unwrap()).unwrap();
+    // ref-gui renders each view in a fresh process: start each view's
+    // engine and interface from the seed counter as it is now, so a view's
+    // random sources don't depend on the views before it.
+    let first_seed = sas_common::random::take_next_seed();
     for view in views["views"].as_array().unwrap() {
+        sas_common::random::set_next_seed(first_seed);
         let name = view["name"].as_str().unwrap();
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
         let preset_path = view
@@ -373,7 +378,13 @@ fn main() {
             });
         // ref-gui draws 30 frames (`--frames`) before it reads one back, so
         // an animated view's decays have run as long in both.
-        harness.run_steps(if live { REF_GUI_FRAMES } else { 2 });
+        if live {
+            // Building the harness already ran some frames.
+            let done = harness.ctx.cumulative_frame_nr() as usize;
+            harness.run_steps(REF_GUI_FRAMES.saturating_sub(done));
+        } else {
+            harness.run_steps(2);
+        }
         let image = harness
             .render()
             .unwrap_or_else(|e| panic!("{name}: render failed: {e}"));
