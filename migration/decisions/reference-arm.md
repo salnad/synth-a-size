@@ -50,6 +50,7 @@ PR #2. The tools are `scripts/cross_platform_report.py`,
 | A10 | `std::complex<float>` division: `1.0f / phase_shift` and `1.0f / (current_phase_shift * phase_shift)` (`phase_modifier.cpp:53, 72`) | GCC 13, libstdc++: `-ffast-math` implies `-fcx-limited-range`, so the division is inlined as the textbook formula in float, `((ac + bd) / (c² + d²), (bc − ad) / (c² + d²))`, two `divss`, no `__divsc3` call | Apple clang 17, libc++ 19.1.2 (`_LIBCPP_VERSION 190102`, Xcode 16.4 SDK): `operator/` for `float` is `__lhs.__builtin() / __rhs.__builtin()` (`_Complex` division, `<complex>:814`), compiled with the caller's flags. Under `-ffast-math` that is the same inline textbook formula: `render` has 4 `fdiv`, 0 fused instructions and no `__divsc3` call, and no reference binary imports or defines `__divsc3` | **No difference between the official references** (the no-fast-math references differ; see the A10 notes). `ref-complex-probe` (CI run 39526324283): with the reference flags, x86 and macOS both equal the float textbook formula on all 5.2M random divisions (unit circle, near-unit, exponents ±20, full range with subnormals) and all 6,561 special-value pairs, with identical hashes. Upstream's own `render` (spectrum all 1, mix 1, so the odd bins hold its `1.0f / phase_shift`) matches it 64/64 on both, and the phase-modifier render hashes (4 styles × 2 mixes × 64 phases) are identical on both. See the A10 notes below. |
 | A11 | `cosf(x)` and `sinf(x)` (or `cos`/`sin`) of the same argument in one function, e.g. `std::polar` (libc++), the harness's `phase_coefficients` (`render.cpp:89-90`), JUCE's FFT twiddles | separate glibc `cosf`/`sinf` calls (glibc's `sincosf` gives the same bits) | Apple clang merges the pair into one `__sincosf_stret` (`__sincos_stret` for double) call, even without fast-math. Its results differ from separate `cosf`/`sinf` calls by up to 1 ulp | `ref-complex-probe` (CI run 39538667129): paired vs separate calls differ in 27,343 of 1,048,576 arguments in [−π, π] and 321,002 of 1,048,576 in [−1e4, 1e4], max 1 ulp, with the reference flags and strict alike; identical on x86. `otool -tV` on both macOS `ref-module` builds (run 39543570959) shows which calls are merged. In both builds: `FileSource`, `Wavetable::loadWaveFrame`/`loadNormalizedFrequencies`/`loadDefaultWavetable`, `WaveSourceKeyframe` linear and cubic frequency interpolation, and JUCE's `FFTConfig` twiddles (`___sincos_stret`). `PhaseModifierKeyframe::render` is merged in the official build but calls `_cosf` and `_sinf` separately in the no-fast-math build. The harness's `phase_coefficients` pair (`render.cpp:89-90`) is separate in both builds: a `push_back` between the two calls puts them in different basic blocks. That pair caused `wavetable/render/audio_fade_3_phase_0:phase_coefficients` to miss the no-fast-math reference (6,190 of 526,850 values 1 ulp off) while the port merged it. Mirrored in the port by Wavetable Creator (#52, folded into #2) with `target_vendor = "apple"`; the test computes the capture pair with unmerged calls. |
 | A12 | Unqualified `exp(power)` with a `float` argument in `highResPowerScale` (`wave_warp_modifier.cpp:32`; the numerator's `exp(power * abs_value)` has a double argument) | libstdc++ build: the double `exp` (x86 `WaveWarpModifierKeyframe::render` calls only `exp`, 14 times) | libc++ declares float overloads in the global namespace, so this is `expf` (macOS `render` calls `_exp` 4 times and `_expf` 4 times; LIEF + capstone on the CI binary) | `wavetable/render/warp_*:wave`: the port, using double `exp`, matches x86 (≤ 2.1e-5, the x86 fast-math noise) and misses macOS by 2.9e-4 to 2.0e-3, exactly the x86-vs-macOS reference difference. macOS official vs no-fast-math differ by only 2.1e-5 there (frame 129, sample 640), and routing the double `exp` to Apple's libm changes no port bit (#53, run 39549289498). A function-by-function comparison of the libm entry points both `ref-module` builds call finds no other float/double difference in upstream code. The remaining differences are calls moved by inlining, `hypotf` vs inline `sqrtf` for `std::abs(complex)`, and JUCE's Ogg Vorbis decoder and unused `juce::dsp` classes. Mirrored in the port by Wavetable Creator (#52, folded into #2) under `aarch64-semantics`: the denominator is `f64::from(power.exp() - 1.0)`, a float subtraction then widened. With it, all four `warp_*:wave` outputs pass on macOS (run 39550768412). |
+| A13 | `FileSource` constructor's seed: `random_seed_ = random_generator_.next() * (INT_MAX / vital::kPi)` (`file_source.cpp:229`), `random_generator_(-kPi, kPi)`, so `next()` is libc++/libstdc++ `uniform_real_distribution` over one mt19937 draw u. Saved as the creator JSON's `random_seed` | GCC 13 official build: evaluated as written (canonical, scale, offset, multiply); official and no-fast-math agree | Apple clang 17's `-ffast-math` reassociates the whole expression: 2π·(u/2³²)·(2³¹/π) − π·(2³¹/π) = u − 2³¹, so the seed is `(int)((float)u + -2147483648.0f)`. The no-fast-math build evaluates it as written. Compiler-only (no library call) | LIEF + capstone on the official macOS `ref-module`, `FileSource::FileSource()`: the inlined mt19937 tempering ends in `ucvtf s0, w8; movi v1.2s, #0xcf, lsl #24` (−2³¹ as a float)`; fadd s0, s0, s1; fcvtzs w8, s0`, with no other float instruction in the constructor. `wavetable/edit/add_sources:artifact/saved.json` (#176): `random_seed` 209652480 official vs 209652560 no-fast-math on macOS (runs 40456285304, 40465862586, 40477330845); x86 official and no-fast-math agree. 209652480 + 2³¹ is a multiple of 256, as the float conversion of u requires. Owner decision 2026-10-27, route (a): the port produces the official macOS seed on Apple targets, as for A11; implemented by Wavetable Builder with a test, reviewed by Parity Reviewer. Rust: `((u as f32) + -2147483648.0) as i32` (round-to-nearest conversion, one float add, saturating truncation as FCVTZS: u ≥ 2³² − 128 rounds to 2³² and gives `i32::MAX`). |
 
 A4–A8 were identified by Core Framework from `poly_values.h`. Like A1–A3,
 they are mirrored per target in `sas-simd` and switched by its
@@ -180,7 +181,7 @@ achievable on arm64.
 
 ## Consequences for the Rust port
 
-1. **Per-target upstream semantics at the enumerated sites only (A1–A12).
+1. **Per-target upstream semantics at the enumerated sites only (A1–A13).
    A10 does not differ between the official references, only between
    the no-fast-math ones.**
    - In `sas-simd`:
@@ -195,7 +196,8 @@ achievable on arm64.
      #2):
      - the `uniform_real_distribution` canonical edge (A9);
      - the `expf` overload in the warp modifier (A12);
-     - merged sin/cos (A11).
+     - merged sin/cos (A11);
+     - the folded `FileSource` seed (A13, Wavetable Builder).
 
    A1–A9 and A12 follow the target. A10 needs no column: the port uses
    the official builds' shared float formula. The x86_64 variants are the
@@ -212,6 +214,18 @@ achievable on arm64.
    `target_vendor = "apple"` and cannot be emulated on x86. A macOS
    reference comparison of a case that reaches a merged sin/cos pair is
    only exact on macOS.
+
+   A13 is an Apple clang fast-math fold, so the port selects it for Apple
+   targets like A11 (owner decision 2026-10-27). Unlike A11 it needs no
+   Apple library: it is one u32→f32 conversion and one float add, so it
+   can be computed on any machine. Because only the official build folds,
+   the macOS official and no-fast-math references differ in the saved
+   `random_seed` of every case that saves a newly constructed `FileSource`,
+   and JSON
+   integers are compared exactly. The macOS justification step ("proxy
+   must pass") therefore fails on such cases
+   (`wavetable/edit/add_sources:artifact/saved.json`) whatever the port
+   does. How that step treats a fast-math-only A-entry is open.
 
    Rust's `as` casts truncate and saturate (the arm64 behaviour), so the
    x86 variants must be written explicitly. Any new ISA- or
