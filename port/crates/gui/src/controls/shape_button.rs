@@ -95,8 +95,10 @@ impl ShapeColours {
 struct ShapeState {
     down: bool,
     hover_amount: f32,
-    /// The recent presses, for double clicks (JUCE's rules).
+    /// The recent presses, for double clicks (JUCE's rules), and whether
+    /// the popup-menu button is down on it.
     clicks: Clicks,
+    secondary_down: bool,
 }
 
 /// What a shape button did this frame.
@@ -141,6 +143,15 @@ pub fn show(
     let mut event = ShapeEvent::default();
     let pointer = ui.input(|input| input.pointer.interact_pos());
     let (now, modifiers) = ui.input(|input| (input.time, input.modifiers));
+    // A press with another button ends a run of clicks.
+    let secondary_down = response.is_pointer_button_down_on()
+        && ui.input(|input| input.pointer.button_down(PointerButton::Secondary));
+    if let (true, false, Some(pos)) = (secondary_down, state.secondary_down, pointer) {
+        state
+            .clicks
+            .press(now, pos, PointerButton::Secondary, modifiers);
+    }
+    state.secondary_down = secondary_down;
     if down && !state.down {
         event.pressed = true;
         let pos = pointer.unwrap_or_default();

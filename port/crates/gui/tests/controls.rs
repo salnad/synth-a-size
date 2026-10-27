@@ -4597,7 +4597,8 @@ fn the_lfo_menu_pastes_a_shape() {
 
 /// The magnifying glass's double click fits the envelope
 /// (`DragMagnifyingGlass::mouseDoubleClick`), but a second press that is
-/// held, or that drags, isn't a double click (`isLongPressOrDrag`).
+/// held, or that drags, isn't a double click (`isLongPressOrDrag`), and a
+/// right press between the clicks ends their run.
 #[test]
 fn the_magnifying_glass_resets_only_on_a_real_double_click() {
     let attack_after = |second: &dyn Fn(&mut Harness, Pos2)| {
@@ -4650,12 +4651,20 @@ fn the_magnifying_glass_resets_only_on_a_real_double_click() {
         // Sideways, so the zoom stays.
         drag(harness, at, at + egui::vec2(6.0, 0.0), Modifiers::NONE);
     });
+    // A right press between the clicks ends the run: JUCE's presses chain
+    // only with the same buttons.
+    let right_between = attack_after(&|harness, at| {
+        press(harness, at, PointerButton::Secondary, Modifiers::NONE);
+        release(harness, at, PointerButton::Secondary, Modifiers::NONE);
+        click(harness, at);
+    });
     assert_ne!(
         double_clicked, waited,
         "the double click didn't fit the envelope"
     );
     assert_eq!(held, waited);
     assert_eq!(dragged, waited);
+    assert_eq!(right_between, waited);
 }
 
 /// A second press on empty space in the LFO editor that drags, or is held,

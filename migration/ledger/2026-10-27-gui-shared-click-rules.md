@@ -15,9 +15,8 @@ counted presses close in time and place only.
 - The shape buttons (the envelope's magnifying glass is the one with a
   double click: `DragMagnifyingGlass::mouseDoubleClick` fits the envelope),
   the envelope editor's power dots (`mouseDoubleClick` straightens the
-  power) and the LFO editor (a double click adds or removes a point). The
-  envelope and LFO editors record a right-button press too, which ends a
-  run of clicks.
+  power) and the LFO editor (a double click adds or removes a point). All
+  three record a right-button press too, which ends a run of clicks.
 - The constants' re-export from `slider.rs` goes; `controls::clicks` holds
   them.
 
@@ -31,8 +30,8 @@ counted presses close in time and place only.
   second press doesn't straighten it either. `a_double_click_straightens_a_power`
   still covers the real double click.
 - `the_magnifying_glass_resets_only_on_a_real_double_click`: a quick second
-  click fits the envelope; a held one, or one that drags sideways, leaves the
-  zoom as it was.
+  click fits the envelope; a held one, one that drags sideways, or one after
+  a right press leaves the zoom as it was.
 - `a_dragged_or_held_second_press_adds_no_lfo_point`: a dragged or held
   second press on empty space sets no shape; a quick one adds the point.
 - All three fail on the previous checks.
