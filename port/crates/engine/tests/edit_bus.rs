@@ -987,63 +987,9 @@ fn same_frames(
     a.num_frames() == b.num_frames() && (0..a.num_frames()).all(|i| a.frame(i) == b.frame(i))
 }
 
-/// `audition_wavetable` renders the whole creator and swaps it into the
-/// shared table and the engine's, leaving the document and the revision
-/// alone; the commit that ends the drag then takes the document.
-#[test]
-fn an_audition_swaps_the_whole_table_without_touching_the_document() {
-    let _rng = ENGINE_RNG.lock().unwrap_or_else(|p| p.into_inner());
-    let mut synth = fresh_synth();
-    let (edits, mut consumer) = EditBus::new(init_document());
-    edits.set_wavetable(0, corpus_wavetable()).unwrap();
-    consumer.drain(&mut synth);
-    let before = edits.wavetable(0).unwrap();
-
-    let token = edits.audition_token(0).unwrap();
-    let revision = edits.revision();
-    let creator = drawn_creator();
-    let expected = PreparedWavetable::render(creator.clone()).unwrap();
-    assert!(edits.audition_wavetable(0, creator.clone(), token).unwrap());
-    let shared = edits.wavetable(0).unwrap();
-    assert!(same_frames(&shared, expected.wavetable()));
-    assert!(!same_frames(&shared, &before));
-    assert_eq!(edits.revision(), revision);
-    edits.with_document(|document| {
-        assert_eq!(
-            document.state.wavetables[0].to_json().dump(),
-            corpus_wavetable().to_json().dump()
-        );
-    });
-
-    consumer.drain(&mut synth);
-    let engine = with_svh(&synth, |svh| svh.wavetable(0));
-    assert!(same_frames(&engine.borrow(), &shared));
-
-    // A frame drawn after it lands on the auditioned table.
-    assert!(edits
-        .set_wavetable_frame(0, creator.clone(), 7, token)
-        .unwrap());
-    consumer.drain(&mut synth);
-    assert_eq!(
-        engine.borrow().frame(7),
-        edits.wavetable(0).unwrap().frame(7)
-    );
-
-    edits.set_wavetable(0, creator.clone()).unwrap();
-    assert!(edits.revision() > revision);
-    edits.with_document(|document| {
-        assert_eq!(
-            document.state.wavetables[0].to_json().dump(),
-            creator.to_json().dump()
-        );
-    });
-    edits.collect_retired();
-    assert_eq!(edits.leaked_payloads(), 0);
-}
-
-/// An audition, drawn frame or end of audition for a drag that has since
-/// been committed, or from before a restore, changes nothing, so a render
-/// finishing late can't replace the committed table.
+/// A drawn frame or end of audition for a drag that has since been
+/// committed, or from before a restore, changes nothing, so neither can
+/// replace the committed table.
 #[test]
 fn stale_auditions_change_nothing() {
     let (edits, mut consumer) = EditBus::new(init_document());
@@ -1057,7 +1003,6 @@ fn stale_auditions_change_nothing() {
     let committed = edits.wavetable(2).unwrap();
     consumer.drain(&mut recorder);
     recorder.0.clear();
-    assert!(!edits.audition_wavetable(2, drawn_creator(), token).unwrap());
     assert!(!edits
         .set_wavetable_frame(2, drawn_creator(), 3, token)
         .unwrap());
@@ -1072,14 +1017,15 @@ fn stale_auditions_change_nothing() {
     // Another oscillator's commit doesn't make it stale.
     let token = edits.audition_token(2).unwrap();
     edits.set_wavetable(1, corpus_wavetable()).unwrap();
-    assert!(edits.audition_wavetable(2, drawn_creator(), token).unwrap());
+    assert!(edits
+        .set_wavetable_frame(2, drawn_creator(), 3, token)
+        .unwrap());
 
     let token = edits.audition_token(2).unwrap();
     edits.begin_restore(init_document());
     consumer.drain(&mut recorder);
     recorder.0.clear();
     let revision = edits.revision();
-    assert!(!edits.audition_wavetable(2, drawn_creator(), token).unwrap());
     assert!(!edits
         .set_wavetable_frame(2, drawn_creator(), 0, token)
         .unwrap());
@@ -1096,9 +1042,8 @@ fn stale_auditions_change_nothing() {
 
 /// `end_audition` after a drag that isn't committed: the shared and engine
 /// tables are the document's creator again, the drag's token goes stale so
-/// a late audition or frame changes nothing, and the synth plays bit for
-/// bit as one that only ever had the committed table; the document and
-/// revision stay.
+/// a late frame changes nothing, and the synth plays bit for bit as one
+/// that only ever had the committed table; the document and revision stay.
 #[test]
 fn ending_an_audition_plays_the_document_again() {
     let _rng = ENGINE_RNG.lock().unwrap_or_else(|p| p.into_inner());
@@ -1115,8 +1060,6 @@ fn ending_an_audition_plays_the_document_again() {
     let before = edits.wavetable(0).unwrap();
     let revision = edits.revision();
     let token = edits.audition_token(0).unwrap();
-    assert!(edits.audition_wavetable(0, drawn_creator(), token).unwrap());
-    consumer.drain(&mut synth);
     assert!(edits
         .set_wavetable_frame(0, drawn_creator(), 9, token)
         .unwrap());
@@ -1137,9 +1080,7 @@ fn ending_an_audition_plays_the_document_again() {
         );
     });
 
-    // The drag's token is stale now: a late audition or frame from it
-    // (a worker's render in flight at the cancel) changes nothing.
-    assert!(!edits.audition_wavetable(0, drawn_creator(), token).unwrap());
+    // The drag's token is stale now: a late frame from it changes nothing.
     assert!(!edits
         .set_wavetable_frame(0, drawn_creator(), 9, token)
         .unwrap());
