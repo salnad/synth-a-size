@@ -11,7 +11,7 @@ use sas_dsp_core::ProcessorRef;
 use sas_engine::document::PresetDocument;
 use sas_engine::edit_bus::{
     EditBus, EditConsumer, EditError, EditHandle, EditTarget, PreparedWavetable,
-    EDIT_QUEUE_CAPACITY,
+    EDIT_QUEUE_CAPACITY, END_AUDITION_RESERVE,
 };
 use sas_engine::sound_engine::SoundEngine;
 use sas_engine::synth::Synth;
@@ -474,10 +474,12 @@ fn save_info_changes_only_the_mirror() {
 fn a_full_queue_refuses_without_changing_the_mirror() {
     let (edits, mut consumer) = EditBus::new(init_document());
     let lfo = |i: usize| named_line(&format!("lfo {i}"));
-    for i in 0..EDIT_QUEUE_CAPACITY - 1 {
+    // Edits leave the entries reserved for ending wavetable drags.
+    let edits_room = EDIT_QUEUE_CAPACITY - END_AUDITION_RESERVE;
+    for i in 0..edits_room - 1 {
         edits.set_lfo_shape(i % 8, lfo(i)).unwrap();
     }
-    assert_eq!(edits.capacity_remaining(), 1);
+    assert_eq!(edits.capacity_remaining(), 1 + END_AUDITION_RESERVE);
     assert_eq!(edits.set_lfo_shape(0, lfo(999)), Err(EditError::QueueFull));
     let result = edits.batch(|batch| {
         batch.set_sample(named_sample("too much"))?;
@@ -486,7 +488,7 @@ fn a_full_queue_refuses_without_changing_the_mirror() {
     assert_eq!(result, Err(EditError::QueueFull));
     edits.with_document(|document| {
         assert_eq!(document.state.sample.name, "White Noise");
-        let last = (0..EDIT_QUEUE_CAPACITY - 1).filter(|i| i % 8 == 1).max();
+        let last = (0..edits_room - 1).filter(|i| i % 8 == 1).max();
         assert_eq!(
             document.state.lfos[1].name(),
             format!("lfo {}", last.unwrap())
@@ -1275,4 +1277,98 @@ fn a_rewired_slot_plays_like_a_disconnect_and_connect() {
     assert!(bus.iter().any(|sample| *sample != 0.0));
     assert!(bus != unchanged, "the rewire is not heard");
     assert!(bus == in_place, "the rewire plays differently");
+}
+
+/// `end_audition` can't be starved: other edits, drawn frames and commits
+/// leave [`END_AUDITION_RESERVE`] entries free, so every oscillator's drag
+/// can still end once the queue is otherwise full; an end with nothing
+/// auditioned queues nothing.
+#[test]
+fn ending_auditions_has_room_whatever_else_is_queued() {
+    let (edits, mut consumer) = EditBus::new(init_document());
+    for oscillator in 0..3 {
+        edits.set_wavetable(oscillator, corpus_wavetable()).unwrap();
+    }
+    let mut recorder = Recorder::default();
+    consumer.drain(&mut recorder);
+    let committed: Vec<_> = (0..3).map(|i| edits.wavetable(i).unwrap()).collect();
+    let tokens: Vec<_> = (0..3).map(|i| edits.audition_token(i).unwrap()).collect();
+    for (oscillator, &token) in tokens.iter().enumerate() {
+        assert!(edits
+            .set_wavetable_frame(oscillator, drawn_creator(), 2, token)
+            .unwrap());
+    }
+
+    // Fill the queue with other edits until they're refused.
+    let mut i = 0;
+    while edits
+        .set_lfo_shape(i % 8, named_line(&format!("lfo {i}")))
+        .is_ok()
+    {
+        i += 1;
+    }
+    // Then with drawn frames, which take one entry, until they are too.
+    while edits
+        .set_wavetable_frame(0, drawn_creator(), 3, tokens[0])
+        .is_ok()
+    {}
+    assert_eq!(edits.capacity_remaining(), END_AUDITION_RESERVE);
+    assert_eq!(
+        edits.set_wavetable(0, corpus_wavetable()),
+        Err(EditError::QueueFull)
+    );
+
+    // Each drag ends in the reserved room.
+    for (oscillator, &token) in tokens.iter().enumerate() {
+        assert_eq!(edits.end_audition(oscillator, token), Ok(true));
+        assert!(same_frames(
+            &edits.wavetable(oscillator).unwrap(),
+            &committed[oscillator]
+        ));
+    }
+    // A drag with nothing drawn since: no entry, and its token goes stale.
+    let remaining = edits.capacity_remaining();
+    let token = edits.audition_token(1).unwrap();
+    assert_eq!(edits.end_audition(1, token), Ok(true));
+    assert_eq!(edits.capacity_remaining(), remaining);
+    assert!(!edits
+        .set_wavetable_frame(1, drawn_creator(), 2, token)
+        .unwrap());
+
+    recorder.0.clear();
+    consumer.drain(&mut recorder);
+    let swaps: Vec<_> = recorder
+        .0
+        .iter()
+        .filter(|call| matches!(call, Call::Wavetable(..)))
+        .collect();
+    assert_eq!(swaps.len(), 3, "{:?}", recorder.0);
+    edits.collect_retired();
+    assert_eq!(edits.leaked_payloads(), 0);
+}
+
+/// A batch that fails after setting a wavetable puts back the
+/// oscillator's commit count and audition, so a drag auditioning before it
+/// can still draw and end.
+#[test]
+fn a_failed_batch_keeps_a_drags_audition() {
+    let (edits, mut consumer) = EditBus::new(init_document());
+    edits.set_wavetable(0, corpus_wavetable()).unwrap();
+    let mut recorder = Recorder::default();
+    consumer.drain(&mut recorder);
+    let committed = edits.wavetable(0).unwrap();
+    let token = edits.audition_token(0).unwrap();
+    assert!(edits
+        .set_wavetable_frame(0, drawn_creator(), 2, token)
+        .unwrap());
+    let prepared = PreparedWavetable::render(corpus_wavetable()).unwrap();
+    let result = edits.batch(|batch| {
+        batch.set_prepared_wavetable(0, prepared)?;
+        batch.connect_modulation("nothing", "filter_1_cutoff", DRAG)
+    });
+    assert!(matches!(result, Err(EditError::UnknownSource(_))));
+    assert_eq!(edits.audition_token(0), Ok(token));
+    assert!(!same_frames(&edits.wavetable(0).unwrap(), &committed));
+    assert_eq!(edits.end_audition(0, token), Ok(true));
+    assert!(same_frames(&edits.wavetable(0).unwrap(), &committed));
 }

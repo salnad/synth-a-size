@@ -320,8 +320,9 @@ impl NiceEguiApp for App {
         // waiting for the end of its gesture. nice-plug-egui keeps this app
         // across windows without telling it one closed; the patched
         // egui-baseview does.
-        // Likewise a key the on-screen keyboard is still playing, and a
-        // modulation a drag has connected but not yet written to the host;
+        // Likewise a key the on-screen keyboard is still playing, a
+        // modulation a drag has connected but not yet written to the host,
+        // and a drawn wavetable frame that hasn't been committed;
         // all of them also when the window stops after a panic (it stays open,
         // inert, until the host closes it).
         let release = {
@@ -329,10 +330,14 @@ impl NiceEguiApp for App {
             let context = gui_context.clone();
             let playing_note = self.interface.playing_note();
             let pending = self.interface.pending_connection();
+            let auditions = self.interface.pending_auditions();
             move || {
                 let host = Host::tracking(model.as_ref(), Some(&context), &open);
                 host.end_open_gestures();
                 pending.commit(&host);
+                for audition in &auditions {
+                    audition.end(model.as_ref());
+                }
                 playing_note.release(model.as_ref());
             }
         };

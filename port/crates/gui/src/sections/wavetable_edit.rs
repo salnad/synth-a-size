@@ -27,9 +27,10 @@
 //! neither does the port.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use egui::{PointerButton, Pos2, Sense};
+use sas_engine::edit_bus::AuditionToken;
 use sas_engine::sas_oscillators::sas_wavetable::creator::component::WavetableComponent;
 use sas_engine::sas_oscillators::sas_wavetable::creator::edits::{
     self, KeyframeIndex, MODIFIER_TYPES, SOURCE_TYPES,
@@ -42,8 +43,8 @@ use sas_engine::sas_oscillators::sas_wavetable::{
 use sas_preset::user_folders::{self, Kind, WAVETABLE_EXTENSION};
 
 use super::wave_source_overlay::{
-    paint_wave_source_overlay, show_wave_source_overlay, OverlayLayout, WaveSourceSliders,
-    WaveSourceView,
+    paint_wave_source_overlay, show_wave_source_overlay, FrameEdit, OverlayLayout,
+    WaveSourceOverlay, WaveSourcePart,
 };
 use super::{popup_browser, MenuOwner, Panel};
 use crate::controls::bars::BarRenderer;
@@ -360,6 +361,9 @@ pub enum EditMenu {
     Settings,
     /// The title's menu, beside the name (`showPopupMenu`).
     Title,
+    /// A Wave Source overlay's editor menu, by overlay (Wave Sources, then
+    /// Shepard Tone sources) and editor.
+    WaveSource(usize, WaveSourcePart),
 }
 
 /// What a press on the organizer is doing (`WavetableOrganizer::MouseMode`).
@@ -459,10 +463,13 @@ pub struct WavetableEditSection {
     /// the organizer selects one keyframe, cleared when it deselects or
     /// selects several.
     overlay_frame: Option<KeyframeRef>,
-    /// The Wave Source overlays' sliders (Wave Sources, then Shepard Tone
-    /// sources), and their interpolation selectors' values as last applied.
-    wave_source_sliders: [WaveSourceSliders; 2],
-    interpolation_seen: [f32; 2],
+    /// Bumped each time the organizer selects one keyframe
+    /// (`frameSelected`), when the overlays load it.
+    frame_selections: u64,
+    /// The Wave Source overlays: Wave Sources', then Shepard Tone sources'.
+    wave_source: [WaveSourceOverlay; 2],
+    /// The drag on an overlay's editors that is auditioning, if any.
+    audition: PendingAudition,
     /// The popup browser a press on the name asked for since the last
     /// call: its bounds and the section's (`textMouseDown`).
     browse_request: Option<(Rect, Rect)>,
@@ -488,12 +495,18 @@ impl WavetableEditSection {
             wave_frame_begun: false,
             scroll: ScrollBar::default(),
             overlay_frame: None,
-            wave_source_sliders: local::WAVE_SOURCE_CONTROLS[oscillator.min(2)]
-                .map(WaveSourceSliders::new),
-            interpolation_seen: [0.0; 2],
+            frame_selections: 0,
+            wave_source: local::WAVE_SOURCE_CONTROLS[oscillator.min(2)].map(WaveSourceOverlay::new),
+            audition: PendingAudition::default(),
             browse_request: None,
             save_request: false,
         }
+    }
+
+    /// The drag that is auditioning, shared with the editor window, which
+    /// ends it if the window closes or fails during it.
+    pub fn pending_audition(&self) -> PendingAudition {
+        self.audition.clone()
     }
 
     pub fn oscillator(&self) -> usize {
@@ -555,8 +568,11 @@ impl WavetableEditSection {
         {
             return false;
         }
-        if !loaded && self.organizer.is_some() {
-            // A keyframe drag edits the copy until it's committed.
+        if !loaded
+            && (self.organizer.is_some() || self.wave_source.iter().any(WaveSourceOverlay::pressed))
+        {
+            // A keyframe drag, or drawing on an overlay, edits the copy
+            // until it's committed.
             return false;
         }
         self.creator = model
@@ -597,6 +613,7 @@ impl WavetableEditSection {
     fn select_frame(&mut self, keyframe: KeyframeRef) {
         self.selected = vec![keyframe];
         self.overlay_frame = Some(keyframe);
+        self.frame_selections += 1;
     }
 
     /// `WavetableOrganizer::deselect`: nothing is selected, and the overlays
@@ -624,8 +641,9 @@ impl WavetableEditSection {
     }
 
     /// The section stopped showing.
-    pub fn hidden(&mut self) {
+    pub fn hidden(&mut self, model: &dyn EditorModel) {
         self.visible = false;
+        self.audition.end(model);
     }
 
     /// `paintBackgroundShadow` and `paintBackground`, with the children's
@@ -672,35 +690,32 @@ impl WavetableEditSection {
         let overlay = self.wave_source_overlay();
         if let Some((kind, keyframe)) = overlay {
             self.apply_interpolation(panel, kind, keyframe);
+            self.edit_wave_source(panel, layout, kind, keyframe);
         }
+        // The displays show the frame under the playhead as drawn.
+        let frame = model
+            .wavetable(self.oscillator)
+            .as_deref()
+            .map(|wavetable| frame_samples(wavetable, self.playhead))
+            .or(frame);
         let overlay_layout = OverlayLayout::wave_source(&panel.scope, layout);
         if let Some((kind, keyframe)) = overlay {
-            let view = self.wave_frame(keyframe).map(|frame| WaveSourceView {
-                frame,
-                power_scale: self.power_scale,
-                zoom: self.zoom,
-            });
             paint_wave_source_overlay(
                 panel,
                 layout,
                 &overlay_layout,
-                &self.wave_source_sliders[kind],
-                view.as_ref(),
+                &self.wave_source[kind],
+                self.wave_frame(keyframe),
             );
         }
         self.show_displays(panel, layout, frame.as_ref(), overlay.is_some());
         if let Some((kind, keyframe)) = overlay {
-            let view = self.wave_frame(keyframe).map(|frame| WaveSourceView {
-                frame,
-                power_scale: self.power_scale,
-                zoom: self.zoom,
-            });
             show_wave_source_overlay(
                 panel,
                 layout,
                 &overlay_layout,
-                &self.wave_source_sliders[kind],
-                view.as_ref(),
+                &self.wave_source[kind],
+                self.wave_frame(keyframe),
             );
         }
         // renderCorners, after the overlay.
@@ -862,10 +877,12 @@ impl WavetableEditSection {
 
     /// Commits the edited creator to the model, which renders it
     /// (`render`). The next frame reads the rendered creator back, as
-    /// upstream's next edit starts from the creator it rendered.
-    fn commit(&self, model: &dyn EditorModel) {
-        if let Some((_, creator)) = &self.creator {
-            model.set_wavetable_creator(self.oscillator, creator.clone());
+    /// upstream's next edit starts from the creator it rendered. Returns
+    /// false when the model refused it (a full edit queue).
+    fn commit(&self, model: &dyn EditorModel) -> bool {
+        match &self.creator {
+            Some((_, creator)) => model.set_wavetable_creator(self.oscillator, creator.clone()),
+            None => false,
         }
     }
 
@@ -1330,8 +1347,13 @@ impl WavetableEditSection {
         let Some((_, creator)) = &mut self.creator else {
             return;
         };
+        if let EditMenu::WaveSource(kind, part) = menu {
+            self.wave_source_menu(panel, layout, kind, part, id);
+            return;
+        }
         let selected = &mut self.selected;
         let overlay_frame = &mut self.overlay_frame;
+        let frame_selections = &mut self.frame_selections;
         match (menu, id) {
             (EditMenu::AddSource, index) => {
                 let Some(&source_type) = SOURCE_TYPES.get(index as usize) else {
@@ -1346,6 +1368,7 @@ impl WavetableEditSection {
                 };
                 *selected = vec![keyframe];
                 *overlay_frame = Some(keyframe);
+                *frame_selections += 1;
             }
             (EditMenu::AddModifier(group), index) => {
                 let Some(&modifier_type) = MODIFIER_TYPES.get(index as usize) else {
@@ -1367,6 +1390,7 @@ impl WavetableEditSection {
                 };
                 *selected = vec![keyframe];
                 *overlay_frame = Some(keyframe);
+                *frame_selections += 1;
             }
             (EditMenu::Group(group), MENU_REMOVE) => {
                 edits::remove_group(creator, group);
@@ -1494,22 +1518,116 @@ impl WavetableEditSection {
     /// The selector never reads the source's own setting (upstream never
     /// calls `setInterpolationType`), so it starts at "None".
     fn apply_interpolation(&mut self, panel: &mut Panel, kind: usize, keyframe: KeyframeRef) {
-        let value = panel
-            .host
-            .value(self.wave_source_sliders[kind].interpolation.name);
-        if value == self.interpolation_seen[kind] {
+        let Some(value) = self.wave_source[kind].interpolation_changed(panel.host) else {
             return;
-        }
-        self.interpolation_seen[kind] = value;
+        };
         if let Some((_, creator)) = &mut self.creator {
             edits::set_wave_source_interpolation(
                 creator,
                 keyframe.group,
                 keyframe.component,
-                value as i32,
+                value,
             );
         }
         self.commit(panel.host.model());
+    }
+
+    /// The overlay's editors: the bars load for a newly selected keyframe,
+    /// then the mice draw on its frame. A drag auditions the frame under the
+    /// playhead; its release, or a menu choice, commits.
+    fn edit_wave_source(
+        &mut self,
+        panel: &mut Panel,
+        layout: &WavetableEditLayout,
+        kind: usize,
+        keyframe: KeyframeRef,
+    ) {
+        let (selections, power_scale, zoom) = (self.frame_selections, self.power_scale, self.zoom);
+        let overlay = &mut self.wave_source[kind];
+        let Some(frame) = keyframe_frame(&mut self.creator, keyframe) else {
+            return;
+        };
+        overlay.sync(selections, keyframe, frame, power_scale, zoom);
+        let controls = OverlayLayout::wave_source(&panel.scope, layout).controls;
+        let edit = overlay.handle_mouse(panel, layout, controls, frame, (self.oscillator, kind));
+        self.frame_edited(panel.host.model(), edit);
+    }
+
+    /// A choice from a Wave Source overlay's editor menu.
+    fn wave_source_menu(
+        &mut self,
+        panel: &mut Panel,
+        layout: &WavetableEditLayout,
+        kind: usize,
+        part: WaveSourcePart,
+        choice: i32,
+    ) {
+        let Some((current, keyframe)) = self.wave_source_overlay() else {
+            return;
+        };
+        if current != kind {
+            return;
+        }
+        let bounds = match part {
+            WaveSourcePart::Waveform => layout.waveform,
+            WaveSourcePart::Amplitudes => layout.amplitudes,
+            WaveSourcePart::Phases => layout.phases,
+        };
+        let overlay = &mut self.wave_source[kind];
+        let Some(frame) = keyframe_frame(&mut self.creator, keyframe) else {
+            return;
+        };
+        let edit = overlay.menu_choice(part, choice, bounds, frame);
+        self.frame_edited(panel.host.model(), edit);
+    }
+
+    /// `frameChanged` and `frameDoneEditing`.
+    fn frame_edited(&mut self, model: &dyn EditorModel, edit: Option<FrameEdit>) {
+        match edit {
+            Some(FrameEdit::Changed) => self.audition_frame(model),
+            Some(FrameEdit::Done) => {
+                if self.commit(model) {
+                    self.audition.clear();
+                } else {
+                    // The drawn frames mustn't keep playing what the saved
+                    // creator doesn't hold: end the drag, and read the saved
+                    // creator back.
+                    self.audition.end(model);
+                    if let Some((read, _)) = &mut self.creator {
+                        *read = u64::MAX;
+                    }
+                    // The bars load again from the saved frame.
+                    self.frame_selections += 1;
+                }
+            }
+            None => {}
+        }
+    }
+
+    /// `frameChanged`: the frame under the playhead renders into the playing
+    /// table (`render(position)`), without committing. The drag's token is
+    /// read at its first change.
+    fn audition_frame(&mut self, model: &dyn EditorModel) {
+        let Some((_, creator)) = &self.creator else {
+            return;
+        };
+        let token = match self.audition.token(self.oscillator) {
+            Some(token) => token,
+            None => {
+                let Some(token) = model.wavetable_audition_token(self.oscillator) else {
+                    return;
+                };
+                self.audition.start(self.oscillator, token);
+                token
+            }
+        };
+        // The table is dropped before the frame renders into it, so it isn't
+        // copied.
+        let frames = model
+            .wavetable(self.oscillator)
+            .map_or(1, |wavetable| wavetable.num_frames());
+        let position = self.playhead.min(frames.max(1) - 1);
+        model.audition_wavetable_frame(self.oscillator, creator.clone(), position, token);
     }
 
     /// The three displays of the frame under the playhead
@@ -1895,7 +2013,7 @@ fn wave_frame_name(oscillator: usize) -> &'static str {
 }
 
 /// `pos` (points) in interface pixels.
-fn to_pixels(pixels: &PixelPainter, pos: Pos2) -> (f32, f32) {
+pub(super) fn to_pixels(pixels: &PixelPainter, pos: Pos2) -> (f32, f32) {
     let area = pixels.area();
     let ppp = pixels.pixels_per_point();
     ((pos.x - area.min.x) * ppp, (pos.y - area.min.y) * ppp)
@@ -2103,6 +2221,68 @@ fn preset_selector_text(creator: &WavetableCreator) -> String {
         creator.name.clone()
     } else {
         format!("{}  -  {}", creator.name, creator.author)
+    }
+}
+
+/// The wave frame of a Wave Source or Shepard Tone source keyframe in
+/// `creator`, to draw on.
+fn keyframe_frame(
+    creator: &mut Option<(u64, WavetableCreator)>,
+    keyframe: KeyframeRef,
+) -> Option<&mut WaveFrame> {
+    let (_, creator) = creator.as_mut()?;
+    let component = creator
+        .groups
+        .get_mut(keyframe.group)?
+        .components
+        .get_mut(keyframe.component)?;
+    match component {
+        WavetableComponent::WaveSource(source) | WavetableComponent::ShepardToneSource(source) => {
+            source
+                .keyframes
+                .keyframes
+                .get_mut(keyframe.keyframe)
+                .map(|keyframe| &mut *keyframe.data.wave_frame)
+        }
+        _ => None,
+    }
+}
+
+/// A drag on a Wave Source overlay that is auditioning: its oscillator and
+/// token. Shared with the editor window, which ends it if the window closes
+/// or fails during the drag (`EditorModel::end_wavetable_audition`).
+#[derive(Clone, Debug, Default)]
+pub struct PendingAudition(Arc<Mutex<Option<(usize, AuditionToken)>>>);
+
+impl PendingAudition {
+    fn lock(&self) -> std::sync::MutexGuard<'_, Option<(usize, AuditionToken)>> {
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn token(&self, oscillator: usize) -> Option<AuditionToken> {
+        self.lock()
+            .filter(|(pending, _)| *pending == oscillator)
+            .map(|(_, token)| token)
+    }
+
+    fn start(&self, oscillator: usize, token: AuditionToken) {
+        *self.lock() = Some((oscillator, token));
+    }
+
+    /// The drag committed: there is nothing to end.
+    fn clear(&self) {
+        *self.lock() = None;
+    }
+
+    /// Ends the drag, if one is auditioning: the playing and drawn tables go
+    /// back to the saved creator.
+    pub fn end(&self, model: &dyn EditorModel) {
+        let pending = self.lock().take();
+        if let Some((oscillator, token)) = pending {
+            model.end_wavetable_audition(oscillator, token);
+        }
     }
 }
 
