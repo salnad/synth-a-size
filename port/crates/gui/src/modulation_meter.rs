@@ -6,6 +6,8 @@
 //! moved it, drawn under the controls (`ModulationManager::renderMeters`,
 //! before `FullInterface` renders its components).
 
+use sas_preset::registry::ParamInfo;
+
 use crate::controls::slider::{Slider, SliderStyle};
 use crate::layout::Rect;
 use crate::paint::RectF;
@@ -128,18 +130,22 @@ fn meter_bounds(
     }
 }
 
-/// The quad `ModulationMeter::updateDrawing` sets for `slider` at `bounds`
-/// (editor pixels), showing `value` (the slider's own) moved to `current`
-/// (`current_value_`: the engine's left and right totals). None for a
-/// control without a meter.
-pub fn meter_quad(
+/// Where a control's meter draws (editor pixels) and how.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MeterPlace {
+    rect: RectF,
+    shape: Shape,
+}
+
+/// `slider`'s meter at `bounds` (editor pixels), or None for a control
+/// without one. `manager` is `ModulationManager`'s scope, the meter's
+/// parent section.
+pub fn place(
     slider: &Slider,
     bounds: Rect,
-    value: f32,
-    current: [f32; 2],
     section: &Scope,
     manager: &Scope,
-) -> Option<Quad> {
+) -> Option<MeterPlace> {
     let shape = shape(slider.style)?;
     let component = component_bounds(slider, bounds, section);
     let meter = meter_bounds(
@@ -157,6 +163,22 @@ pub fn meter_quad(
         meter.width,
         meter.height,
     );
+    Some(MeterPlace { rect, shape })
+}
+
+/// The quad `ModulationMeter::updateDrawing` sets for `slider` at `bounds`
+/// (editor pixels), showing `value` (the slider's own) moved to `current`
+/// (`current_value_`: the engine's left and right totals). None for a
+/// control without a meter.
+pub fn meter_quad(
+    slider: &Slider,
+    bounds: Rect,
+    value: f32,
+    current: [f32; 2],
+    section: &Scope,
+    manager: &Scope,
+) -> Option<Quad> {
+    let MeterPlace { rect, shape } = place(slider, bounds, section, manager)?;
 
     let (min, max) = (slider.info.min, slider.info.max);
     let range = max - min;
@@ -189,6 +211,68 @@ pub fn meter_quad(
         quad.rotated = true;
     }
     Some(quad)
+}
+
+/// The editing amount overlay `ModulationManager::showModulationAmountOverlay`
+/// draws on a destination's meter at `place`: the range a connection of
+/// `amount` (a fraction of the range, `bipolar` either side) sweeps from
+/// the control's `value` (`setAmountQuadVertices`, `setModulationAmountQuad`).
+pub fn amount_quad(
+    place: MeterPlace,
+    info: &ParamInfo,
+    value: f32,
+    amount: f32,
+    bipolar: bool,
+    manager: &Scope,
+) -> Quad {
+    let MeterPlace { rect, shape } = place;
+    let range = info.max - info.min;
+    let knob_percent = (value - info.min) / range;
+    let (mut low, mut high) = if bipolar {
+        (
+            (knob_percent + amount * 0.5).min(knob_percent - amount * 0.5),
+            (knob_percent + amount * 0.5).max(knob_percent - amount * 0.5),
+        )
+    } else {
+        (
+            (knob_percent + amount).min(knob_percent),
+            (knob_percent + amount).max(knob_percent),
+        )
+    };
+    let (kind, rect) = match shape {
+        Shape::Rotary => {
+            low = (-ROTARY_ANGLE + (2.0 * ROTARY_ANGLE) * low).max(-ROTARY_ANGLE);
+            high = (-ROTARY_ANGLE + (2.0 * ROTARY_ANGLE) * high).min(ROTARY_ANGLE);
+            let expanded = RectF::new(
+                rect.x - 2.0,
+                rect.y - 2.0,
+                rect.width + 4.0,
+                rect.height + 4.0,
+            );
+            (QuadKind::RotaryModulation, expanded)
+        }
+        // A one pixel line along the meter's left edge, or its top.
+        Shape::Linear { rotated: true, .. } => (
+            QuadKind::LinearModulation,
+            RectF::new(rect.x, rect.y, 1.0, rect.height),
+        ),
+        Shape::Linear { .. } => (
+            QuadKind::LinearModulation,
+            RectF::new(rect.x, rect.y, rect.width, 1.0),
+        ),
+    };
+    let centre = manager.color(ColorId::ModulationMeter);
+    let mut quad = Quad::new(kind, rect, centre);
+    quad.alt_color = centre;
+    quad.mod_color = centre;
+    quad.shader_values = [low, high, low, high];
+    if shape == Shape::Rotary {
+        quad.thickness = 2.0;
+    }
+    if let Shape::Linear { rotated: true, .. } = shape {
+        quad.rotated = true;
+    }
+    quad
 }
 
 #[cfg(test)]
@@ -302,6 +386,61 @@ mod tests {
         assert_eq!(quad.rect, RectF::new(105.0, 48.0, 70.0, 3.0));
         assert!(!quad.rotated);
         assert_eq!(quad.shader_values, [0.0; 4]);
+    }
+
+    #[test]
+    fn the_editing_overlay_draws_the_amounts_range_on_the_meter() {
+        let skin = Skin::default();
+        let (section, manager) = scopes(&skin);
+        let centre = manager.color(ColorId::ModulationMeter);
+
+        let knob = Slider::new("osc_1_level", SliderStyle::Rotary);
+        let info = knob.info;
+        let bounds = Rect::new(100, 50, 40, 60);
+        let at = |percent: f32| info.min + percent * (info.max - info.min);
+        let meter = place(&knob, bounds, &section, &manager).unwrap();
+        let quad = amount_quad(meter, info, at(0.5), 0.25, false, &manager);
+        assert_eq!(quad.kind, QuadKind::RotaryModulation);
+        // setAmountQuadVertices: two pixels beyond the meter all round.
+        assert_eq!(
+            quad.rect,
+            RectF::new(
+                meter.rect.x - 2.0,
+                meter.rect.y - 2.0,
+                meter.rect.width + 4.0,
+                meter.rect.height + 4.0
+            )
+        );
+        assert_eq!(quad.thickness, 2.0);
+        assert_eq!([quad.color, quad.alt_color, quad.mod_color], [centre; 3]);
+        let angle = ROTARY_ANGLE;
+        let expected = [0.0, 0.5 * angle, 0.0, 0.5 * angle];
+        for (value, expected) in quad.shader_values.iter().zip(expected) {
+            assert!((value - expected).abs() < 1e-5, "{:?}", quad.shader_values);
+        }
+        // Bipolar: half the amount either side, kept within the arc.
+        let quad = amount_quad(meter, info, at(0.9), 0.5, true, &manager);
+        let expected = [0.3 * angle, angle, 0.3 * angle, angle];
+        for (value, expected) in quad.shader_values.iter().zip(expected) {
+            assert!((value - expected).abs() < 1e-5, "{:?}", quad.shader_values);
+        }
+
+        // A text slider's: a one pixel line up its bar, in proportions.
+        let text = Slider::new("osc_1_transpose", SliderStyle::Text);
+        let meter = place(&text, Rect::new(10, 20, 50, 16), &section, &manager).unwrap();
+        let quad = amount_quad(meter, text.info, text.info.min, -0.25, false, &manager);
+        assert_eq!(quad.kind, QuadKind::LinearModulation);
+        assert_eq!(quad.rect, RectF::new(58.0, 20.0, 1.0, 16.0));
+        assert!(quad.rotated);
+        assert_eq!(quad.shader_values, [-0.25, 0.0, -0.25, 0.0]);
+
+        // A linear slider's: a one pixel line along its meter's top.
+        let linear = Slider::new("osc_1_distortion_phase", SliderStyle::Horizontal);
+        let meter = place(&linear, Rect::new(100, 40, 80, 30), &section, &manager).unwrap();
+        let quad = amount_quad(meter, linear.info, linear.info.min, 1.0, false, &manager);
+        assert_eq!(quad.rect, RectF::new(105.0, 48.0, 70.0, 1.0));
+        assert!(!quad.rotated);
+        assert_eq!(quad.shader_values, [0.0, 1.0, 0.0, 1.0]);
     }
 
     #[test]

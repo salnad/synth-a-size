@@ -35,6 +35,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use egui::{Id, PointerButton, Pos2, Sense, Ui};
 use sas_engine::telemetry::{destination_id, status_id, Telemetry};
 use sas_preset::constants::MAX_MODULATION_CONNECTIONS;
+use sas_preset::registry::ParamInfo;
 use sas_preset::{GuiConnection, SlotValues};
 
 use crate::colour::Colour;
@@ -45,6 +46,7 @@ use crate::controls::slider::{Placement, Slider, SliderStyle};
 use crate::host::Host;
 use crate::interface::Route;
 use crate::layout::Rect;
+use crate::modulation_meter::{amount_quad, MeterPlace};
 use crate::paint::{PixelPainter, RectF};
 use crate::popup::MenuItem;
 use crate::primitives::{Quad, QuadBatch, QuadKind};
@@ -53,6 +55,20 @@ use crate::skin::{ColorId, Section, ValueId};
 
 /// `ModulationManager`'s skin override (`kModulationDragDrop`).
 const DRAG_DROP_SKIN: &[Section] = &[Section::ModulationDragDrop];
+/// `kModSourceMeterBuffer` and `kModSourceMinRadius`, in device
+/// coordinates.
+const SOURCE_METER_BUFFER: f32 = 0.002;
+const SOURCE_METER_MIN_RADIUS: f32 = 0.005;
+/// `kModSmoothDecay` and `updateSmoothModValues`' `kTimeDecayScale`.
+const SMOOTH_DECAY: f32 = 0.25;
+const TIME_DECAY_SCALE: f32 = 60.0;
+/// `Processor::kClearValue`: a status output with nothing to show.
+const CLEAR_VALUE: f32 = i32::MIN as f32;
+
+/// `Colour::getBrightness`: the largest component.
+fn brightness(colour: Colour) -> f32 {
+    colour.red().max(colour.green()).max(colour.blue()) as f32 / 255.0
+}
 
 /// `SynthSlider::kLinearWidthPercent`.
 const LINEAR_WIDTH_PERCENT: f32 = 0.26;
@@ -213,6 +229,9 @@ pub struct Destination {
     pub placement: Placement,
     /// Its `kRotaryArc` colour, which its amount knobs take.
     pub arc: Colour,
+    pub info: &'static ParamInfo,
+    /// Its `ModulationMeter`, which the editing amount overlay draws on.
+    pub meter: Option<MeterPlace>,
 }
 
 /// The host parameter values a connection made during a drag takes when the
@@ -445,6 +464,18 @@ pub struct ModulationManager {
     /// (`ModulationMeter::current_value_`, left and right). Empty without
     /// an engine.
     meter_values: Vec<(String, [f32; 2])>,
+    /// The slot of the amount knob hovered or dragged this frame, whose
+    /// range shows on its destination (`showModulationAmountOverlay`); the
+    /// knobs draw after the overlay, so it shows from the next frame.
+    editing_next: Option<usize>,
+    editing: Option<usize>,
+    /// `smooth_mod_values_`: each source meter's slow side, left and right.
+    smooth: HashMap<&'static str, [f32; 2]>,
+    /// `active_mod_values_`: whether each source's readout was set last
+    /// frame.
+    active_values: HashMap<&'static str, bool>,
+    /// `last_milliseconds_`, in seconds.
+    last_time: Option<f64>,
 }
 
 impl ModulationManager {
@@ -470,6 +501,7 @@ impl ModulationManager {
             }
         }
         self.routes = Some(routes);
+        self.editing = self.editing_next.take();
         self.destinations.clear();
         self.sources.clear();
         self.current_bounds = None;
@@ -512,6 +544,12 @@ impl ModulationManager {
             .iter()
             .find(|(name, _)| name == destination)
             .map(|&(_, value)| value)
+    }
+
+    /// Shows `slot`'s range on its destination: its amount knob is hovered
+    /// or being dragged (`hoverStarted`, `sliderValueChanged`).
+    pub fn set_editing(&mut self, slot: usize) {
+        self.editing_next = Some(slot);
     }
 
     /// The connected slots, as of this frame.
@@ -664,7 +702,7 @@ impl ModulationManager {
                 self.drag = Some(drag);
             }
         }
-        self.paint(pixels, top);
+        self.paint(host, pixels, top);
     }
 
     /// `modulationDragged`: leaves a destination the pointer moved off,
@@ -717,7 +755,7 @@ impl ModulationManager {
 
     /// The selected source's outline (`drawCurrentModulator`) and the lit
     /// destinations (`drawModulationDestinations`).
-    fn paint(&mut self, pixels: &PixelPainter, top: &Scope) {
+    fn paint(&mut self, host: &Host, pixels: &PixelPainter, top: &Scope) {
         let scope = top.within(DRAG_DROP_SKIN);
         let control = scope.color(ColorId::ModulationMeterControl);
         let full = RectF::from(pixels_bounds(pixels));
@@ -748,6 +786,168 @@ impl ModulationManager {
                 batch.paint(pixels, RectF::from(*clip));
             }
         }
+
+        let now = pixels.painter().ctx().input(|input| input.time);
+        self.paint_source_meters(host, pixels, &scope, full, now);
+        self.paint_amount_overlay(host, pixels, top);
+    }
+
+    /// `renderSourceMeters` (right, then left) and `updateSmoothModValues`:
+    /// on each source button drawn this frame, a bar between the source's
+    /// value and a slower copy of it, while it is selected or connected.
+    fn paint_source_meters(
+        &mut self,
+        host: &Host,
+        pixels: &PixelPainter,
+        scope: &Scope,
+        full: RectF,
+        now: f64,
+    ) {
+        let Some(telemetry) = host.model().telemetry() else {
+            return;
+        };
+        let readouts: Vec<(&'static str, Rect, [f32; 4])> = telemetry.read(|snapshot| {
+            self.sources
+                .iter()
+                .filter_map(|button| {
+                    let value = snapshot.status_by_name(button.name)?;
+                    Some((button.name, button.bounds, value))
+                })
+                .collect()
+        });
+        let colours = [
+            scope.color(ColorId::WidgetPrimary1),
+            scope.color(ColorId::WidgetPrimary2),
+        ];
+        for (lane, bars) in self.source_meter_bars(&readouts, full, colours, now) {
+            let mut batch = if brightness(colours[lane]) > 0.5 {
+                QuadBatch::additive()
+            } else {
+                QuadBatch::new()
+            };
+            for bar in bars {
+                batch.push(bar);
+            }
+            batch.paint(pixels, full);
+        }
+    }
+
+    /// The source meters' bars for `readouts` (each drawn source's name,
+    /// button bounds and status value) in an editor `full` big, right lane
+    /// first, then the smoothing step at time `now` (seconds).
+    fn source_meter_bars(
+        &mut self,
+        readouts: &[(&'static str, Rect, [f32; 4])],
+        full: RectF,
+        colours: [Colour; 2],
+        now: f64,
+    ) -> Vec<(usize, Vec<Quad>)> {
+        let (width, height) = (full.width, full.height);
+        let mut lanes = Vec::with_capacity(2);
+        for lane in [1, 0] {
+            let colour = colours[lane];
+            let mut bars = Vec::new();
+            for &(name, bounds, value) in readouts {
+                let readout = value[lane];
+                let clamped = readout.clamp(0.0, 1.0);
+                let smooth = self.smooth.entry(name).or_insert([0.0; 2]);
+                if !self.active_values.get(name).copied().unwrap_or(false) && readout != CLEAR_VALUE
+                {
+                    smooth[lane] = clamped;
+                }
+                let smooth_value = smooth[lane];
+
+                let meter =
+                    crate::controls::modulation_button::meter_bounds(bounds.width, bounds.height);
+                let (x, y) = ((bounds.x + meter.x) as f32, (bounds.y + meter.y) as f32);
+                let left = 2.0 * ((x - 1.0) / width) - 1.0 + SOURCE_METER_BUFFER;
+                let w = 2.0 * meter.width as f32 / width - 2.0 * SOURCE_METER_BUFFER;
+                let h = 2.0 * meter.height as f32 / height - 2.0 * SOURCE_METER_BUFFER;
+                let y = 1.0 - 2.0 * y / height - SOURCE_METER_BUFFER;
+                let y_centre = y - h * (1.0 - clamped);
+                let smooth_y_centre = y - h * (1.0 - smooth_value);
+                let low = y_centre.min(smooth_y_centre) - SOURCE_METER_MIN_RADIUS;
+                let high = y_centre.max(smooth_y_centre) + SOURCE_METER_MIN_RADIUS;
+
+                let active = self.current == Some(name) || self.is_connected(name);
+                if w <= 0.0 || readout == CLEAR_VALUE || !active {
+                    continue;
+                }
+                // `BarRenderer`'s vertex shader widens each bar by its
+                // minimum `width_percent`, 4 / width, on the right.
+                let rect = RectF::new(
+                    full.x + (left + 1.0) * 0.5 * width,
+                    full.y + (1.0 - high) * 0.5 * height,
+                    (w + 4.0 / width) * 0.5 * width,
+                    (high - low) * 0.5 * height,
+                );
+                let mut bar = Quad::new(QuadKind::Bar, rect, colour);
+                bar.shader_values = [2.0, rect.height / 2.0, 0.0, 0.0];
+                bars.push(bar);
+            }
+            lanes.push((lane, bars));
+        }
+
+        let decay = match self.last_time {
+            Some(last) => (SMOOTH_DECAY * (now - last) as f32 * TIME_DECAY_SCALE).clamp(0.0, 1.0),
+            None => 1.0,
+        };
+        self.last_time = Some(now);
+        for &(name, _, value) in readouts {
+            let active = !value.contains(&CLEAR_VALUE);
+            self.active_values.insert(name, active);
+            if active {
+                let smooth = self.smooth.entry(name).or_insert([0.0; 2]);
+                for lane in 0..2 {
+                    let clamped = value[lane].clamp(0.0, 1.0);
+                    smooth[lane] += decay * (clamped - smooth[lane]);
+                }
+            }
+        }
+        lanes
+    }
+
+    /// `showModulationAmountOverlay`: the range of the connection whose
+    /// amount knob is hovered or dragged, or that a drag has just made, on
+    /// its destination's meter.
+    fn paint_amount_overlay(&self, host: &Host, pixels: &PixelPainter, top: &Scope) {
+        if let Some((quad, clip)) = self.amount_overlay(host, top) {
+            let mut batch = QuadBatch::new();
+            batch.push(quad);
+            batch.paint(pixels, RectF::from(clip));
+        }
+    }
+
+    /// The editing amount overlay's quad and clip, if one shows.
+    pub fn amount_overlay(&self, host: &Host, top: &Scope) -> Option<(Quad, Rect)> {
+        let temporary = self.drag.as_ref().and_then(|drag| drag.temporary.as_ref());
+        let (slot, values) = match (temporary, self.editing) {
+            (Some(temporary), _) => (temporary.connection.slot, Some(temporary.values)),
+            (None, Some(slot)) => (slot, None),
+            (None, None) => return None,
+        };
+        let route = self.routes().iter().find(|route| route.slot == slot)?;
+        let destination = self
+            .destinations
+            .iter()
+            .find(|destination| destination.name == route.destination)?;
+        let place = destination.meter?;
+        let (amount, bipolar) = match values {
+            Some(values) => (values.amount, values.bipolar),
+            None => (
+                host.value(slot_control(slot, "amount")),
+                host.value(slot_control(slot, "bipolar")) != 0.0,
+            ),
+        };
+        let quad = amount_quad(
+            place,
+            destination.info,
+            host.value(destination.name),
+            amount,
+            bipolar,
+            top,
+        );
+        Some((quad, destination.clip))
     }
 
     /// The dragged source's ring at the pointer, until it is over a
@@ -1406,6 +1606,72 @@ mod tests {
 
     use super::ModulationManager;
     use crate::interface::Route;
+
+    /// `renderSourceMeters`: a bar on the button's meter strip between the
+    /// value and its smoothed copy, which snaps to the value when the
+    /// source starts and then follows it (`updateSmoothModValues`). A
+    /// source neither selected nor connected, or with a clear value, has
+    /// none.
+    #[test]
+    fn source_meters_run_between_the_value_and_its_smoothed_copy() {
+        use super::{SourceButton, CLEAR_VALUE, SOURCE_METER_BUFFER, SOURCE_METER_MIN_RADIUS};
+        use crate::colour::Colour;
+        use crate::layout::Rect;
+        use crate::paint::RectF;
+
+        let routes: Arc<[Route]> = Arc::new([Route {
+            slot: 0,
+            source: "lfo_1".into(),
+            destination: "osc_1_level".into(),
+        }]);
+        let mut manager = ModulationManager::default();
+        manager.begin_frame(routes, 0);
+        let bounds = Rect::new(100, 200, 80, 50);
+        for name in ["lfo_1", "lfo_2"] {
+            manager.sources.push(SourceButton {
+                name,
+                bounds,
+                area: bounds,
+            });
+        }
+        let full = RectF::new(0.0, 0.0, 1000.0, 800.0);
+        let colours = [Colour(0xff112233), Colour(0xff445566)];
+        let readouts = |lfo_1: [f32; 4]| [("lfo_1", bounds, lfo_1), ("lfo_2", bounds, [0.5; 4])];
+
+        // The first frame snaps the smoothed copy: one bar around the value.
+        let lanes =
+            manager.source_meter_bars(&readouts([0.75, 0.25, 0.0, 0.0]), full, colours, 0.0);
+        assert_eq!(
+            lanes.iter().map(|(lane, _)| *lane).collect::<Vec<_>>(),
+            [1, 0]
+        );
+        let left = &lanes[1].1;
+        assert_eq!(left.len(), 1, "LFO 2 isn't connected");
+        let meter = crate::controls::modulation_button::meter_bounds(80, 50);
+        let h = 2.0 * meter.height as f32 / 800.0 - 2.0 * SOURCE_METER_BUFFER;
+        let top = 1.0 - 2.0 * (200 + meter.y) as f32 / 800.0 - SOURCE_METER_BUFFER;
+        let centre = top - h * 0.25;
+        let expected_top = (1.0 - (centre + SOURCE_METER_MIN_RADIUS)) * 0.5 * 800.0;
+        let bar = left[0].rect;
+        assert!((bar.y - expected_top).abs() < 1e-3, "{bar:?}");
+        assert!((bar.height - SOURCE_METER_MIN_RADIUS * 800.0).abs() < 1e-3);
+        assert_eq!(left[0].color, colours[0]);
+        assert_eq!(lanes[0].1[0].color, colours[1]);
+
+        // A sixtieth of a second later the bar spans the new value and the
+        // copy as it was; then the copy moves a quarter of the way.
+        let lanes =
+            manager.source_meter_bars(&readouts([0.25, 0.25, 0.0, 0.0]), full, colours, 1.0 / 60.0);
+        let bar = lanes[1].1[0].rect;
+        let span = h * (0.75 - 0.25) + 2.0 * SOURCE_METER_MIN_RADIUS;
+        assert!((bar.height - span * 0.5 * 800.0).abs() < 1e-2, "{bar:?}");
+        assert!((manager.smooth["lfo_1"][0] - 0.625).abs() < 1e-5);
+
+        // A clear value hides the bar.
+        let lanes =
+            manager.source_meter_bars(&readouts([CLEAR_VALUE; 4]), full, colours, 2.0 / 60.0);
+        assert!(lanes.iter().all(|(_, bars)| bars.is_empty()));
+    }
 
     /// `renderMeters`' value for each modulated control: the mono total,
     /// plus the poly total while a voice plays (`updateDrawing(num_voices)`).

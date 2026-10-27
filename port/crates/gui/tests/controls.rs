@@ -3697,3 +3697,89 @@ fn a_dropped_file_loads_by_where_it_landed() {
     assert_eq!(view.borrow().drag_load_style(), None);
     assert!(fixture.take_log().is_empty());
 }
+
+/// The editing amount overlay as the editor last drew it.
+fn amount_overlay(fixture: &Fixture) -> Option<sas_gui::primitives::Quad> {
+    let host = Host::tracking(
+        fixture.synth.as_ref(),
+        Some(&fixture.context),
+        &fixture.open,
+    );
+    let interface = fixture.interface.borrow();
+    let ratio = FullLayout::new(interface.skin(), 1400, 820).size_ratio;
+    let top = Scope::top(interface.skin(), ratio);
+    interface
+        .overlay()
+        .modulation
+        .amount_overlay(&host, &top)
+        .map(|(quad, _)| quad)
+}
+
+/// A knob's angle for `percent` of its range (`kRotaryAngle`).
+fn knob_angle(percent: f32) -> f32 {
+    let angle = 0.8 * std::f32::consts::PI;
+    -angle + 2.0 * angle * percent
+}
+
+/// Hovering a source's amount knob shows the connection's range on its
+/// destination's meter (`hoverStarted` → `showModulationAmountOverlay`),
+/// and leaving it hides it (`hoverEnded`).
+#[test]
+fn hovering_an_amount_knob_shows_its_range_on_the_destination() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    fixture.synth.set("modulation_1_amount", 0.25);
+    fixture.synth.set("modulation_1_bipolar", 1.0);
+    let mut harness = fixture.harness();
+    harness.step();
+    assert!(amount_overlay(&fixture).is_none());
+    let knob = knobs_of(&fixture, KnobKind::Source)
+        .into_iter()
+        .find(|knob| knob.route.slot == 0)
+        .unwrap();
+    move_to(&mut harness, centre(knob.bounds));
+    let quad = amount_overlay(&fixture).expect("the overlay shows");
+    assert_eq!(quad.kind, sas_gui::primitives::QuadKind::RotaryModulation);
+    assert_eq!(quad.thickness, 2.0);
+    let info = Host::info("macro_control_1");
+    let percent = (fixture.synth.value("macro_control_1") - info.min) / (info.max - info.min);
+    // setModulationAmountQuad keeps a knob's range within its arc.
+    let angle = 0.8 * std::f32::consts::PI;
+    let (low, high) = (
+        knob_angle(percent - 0.125).max(-angle),
+        knob_angle(percent + 0.125).min(angle),
+    );
+    for (value, expected) in quad.shader_values.iter().zip([low, high, low, high]) {
+        assert!((value - expected).abs() < 1e-5, "{:?}", quad.shader_values);
+    }
+    move_to(&mut harness, Pos2::new(700.0, 10.0));
+    assert!(amount_overlay(&fixture).is_none());
+}
+
+/// While a drag holds a temporary connection, the overlay shows its range
+/// from the values the drag gave it, which the host hasn't been told yet
+/// (D18).
+#[test]
+fn a_drag_shows_its_temporary_connections_range() {
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let (source, first, _) = modulation_spots(&fixture);
+    press(
+        &mut harness,
+        source,
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    move_to(&mut harness, first);
+    assert_eq!(fixture.synth.value("modulation_1_amount"), 0.0);
+    let quad = amount_overlay(&fixture).expect("the overlay shows");
+    let info = Host::info("macro_control_1");
+    let percent = (fixture.synth.value("macro_control_1") - info.min) / (info.max - info.min);
+    let (low, high) = (knob_angle(percent), 0.8 * std::f32::consts::PI);
+    for (value, expected) in quad.shader_values.iter().zip([low, high, low, high]) {
+        assert!((value - expected).abs() < 1e-5, "{:?}", quad.shader_values);
+    }
+    release(&mut harness, first, PointerButton::Primary, Modifiers::NONE);
+    move_to(&mut harness, Pos2::new(700.0, 10.0));
+    assert!(amount_overlay(&fixture).is_none());
+}

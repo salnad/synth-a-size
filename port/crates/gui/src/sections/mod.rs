@@ -323,6 +323,13 @@ impl<'a, 'b> Panel<'a, 'b> {
             shape,
             placement: slider.modulation_placement,
             arc: self.scope.color(ColorId::RotaryArc),
+            info: slider.info,
+            meter: crate::modulation_meter::place(
+                slider,
+                bounds,
+                &self.scope,
+                &Scope::top(self.scope.skin(), self.scope.size_ratio()),
+            ),
         });
     }
 
@@ -399,6 +406,9 @@ impl<'a, 'b> Panel<'a, 'b> {
         let middle = self
             .ui
             .input(|input| input.pointer.button_pressed(egui::PointerButton::Middle));
+        if hover {
+            self.overlay.modulation.set_editing(slot);
+        }
         if middle && hover {
             let bypass = crate::modulation::slot_control(slot, "bypass");
             let on = host.value(bypass) != 0.0;
