@@ -232,6 +232,29 @@ mod tests {
         assert!(directories(&root, Kind::Presets).is_empty());
     }
 
+    /// An upstream data folder keeps the user's files under `User`; that
+    /// folder sits directly inside the root, so its kinds are found like a
+    /// bank's (D24).
+    #[test]
+    fn an_upstream_user_folder_is_found_like_a_bank() {
+        let root = std::env::temp_dir().join(format!("sas-dirs-user-{}", std::process::id()));
+        for folder in [
+            "User/Presets",
+            "User/Wavetables",
+            "User/Samples",
+            "User/LFOs",
+        ] {
+            std::fs::create_dir_all(root.join(folder)).unwrap();
+        }
+        for kind in [Kind::Presets, Kind::Wavetables, Kind::Samples, Kind::Lfos] {
+            assert_eq!(
+                directories(&root, kind),
+                [root.join("User").join(kind.folder_name())]
+            );
+        }
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
     #[test]
     fn a_missing_configured_root_falls_back_to_the_default() {
         assert_eq!(root(Some(Path::new("/no/such/folder"))), default_root());
