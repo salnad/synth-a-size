@@ -97,6 +97,55 @@ pub enum Placement {
     Right,
 }
 
+/// A mouse wheel move, as JUCE's `MouseWheelDetails` gives it: a wheel
+/// that clicks (`isSmooth` false), or a smooth one such as a trackpad, by
+/// its `deltaY`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Wheel {
+    Stepped(f32),
+    Smooth(f32),
+}
+
+impl Wheel {
+    /// The wheel moves egui reports this frame. A physical wheel clicks; a
+    /// trackpad and its momentum are smooth; an unknown source is smooth
+    /// when it reports points. Smooth points are scaled as JUCE's macOS peer
+    /// scales precise deltas (0.5 / 256 per point), smooth lines as its
+    /// Linux peer scales a wheel's (50 / 256 per line).
+    pub fn events(input: &egui::InputState) -> Vec<Wheel> {
+        use egui::{MouseWheelSource, MouseWheelUnit};
+        input
+            .raw
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                egui::Event::MouseWheel {
+                    unit,
+                    delta,
+                    source,
+                    ..
+                } => {
+                    let smooth = match source {
+                        MouseWheelSource::Wheel => false,
+                        MouseWheelSource::Trackpad | MouseWheelSource::Momentum => true,
+                        _ => *unit == MouseWheelUnit::Point,
+                    };
+                    Some(if smooth {
+                        Wheel::Smooth(if *unit == MouseWheelUnit::Point {
+                            delta.y * 0.5 / 256.0
+                        } else {
+                            delta.y * 50.0 / 256.0
+                        })
+                    } else {
+                        Wheel::Stepped(delta.y)
+                    })
+                }
+                _ => None,
+            })
+            .collect()
+    }
+}
+
 /// One slider bound to a synth control.
 #[derive(Clone, Copy, Debug)]
 pub struct Slider {
@@ -330,6 +379,42 @@ impl Slider {
             1.0
         } else {
             0.0
+        }
+    }
+
+    /// `SynthSlider::mouseWheelMove` from `value`: a stepped wheel moves an
+    /// indexed control one step, up when `deltaY` is positive and down
+    /// otherwise; any other wheel takes JUCE's `Slider::mouseWheelMove`,
+    /// 0.15 of the range per unit and at least the interval. None when
+    /// JUCE's move would be nothing. (No slider here sets a shift index or
+    /// a wheel movement other than 1.)
+    pub fn wheel_value(&self, value: f32, wheel: Wheel) -> Option<f32> {
+        let interval = self.interval();
+        let value = value as f64;
+        match wheel {
+            Wheel::Stepped(delta_y) if interval > 0.0 => {
+                let moved = if delta_y > 0.0 {
+                    value + interval
+                } else {
+                    value - interval
+                };
+                Some(self.constrain(moved) as f32)
+            }
+            Wheel::Stepped(amount) | Wheel::Smooth(amount) => {
+                let (min, max) = (self.info.min as f64, self.info.max as f64);
+                if max <= min {
+                    return None;
+                }
+                // getMouseWheelDelta.
+                let position =
+                    (self.proportion(value as f32) + amount as f64 * 0.15).clamp(0.0, 1.0);
+                let delta = min + (max - min) * position - value;
+                if delta == 0.0 {
+                    return None;
+                }
+                let moved = value + interval.max(delta.abs()) * delta.signum();
+                Some(self.constrain(moved) as f32)
+            }
         }
     }
 
@@ -958,6 +1043,24 @@ fn hz_details(info: &'static ParamInfo) -> &'static ParamInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `SynthSlider::mouseWheelMove` on an indexed control (an LFO's X
+    /// grid, 1 to 32): a clicking wheel steps by one, down unless `deltaY`
+    /// is positive, within the range; a smooth wheel takes JUCE's move, at
+    /// least one step, and nothing when it doesn't move.
+    #[test]
+    fn the_wheel_steps_an_indexed_control() {
+        let grid = Slider::new(crate::local::GRID_SIZE_X[0], SliderStyle::Text);
+        assert_eq!(grid.wheel_value(8.0, Wheel::Stepped(1.0)), Some(9.0));
+        assert_eq!(grid.wheel_value(8.0, Wheel::Stepped(-1.0)), Some(7.0));
+        assert_eq!(grid.wheel_value(8.0, Wheel::Stepped(0.0)), Some(7.0));
+        assert_eq!(grid.wheel_value(32.0, Wheel::Stepped(1.0)), Some(32.0));
+        assert_eq!(grid.wheel_value(1.0, Wheel::Stepped(-1.0)), Some(1.0));
+        assert_eq!(grid.wheel_value(8.0, Wheel::Smooth(0.01)), Some(9.0));
+        // 0.075 of the range down from 8, rounded.
+        assert_eq!(grid.wheel_value(8.0, Wheel::Smooth(-0.5)), Some(6.0));
+        assert_eq!(grid.wheel_value(8.0, Wheel::Smooth(0.0)), None);
+    }
 
     #[test]
     fn indexed_values_snap_like_juce() {

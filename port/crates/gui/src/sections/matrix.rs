@@ -36,7 +36,7 @@ use crate::local;
 use crate::modulation::slot_control;
 use crate::paint::{PixelPainter, RectF};
 use crate::popup::{DualMenu, DualMenuGroup, Menu, MenuItem};
-use crate::primitives::{Quad, QuadKind};
+use crate::primitives::{Quad, QuadBatch, QuadKind};
 use crate::scope::Scope;
 use crate::section::{label_font, paint_widget_background};
 use crate::section::{paint_body, paint_border, paint_tab_shadow, title_width};
@@ -58,6 +58,8 @@ const ROW_PADDING: i32 = 1;
 const ROW_HEIGHT: f32 = 34.0;
 /// `kNoConnectionString`.
 const NO_CONNECTION: &str = "-";
+/// `StatusOutput::kClearValue`.
+const CLEAR_VALUE: f32 = i32::MIN as f32;
 
 /// The tab's areas (`ModulationMatrix::resized`), in editor pixels.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -971,6 +973,7 @@ impl MatrixTab {
         if let Some(slot) = selected {
             self.selected = slot;
         }
+        paint_readouts(host, pixels, &scope, &layout, &order, &routes, scroll);
 
         self.scroll
             .paint(pixels, &scope, layout.scroll_bar, total, visible);
@@ -1127,6 +1130,96 @@ impl MatrixTab {
         }
         select
     }
+}
+
+/// `ModulationMeterReadouts`: for each connected row, a bar along the
+/// meter strip at the top of its destination box (`getMeterBounds`, 2
+/// pixels high), from the box's centre towards the side of the slot's
+/// amount now (`modulation_amount_n`), left then right channel, added.
+///
+/// See [`readout_bar`].
+fn paint_readouts(
+    host: &Host,
+    pixels: &PixelPainter,
+    scope: &Scope,
+    layout: &MatrixLayout,
+    order: &[usize],
+    routes: &[Route],
+    scroll: i32,
+) {
+    let Some(telemetry) = host.model().telemetry() else {
+        return;
+    };
+    let values: Vec<Option<[f32; 4]>> = telemetry.read(|snapshot| {
+        amount_names()
+            .iter()
+            .map(|name| snapshot.status_by_name(name))
+            .collect()
+    });
+    let viewport = RectF::from(layout.viewport);
+    let mut batch = QuadBatch::additive();
+    for (channel, colour) in [
+        (0, scope.color(ColorId::ModulationMeterLeft)),
+        (1, scope.color(ColorId::ModulationMeterRight)),
+    ] {
+        for (position, &slot) in order.iter().enumerate() {
+            if !routes.iter().any(|route| route.slot == slot) {
+                continue;
+            }
+            let destination = RowLayout::new(scope, layout.row(position, scroll)).destination;
+            let value = values[slot].map_or(0.0, |value| value[channel]);
+            let Some(rect) = readout_bar(destination, value, layout.viewport) else {
+                continue;
+            };
+            let mut bar = Quad::new(QuadKind::Bar, rect, colour);
+            bar.shader_values[0] = rect.width / 2.0;
+            bar.shader_values[1] = rect.height;
+            batch.push(bar);
+        }
+    }
+    if !batch.is_empty() {
+        batch.paint(pixels, viewport);
+    }
+}
+
+/// One readout's bar for a row's `destination` box, with the amount now
+/// `value`, in a list of `viewport`'s size; None when it has no length.
+///
+/// `positionBar(i, centre, y, x - centre, 0)` at the meter strip's bottom
+/// edge, widened downwards by `kBarHorizontalVertex`'s `width_percent`:
+/// `bar_width` is `64 · 2 / height`, so the bar is the strip's 2 pixels
+/// thick, or 4 / width of the height if that is more.
+pub fn readout_bar(destination: Rect, value: f32, viewport: Rect) -> Option<RectF> {
+    /// `getMeterBounds`' height.
+    const METER_HEIGHT: f32 = 2.0;
+    let (width, height) = (viewport.width as f32, viewport.height as f32);
+    let width_percent = (4.0 / width).max(2.0 * METER_HEIGHT / height);
+    let thickness = width_percent * height / 2.0;
+    let value = if value == CLEAR_VALUE { 0.0 } else { value };
+    let t = (0.5 * (value + 1.0)).clamp(0.0, 1.0);
+    let left = destination.x as f32;
+    let right = destination.right() as f32;
+    let centre = (left + right) / 2.0;
+    let x = left + (right - left) * t;
+    let length = (x - centre).abs();
+    (length > 0.0).then(|| {
+        RectF::new(
+            centre.min(x),
+            destination.y as f32 + METER_HEIGHT,
+            length,
+            thickness,
+        )
+    })
+}
+
+/// `"modulation_amount_" + n` for each slot.
+fn amount_names() -> &'static [String] {
+    static NAMES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    NAMES.get_or_init(|| {
+        (1..=MAX_MODULATION_CONNECTIONS)
+            .map(|n| format!("modulation_amount_{n}"))
+            .collect()
+    })
 }
 
 /// The position of `name` in `names` (`setValueFromName`), or 0.
@@ -1324,5 +1417,28 @@ mod tests {
             .items
             .iter()
             .all(|item| !destinations[item.id as usize].starts_with("osc_")));
+    }
+
+    /// `ModulationMeterReadouts::updatePositions`: the bar runs from the
+    /// destination box's centre to the amount's side, 2 pixels thick below
+    /// the 2-pixel strip, and a clear or zero amount draws nothing.
+    #[test]
+    fn readouts_run_from_the_centre_to_the_amount() {
+        let box_ = Rect::new(100, 50, 200, 26);
+        let viewport = Rect::new(0, 0, 704, 421);
+        assert_eq!(
+            readout_bar(box_, 1.0, viewport),
+            Some(RectF::new(200.0, 52.0, 100.0, 2.0))
+        );
+        assert_eq!(
+            readout_bar(box_, -0.5, viewport),
+            Some(RectF::new(150.0, 52.0, 50.0, 2.0))
+        );
+        assert_eq!(readout_bar(box_, 3.0, viewport).unwrap().width, 100.0);
+        assert_eq!(readout_bar(box_, 0.0, viewport), None);
+        assert_eq!(readout_bar(box_, CLEAR_VALUE, viewport), None);
+        // A wide, short list: 4 / width of the height, more than 2 pixels.
+        let wide = readout_bar(box_, 1.0, Rect::new(0, 0, 100, 400)).unwrap();
+        assert_eq!(wide.height, 8.0);
     }
 }

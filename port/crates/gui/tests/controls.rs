@@ -5521,3 +5521,49 @@ fn the_remap_strip_loads_lfo_files() {
     click(&mut harness, centre(preset.text));
     assert_eq!(popup_files(&fixture), ["Bank Shape", "Ramp 2", "Wobble"]);
 }
+
+fn wheel(harness: &mut Harness, at: Pos2, lines: f32) {
+    harness.event(Event::PointerMoved(at));
+    harness.step();
+    harness.event(Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: egui::vec2(0.0, lines),
+        modifiers: Modifiers::NONE,
+        phase: egui::TouchPhase::Move,
+        source: egui::MouseWheelSource::Wheel,
+    });
+    harness.step();
+}
+
+/// `lineEditorScrolled`: the wheel over an LFO's editor or the remap
+/// editor moves its X grid, and while painting its paint pattern.
+#[test]
+fn the_wheel_over_a_line_editor_moves_its_grid_or_pattern() {
+    use sas_gui::local;
+    let fixture = Fixture::new();
+    let mut harness = fixture.harness();
+    let lfo = lfo_layout(&fixture);
+    let middle = centre(lfo.editor);
+    let local = |name: &str| fixture.interface.borrow().local_value(name).unwrap();
+    wheel(&mut harness, middle, 1.0);
+    assert_eq!(local(local::GRID_SIZE_X[0]), 9.0);
+    wheel(&mut harness, middle, -1.0);
+    wheel(&mut harness, middle, -1.0);
+    assert_eq!(local(local::GRID_SIZE_X[0]), 7.0);
+    click(&mut harness, centre(lfo.paint));
+    assert_eq!(local(local::PAINT[0]), 1.0);
+    let pattern = local(local::PAINT_PATTERN[0]);
+    wheel(&mut harness, middle, 1.0);
+    assert_eq!(local(local::PAINT_PATTERN[0]), pattern + 1.0);
+    assert_eq!(local(local::GRID_SIZE_X[0]), 7.0);
+
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    harness.step();
+    let editor = centre(remap_layout(&fixture).editor);
+    wheel(&mut harness, editor, -1.0);
+    assert_eq!(local(local::MATRIX_GRID_SIZE_X), 7.0);
+    assert_eq!(local(local::GRID_SIZE_X[0]), 7.0);
+}

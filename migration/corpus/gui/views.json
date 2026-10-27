@@ -15,6 +15,7 @@
     { "name": "modulations", "tab": "voice", "preset": "migration/corpus/gui/presets/modulations.vital", "seconds": 0.05, "animate": true },
     { "name": "modulations_many", "tab": "voice", "preset": "migration/corpus/gui/presets/modulations_many.vital", "seconds": 0.05, "animate": true },
     { "name": "modulations_matrix", "tab": "matrix", "preset": "migration/corpus/gui/presets/modulations.vital" },
+    { "name": "modulations_matrix_live", "tab": "matrix", "preset": "migration/corpus/gui/presets/modulations.vital", "midi": "migration/corpus/midi/chord_progression.mid", "seconds": 1, "animate": true },
     { "name": "modulations_aux", "tab": "voice", "preset": "migration/corpus/gui/presets/modulations_aux.vital", "seconds": 0.05, "animate": true },
     { "name": "preset_browser", "tab": "voice", "overlay": "preset_browser" },
     { "name": "save_section", "tab": "voice", "overlay": "save_section" },
