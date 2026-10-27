@@ -21,6 +21,7 @@ use nice_plug::prelude::{FloatParam, FloatRange, IntParam, IntRange, Param};
 use sas_engine::edit_bus::PreparedWavetable;
 use sas_engine::keyboard::keyboard;
 use sas_engine::midi_file::{read_midi_file, TimedMessage};
+use sas_engine::sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_engine::sas_oscillators::sas_wavetable::Wavetable;
 use sas_engine::synth::{render, RenderSettings, Synth};
 use sas_engine::telemetry::Telemetry;
@@ -201,6 +202,10 @@ impl EditorModel for ViewPreset {
         self.wavetables.get(oscillator).cloned().flatten()
     }
 
+    fn wavetable_creator(&self, oscillator: usize) -> Option<WavetableCreator> {
+        self.state.wavetables.get(oscillator).cloned()
+    }
+
     fn wavetable_name(&self, oscillator: usize) -> String {
         self.state
             .wavetables
@@ -323,6 +328,7 @@ fn main() {
         match view.get("overlay").and_then(|v| v.as_str()) {
             Some("preset_browser") => interface.borrow_mut().set_preset_browser_visible(true),
             Some("save_section") => interface.borrow_mut().request_save_preset(),
+            Some("wavetable_editor") => interface.borrow_mut().show_wavetable_editor(Some(0)),
             _ => {}
         }
         if let Some(scroll) = view.get("effects_scroll").and_then(|v| v.as_f64()) {

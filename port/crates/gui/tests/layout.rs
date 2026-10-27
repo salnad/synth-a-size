@@ -24,6 +24,7 @@ use sas_gui::sections::save_section::SaveLayout;
 use sas_gui::sections::synthesis::SynthesisLayout;
 use sas_gui::sections::voice::{self, VoiceLayout};
 use sas_gui::sections::volume::VolumeLayout;
+use sas_gui::sections::wavetable_edit::WavetableEditLayout;
 use sas_gui::skin::Skin;
 
 /// G6: the Effects tab, laid out with every effect on
@@ -308,6 +309,7 @@ fn port_rect(skin: &Skin, layout: &FullLayout, path: &str, preset: Option<&str>)
         _ if path.starts_with("extra_mod_section/") => return extra_mod_rect(skin, layout, path),
         _ if path.starts_with("master_controls/") => return advanced_rect(skin, layout, path),
         _ if path.starts_with("preset_browser") => return browser_rect(skin, layout, path),
+        _ if path.starts_with("oscillator 1") => return wavetable_editor_rect(skin, layout, path),
         _ => return synthesis_rect(skin, layout, path, phase_visible(preset)),
     })
 }
@@ -351,6 +353,39 @@ fn save_rect(layout: &FullLayout, width: i32, height: i32, path: &str) -> Option
             let index = PRESET_STYLE_NAMES.iter().position(|style| *style == name)?;
             save.styles[index]
         }
+    })
+}
+
+/// Oscillator 1's wavetable editor (`WavetableEditSection::resized`),
+/// with the init preset's one Wave Source in the component list.
+fn wavetable_editor_rect(skin: &Skin, layout: &FullLayout, path: &str) -> Option<Rect> {
+    let top = Scope::top(skin, layout.size_ratio);
+    let bounds = Rect::new(
+        layout.bounds.x,
+        0,
+        layout.bounds.width,
+        layout.bounds.height,
+    );
+    let edit = WavetableEditLayout::new(&top, bounds);
+    Some(match path {
+        "oscillator 1" => edit.bounds,
+        "oscillator 1/Wavetable Organizer" => edit.organizer,
+        "oscillator 1/component list" => edit.component_list,
+        "oscillator 1/component list/0" => edit.component_name(0, false),
+        "oscillator 1/component list/0#2" => edit.component_menu(0),
+        "oscillator 1/component list/Add Modifier" => edit.add_button(&top, 1, true),
+        "oscillator 1/component list/Add Source" => edit.add_button(&top, 2, false),
+        "oscillator 1/component list/plus" => edit.add_plus(&top, 1, true),
+        "oscillator 1/component list/plus#17" => edit.add_plus(&top, 2, false),
+        "oscillator 1/Playhead" => edit.playhead,
+        "oscillator 1/Exit" => edit.exit,
+        "oscillator 1/preset_selector" => edit.preset.bounds,
+        "oscillator 1/preset_selector/Text" => edit.preset.text,
+        "oscillator 1/preset_selector/Prev" => edit.preset.previous,
+        "oscillator 1/preset_selector/Next" => edit.preset.next,
+        "oscillator 1/Menu" => edit.menu,
+        "oscillator 1/Settings" => edit.settings,
+        _ => return None,
     })
 }
 

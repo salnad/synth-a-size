@@ -656,7 +656,8 @@ impl WavetableComponent {
         }
     }
 
-    fn keyframe_positions(&self) -> Vec<i32> {
+    /// Its keyframes' positions, in order.
+    pub fn keyframe_positions(&self) -> Vec<i32> {
         fn positions<K>(k: &Keyframes<K>) -> Vec<i32> {
             k.keyframes.iter().map(|k| k.position).collect()
         }

@@ -7,9 +7,10 @@
 //! (`vital/src/interface/editor_sections/oscillator_section.cpp`), and the
 //! FM/RM dependency check of `SynthesisInterface::distortionTypeChanged`.
 //!
-//! The wavetable view is `controls::wavetable_3d`. The wavetable's browser
-//! and the edit button's action come later. The text-to-wavetable field is
-//! absent (D20: it needs sign-in).
+//! The wavetable view is `controls::wavetable_3d`; the edit button opens
+//! the wavetable editor (`sections::wavetable_edit`). The wavetable's
+//! browser comes later. The text-to-wavetable field is absent (D20: it
+//! needs sign-in).
 
 use std::cell::RefCell;
 
@@ -1035,8 +1036,8 @@ impl OscillatorSection {
         );
     }
 
-    /// The wavetable's name with its arrows; browsing wavetables and the
-    /// edit button come with the wavetable view.
+    /// The wavetable's name with its arrows, and the edit button; browsing
+    /// wavetables comes later.
     fn show_wavetable_buttons(&self, panel: &mut Panel, layout: &OscillatorLayout) {
         let host = panel.host;
         let index = self.index;
@@ -1058,13 +1059,16 @@ impl OscillatorSection {
             },
             preset.previous,
         );
-        // The edit button opens the wavetable editor (with the wavetable
-        // view, G5).
         let pencil = ShapeButton {
             shape: Shape::from(Icon::Pencil),
             colours: ShapeColours::icon(&panel.scope),
         };
-        panel.shape_button(("wavetable edit", index), pencil, layout.edit);
+        if panel
+            .shape_button(("wavetable edit", index), pencil, layout.edit)
+            .clicked
+        {
+            panel.overlay.open_wavetable_editor = Some(index);
+        }
         panel.shape_button(
             ("wavetable next", index),
             ShapeButton {

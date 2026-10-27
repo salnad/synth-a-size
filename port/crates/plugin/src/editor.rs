@@ -283,6 +283,12 @@ impl EditorModel for PluginModel {
         })
     }
 
+    fn wavetable_creator(&self, oscillator: usize) -> Option<WavetableCreator> {
+        self.params
+            .edit_handle()
+            .with_document(|document| document.state.wavetables.get(oscillator).cloned())
+    }
+
     fn wavetable_json(&self, oscillator: usize) -> Option<String> {
         self.params.edit_handle().with_document(|document| {
             document
@@ -625,6 +631,30 @@ mod tests {
         info.preset_name = "Renamed".to_string();
         edits.set_info(info);
         assert_eq!(model.preset_name(), "Renamed");
+    }
+
+    /// The wavetable editor reads a copy of the document's creator, which
+    /// follows the document's edits.
+    #[test]
+    fn the_wavetable_creator_is_the_documents() {
+        let (edits, _consumer) =
+            EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+        let params = Arc::new(SynthParams::new(edits));
+        let (_writer, telemetry) = Telemetry::new(Arc::default());
+        let model = PluginModel::new(
+            params.clone(),
+            telemetry,
+            keyboard().0,
+            Arc::new(MidiLearn::in_memory()),
+            None,
+        );
+        let creator = model.wavetable_creator(1).unwrap();
+        assert_eq!(creator.to_json().dump(), model.wavetable_json(1).unwrap());
+        let mut renamed = creator.clone();
+        renamed.name = "Renamed".to_string();
+        params.edit_handle().set_wavetable(1, renamed).unwrap();
+        assert_eq!(model.wavetable_creator(1).unwrap().name, "Renamed");
+        assert!(model.wavetable_creator(3).is_none());
     }
 
     #[test]

@@ -323,6 +323,27 @@ extra_mod_section/MACRO/MACRO3/macro_control_4#2
 
 # G3b: oscillator 3 with a wave morph that shows the distortion phase slider.
 
+# G5: oscillator 1's wavetable editor (the others share its layout), laid out
+# whether or not it shows. The component list's rows are the init preset's:
+# one Wave Source, its "Add Modifier" button and "Add Source".
+oscillator 1
+oscillator 1/Wavetable Organizer
+oscillator 1/component list
+oscillator 1/component list/0
+oscillator 1/component list/0#2
+oscillator 1/component list/Add Modifier
+oscillator 1/component list/Add Source
+oscillator 1/component list/plus
+oscillator 1/component list/plus#17
+oscillator 1/Playhead
+oscillator 1/Exit
+oscillator 1/preset_selector
+oscillator 1/preset_selector/Text
+oscillator 1/preset_selector/Prev
+oscillator 1/preset_selector/Next
+oscillator 1/Menu
+oscillator 1/Settings
+
 # The preset browser (laid out while hidden, as FullInterface::resized does).
 preset_browser
 preset_browser/Preset List

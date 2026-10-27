@@ -16,8 +16,9 @@ Commands:
            artifacts only and are never committed. A view may run the engine
            first ("midi", "seconds") and draw the animated views from it
            ("animate"); see live_args. A view may open an overlay over its
-           tab ("overlay": "preset_browser" or "save_section"); see
-           overlay_args.
+           tab ("overlay": "preset_browser" or "save_section"), or
+           oscillator 1's wavetable editor in place of the interface
+           ("overlay": "wavetable_editor"); see overlay_args.
 
 ref-gui runs with migration/corpus/gui/data (written by
 migration/corpus/generate.py) as its data folder, which the port's gallery
@@ -123,7 +124,7 @@ def live_args(view):
     return args
 
 
-OVERLAYS = ("preset_browser", "save_section")
+OVERLAYS = ("preset_browser", "save_section", "wavetable_editor")
 
 
 def overlay_args(view):

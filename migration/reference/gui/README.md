@@ -31,7 +31,7 @@ itself:
 ref-gui [--out frame.png] [--layout layout.jsonl] [--preset file.vital]
         [--tab voice|effects|matrix|advanced] [--width 1400] [--height 820] [--frames 30]
         [--midi file.mid] [--seconds S] [--block-size 64] [--animate on|off]
-        [--overlay preset_browser] [--data-dir folder]
+        [--overlay preset_browser|wavetable_editor] [--data-dir folder]
 ```
 
 The interface draws with upstream's `DefaultLookAndFeel`, which the
@@ -47,7 +47,9 @@ gallery reads too.
 
 `--overlay preset_browser` opens the preset browser over the tab, as the
 header's preset selector does; in `views.json`, `"overlay":
-"preset_browser"`.
+"preset_browser"`. `--overlay wavetable_editor` opens oscillator 1's
+wavetable editor in place of the interface, as its edit button does
+(`"overlay": "wavetable_editor"`).
 
 ## A running engine
 

@@ -29,7 +29,14 @@ pub struct BarRenderer {
     /// `num_points_`: the count the width is spread over.
     pub num_points: usize,
     pub additive: bool,
+    /// `power_scale_` and `square_scale_`: how [`Self::set_scaled_y`] maps
+    /// a value to a bar's height.
+    pub power_scale: bool,
+    pub square_scale: bool,
 }
+
+/// `BarRenderer::kScaleConstant`.
+const SCALE_CONSTANT: f32 = 5.0;
 
 impl BarRenderer {
     /// `BarRenderer(num_points, vertical)`: bars spread evenly from -1, all
@@ -48,7 +55,22 @@ impl BarRenderer {
             bar_width: 1.0,
             num_points,
             additive: true,
+            power_scale: false,
+            square_scale: false,
         }
+    }
+
+    /// `setScaledY`: bar `index` at `value`, raised by its index under the
+    /// power scale and square-rooted under the square scale.
+    pub fn set_scaled_y(&mut self, index: usize, value: f32) {
+        let mut value = value;
+        if self.power_scale {
+            value *= index.max(1) as f32 / SCALE_CONSTANT;
+        }
+        if self.square_scale {
+            value = value.sqrt();
+        }
+        self.y[index] = 2.0 * value - 1.0;
     }
 
     pub fn total_points(&self) -> usize {

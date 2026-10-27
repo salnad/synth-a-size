@@ -117,6 +117,10 @@ class OverlayArgsTest(unittest.TestCase):
         self.assertEqual(gui_reference.overlay_args({"name": "v", "overlay": "save_section"}),
                          ["--overlay", "save_section"])
 
+    def test_the_wavetable_editor(self):
+        self.assertEqual(gui_reference.overlay_args({"name": "v", "overlay": "wavetable_editor"}),
+                         ["--overlay", "wavetable_editor"])
+
     def test_an_unknown_overlay_fails(self):
         with self.assertRaises(SystemExit):
             gui_reference.overlay_args({"name": "v", "overlay": "about_section"})
