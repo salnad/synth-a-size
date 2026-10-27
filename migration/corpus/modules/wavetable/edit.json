@@ -1,0 +1,312 @@
+{
+  "description": "The edits the wavetable editor's timeline makes to a creator (WavetableComponentList and WavetableOrganizer, vital/src/interface/wavetable/), then render(): the saved creator JSON and the rendered table, as wavetable_render compares it. {\"$wave\": ...} recipes as in render.json. Ported in port/crates/wavetable (creator::edits), which the editor calls.",
+  "module": "wavetable_edit",
+  "cases": {
+    "add_sources": {
+      "params": {
+        "preset": "init",
+        "edits": [
+          {
+            "op": "add_source",
+            "type": 1
+          },
+          {
+            "op": "add_source",
+            "type": 2
+          },
+          {
+            "op": "add_source",
+            "type": 0
+          }
+        ]
+      },
+      "artifacts": {
+        "saved.json": "json"
+      },
+      "base64_f32_keys": [
+        "wave_data"
+      ]
+    },
+    "add_modifiers": {
+      "params": {
+        "preset": "init",
+        "edits": [
+          {
+            "op": "add_modifier",
+            "group": 0,
+            "type": 0
+          },
+          {
+            "op": "add_modifier",
+            "group": 0,
+            "type": 1
+          },
+          {
+            "op": "add_modifier",
+            "group": 0,
+            "type": 2
+          },
+          {
+            "op": "add_modifier",
+            "group": 0,
+            "type": 3
+          },
+          {
+            "op": "add_modifier",
+            "group": 0,
+            "type": 4
+          },
+          {
+            "op": "add_modifier",
+            "group": 0,
+            "type": 5
+          }
+        ]
+      },
+      "artifacts": {
+        "saved.json": "json"
+      },
+      "base64_f32_keys": [
+        "wave_data"
+      ]
+    },
+    "move_and_remove": {
+      "params": {
+        "creator": "{\"version\": \"1.0.6\", \"name\": \"E\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 1, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\", \"amp\": 0.75}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"saw\", \"shift\": 757, \"amp\": 0.875}}}]}, {\"type\": \"Wave Folder\", \"keyframes\": [{\"position\": 0, \"fold_boost\": 1.0}, {\"position\": 256, \"fold_boost\": 5.0}]}, {\"type\": \"Slew Limiter\", \"keyframes\": [{\"position\": 0, \"up_run_rise\": 0.0, \"down_run_rise\": 0.3}, {\"position\": 200, \"up_run_rise\": 0.5, \"down_run_rise\": 0.01}]}]}, {\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.5}}}]}, {\"type\": \"Wave Window\", \"window_shape\": 1, \"keyframes\": [{\"position\": 0, \"left_position\": 0.1, \"right_position\": 0.9}, {\"position\": 128, \"left_position\": 0.4, \"right_position\": 0.55}]}]}]}",
+        "edits": [
+          {
+            "op": "move_modifier_down",
+            "group": 0,
+            "component": 1
+          },
+          {
+            "op": "move_modifier_up",
+            "group": 0,
+            "component": 2
+          },
+          {
+            "op": "move_modifier_down",
+            "group": 0,
+            "component": 2
+          },
+          {
+            "op": "move_group_down",
+            "group": 0
+          },
+          {
+            "op": "move_group_down",
+            "group": 1
+          },
+          {
+            "op": "move_group_up",
+            "group": 0
+          },
+          {
+            "op": "move_group_up",
+            "group": 1
+          },
+          {
+            "op": "remove_component",
+            "group": 0,
+            "component": 1
+          },
+          {
+            "op": "remove_group",
+            "group": 1
+          }
+        ]
+      }
+    },
+    "reset": {
+      "params": {
+        "creator": "{\"version\": \"1.0.6\", \"name\": \"E\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 1, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\", \"amp\": 0.75}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"saw\", \"shift\": 757, \"amp\": 0.875}}}]}, {\"type\": \"Wave Folder\", \"keyframes\": [{\"position\": 0, \"fold_boost\": 1.0}, {\"position\": 256, \"fold_boost\": 5.0}]}, {\"type\": \"Slew Limiter\", \"keyframes\": [{\"position\": 0, \"up_run_rise\": 0.0, \"down_run_rise\": 0.3}, {\"position\": 200, \"up_run_rise\": 0.5, \"down_run_rise\": 0.01}]}]}, {\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.5}}}]}, {\"type\": \"Wave Window\", \"window_shape\": 1, \"keyframes\": [{\"position\": 0, \"left_position\": 0.1, \"right_position\": 0.9}, {\"position\": 128, \"left_position\": 0.4, \"right_position\": 0.55}]}]}]}",
+        "edits": [
+          {
+            "op": "reset_component",
+            "group": 0,
+            "component": 0
+          },
+          {
+            "op": "reset_component",
+            "group": 0,
+            "component": 1
+          },
+          {
+            "op": "reset_component",
+            "group": 1,
+            "component": 1
+          }
+        ]
+      }
+    },
+    "create_and_delete_keyframes": {
+      "params": {
+        "creator": "{\"version\": \"1.0.6\", \"name\": \"E\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 1, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\", \"amp\": 0.75}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"saw\", \"shift\": 757, \"amp\": 0.875}}}]}, {\"type\": \"Wave Folder\", \"keyframes\": [{\"position\": 0, \"fold_boost\": 1.0}, {\"position\": 256, \"fold_boost\": 5.0}]}, {\"type\": \"Slew Limiter\", \"keyframes\": [{\"position\": 0, \"up_run_rise\": 0.0, \"down_run_rise\": 0.3}, {\"position\": 200, \"up_run_rise\": 0.5, \"down_run_rise\": 0.01}]}]}, {\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.5}}}]}, {\"type\": \"Wave Window\", \"window_shape\": 1, \"keyframes\": [{\"position\": 0, \"left_position\": 0.1, \"right_position\": 0.9}, {\"position\": 128, \"left_position\": 0.4, \"right_position\": 0.55}]}]}]}",
+        "edits": [
+          {
+            "op": "create_keyframe",
+            "group": 0,
+            "component": 0,
+            "position": 128
+          },
+          {
+            "op": "create_keyframe",
+            "group": 0,
+            "component": 1,
+            "position": 64
+          },
+          {
+            "op": "create_keyframe",
+            "group": 0,
+            "component": 1,
+            "position": 64
+          },
+          {
+            "op": "create_keyframe",
+            "group": 1,
+            "component": 0,
+            "position": 200
+          },
+          {
+            "op": "delete_keyframe",
+            "group": 0,
+            "component": 0,
+            "keyframe": 0
+          },
+          {
+            "op": "delete_keyframe",
+            "group": 0,
+            "component": 2,
+            "keyframe": 5
+          }
+        ]
+      },
+      "artifacts": {
+        "saved.json": "json"
+      },
+      "base64_f32_keys": [
+        "wave_data"
+      ]
+    },
+    "drag_across_and_past_the_end": {
+      "params": {
+        "creator": "{\"version\": \"1.0.6\", \"name\": \"E\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"saw\", \"shift\": 300, \"amp\": 0.5}}}]}, {\"type\": \"Wave Folder\", \"keyframes\": [{\"position\": 0, \"fold_boost\": 1.0}, {\"position\": 200, \"fold_boost\": 6.0}]}]}]}",
+        "edits": [
+          {
+            "op": "drag_keyframes",
+            "selected": [
+              [
+                0,
+                0,
+                1
+              ],
+              [
+                0,
+                0,
+                2
+              ],
+              [
+                0,
+                1,
+                1
+              ]
+            ],
+            "dragged": [
+              0,
+              0,
+              1
+            ],
+            "targets": [
+              70,
+              180,
+              300
+            ]
+          }
+        ]
+      }
+    },
+    "drag_past_the_start": {
+      "params": {
+        "creator": "{\"version\": \"1.0.6\", \"name\": \"E\", \"author\": \"A\", \"groups\": [{\"components\": [{\"type\": \"Wave Source\", \"interpolation\": 0, \"interpolation_style\": 1, \"keyframes\": [{\"position\": 0, \"wave_data\": {\"$wave\": {\"shape\": \"saw\"}}}, {\"position\": 60, \"wave_data\": {\"$wave\": {\"shape\": \"triangle\", \"amp\": 0.75}}}, {\"position\": 150, \"wave_data\": {\"$wave\": {\"shape\": \"square\", \"duty\": 700, \"amp\": 0.875}}}, {\"position\": 256, \"wave_data\": {\"$wave\": {\"shape\": \"saw\", \"shift\": 300, \"amp\": 0.5}}}]}, {\"type\": \"Wave Folder\", \"keyframes\": [{\"position\": 0, \"fold_boost\": 1.0}, {\"position\": 200, \"fold_boost\": 6.0}]}]}]}",
+        "edits": [
+          {
+            "op": "drag_keyframes",
+            "selected": [
+              [
+                0,
+                0,
+                2
+              ],
+              [
+                0,
+                0,
+                3
+              ]
+            ],
+            "dragged": [
+              0,
+              0,
+              3
+            ],
+            "targets": [
+              100,
+              -50
+            ]
+          }
+        ]
+      }
+    },
+    "add_then_edit": {
+      "params": {
+        "preset": "init",
+        "edits": [
+          {
+            "op": "add_source",
+            "type": 0
+          },
+          {
+            "op": "add_modifier",
+            "group": 1,
+            "type": 4
+          },
+          {
+            "op": "create_keyframe",
+            "group": 1,
+            "component": 1,
+            "position": 128
+          },
+          {
+            "op": "drag_keyframes",
+            "selected": [
+              [
+                1,
+                1,
+                1
+              ]
+            ],
+            "dragged": [
+              1,
+              1,
+              1
+            ],
+            "targets": [
+              40
+            ]
+          },
+          {
+            "op": "create_keyframe",
+            "group": 1,
+            "component": 0,
+            "position": 256
+          }
+        ]
+      },
+      "artifacts": {
+        "saved.json": "json"
+      },
+      "base64_f32_keys": [
+        "wave_data"
+      ]
+    }
+  }
+}

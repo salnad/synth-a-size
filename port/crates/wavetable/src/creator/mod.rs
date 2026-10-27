@@ -10,6 +10,7 @@
 //! creator here.
 
 pub mod component;
+pub mod edits;
 pub mod group;
 pub mod keyframes;
 pub mod pitch_detector;

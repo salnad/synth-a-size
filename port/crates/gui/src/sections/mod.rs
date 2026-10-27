@@ -87,6 +87,9 @@ pub enum MenuOwner {
     /// An oscillator's wavetable view, by index (`Wavetable3d::mouseDown`):
     /// the selection goes to [`Overlay::wavetable_action`] for the view.
     Wavetable(usize),
+    /// A menu of an oscillator's wavetable editor, by index: the selection
+    /// goes to [`Overlay::wavetable_edit_action`] for the editor.
+    WavetableEdit(usize, wavetable_edit::EditMenu),
     /// An editor setting's list (the Advanced tab's tuning, frequency units
     /// and skin): the choice's id goes to the function, with the egui
     /// context for any dialog it opens.
@@ -143,6 +146,9 @@ pub struct Overlay {
     /// An oscillator's edit button was clicked: the wavetable editor to
     /// show (`FullInterface::showWavetableEditSection`).
     pub open_wavetable_editor: Option<usize>,
+    /// A wavetable editor's menu choice, (oscillator, menu, item), for the
+    /// editor to carry out on its next frame.
+    pub wavetable_edit_action: Option<(usize, wavetable_edit::EditMenu, i32)>,
     /// The modulation sources: the selected one and a drag in progress.
     pub modulation: ModulationManager,
 }
@@ -175,6 +181,9 @@ impl Overlay {
                         MenuOwner::Selector(slider) => host.set_once(slider.name, id as f32),
                         MenuOwner::Wavetable(oscillator) => {
                             self.wavetable_action = Some((oscillator, id));
+                        }
+                        MenuOwner::WavetableEdit(oscillator, menu) => {
+                            self.wavetable_edit_action = Some((oscillator, menu, id));
                         }
                         MenuOwner::Control { name, then } => {
                             host.set_once(name, id as f32);

@@ -1,5 +1,6 @@
 // Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
-// SPDX-License-Identifier: GPL-3.0-or-later
+// Portions Copyright (c) 2020 Raw Material Software Limited (JUCE 6: juce_gui_basics, GPL-3.0-only).
+// SPDX-License-Identifier: GPL-3.0-or-later AND GPL-3.0-only
 
 //! The wavetable editor, shown in place of the interface when an
 //! oscillator's edit button is clicked. Ports `WavetableEditSection`
@@ -8,11 +9,17 @@
 //! `WavetableOrganizer`, `WavetableComponentList`, `WavetablePlayhead` and
 //! `WavetablePlayheadInfo`.
 //!
-//! This part shows the oscillator's wavetable as it is: the frame under the
-//! playhead in the waveform, amplitude and phase displays, the components in
-//! the list and their keyframes in the organizer, with the first source's
-//! first keyframe selected. The exit button closes the editor. Editing, the
-//! component overlays and the menus come in the parts that follow.
+//! It shows the frame under the playhead in the waveform, amplitude and
+//! phase displays, the components in the list and their keyframes in the
+//! organizer, with the first source's first keyframe selected. The timeline
+//! edits the creator: the playhead moves the oscillator's wave frame, the
+//! organizer selects, creates, deletes and drags keyframes, and the list
+//! adds, moves, resets and removes components and groups
+//! (`sas_wavetable::creator::edits`). Each edit is committed to the model
+//! when it is done (`EditorModel::set_wavetable_creator`). The exit button
+//! closes the editor. The component overlays and the section's menus come
+//! in the parts that follow. The organizer counts double-clicks with JUCE's
+//! multiple-click rules (`MouseInputSource`), as the sliders do.
 //!
 //! `WavetablePlayheadInfo` draws its number with JUCE's component painting,
 //! which `FullInterface` turns off for its OpenGL context
@@ -22,22 +29,30 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
+use egui::{PointerButton, Pos2, Sense};
+use sas_engine::sas_oscillators::sas_wavetable::creator::edits::{
+    self, KeyframeIndex, MODIFIER_TYPES, SOURCE_TYPES,
+};
 use sas_engine::sas_oscillators::sas_wavetable::creator::WavetableCreator;
 use sas_engine::sas_oscillators::sas_wavetable::wave_frame::{NUM_REAL_COMPLEX, WAVEFORM_SIZE};
 use sas_engine::sas_oscillators::sas_wavetable::{
     WaveFrame, Wavetable, NUM_OSCILLATOR_WAVE_FRAMES,
 };
 
-use super::Panel;
+use super::{MenuOwner, Panel};
 use crate::controls::bars::BarRenderer;
 use crate::controls::icon;
 use crate::controls::path::Path;
 use crate::controls::paths;
+use crate::controls::scroll_bar::ScrollBar;
 use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
+use crate::controls::slider::{DOUBLE_CLICK_TIMEOUT, MULTIPLE_CLICK_DISTANCE};
 use crate::fonts::Face;
+use crate::host::Host;
 use crate::interface::EditorModel;
 use crate::layout::{PresetSelectorLayout, Rect};
 use crate::paint::{PixelPainter, RectF};
+use crate::popup::{Menu, MenuItem};
 use crate::primitives::line::LineRenderer;
 use crate::primitives::{Quad, QuadKind};
 use crate::scope::Scope;
@@ -67,6 +82,17 @@ const PLAYHEAD_BIG_LINE_SKIP: usize = 16;
 const DIAMOND_THICKNESS: f32 = 2.0;
 /// The section's starting `zoom_`.
 const DEFAULT_ZOOM: f32 = 8.0;
+/// `WavetableComponentList::resized`'s `kScrollBarWidth`, before the size
+/// ratio.
+const SCROLL_BAR_WIDTH: f32 = 13.0;
+/// The component list's row menus (`WavetableComponentList::ComponentRowMenu`).
+pub const MENU_RESET: i32 = 1;
+pub const MENU_REMOVE: i32 = 2;
+pub const MENU_MOVE_UP: i32 = 3;
+pub const MENU_MOVE_DOWN: i32 = 4;
+/// The organizer's menu (`WavetableOrganizer::OrganizerMenu`).
+pub const MENU_CREATE_KEYFRAME: i32 = 1;
+pub const MENU_REMOVE_KEYFRAMES: i32 = 2;
 /// `updateFrequencyDomain`'s epsilons.
 const AMPLITUDE_EPSILON: f32 = 0.000_000_1;
 const PHASE_EPSILON: f32 = 0.0001;
@@ -282,11 +308,52 @@ impl WavetableEditLayout {
 }
 
 /// Where a keyframe is in the creator (upstream's `WavetableKeyframe*`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct KeyframeRef {
-    pub group: usize,
-    pub component: usize,
-    pub keyframe: usize,
+pub type KeyframeRef = KeyframeIndex;
+
+/// A menu the editor opened, for the choice that comes back through
+/// [`super::Overlay::wavetable_edit_action`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EditMenu {
+    /// "Add Source": the choice is an index into `SOURCE_TYPES`.
+    AddSource,
+    /// A group's "Add Modifier": an index into `MODIFIER_TYPES`.
+    AddModifier(usize),
+    /// A source row's menu (`groupMenuClicked`), by group.
+    Group(usize),
+    /// A modifier row's menu (`modifierMenuClicked`), by group and
+    /// component.
+    Modifier(usize, usize),
+    /// The organizer's menu, opened at this organizer point
+    /// (`menu_created_position_`).
+    Organizer(i32, i32),
+}
+
+/// What a press on the organizer is doing (`WavetableOrganizer::MouseMode`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum OrganizerMode {
+    Waiting,
+    Selecting,
+    /// Dragging the selection by `dragged`, whose handle started at
+    /// `start_x` (`dragged_start_x_`).
+    Dragging {
+        dragged: KeyframeRef,
+        start_x: i32,
+    },
+}
+
+/// A press on the organizer, in organizer pixels.
+#[derive(Clone, Copy, Debug)]
+struct OrganizerPress {
+    mode: OrganizerMode,
+    down: (i32, i32),
+    current: (i32, i32),
+    /// Pressed with the popup-menu button.
+    popup: bool,
+    /// The drag moved a keyframe.
+    moved: bool,
+    /// `getNumberOfClicks`: presses in a row within JUCE's multiple-click
+    /// limits.
+    clicks: u32,
 }
 
 /// A component's row in the list and in the organizer.
@@ -347,6 +414,16 @@ pub struct WavetableEditSection {
     /// The model's preset generation when the creator was last read: a
     /// load since then resets the section (`FullInterface::reset`).
     generation: Option<u64>,
+    /// A press on the organizer, while it lasts.
+    organizer: Option<OrganizerPress>,
+    /// The organizer's last press and its click count, for double-clicks.
+    last_press: Option<(f64, Pos2, u32)>,
+    /// A press on the playhead, while it lasts.
+    playhead_held: bool,
+    /// The wave frame's host gesture is open (D18).
+    wave_frame_begun: bool,
+    /// The component list's scroll position and bar.
+    scroll: ScrollBar,
 }
 
 impl WavetableEditSection {
@@ -360,6 +437,11 @@ impl WavetableEditSection {
             power_scale: true,
             visible: false,
             generation: None,
+            organizer: None,
+            last_press: None,
+            playhead_held: false,
+            wave_frame_begun: false,
+            scroll: ScrollBar::default(),
         }
     }
 
@@ -394,6 +476,10 @@ impl WavetableEditSection {
                 .as_ref()
                 .is_some_and(|(read, _)| *read == revision)
         {
+            return false;
+        }
+        if !loaded && self.organizer.is_some() {
+            // A keyframe drag edits the copy until it's committed.
             return false;
         }
         self.creator = model
@@ -480,6 +566,11 @@ impl WavetableEditSection {
     /// Returns true when the exit button is clicked
     /// (`FullInterface::hideWavetableEditSection`).
     pub fn show(&mut self, panel: &mut Panel, layout: &WavetableEditLayout) -> bool {
+        self.respond_to_menu(panel, layout);
+        let scroll = self.handle_scroll(panel, layout);
+        self.handle_playhead(panel, layout);
+        self.handle_organizer(panel, layout, scroll);
+
         let model = panel.host.model();
         let wavetable = model.wavetable(self.oscillator);
         let frame = wavetable
@@ -535,10 +626,507 @@ impl WavetableEditSection {
                     .collect()
             })
             .unwrap_or_default();
-        self.show_component_list(panel, layout, &rows, &group_sizes);
-        self.show_organizer(panel, layout, &rows);
+        self.show_component_list(panel, layout, &rows, &group_sizes, scroll);
+        self.show_organizer(panel, layout, &rows, scroll);
         self.show_playhead(panel, layout);
         exit.clicked
+    }
+
+    /// Commits the edited creator to the model, which renders it
+    /// (`render`). The next frame reads the rendered creator back, as
+    /// upstream's next edit starts from the creator it rendered.
+    fn commit(&self, model: &dyn EditorModel) {
+        if let Some((_, creator)) = &self.creator {
+            model.set_wavetable_creator(self.oscillator, creator.clone());
+        }
+    }
+
+    /// The component list's column height (`component_container_`).
+    fn list_height(&self, layout: &WavetableEditLayout) -> i32 {
+        let rows: usize = self
+            .creator()
+            .map(|creator| {
+                creator
+                    .groups
+                    .iter()
+                    .map(|group| group.components.len() + 1)
+                    .sum()
+            })
+            .unwrap_or(0);
+        let row_height = layout.handle_width;
+        let button_y = rows as i32 * row_height + 2;
+        (button_y as f32 + layout.cell_height() as f32 + row_height as f32 * 0.5) as i32
+    }
+
+    /// The list's scroll bar, and the wheel over the list and the
+    /// organizer (`componentsScrolled`, `WavetableOrganizer::mouseWheelMove`).
+    /// Returns the scroll offset in pixels.
+    fn handle_scroll(&mut self, panel: &mut Panel, layout: &WavetableEditLayout) -> i32 {
+        let list = layout.component_list;
+        let total = self.list_height(layout) as f32;
+        let visible = list.height as f32;
+        let ratio = panel.scope.size_ratio();
+        let bar = Rect::new(
+            list.x,
+            list.y,
+            (ratio * SCROLL_BAR_WIDTH) as i32,
+            list.height,
+        );
+        let viewport = Rect::new(
+            list.x,
+            list.y,
+            layout.organizer.right() - list.x,
+            list.height,
+        );
+        let id = panel
+            .ui
+            .scope_id()
+            .with(("wavetable list scroll bar", self.oscillator));
+        let ppp = panel.pixels.pixels_per_point();
+        self.scroll.handle(
+            panel.ui,
+            panel.pixels,
+            id,
+            viewport,
+            bar,
+            total,
+            visible,
+            ppp,
+        );
+        self.scroll.position as i32
+    }
+
+    /// `WavetablePlayhead::mouseDown` / `mouseDrag`: the position under the
+    /// pointer, which moves the wave frame.
+    fn handle_playhead(&mut self, panel: &mut Panel, layout: &WavetableEditLayout) {
+        let playhead = layout.playhead;
+        let id = panel
+            .ui
+            .scope_id()
+            .with(("wavetable playhead", self.oscillator));
+        let rect = panel.pixels.rect(playhead.into());
+        let response = panel.ui.interact(rect, id, Sense::click_and_drag());
+        let primary_down = panel
+            .ui
+            .input(|input| input.pointer.button_down(PointerButton::Primary));
+        let held = response.is_pointer_button_down_on() && primary_down;
+        if held {
+            if let Some(pos) = panel.ui.input(|input| input.pointer.interact_pos()) {
+                let x = to_pixels(panel.pixels, pos).0 - playhead.x as f32;
+                let padding = layout.playhead_padding();
+                let active_width = playhead.width as f32 - 2.0 * padding + 1.0;
+                let position = ((NUM_FRAMES as f32 - 1.0) * (x.trunc() - padding) / active_width)
+                    .round() as i32;
+                self.move_playhead(panel.host, position.clamp(0, NUM_FRAMES as i32 - 1));
+            }
+        } else if self.playhead_held {
+            self.end_wave_frame(panel.host);
+        }
+        self.playhead_held = held;
+    }
+
+    /// `WavetablePlayhead::setPosition`, whose `playheadMoved` sets the
+    /// oscillator's wave frame slider. The slider tells the host only when
+    /// the value changes, in one gesture for the action (D18).
+    fn move_playhead(&mut self, host: &Host, position: i32) {
+        self.playhead = position as usize;
+        let name = wave_frame_name(self.oscillator);
+        if host.value(name) != position as f32 {
+            if !self.wave_frame_begun {
+                host.begin(name);
+                self.wave_frame_begun = true;
+            }
+            host.set(name, position as f32);
+        }
+    }
+
+    /// Ends the wave frame's gesture, if one is open.
+    fn end_wave_frame(&mut self, host: &Host) {
+        if self.wave_frame_begun {
+            host.end(wave_frame_name(self.oscillator));
+            self.wave_frame_begun = false;
+        }
+    }
+
+    /// The organizer's mouse (`WavetableOrganizer::mouseDown`, `mouseDrag`,
+    /// `mouseUp`, `mouseDoubleClick`).
+    fn handle_organizer(&mut self, panel: &mut Panel, layout: &WavetableEditLayout, scroll: i32) {
+        let organizer = layout.organizer;
+        let id = panel
+            .ui
+            .scope_id()
+            .with(("wavetable organizer", self.oscillator));
+        let rect = panel.pixels.rect(organizer.into());
+        let response = panel.ui.interact(rect, id, Sense::click_and_drag());
+        let (primary_down, secondary_down, ctrl, pointer, now) = panel.ui.input(|input| {
+            (
+                input.pointer.button_down(PointerButton::Primary),
+                input.pointer.button_down(PointerButton::Secondary),
+                input.modifiers.ctrl,
+                input.pointer.interact_pos(),
+                input.time,
+            )
+        });
+        let local = |pos: Pos2| {
+            let (x, y) = to_pixels(panel.pixels, pos);
+            (x as i32 - organizer.x, y as i32 - organizer.y)
+        };
+        let offset = -scroll;
+        match self.organizer {
+            None => {
+                if !(response.is_pointer_button_down_on() && (primary_down || secondary_down)) {
+                    return;
+                }
+                let Some(pos) = pointer else {
+                    return;
+                };
+                let popup = secondary_down || (cfg!(target_os = "macos") && ctrl && primary_down);
+                let at = local(pos);
+                let clicks = match self.last_press {
+                    Some((time, last, count))
+                        if now - time < DOUBLE_CLICK_TIMEOUT
+                            && (pos.x - last.x).abs() < MULTIPLE_CLICK_DISTANCE
+                            && (pos.y - last.y).abs() < MULTIPLE_CLICK_DISTANCE =>
+                    {
+                        count + 1
+                    }
+                    _ => 1,
+                };
+                self.last_press = Some((now, pos, clicks));
+                self.organizer_down(layout, offset, at, popup, clicks);
+            }
+            Some(press) => {
+                let held = if press.popup && !primary_down {
+                    secondary_down
+                } else {
+                    primary_down || secondary_down
+                };
+                let at = pointer.map(local).unwrap_or(press.current);
+                if held {
+                    if at != press.current {
+                        self.organizer_drag(panel.host, layout, at);
+                    }
+                } else {
+                    self.organizer_up(panel, layout, offset, at);
+                }
+            }
+        }
+    }
+
+    /// `mouseDown`: a press on a keyframe starts dragging the selection,
+    /// selecting the keyframe first if it isn't selected.
+    fn organizer_down(
+        &mut self,
+        layout: &WavetableEditLayout,
+        offset: i32,
+        at: (i32, i32),
+        popup: bool,
+        clicks: u32,
+    ) {
+        let mut press = OrganizerPress {
+            mode: OrganizerMode::Waiting,
+            down: at,
+            current: at,
+            popup,
+            moved: false,
+            clicks,
+        };
+        if let Some((keyframe, start_x)) = self.frame_at(layout, offset, at) {
+            press.mode = OrganizerMode::Dragging {
+                dragged: keyframe,
+                start_x,
+            };
+            if !self.selected.contains(&keyframe) {
+                self.selected = vec![keyframe];
+            }
+        }
+        self.organizer = Some(press);
+    }
+
+    /// `mouseDrag`: a move from empty space starts a selection box; a
+    /// keyframe drag moves the selection and the playhead with it.
+    fn organizer_drag(&mut self, host: &Host, layout: &WavetableEditLayout, at: (i32, i32)) {
+        let Some(mut press) = self.organizer else {
+            return;
+        };
+        press.current = at;
+        let x_movement = at.0 - press.down.0;
+        match press.mode {
+            OrganizerMode::Waiting => {
+                if x_movement != 0 {
+                    press.mode = OrganizerMode::Selecting;
+                }
+            }
+            OrganizerMode::Dragging { dragged, start_x } => {
+                let frame_width = layout.frame_width();
+                let target = unclamped_position(start_x + x_movement, frame_width);
+                if let Some((_, creator)) = &mut self.creator {
+                    edits::drag_keyframes(creator, &self.selected, dragged, target);
+                    press.moved = true;
+                }
+                // frameDragged moves the playhead.
+                let clamped = target.clamp(0, NUM_FRAMES as i32 - 1);
+                self.move_playhead(host, clamped);
+            }
+            OrganizerMode::Selecting => {}
+        }
+        self.organizer = Some(press);
+    }
+
+    /// `mouseUp`: a click on empty space deselects, a selection box selects
+    /// the keyframes in it, and a drag puts the moved keyframes in order and
+    /// commits. The popup-menu button then opens the organizer's menu over
+    /// a component with keyframes.
+    fn organizer_up(
+        &mut self,
+        panel: &mut Panel,
+        layout: &WavetableEditLayout,
+        offset: i32,
+        at: (i32, i32),
+    ) {
+        let Some(press) = self.organizer.take() else {
+            return;
+        };
+        let model = panel.host.model();
+        match press.mode {
+            OrganizerMode::Waiting => self.selected.clear(),
+            OrganizerMode::Selecting => {
+                let rows = self.creator().map(component_rows).unwrap_or_default();
+                self.selected = box_selection(layout, offset, &rows, press.down, at);
+            }
+            OrganizerMode::Dragging { .. } => {
+                if press.moved {
+                    if let Some((_, creator)) = &mut self.creator {
+                        self.selected = edits::finish_keyframe_drag(creator, &self.selected);
+                    }
+                    self.commit(model);
+                }
+                self.end_wave_frame(panel.host);
+            }
+        }
+        if press.clicks >= 2 && !press.popup {
+            // JUCE sends mouseDoubleClick after the second click's mouseUp.
+            self.organizer_double_click(model, layout, offset, at);
+        }
+        if !press.popup {
+            return;
+        }
+        let rows = self.creator().map(component_rows).unwrap_or_default();
+        let row = row_from_y(layout, offset, at.1);
+        if !rows
+            .iter()
+            .any(|component| component.row == row && component.has_keyframes)
+        {
+            return;
+        }
+        let item = if self.selected.len() > 1 {
+            MenuItem::new(MENU_REMOVE_KEYFRAMES, "Remove Keyframes")
+        } else if self.selected.len() == 1 {
+            MenuItem::new(MENU_REMOVE_KEYFRAMES, "Remove Keyframe")
+        } else {
+            MenuItem::new(MENU_CREATE_KEYFRAME, "Create Keyframe")
+        };
+        let organizer = layout.organizer;
+        let position = Pos2::new((organizer.x + at.0) as f32, (organizer.y + at.1) as f32);
+        panel.overlay.menu = Some(Menu::new(
+            vec![item],
+            position,
+            MenuOwner::WavetableEdit(self.oscillator, EditMenu::Organizer(at.0, at.1)),
+        ));
+    }
+
+    /// `mouseDoubleClick` over a component with keyframes: deletes the
+    /// keyframe under the pointer, or creates one there.
+    fn organizer_double_click(
+        &mut self,
+        model: &dyn EditorModel,
+        layout: &WavetableEditLayout,
+        offset: i32,
+        at: (i32, i32),
+    ) {
+        let rows = self.creator().map(component_rows).unwrap_or_default();
+        let row = row_from_y(layout, offset, at.1);
+        let Some(component) = rows.iter().find(|component| component.row == row) else {
+            return;
+        };
+        if !component.has_keyframes {
+            return;
+        }
+        if let Some((keyframe, _)) = self.frame_at(layout, offset, at) {
+            self.selected.clear();
+            if let Some((_, creator)) = &mut self.creator {
+                edits::delete_keyframe(creator, keyframe);
+            }
+            self.commit(model);
+        } else {
+            self.create_keyframe_at(model, layout, offset, at);
+        }
+    }
+
+    /// `createKeyframeAtPosition`: a keyframe for the component in the row
+    /// under `at`, selected.
+    fn create_keyframe_at(
+        &mut self,
+        model: &dyn EditorModel,
+        layout: &WavetableEditLayout,
+        offset: i32,
+        at: (i32, i32),
+    ) {
+        let rows = self.creator().map(component_rows).unwrap_or_default();
+        let row = row_from_y(layout, offset, at.1);
+        let Some(component) = rows.iter().find(|component| component.row == row) else {
+            return;
+        };
+        let (group, index) = (component.group, component.component);
+        let x = at.0 - layout.handle_width / 2;
+        let position = unclamped_position(x, layout.frame_width()).clamp(0, NUM_FRAMES as i32 - 1);
+        let Some((_, creator)) = &mut self.creator else {
+            return;
+        };
+        if let Some(keyframe) = edits::create_keyframe(creator, group, index, position) {
+            self.selected = vec![KeyframeRef {
+                group,
+                component: index,
+                keyframe,
+            }];
+            self.commit(model);
+        }
+    }
+
+    /// `getFrameAtMouseEvent`: the keyframe whose diamond is under `at`,
+    /// with its handle's left edge.
+    fn frame_at(
+        &self,
+        layout: &WavetableEditLayout,
+        offset: i32,
+        at: (i32, i32),
+    ) -> Option<(KeyframeRef, i32)> {
+        let rows = self.creator().map(component_rows)?;
+        let row_index = row_from_y(layout, offset, at.1);
+        let row = rows.iter().find(|row| row.row == row_index)?;
+        let handle = layout.handle_width;
+        let frame_width = layout.frame_width();
+        let position = unclamped_position(at.0 - handle, frame_width);
+        let keyframe = |index: usize| KeyframeRef {
+            group: row.group,
+            component: row.component,
+            keyframe: index,
+        };
+        if !row.has_keyframes {
+            return (!row.positions.is_empty()).then_some((keyframe(0), 0));
+        }
+        let index = row.positions.iter().take_while(|&&p| position >= p).count();
+        let frame_position = *row.positions.get(index)?;
+        let x = (frame_width * frame_position as f32) as i32;
+        let y = row.row as i32 * handle + offset;
+        // DraggableFrame::isInside: within the diamond.
+        let (local_x, local_y) = (at.0 - x, at.1 - y);
+        let x_distance = local_x.min(handle - local_x);
+        let y_distance = local_y.min(handle - local_y);
+        (x_distance + y_distance >= handle / 2).then_some((keyframe(index), x))
+    }
+
+    /// Carries out a choice from one of the editor's menus
+    /// (`componentRowCallback`, `componentRowGroupCallback`, `addSource`,
+    /// `addComponent`, `organizerCallback`).
+    fn respond_to_menu(&mut self, panel: &mut Panel, layout: &WavetableEditLayout) {
+        let Some((oscillator, menu, id)) = panel.overlay.wavetable_edit_action else {
+            return;
+        };
+        if oscillator != self.oscillator {
+            return;
+        }
+        panel.overlay.wavetable_edit_action = None;
+        let model = panel.host.model();
+        if let (EditMenu::Organizer(x, y), MENU_CREATE_KEYFRAME) = (menu, id) {
+            // createKeyframeAtMenu.
+            let offset = -(self.scroll.position as i32);
+            self.create_keyframe_at(model, layout, offset, (x, y));
+            return;
+        }
+        let Some((_, creator)) = &mut self.creator else {
+            return;
+        };
+        let selected = &mut self.selected;
+        match (menu, id) {
+            (EditMenu::AddSource, index) => {
+                let Some(&source_type) = SOURCE_TYPES.get(index as usize) else {
+                    return;
+                };
+                edits::add_source(creator, source_type);
+                // componentAdded selects the new source's keyframe.
+                *selected = vec![KeyframeRef {
+                    group: creator.groups.len() - 1,
+                    component: 0,
+                    keyframe: 0,
+                }];
+            }
+            (EditMenu::AddModifier(group), index) => {
+                let Some(&modifier_type) = MODIFIER_TYPES.get(index as usize) else {
+                    return;
+                };
+                edits::add_modifier(creator, group, modifier_type);
+            }
+            (EditMenu::Group(group), MENU_RESET) | (EditMenu::Modifier(group, _), MENU_RESET) => {
+                let component = match menu {
+                    EditMenu::Modifier(_, component) => component,
+                    _ => 0,
+                };
+                edits::reset_component(creator, group, component);
+                // componentRemoved, then componentAdded selects its keyframe.
+                *selected = vec![KeyframeRef {
+                    group,
+                    component,
+                    keyframe: 0,
+                }];
+            }
+            (EditMenu::Group(group), MENU_REMOVE) => {
+                edits::remove_group(creator, group);
+                selected.retain(|keyframe| keyframe.group != group);
+                for keyframe in selected.iter_mut() {
+                    if keyframe.group > group {
+                        keyframe.group -= 1;
+                    }
+                }
+            }
+            (EditMenu::Group(group), MENU_MOVE_UP) if group > 0 => {
+                edits::move_group_up(creator, group);
+                swap_groups(selected, group, group - 1);
+            }
+            (EditMenu::Group(group), MENU_MOVE_DOWN) => {
+                edits::move_group_down(creator, group);
+                swap_groups(selected, group, group + 1);
+            }
+            (EditMenu::Modifier(group, component), MENU_REMOVE) => {
+                edits::remove_component(creator, group, component);
+                selected
+                    .retain(|keyframe| keyframe.group != group || keyframe.component != component);
+                for keyframe in selected.iter_mut() {
+                    if keyframe.group == group && keyframe.component > component {
+                        keyframe.component -= 1;
+                    }
+                }
+            }
+            (EditMenu::Modifier(group, component), MENU_MOVE_UP) if component > 0 => {
+                edits::move_modifier_up(creator, group, component);
+                swap_components(selected, group, component, component - 1);
+            }
+            (EditMenu::Modifier(group, component), MENU_MOVE_DOWN) => {
+                edits::move_modifier_down(creator, group, component);
+                swap_components(selected, group, component, component + 1);
+            }
+            (EditMenu::Organizer(_, _), MENU_REMOVE_KEYFRAMES) => {
+                // deleteSelectedKeyframes, highest index first so the rest
+                // stay put.
+                let mut doomed = std::mem::take(selected);
+                doomed.sort_by_key(|keyframe| std::cmp::Reverse(keyframe.keyframe));
+                for keyframe in doomed {
+                    edits::delete_keyframe(creator, keyframe);
+                }
+            }
+            _ => return,
+        }
+        self.commit(model);
     }
 
     /// The three displays of the frame under the playhead
@@ -594,24 +1182,27 @@ impl WavetableEditSection {
         }
     }
 
-    /// The organizer's rows, keyframes and playhead line
-    /// (`setRowQuads`, `setFrameQuads`, `playheadMoved`).
+    /// The organizer's rows, keyframes, selection box and playhead line
+    /// (`setRowQuads`, `setFrameQuads`, `positionSelectionBox`,
+    /// `playheadMoved`), with the rows scrolled with the list.
     fn show_organizer(
         &self,
         panel: &mut Panel,
         layout: &WavetableEditLayout,
         rows: &[ComponentRow],
+        scroll: i32,
     ) {
         let scope = &panel.scope;
         let organizer = layout.organizer;
         let handle = layout.handle_width;
+        let offset = -scroll;
         let lighten = scope.color(ColorId::LightenScreen);
         let edge = scope.color(ColorId::Background);
         let primary = scope.color(ColorId::WidgetPrimary1);
         let unselected_alt = scope.color(ColorId::WidgetPrimaryDisabled);
         let mut quads = Vec::new();
         for row in rows {
-            let y = organizer.y + row.row as i32 * handle + 2;
+            let y = organizer.y + offset + row.row as i32 * handle + 2;
             quads.push(Quad::new(
                 QuadKind::Color,
                 RectF::new(
@@ -628,7 +1219,7 @@ impl WavetableEditSection {
         let mut unselected = Vec::new();
         let mut selected = Vec::new();
         for row in rows {
-            let y = organizer.y + row.row as i32 * handle;
+            let y = organizer.y + offset + row.row as i32 * handle;
             for (index, &position) in row.positions.iter().enumerate() {
                 let bounds = if row.has_keyframes {
                     let x = (frame_width * position as f32) as i32;
@@ -655,6 +1246,18 @@ impl WavetableEditSection {
         quads.extend(unselected);
         quads.extend(selected);
 
+        if let Some(press) = self
+            .organizer
+            .filter(|press| press.mode == OrganizerMode::Selecting)
+        {
+            let selection = selection_box(layout, offset, press.down, press.current);
+            quads.push(Quad::new(
+                QuadKind::Color,
+                selection.translated(organizer.x, organizer.y).into(),
+                lighten,
+            ));
+        }
+
         let x = organizer.x + handle / 2 + (self.playhead as f32 * frame_width) as i32;
         quads.push(Quad::new(
             QuadKind::Color,
@@ -673,26 +1276,24 @@ impl WavetableEditSection {
 
     /// `WavetableComponentList::positionGroups`: a row per component with
     /// its name and menu button, an "Add Modifier" button after each
-    /// group's rows and "Add Source" after the last, clipped to the list.
+    /// group's rows and "Add Source" after the last, scrolled and clipped
+    /// to the list, with its scroll bar. The buttons open their menus
+    /// (`menuClicked`, `addModifierClicked`, `addSourceClicked`).
     fn show_component_list(
         &self,
         panel: &mut Panel,
         layout: &WavetableEditLayout,
         rows: &[ComponentRow],
         group_sizes: &[usize],
+        scroll: i32,
     ) {
-        let scope = &panel.scope;
         let list = layout.component_list;
         let row_height = layout.handle_width;
-        let rounding = scope.value(ValueId::LabelBackgroundRounding);
+        let rounding = panel.scope.value(ValueId::LabelBackgroundRounding);
         let cell_height = layout.cell_height();
-        let lighten = scope.color(ColorId::LightenScreen);
-        // `setUiButton(false)`: a UI button, its text light at 0.45 of its
-        // height.
-        let button_background = scope.color(ColorId::UiButton);
-        let button_text = scope.color(ColorId::UiButtonText);
-        let button_font_size = 0.45 * cell_height as f32;
+        let lighten = panel.scope.color(ColorId::LightenScreen);
         let name_size = row_height as f32 * 0.5;
+        let scrolled = |rect: Rect| rect.translated(0, -scroll);
 
         // `component_backgrounds_`: a rounded rectangle from a row height
         // less the rounding in (two for a modifier) past the right edge.
@@ -700,7 +1301,7 @@ impl WavetableEditSection {
         let mut names = Vec::new();
         for row in rows {
             let modifier = row.component > 0;
-            let name = layout.component_name(row.row, modifier);
+            let name = scrolled(layout.component_name(row.row, modifier));
             let mut quad = Quad::new(
                 QuadKind::RoundedRectangle,
                 RectF::new(
@@ -716,35 +1317,76 @@ impl WavetableEditSection {
             names.push((row.name, name));
         }
 
-        // The add buttons (`OpenGlToggleButton`s, their text indented past
+        // The add buttons (`OpenGlToggleButton`s with `setUiButton(false)`:
+        // a UI button, its text light at 0.45 of its height, indented past
         // the plus) and their plus icons.
         let mut buttons = Vec::new();
         let mut row = 0;
-        for &size in group_sizes {
+        for (group, &size) in group_sizes.iter().enumerate() {
             row += size;
             buttons.push((
                 "Add Modifier",
-                layout.add_button(scope, row, true),
-                layout.add_plus(scope, row, true),
+                EditMenu::AddModifier(group),
+                scrolled(layout.add_button(&panel.scope, row, true)),
+                scrolled(layout.add_plus(&panel.scope, row, true)),
             ));
             row += 1;
         }
         buttons.push((
             "Add Source",
-            layout.add_button(scope, row, false),
-            layout.add_plus(scope, row, false),
+            EditMenu::AddSource,
+            scrolled(layout.add_button(&panel.scope, row, false)),
+            scrolled(layout.add_plus(&panel.scope, row, false)),
         ));
+        let mut button_colours = Vec::new();
+        for &(text, menu, button, _) in &buttons {
+            let (clicked, colour) =
+                ui_button(panel, ("wavetable add", text, menu_key(menu)), button, list);
+            button_colours.push(colour);
+            if clicked {
+                let (items, menu) = match menu {
+                    EditMenu::AddModifier(group) => {
+                        (names_menu(&MODIFIER_TYPES), EditMenu::AddModifier(group))
+                    }
+                    _ => (names_menu(&SOURCE_TYPES), EditMenu::AddSource),
+                };
+                let position = Pos2::new(button.x as f32, button.bottom() as f32);
+                panel.overlay.menu = Some(Menu::new(
+                    items,
+                    position,
+                    MenuOwner::WavetableEdit(self.oscillator, menu),
+                ));
+            }
+        }
+
+        let button_text = panel.scope.color(ColorId::UiButtonText);
+        let button_font_size = 0.45 * cell_height as f32;
         let (plus_key, plus_path) = sized_path("plus", cell_height, paths::plus);
         let text_buffer = (rounding * 0.5 + cell_height as f32) as i32;
+        let ratio = panel.scope.size_ratio();
+        let bar = Rect::new(
+            list.x,
+            list.y,
+            (ratio * SCROLL_BAR_WIDTH) as i32,
+            list.height,
+        );
+        let total = self.list_height(layout) as f32;
+        let scroll_quad = self
+            .scroll
+            .quad(&panel.scope, bar, total, list.height as f32);
+        let painted: Vec<_> = buttons
+            .iter()
+            .zip(button_colours)
+            .map(|(&(text, _, button, plus), colour)| (text, button, plus, colour))
+            .collect();
         panel.layer().custom(move |pixels| {
             pixels.with_clip(list, |pixels| {
                 let mut batch = crate::primitives::QuadBatch::new();
                 for quad in backgrounds {
                     batch.push(quad);
                 }
-                for &(_, button, _) in &buttons {
-                    let mut quad =
-                        Quad::new(QuadKind::RoundedRectangle, button.into(), button_background);
+                for &(_, button, _, colour) in &painted {
+                    let mut quad = Quad::new(QuadKind::RoundedRectangle, button.into(), colour);
                     quad.rounding = rounding;
                     batch.push(quad);
                 }
@@ -758,7 +1400,7 @@ impl WavetableEditSection {
                         Overflow::Fit,
                     );
                 }
-                for (text, button, plus) in buttons {
+                for (text, button, plus, _) in painted {
                     let text_bounds = Rect::new(
                         button.x + text_buffer,
                         button.y,
@@ -774,14 +1416,24 @@ impl WavetableEditSection {
                     );
                     icon::fill_path_to_fit(pixels, plus_key, plus_path, plus.into(), button_text);
                 }
+                // The scroll bar is always on top.
+                if let Some(quad) = scroll_quad {
+                    let mut batch = crate::primitives::QuadBatch::new();
+                    batch.push(quad);
+                    batch.paint(pixels, bar.into());
+                }
             });
         });
 
         let colours = ShapeColours::icon(&panel.scope);
         let (menu_key, menu_path) = sized_path("wavetable row menu", cell_height, paths::menu);
         for row in rows {
-            panel.shape_button(
-                ("wavetable component menu", row.row),
+            let bounds = scrolled(layout.component_menu(row.row));
+            if bounds.bottom() <= list.y || bounds.y >= list.bottom() {
+                continue;
+            }
+            let event = panel.shape_button(
+                ("wavetable component menu", self.oscillator, row.row),
                 ShapeButton {
                     shape: Shape::Icon {
                         key: menu_key,
@@ -789,8 +1441,43 @@ impl WavetableEditSection {
                     },
                     colours,
                 },
-                layout.component_menu(row.row),
+                bounds,
             );
+            if event.clicked {
+                let (items, menu) = self.row_menu(row, group_sizes);
+                let position = Pos2::new(bounds.x as f32, bounds.bottom() as f32);
+                panel.overlay.menu = Some(Menu::new(
+                    items,
+                    position,
+                    MenuOwner::WavetableEdit(self.oscillator, menu),
+                ));
+            }
+        }
+    }
+
+    /// A row's menu (`groupMenuClicked`, `modifierMenuClicked`).
+    fn row_menu(&self, row: &ComponentRow, group_sizes: &[usize]) -> (Vec<MenuItem>, EditMenu) {
+        let mut items = Vec::new();
+        if row.component == 0 {
+            if row.group > 0 {
+                items.push(MenuItem::new(MENU_MOVE_UP, "Move Group Up"));
+            }
+            if row.group + 1 < group_sizes.len() {
+                items.push(MenuItem::new(MENU_MOVE_DOWN, "Move Group Down"));
+            }
+            items.push(MenuItem::new(MENU_RESET, "Reset Source"));
+            items.push(MenuItem::new(MENU_REMOVE, "Remove Group"));
+            (items, EditMenu::Group(row.group))
+        } else {
+            if row.component > 1 {
+                items.push(MenuItem::new(MENU_MOVE_UP, "Move Up"));
+            }
+            if row.component + 1 < group_sizes[row.group] {
+                items.push(MenuItem::new(MENU_MOVE_DOWN, "Move Down"));
+            }
+            items.push(MenuItem::new(MENU_RESET, "Reset"));
+            items.push(MenuItem::new(MENU_REMOVE, "Remove"));
+            (items, EditMenu::Modifier(row.group, row.component))
         }
     }
 
@@ -812,6 +1499,206 @@ impl WavetableEditSection {
             panel.scope.color(ColorId::WidgetPrimary1),
         ));
     }
+}
+
+/// Each oscillator's wave frame control, which the playhead sets
+/// (`setWaveFrameSlider`).
+const WAVE_FRAME_NAMES: [&str; 3] = ["osc_1_wave_frame", "osc_2_wave_frame", "osc_3_wave_frame"];
+
+fn wave_frame_name(oscillator: usize) -> &'static str {
+    WAVE_FRAME_NAMES[oscillator.min(WAVE_FRAME_NAMES.len() - 1)]
+}
+
+/// `pos` (points) in interface pixels.
+fn to_pixels(pixels: &PixelPainter, pos: Pos2) -> (f32, f32) {
+    let area = pixels.area();
+    let ppp = pixels.pixels_per_point();
+    ((pos.x - area.min.x) * ppp, (pos.y - area.min.y) * ppp)
+}
+
+/// `getUnclampedPositionFromX`: the position at organizer x, truncated as
+/// C++'s float-to-int conversion does.
+fn unclamped_position(x: i32, frame_width: f32) -> i32 {
+    (x as f32 / frame_width) as i32
+}
+
+/// `getRowFromY` for organizer y with the rows scrolled by `offset`
+/// (`draw_vertical_offset_`).
+fn row_from_y(layout: &WavetableEditLayout, offset: i32, y: i32) -> usize {
+    ((y - offset) as f32 / layout.handle_width as f32).max(0.0) as usize
+}
+
+/// `positionSelectionBox`: the selection box for a drag from `down` to
+/// `at`, in organizer pixels.
+fn selection_box(
+    layout: &WavetableEditLayout,
+    offset: i32,
+    down: (i32, i32),
+    at: (i32, i32),
+) -> Rect {
+    let handle = layout.handle_width;
+    let frame_width = layout.frame_width();
+    let position =
+        |x: i32| unclamped_position(x - handle / 2, frame_width).clamp(0, NUM_FRAMES as i32 - 1);
+    let (position_start, position_end) = (position(down.0), position(at.0));
+    let (row_start, row_end) = (
+        row_from_y(layout, offset, down.1) as i32,
+        row_from_y(layout, offset, at.1) as i32,
+    );
+    let position_left = position_start.min(position_end);
+    let position_right = position_start.max(position_end);
+    let row_top = row_start.min(row_end);
+    let row_bottom = row_start.max(row_end) + 1;
+    let x = (position_left as f32 * frame_width).round() as i32;
+    let y = (row_top as f32 * handle as f32).round() as i32 + offset + 1;
+    let width = (position_right as f32 * frame_width).round() as i32 - x;
+    let height = (row_bottom as f32 * handle as f32).round() as i32 + offset - y;
+    Rect::new(x + handle / 2 - 1, y, width + 2, height)
+}
+
+/// `mouseUp` after a selection box: each row's keyframes within the box.
+fn box_selection(
+    layout: &WavetableEditLayout,
+    offset: i32,
+    rows: &[ComponentRow],
+    down: (i32, i32),
+    at: (i32, i32),
+) -> Vec<KeyframeRef> {
+    let quad = selection_box(layout, offset, down, at);
+    let handle = layout.handle_width;
+    let frame_width = layout.frame_width();
+    let position =
+        |x: i32| unclamped_position(x - handle / 2, frame_width).clamp(0, NUM_FRAMES as i32 - 1);
+    let row_start = row_from_y(layout, offset, quad.y);
+    let row_end = row_from_y(layout, offset, quad.bottom());
+    let start_position = position(quad.x);
+    let end_position = position(quad.right());
+    let mut selection = Vec::new();
+    for row in rows {
+        if row.row < row_start || row.row >= row_end {
+            continue;
+        }
+        // getIndexFromPosition: keyframes at or before a position.
+        let index = |position: i32| row.positions.iter().take_while(|&&p| position >= p).count();
+        for keyframe in index(start_position - 1)..index(end_position) {
+            selection.push(KeyframeRef {
+                group: row.group,
+                component: row.component,
+                keyframe,
+            });
+        }
+    }
+    selection
+}
+
+/// The selection after groups `a` and `b` swap (upstream's keyframe
+/// pointers follow their groups).
+fn swap_groups(selected: &mut [KeyframeRef], a: usize, b: usize) {
+    for keyframe in selected {
+        if keyframe.group == a {
+            keyframe.group = b;
+        } else if keyframe.group == b {
+            keyframe.group = a;
+        }
+    }
+}
+
+/// The selection after components `a` and `b` of group `group` swap.
+fn swap_components(selected: &mut [KeyframeRef], group: usize, a: usize, b: usize) {
+    for keyframe in selected {
+        if keyframe.group != group {
+            continue;
+        }
+        if keyframe.component == a {
+            keyframe.component = b;
+        } else if keyframe.component == b {
+            keyframe.component = a;
+        }
+    }
+}
+
+/// `OpenGlButtonComponent::kHoverInc`.
+const HOVER_INC: f32 = 0.2;
+
+/// The press and hover state of a UI button that isn't a parameter.
+#[derive(Clone, Copy, Default)]
+struct UiButtonState {
+    down: bool,
+    hover_amount: f32,
+}
+
+/// A UI button (`OpenGlButtonComponent::renderUiButton`) at `bounds`, seen
+/// through `clip`: whether it was clicked (pressed and released over it),
+/// and its background colour, pressed or faded towards its hover colour.
+fn ui_button(
+    panel: &mut Panel,
+    salt: impl std::hash::Hash + std::fmt::Debug,
+    bounds: Rect,
+    clip: Rect,
+) -> (bool, crate::colour::Colour) {
+    let scope = &panel.scope;
+    let normal = scope.color(ColorId::UiButton);
+    let hover_colour = scope.color(ColorId::UiButtonHover);
+    let pressed_colour = scope.color(ColorId::UiButtonPressed);
+    let left = bounds.x.max(clip.x);
+    let top = bounds.y.max(clip.y);
+    let right = bounds.right().min(clip.right());
+    let bottom = bounds.bottom().min(clip.bottom());
+    if right <= left || bottom <= top {
+        return (false, normal);
+    }
+    let id = panel.ui.scope_id().with(salt);
+    let rect = panel
+        .pixels
+        .rect(Rect::new(left, top, right - left, bottom - top).into());
+    let response = panel.ui.interact(rect, id, Sense::click());
+    let mut state: UiButtonState = panel.ui.data(|data| data.get_temp(id)).unwrap_or_default();
+    let primary_down = panel
+        .ui
+        .input(|input| input.pointer.button_down(PointerButton::Primary));
+    let down = (state.down || response.is_pointer_button_down_on()) && primary_down;
+    let mut clicked = false;
+    if state.down && !down {
+        let pointer = panel.ui.input(|input| input.pointer.interact_pos());
+        clicked = pointer.is_some_and(|pos| response.rect.contains(pos));
+    }
+    state.down = down;
+    let target = if response.hovered() { 1.0 } else { 0.0 };
+    if state.hover_amount != target {
+        state.hover_amount = if response.hovered() {
+            (state.hover_amount + HOVER_INC).min(1.0)
+        } else {
+            (state.hover_amount - HOVER_INC).max(0.0)
+        };
+        panel.ui.ctx().request_repaint();
+    }
+    panel.ui.data_mut(|data| data.insert_temp(id, state));
+    let colour = if down {
+        pressed_colour
+    } else {
+        normal.interpolated_with(hover_colour, state.hover_amount)
+    };
+    (clicked, colour)
+}
+
+/// A key for an add button's id.
+fn menu_key(menu: EditMenu) -> usize {
+    match menu {
+        EditMenu::AddModifier(group) => group,
+        _ => usize::MAX,
+    }
+}
+
+/// A menu of component types' names, with their indices as ids
+/// (`addSourceClicked`, `addModifierClicked`).
+fn names_menu(
+    types: &[sas_engine::sas_oscillators::sas_wavetable::creator::component::ComponentType],
+) -> Vec<MenuItem> {
+    types
+        .iter()
+        .enumerate()
+        .map(|(index, kind)| MenuItem::new(index as i32, kind.name()))
+        .collect()
 }
 
 /// `setPresetSelectorText`: the name, then the author after a dash when

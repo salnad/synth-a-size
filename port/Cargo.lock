@@ -2806,6 +2806,7 @@ dependencies = [
  "libm",
  "sas-common",
  "sas-parity",
+ "serde_json",
 ]
 
 [[package]]

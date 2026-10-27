@@ -583,6 +583,51 @@ pub type WaveFoldModifier = Modifier<WaveFoldKeyframe, ()>;
 pub type WaveWarpModifier = Modifier<WaveWarpKeyframe, WarpSettings>;
 
 /// One wavetable component.
+/// Runs `$body` with `$keyframes` bound to the component's keyframe list,
+/// whatever its keyframe type.
+macro_rules! with_keyframes {
+    ($component:expr, $keyframes:ident => $body:expr) => {
+        match $component {
+            WavetableComponent::WaveSource(c) | WavetableComponent::ShepardToneSource(c) => {
+                let $keyframes = &mut c.keyframes;
+                $body
+            }
+            WavetableComponent::LineSource(c) => {
+                let $keyframes = &mut c.keyframes;
+                $body
+            }
+            WavetableComponent::FileSource(c) => {
+                let $keyframes = &mut c.keyframes;
+                $body
+            }
+            WavetableComponent::PhaseModifier(c) => {
+                let $keyframes = &mut c.keyframes;
+                $body
+            }
+            WavetableComponent::WaveWindow(c) => {
+                let $keyframes = &mut c.keyframes;
+                $body
+            }
+            WavetableComponent::FrequencyFilter(c) => {
+                let $keyframes = &mut c.keyframes;
+                $body
+            }
+            WavetableComponent::SlewLimiter(c) => {
+                let $keyframes = &mut c.keyframes;
+                $body
+            }
+            WavetableComponent::WaveFolder(c) => {
+                let $keyframes = &mut c.keyframes;
+                $body
+            }
+            WavetableComponent::WaveWarp(c) => {
+                let $keyframes = &mut c.keyframes;
+                $body
+            }
+        }
+    };
+}
+
 #[derive(Clone, Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum WavetableComponent {
@@ -703,6 +748,49 @@ impl WavetableComponent {
             WavetableComponent::WaveFolder(c) => c.insert_new_keyframe(position),
             WavetableComponent::WaveWarp(c) => c.insert_new_keyframe(position),
         }
+    }
+
+    /// `reset()`: the keyframes cleared and one inserted at position 0.
+    /// The component's own settings stay.
+    pub fn reset(&mut self) {
+        with_keyframes!(self, keyframes => keyframes.keyframes.clear());
+        self.insert_new_keyframe(0);
+    }
+
+    /// `remove(keyframe)` for the keyframe at `index`.
+    pub fn remove_keyframe(&mut self, index: usize) {
+        with_keyframes!(self, keyframes => {
+            if index < keyframes.keyframes.len() {
+                keyframes.remove(index);
+            }
+        })
+    }
+
+    /// The position of the keyframe at `index`.
+    pub fn keyframe_position(&self, index: usize) -> Option<i32> {
+        self.keyframe_positions().get(index).copied()
+    }
+
+    /// `keyframe->setPosition(position)` for the keyframe at `index`, which
+    /// stays where it is in the list until [`Self::reposition_keyframe`].
+    pub fn set_keyframe_position(&mut self, index: usize, position: i32) {
+        with_keyframes!(self, keyframes => {
+            if let Some(keyframe) = keyframes.keyframes.get_mut(index) {
+                keyframe.position = position;
+            }
+        })
+    }
+
+    /// `reposition(keyframe)` for the keyframe at `index`: moves it to its
+    /// place for its position, and returns its new index.
+    pub fn reposition_keyframe(&mut self, index: usize) -> usize {
+        with_keyframes!(self, keyframes => {
+            if index < keyframes.keyframes.len() {
+                keyframes.reposition(index)
+            } else {
+                index
+            }
+        })
     }
 
     /// `stateToJson()`.

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The wavetable editor with a recording synth: an oscillator's edit button
-//! opens it in place of the interface, and its exit button closes it, with
-//! nothing written to the host either way.
+//! opens it in place of the interface and its exit button closes it, with
+//! nothing written to the host either way; the playhead moves the wave
+//! frame in one gesture (D18); the organizer and the component list edit
+//! the creator, committing each edit when it's done.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -34,6 +36,8 @@ struct Synth {
     creators: Mutex<Vec<WavetableCreator>>,
     revision: AtomicU64,
     generation: AtomicU64,
+    /// How many edits the editor committed.
+    commits: AtomicU64,
 }
 
 impl Synth {
@@ -62,6 +66,7 @@ impl Synth {
             creators: Mutex::new(creators),
             revision: AtomicU64::new(0),
             generation: AtomicU64::new(0),
+            commits: AtomicU64::new(0),
         })
     }
 
@@ -95,6 +100,12 @@ impl EditorModel for Synth {
 
     fn wavetable_name(&self, oscillator: usize) -> String {
         self.creators.lock().unwrap()[oscillator].name.clone()
+    }
+
+    fn set_wavetable_creator(&self, oscillator: usize, creator: WavetableCreator) -> bool {
+        self.commits.fetch_add(1, Ordering::Relaxed);
+        self.set_creator(oscillator, creator);
+        true
     }
 
     fn content_revision(&self) -> u64 {
@@ -334,4 +345,332 @@ fn a_preset_load_resets_the_selection() {
         .show_wavetable_editor(Some(0));
     harness.step();
     assert_eq!(fixture.selected(0), [FIRST]);
+}
+
+/// Shows oscillator 1's editor and returns the harness.
+fn opened(fixture: &Fixture) -> Harness<'_> {
+    fixture
+        .interface
+        .borrow_mut()
+        .show_wavetable_editor(Some(0));
+    let mut harness = fixture.harness();
+    harness.step();
+    harness
+}
+
+fn frame_width(layout: &WavetableEditLayout) -> f32 {
+    (layout.organizer.width - layout.handle_width + 1) as f32 / 256.0
+}
+
+/// The organizer's point for `position` in row `row`, inside the handle of
+/// a keyframe there.
+fn organizer_point(layout: &WavetableEditLayout, row: i32, position: i32) -> Pos2 {
+    let handle = layout.handle_width;
+    // The first pixel whose position is `position` (positions truncate).
+    let x = layout.organizer.x + (frame_width(layout) * position as f32).ceil() as i32 + handle / 2;
+    let y = layout.organizer.y + row * handle + handle / 2;
+    Pos2::new(x as f32, y as f32)
+}
+
+/// The playhead's point for `position` (`WavetablePlayhead::mouseEvent`).
+fn playhead_point(layout: &WavetableEditLayout, position: i32) -> Pos2 {
+    let playhead = layout.playhead;
+    let padding = layout.handle_width as f32 / 2.0;
+    let active_width = playhead.width as f32 - 2.0 * padding + 1.0;
+    let x = playhead.x as f32 + padding + position as f32 * active_width / 256.0;
+    Pos2::new(x.round(), (playhead.y + playhead.height / 2) as f32)
+}
+
+fn press(harness: &mut Harness, pos: Pos2, button: PointerButton, pressed: bool) {
+    harness.event(Event::PointerButton {
+        pos,
+        button,
+        pressed,
+        modifiers: Modifiers::NONE,
+    });
+    harness.step();
+}
+
+fn drag(harness: &mut Harness, from: Pos2, to: Pos2) {
+    harness.event(Event::PointerMoved(from));
+    harness.step();
+    press(harness, from, PointerButton::Primary, true);
+    let middle = Pos2::new((from.x + to.x) / 2.0, (from.y + to.y) / 2.0);
+    for pos in [middle, to] {
+        harness.event(Event::PointerMoved(pos));
+        harness.step();
+    }
+    press(harness, to, PointerButton::Primary, false);
+    harness.step();
+}
+
+fn double_click(harness: &mut Harness, pos: Pos2) {
+    harness.event(Event::PointerMoved(pos));
+    harness.step();
+    for _ in 0..2 {
+        press(harness, pos, PointerButton::Primary, true);
+        press(harness, pos, PointerButton::Primary, false);
+    }
+    harness.step();
+}
+
+fn right_click(harness: &mut Harness, pos: Pos2) {
+    harness.event(Event::PointerMoved(pos));
+    harness.step();
+    press(harness, pos, PointerButton::Secondary, true);
+    press(harness, pos, PointerButton::Secondary, false);
+    harness.step();
+}
+
+/// Clicks row `row` of a menu whose top left is at `top_left`.
+fn choose_row(harness: &mut Harness, top_left: Pos2, row: usize) {
+    // Rows are 24 pixels from the top of the list, under the body rounding.
+    let pos = Pos2::new(top_left.x + 20.0, top_left.y + 12.0 + 24.0 * row as f32);
+    click(harness, pos);
+    harness.step();
+}
+
+fn positions(fixture: &Fixture, group: usize, component: usize) -> Vec<i32> {
+    fixture.synth.wavetable_creator(0).unwrap().groups[group].components[component]
+        .keyframe_positions()
+}
+
+fn component_names(fixture: &Fixture) -> Vec<Vec<&'static str>> {
+    fixture
+        .synth
+        .wavetable_creator(0)
+        .unwrap()
+        .groups
+        .iter()
+        .map(|group| {
+            group
+                .components
+                .iter()
+                .map(|component| component.component_type().name())
+                .collect()
+        })
+        .collect()
+}
+
+fn log(fixture: &Fixture) -> Vec<String> {
+    std::mem::take(&mut *fixture.recorder.log.lock().unwrap())
+}
+
+/// A wave source with keyframes at `positions` as oscillator 1's table.
+fn keyframes_at(fixture: &Fixture, positions: &[i32]) {
+    let mut creator = WavetableCreator::new();
+    creator.clear();
+    let mut group = WavetableGroup::new();
+    let mut source = WavetableComponent::new(ComponentType::WaveSource);
+    for &position in positions {
+        source.insert_new_keyframe(position);
+    }
+    group.add_component(source);
+    creator.add_group(group);
+    fixture.synth.set_creator(0, creator);
+}
+
+/// `WavetablePlayhead::mouseDown` / `mouseDrag` set the wave frame slider:
+/// one gesture for the drag (D18), and nothing when the value doesn't
+/// change.
+#[test]
+fn dragging_the_playhead_moves_the_wave_frame_in_one_gesture() {
+    let fixture = Fixture::new();
+    let mut harness = opened(&fixture);
+    let layout = fixture.editor_layout();
+    drag(
+        &mut harness,
+        playhead_point(&layout, 64),
+        playhead_point(&layout, 128),
+    );
+    let log = log(&fixture);
+    assert_eq!(
+        log.first().map(String::as_str),
+        Some("begin osc_1_wave_frame")
+    );
+    assert_eq!(log.last().map(String::as_str), Some("end osc_1_wave_frame"));
+    assert_eq!(
+        log.iter()
+            .filter(|entry| entry.starts_with("begin"))
+            .count(),
+        1
+    );
+    assert!(log[1..log.len() - 1]
+        .iter()
+        .all(|entry| entry == "set osc_1_wave_frame"));
+    assert_eq!(
+        fixture
+            .interface
+            .borrow()
+            .wavetable_edit_section(0)
+            .playhead(),
+        128
+    );
+
+    // The host's value is still 0 (the recorder applies nothing): a click
+    // at 0 changes nothing.
+    click(&mut harness, playhead_point(&layout, 0));
+    assert!(log_is_empty(&fixture));
+}
+
+fn log_is_empty(fixture: &Fixture) -> bool {
+    fixture.recorder.log.lock().unwrap().is_empty()
+}
+
+/// Dragging a keyframe (`mouseDrag`) moves it and the playhead with it;
+/// the release (`mouseUp`) puts it in place and commits once.
+#[test]
+fn dragging_a_keyframe_moves_it_and_commits_on_release() {
+    let fixture = Fixture::new();
+    let mut harness = opened(&fixture);
+    let layout = fixture.editor_layout();
+    let from = organizer_point(&layout, 0, 0);
+    let dx = (100.0 * frame_width(&layout)).round();
+    let to = Pos2::new(from.x + dx, from.y);
+    drag(&mut harness, from, to);
+    let expected = (dx / frame_width(&layout)) as i32;
+    assert_eq!(positions(&fixture, 0, 0), [expected]);
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+    assert_eq!(fixture.selected(0), [FIRST]);
+    let log = log(&fixture);
+    assert_eq!(
+        log.first().map(String::as_str),
+        Some("begin osc_1_wave_frame")
+    );
+    assert_eq!(log.last().map(String::as_str), Some("end osc_1_wave_frame"));
+}
+
+/// `mouseDoubleClick`, which JUCE sends after the second click's
+/// `mouseUp`: in empty space it creates a keyframe and selects it, and on a
+/// keyframe it deletes it.
+#[test]
+fn double_clicks_create_and_delete_keyframes() {
+    let fixture = Fixture::new();
+    let mut harness = opened(&fixture);
+    let layout = fixture.editor_layout();
+    double_click(&mut harness, organizer_point(&layout, 0, 128));
+    assert_eq!(positions(&fixture, 0, 0), [0, 128]);
+    let created = KeyframeRef {
+        keyframe: 1,
+        ..FIRST
+    };
+    assert_eq!(fixture.selected(0), [created]);
+    // Past JUCE's double-click timeout, so the next presses count afresh.
+    for _ in 0..30 {
+        harness.step();
+    }
+    double_click(&mut harness, organizer_point(&layout, 0, 128));
+    assert_eq!(positions(&fixture, 0, 0), [0]);
+    assert!(fixture.selected(0).is_empty());
+    assert!(log_is_empty(&fixture));
+}
+
+/// The organizer's menu: "Create Keyframe" in empty space, "Remove
+/// Keyframe" over a selected keyframe (`organizerCallback`).
+#[test]
+fn the_organizer_menu_creates_and_removes_keyframes() {
+    let fixture = Fixture::new();
+    let mut harness = opened(&fixture);
+    let layout = fixture.editor_layout();
+    let empty = organizer_point(&layout, 0, 200);
+    right_click(&mut harness, empty);
+    choose_row(&mut harness, empty, 0);
+    assert_eq!(positions(&fixture, 0, 0), [0, 200]);
+    let created = KeyframeRef {
+        keyframe: 1,
+        ..FIRST
+    };
+    assert_eq!(fixture.selected(0), [created]);
+
+    right_click(&mut harness, empty);
+    choose_row(&mut harness, empty, 0);
+    assert_eq!(positions(&fixture, 0, 0), [0]);
+    assert!(fixture.selected(0).is_empty());
+}
+
+/// A drag from empty space selects the keyframes in its box.
+#[test]
+fn a_selection_box_selects_the_keyframes_in_it() {
+    let fixture = Fixture::new();
+    keyframes_at(&fixture, &[0, 128, 256]);
+    let mut harness = opened(&fixture);
+    let layout = fixture.editor_layout();
+    drag(
+        &mut harness,
+        organizer_point(&layout, 0, 90),
+        organizer_point(&layout, 0, 180),
+    );
+    let middle = KeyframeRef {
+        keyframe: 1,
+        ..FIRST
+    };
+    assert_eq!(fixture.selected(0), [middle]);
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 0);
+}
+
+/// "Add Source" and "Add Modifier" (`addSource`, `addComponent`), then the
+/// row menus: the selection follows a moved group, and a removed modifier
+/// leaves the list.
+#[test]
+fn the_component_list_adds_moves_and_removes() {
+    let fixture = Fixture::new();
+    let mut harness = opened(&fixture);
+    let layout = fixture.editor_layout();
+    let top = Scope::top(&fixture.skin, fixture.layout().size_ratio);
+
+    let add_source = layout.add_button(&top, 2, false);
+    click(&mut harness, centre(add_source));
+    choose_row(
+        &mut harness,
+        Pos2::new(add_source.x as f32, add_source.bottom() as f32),
+        1,
+    );
+    assert_eq!(
+        component_names(&fixture),
+        [vec!["Wave Source"], vec!["Line Source"]]
+    );
+    let line = KeyframeRef { group: 1, ..FIRST };
+    assert_eq!(fixture.selected(0), [line]);
+
+    let add_modifier = layout.add_button(&top, 1, true);
+    click(&mut harness, centre(add_modifier));
+    choose_row(
+        &mut harness,
+        Pos2::new(add_modifier.x as f32, add_modifier.bottom() as f32),
+        4,
+    );
+    assert_eq!(
+        component_names(&fixture),
+        [vec!["Wave Source", "Wave Folder"], vec!["Line Source"]]
+    );
+
+    // The Line Source's row is now row 3: "Move Group Up", "Reset Source",
+    // "Remove Group".
+    let menu = layout.component_menu(3);
+    click(&mut harness, centre(menu));
+    choose_row(
+        &mut harness,
+        Pos2::new(menu.x as f32, menu.bottom() as f32),
+        0,
+    );
+    assert_eq!(
+        component_names(&fixture),
+        [vec!["Line Source"], vec!["Wave Source", "Wave Folder"]]
+    );
+    assert_eq!(fixture.selected(0), [FIRST]);
+
+    // The Wave Folder's row is now row 3: "Reset", "Remove".
+    let menu = layout.component_menu(3);
+    click(&mut harness, centre(menu));
+    choose_row(
+        &mut harness,
+        Pos2::new(menu.x as f32, menu.bottom() as f32),
+        1,
+    );
+    assert_eq!(
+        component_names(&fixture),
+        [vec!["Line Source"], vec!["Wave Source"]]
+    );
+    assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 4);
+    assert!(log_is_empty(&fixture));
 }
