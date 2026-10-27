@@ -158,6 +158,42 @@ struct Frame {
     left_boosts: bool,
 }
 
+/// What rebuilds the wave path: the shape's render count and the editor's
+/// size in pixels.
+type WrapKey = (u32, (i32, i32));
+
+/// `resetWavePath`'s boosts: when the path is rebuilt (the first time, after
+/// the shape renders again or the editor resizes), the wrap points take the
+/// boosts of the points they repeat, around the loop or at the ends.
+/// Between rebuilds they keep what they had, decaying with the rest
+/// (`setGlPositions` returns early unless `reset_positions_`).
+fn update_wrap_boosts(
+    renderer: &mut LineRenderer,
+    looping: bool,
+    key: WrapKey,
+    last: &mut Option<WrapKey>,
+) {
+    if *last == Some(key) {
+        return;
+    }
+    *last = Some(key);
+    for left in [true, false] {
+        for i in 0..NUM_WRAP_POINTS {
+            let (before, after) = if looping {
+                (DRAW_POINTS + i, NUM_WRAP_POINTS + i)
+            } else {
+                (NUM_WRAP_POINTS, NUM_WRAP_POINTS + DRAW_POINTS - 1)
+            };
+            renderer.set_boost_at(left, i, renderer.boost_at(left, before));
+            renderer.set_boost_at(
+                left,
+                i + DRAW_POINTS + NUM_WRAP_POINTS,
+                renderer.boost_at(left, after),
+            );
+        }
+    }
+}
+
 /// `adjustBoostPhase`: `phase` as a fraction along the drawn line, whose
 /// points are the resolution's and the shape's own.
 fn adjust_boost_phase(line: &LineGenerator, phase: f32) -> f32 {
@@ -341,6 +377,9 @@ struct LineState {
     /// `last_phase_` and `last_voice_` (`LfoEditor`, `LineMapEditor`).
     last_phase: [f32; 4],
     last_voice: [f32; 4],
+    /// The shape's render count and the editor's size when the wave path
+    /// was last rebuilt (`reset_positions_`).
+    wrap_key: Option<WrapKey>,
 }
 
 impl Default for LineState {
@@ -365,6 +404,7 @@ impl Default for LineState {
             boosts: Boosts::default(),
             last_phase: [0.0; 4],
             last_voice: [-1.0; 4],
+            wrap_key: None,
         }
     }
 }
@@ -990,6 +1030,7 @@ impl LineEditor {
         line: &LineGenerator,
         state: &mut LineState,
         active: bool,
+        size: (i32, i32),
     ) -> Option<Frame> {
         let animation = self.target.animation()?;
         let model = panel.host.model();
@@ -1089,23 +1130,12 @@ impl LineEditor {
                 })
             }
         };
-        // resetWavePath: the wrap points take the boosts of the points they
-        // repeat, around the loop or at the ends.
-        for left in [true, false] {
-            for i in 0..NUM_WRAP_POINTS {
-                let (before, after) = if self.looping() {
-                    (DRAW_POINTS + i, NUM_WRAP_POINTS + i)
-                } else {
-                    (NUM_WRAP_POINTS, NUM_WRAP_POINTS + DRAW_POINTS - 1)
-                };
-                renderer.set_boost_at(left, i, renderer.boost_at(left, before));
-                renderer.set_boost_at(
-                    left,
-                    i + DRAW_POINTS + NUM_WRAP_POINTS,
-                    renderer.boost_at(left, after),
-                );
-            }
-        }
+        update_wrap_boosts(
+            &mut renderer,
+            self.looping(),
+            (line.render_count(), size),
+            &mut state.wrap_key,
+        );
         state.boosts = renderer.boosts();
         frame.map(|frame| Frame {
             boosts: state.boosts.clone(),
@@ -1409,7 +1439,13 @@ impl LineEditor {
             self.push(panel, &mut state);
             state.line.clone().expect("set above")
         };
-        let frame = self.animate(panel, &line, &mut state, settings.active);
+        let frame = self.animate(
+            panel,
+            &line,
+            &mut state,
+            settings.active,
+            (bounds.width, bounds.height),
+        );
         panel
             .ui
             .data_mut(|data| data.insert_temp(id, state.clone()));
@@ -2087,5 +2123,32 @@ mod tests {
         let mut other = LineRenderer::new(TOTAL_POINTS + 1, false);
         other.set_boosts(&boosts);
         assert!(!other.any_boost_value());
+    }
+
+    /// The wrap points take the edge's boosts only when the wave path is
+    /// rebuilt (`resetWavePath` under `reset_positions_`); between rebuilds
+    /// a boost at the loop's edge leaves them unboosted, and they decay.
+    #[test]
+    fn wrap_points_take_boosts_only_when_the_path_is_rebuilt() {
+        let mut renderer = LineRenderer::new(TOTAL_POINTS, false);
+        let mut last = None;
+        // The first frame rebuilds the path; nothing is boosted yet.
+        update_wrap_boosts(&mut renderer, true, (1, (100, 50)), &mut last);
+        // Boost the start of the loop, which the end's wrap points repeat.
+        renderer.boost_range(true, 0.0, 0.05, NUM_WRAP_POINTS, TAIL_DECAY);
+        let edge = NUM_WRAP_POINTS;
+        let wrap = edge + DRAW_POINTS;
+        assert!(renderer.boost_at(true, edge) > 0.0);
+        update_wrap_boosts(&mut renderer, true, (1, (100, 50)), &mut last);
+        assert_eq!(renderer.boost_at(true, wrap), 0.0);
+        // The shape renders again: the path is rebuilt and the wrap copies.
+        update_wrap_boosts(&mut renderer, true, (2, (100, 50)), &mut last);
+        assert_eq!(renderer.boost_at(true, wrap), renderer.boost_at(true, edge));
+        // A curve that doesn't loop repeats its ends instead.
+        let mut ends = LineRenderer::new(TOTAL_POINTS, false);
+        let mut last = None;
+        ends.boost_range(true, 0.0, 0.05, NUM_WRAP_POINTS, TAIL_DECAY);
+        update_wrap_boosts(&mut ends, false, (1, (100, 50)), &mut last);
+        assert_eq!(ends.boost_at(true, 0), ends.boost_at(true, NUM_WRAP_POINTS));
     }
 }

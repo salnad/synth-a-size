@@ -20,8 +20,13 @@ stacked on G4c-3b (1).
     starts a fiftieth of a second of the LFO's travel back. It boosts the
     stretch while animating, and clears the boosts otherwise.
   - The boosts, last phase and last voice carry from frame to frame in the
-    editor's state (`primitives::line::Boosts`). The wrap points take the
-    boosts of the points they repeat (`resetWavePath`).
+    editor's state (`primitives::line::Boosts`).
+  - The wrap points take the boosts of the points they repeat only when the
+    wave path is rebuilt (`resetWavePath` under `reset_positions_`): the
+    first frame, after the shape renders again, or after a resize. Between
+    rebuilds they decay with the rest, so the loop's edge and the remap's
+    ends go unboosted as upstream's do (`update_wrap_boosts`, tested by
+    `wrap_points_take_boosts_only_when_the_path_is_rebuilt`).
 - **Drawing:**
   - The fills take the boosts, scaled by `WidgetLineBoost` and
     `WidgetFillBoost`. The right channel's line uses the right boosts. The
