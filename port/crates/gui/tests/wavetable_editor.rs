@@ -1685,3 +1685,65 @@ fn the_shape_selector_sets_the_window_shape() {
     assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
     assert!(log_is_empty(&fixture));
 }
+
+/// Drags slider `bounds` left from its centre and releases it, with another
+/// change to the model (a chat tool's, say) after the drag's last move and
+/// before its release when `refresh`.
+fn slider_drag_with_refresh(fixture: &Fixture, harness: &mut Harness, bounds: Rect, refresh: bool) {
+    let from = centre(bounds);
+    let to = Pos2::new(from.x - bounds.width as f32 / 4.0, from.y);
+    harness.event(Event::PointerMoved(from));
+    harness.step();
+    press(harness, from, PointerButton::Primary, true);
+    for pos in [Pos2::new((from.x + to.x) / 2.0, from.y), to] {
+        harness.event(Event::PointerMoved(pos));
+        harness.step();
+    }
+    // The slider's last value reaches the keyframe the frame after it
+    // moves; the change comes once it has.
+    harness.step();
+    harness.step();
+    if refresh {
+        let creator = fixture.synth.wavetable_creator(0).unwrap();
+        fixture.synth.set_creator(0, creator);
+        harness.step();
+    }
+    press(harness, to, PointerButton::Primary, false);
+    harness.step();
+}
+
+/// A mix drag with another change to the model before its release: the
+/// drag holds the section's copy, so the commit carries the mix, as
+/// without the change.
+#[test]
+fn a_refresh_during_a_mix_drag_keeps_the_drag() {
+    let committed_mix = |refresh: bool| {
+        let fixture = Fixture::new();
+        let mut harness = modifier_selected(&fixture, 1);
+        let mix = phase_layout(&fixture).mix;
+        slider_drag_with_refresh(&fixture, &mut harness, mix, refresh);
+        assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+        phase_keyframe(&fixture).1
+    };
+    let without = committed_mix(false);
+    assert!(without < 1.0);
+    assert_eq!(committed_mix(true), without);
+}
+
+/// A position drag with another change to the model before its release
+/// keeps the drag too.
+#[test]
+fn a_refresh_during_a_position_drag_keeps_the_drag() {
+    let committed_window = |refresh: bool| {
+        let fixture = Fixture::new();
+        let mut harness = modifier_selected(&fixture, 2);
+        let top = Scope::top(&fixture.skin, fixture.layout().size_ratio);
+        let right = WindowLayout::new(&top, &fixture.editor_layout()).right;
+        slider_drag_with_refresh(&fixture, &mut harness, right, refresh);
+        assert_eq!(fixture.synth.commits.load(Ordering::Relaxed), 1);
+        window_keyframe(&fixture)
+    };
+    let without = committed_window(false);
+    assert_ne!(without.1, 0.75);
+    assert_eq!(committed_window(true), without);
+}

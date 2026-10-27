@@ -265,9 +265,10 @@ impl PhaseOverlay {
         }
     }
 
-    /// Whether a press on one of its phase editors is under way.
+    /// Whether a press on one of its phase editors, or a mix drag, is under
+    /// way, whose edits to the keyframe aren't committed yet.
     pub fn pressed(&self) -> bool {
-        self.drags.iter().any(Option::is_some)
+        self.drags.iter().any(Option::is_some) || self.pending
     }
 
     /// `frameSelected`: the mix and style from keyframe `index` of
@@ -449,8 +450,10 @@ impl WindowOverlay {
         }
     }
 
+    /// Whether a press on the window editor, or a position drag, is under
+    /// way, whose edits to the keyframe aren't committed yet.
     pub fn pressed(&self) -> bool {
-        self.pressed
+        self.pressed || self.pending
     }
 
     /// `frameSelected`: the position sliders from keyframe `index`. The

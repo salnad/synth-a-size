@@ -50,6 +50,10 @@ generalised line editor (#195).
   saved or automated, as upstream's aren't. Continuous local controls no
   longer round to whole numbers; only indexed ones do.
 - Every drag auditions only, and commits once on release (D18).
+- While a press on a phase editor or the window editor, or a mix or position
+  drag, is under way, the section keeps its copy of the creator: another
+  change reaching the model mid-drag (a chat tool's, say) doesn't replace
+  the keyframe the drag is editing, so its commit carries the whole drag.
 - The section's own waveform display is nudged down a hundredth of a pixel,
   as the Wave Source overlay's waveform is, so its fill meets the centre
   line on GL's row (the Phase Shift overlay leaves the display unfaded,
@@ -76,13 +80,17 @@ generalised line editor (#195).
   style selector sets the phase style and commits once; dragging a window
   edge moves it, the sliders follow, and the release commits once; a press
   between the edges grabs nothing; the shape selector sets the window shape
-  and commits once. Nothing reaches the host in any of them.
+  and commits once; a mix drag and a position drag with another change to
+  the model before the release commit the same value as without it (with
+  the presses covering only the editors, they committed the old mix and
+  position). Nothing reaches the host in any of them.
 - Unit tests: the phase ticks follow the phase; the nearer window edge is
   grabbed.
 - Side by side with ref-gui at 1400x820: outside text rasterization,
   `wavetable_editor_phase` differs from upstream in 4 pixels by more than
   24 levels (anti-aliasing on the waveform's edge), and
-  `wavetable_editor_window` in none. Before the display's nudge, the Phase
+  `wavetable_editor_window` in 3 (anti-aliasing at the waveform's top
+  edge). Before the display's nudge, the Phase
   Shift view also differed along the waveform's centre line, and at two
   tick tops. `wavetable_editor` improves slightly with the nudge.
   `wavetable_editor_groups` and `wavetable_editor_select` select a Line
