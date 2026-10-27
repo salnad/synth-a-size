@@ -347,6 +347,45 @@ impl EditorModel for PluginModel {
         audio_file::AUDIO_EXTENSIONS
     }
 
+    fn load_sample_file(&self, path: &Path) -> bool {
+        /// `SampleSection::loadFile`'s `kMaxFileSamples`.
+        const MAX_FILE_SAMPLES: usize = 17_640_000;
+        /// `kMaxSize` of the mono `Sample::loadSample`; the stereo one has
+        /// no cap.
+        const MAX_MONO_SAMPLES: usize = 1_764_000;
+        let Ok(bytes) = std::fs::read(path) else {
+            return false;
+        };
+        let extension = path
+            .extension()
+            .map(|extension| extension.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let Some(audio) = audio_file::read_audio_channels(&bytes, &extension, 2) else {
+            return false;
+        };
+        let mut channels = audio.channels.into_iter();
+        let Some(mut left) = channels.next() else {
+            return false;
+        };
+        let mut right = channels.next();
+        left.truncate(MAX_FILE_SAMPLES);
+        match &mut right {
+            Some(right) => right.truncate(MAX_FILE_SAMPLES),
+            None => left.truncate(MAX_MONO_SAMPLES),
+        }
+        let name = path
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let sample = SampleState {
+            name,
+            sample_rate: audio.sample_rate,
+            left,
+            right,
+        };
+        self.params.edit_handle().set_sample(sample).is_ok()
+    }
+
     fn load_audio_as_wavetable(
         &self,
         oscillator: usize,
@@ -609,6 +648,71 @@ mod tests {
         assert_eq!(data.get("preset_style").unwrap().to_str().unwrap(), "Pad");
         assert_eq!(model.preset_style(), "Pad");
         assert_eq!(model.preset_name(), "Saved");
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    /// A WAV file of 8-bit samples, `channels` interleaved, `frames` long.
+    fn wav_8bit(channels: u16, frames: usize, value: u8) -> Vec<u8> {
+        let data_length = frames * channels as usize;
+        let mut file = b"RIFF".to_vec();
+        file.extend_from_slice(&((36 + data_length) as u32).to_le_bytes());
+        file.extend_from_slice(b"WAVEfmt ");
+        file.extend_from_slice(&16u32.to_le_bytes());
+        file.extend_from_slice(&1u16.to_le_bytes());
+        file.extend_from_slice(&channels.to_le_bytes());
+        file.extend_from_slice(&44_100u32.to_le_bytes());
+        file.extend_from_slice(&(44_100 * channels as u32).to_le_bytes());
+        file.extend_from_slice(&channels.to_le_bytes());
+        file.extend_from_slice(&8u16.to_le_bytes());
+        file.extend_from_slice(b"data");
+        file.extend_from_slice(&(data_length as u32).to_le_bytes());
+        file.resize(file.len() + data_length, value);
+        file
+    }
+
+    /// `SampleSection::loadFile`: a stereo file keeps both channels and its
+    /// length (the stereo `loadSample` has no cap); a mono file stops at
+    /// `kMaxSize`; both are named after the file.
+    #[test]
+    fn a_sample_file_loads_as_upstream_loads_it() {
+        let (edits, _consumer) =
+            EditBus::new(PresetDocument::init(&InitContent { sample_seed: 0 }));
+        let params = Arc::new(SynthParams::new(edits));
+        let (_writer, telemetry) = Telemetry::new(Arc::default());
+        let model = PluginModel::new(
+            params,
+            telemetry,
+            keyboard().0,
+            Arc::new(MidiLearn::in_memory()),
+            None,
+        );
+        let folder = std::env::temp_dir().join(format!("sas-sample-files-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let long = 1_764_000 + 10;
+
+        let stereo = folder.join("Stereo Loop.wav");
+        std::fs::write(&stereo, wav_8bit(2, long, 192)).unwrap();
+        assert!(model.load_sample_file(&stereo));
+        assert_eq!(model.sample_name(), "Stereo Loop");
+        let mut lengths = (0, None);
+        model.with_sample(&mut |sample| {
+            lengths = (sample.left.len(), sample.right.as_ref().map(Vec::len));
+            assert_eq!(sample.left[0], 0.5);
+        });
+        assert_eq!(lengths, (long, Some(long)));
+
+        let mono = folder.join("Mono Hit.wav");
+        std::fs::write(&mono, wav_8bit(1, long, 64)).unwrap();
+        assert!(model.load_sample_file(&mono));
+        assert_eq!(model.sample_name(), "Mono Hit");
+        model.with_sample(&mut |sample| {
+            lengths = (sample.left.len(), sample.right.as_ref().map(Vec::len));
+            assert_eq!(sample.left[0], -0.5);
+        });
+        assert_eq!(lengths, (1_764_000, None));
+
+        assert!(!model.load_sample_file(&folder.join("missing.wav")));
+        assert_eq!(model.sample_name(), "Mono Hit");
         std::fs::remove_dir_all(&folder).unwrap();
     }
 

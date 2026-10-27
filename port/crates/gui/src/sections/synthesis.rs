@@ -118,6 +118,26 @@ impl SynthesisInterface {
         }
     }
 
+    /// The sample section's popup browser request since the last call:
+    /// the browser's bounds and the section's.
+    pub fn take_sample_browse_request(&self) -> Option<(Rect, Rect)> {
+        self.sample.take_browse_request()
+    }
+
+    /// The sample's current file.
+    pub fn sample_file(&self) -> Option<std::path::PathBuf> {
+        self.sample.current_file()
+    }
+
+    /// Loads `file` as the sample (`SampleSection::loadFile`).
+    pub fn load_sample_file(
+        &self,
+        model: &dyn crate::interface::EditorModel,
+        file: &std::path::Path,
+    ) {
+        self.sample.load_file(model, file);
+    }
+
     /// Oscillator `index`'s current wavetable file (`getCurrentFile`).
     pub fn wavetable_file(&self, index: usize) -> Option<std::path::PathBuf> {
         self.oscillators.get(index)?.current_file()
