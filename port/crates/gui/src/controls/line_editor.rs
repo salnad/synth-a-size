@@ -162,25 +162,41 @@ struct Frame {
     left_boosts: bool,
 }
 
-/// What rebuilds the wave path: the shape's render count and the editor's
-/// size in pixels.
+/// The shape's render count and the editor's size in pixels when the
+/// animation last stepped.
 type WrapKey = (u32, (i32, i32));
 
-/// `resetWavePath`'s boosts: when the path is rebuilt (the first time, after
-/// the shape renders again or the editor resizes), the wrap points take the
-/// boosts of the points they repeat, around the loop or at the ends.
-/// Between rebuilds they keep what they had, decaying with the rest
-/// (`setGlPositions` returns early unless `reset_positions_`).
-fn update_wrap_boosts(
-    renderer: &mut LineRenderer,
-    looping: bool,
-    key: WrapKey,
-    last: &mut Option<WrapKey>,
-) {
-    if *last == Some(key) {
-        return;
+/// When a frame rebuilds the wave path (`setGlPositions` under
+/// `reset_positions_`, which `resetWavePath`'s boosts follow), before or
+/// after that frame's decay and boost.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct WrapCopies {
+    before: bool,
+    after: bool,
+}
+
+/// `reset_positions_` for one frame.
+/// - Both editors rebuild the path at the start of `render`, before the
+///   frame's decay and boost: the first time, after a resize, and after
+///   anything that called `resetPositions` (an edit or an interaction,
+///   `path_dirty`). An LFO's shape that renders again from elsewhere counts
+///   too (its section resets the editor when it loads a shape).
+/// - A remap curve's animated `render` checks the render count again in
+///   `LineEditor::render`, after its boosts, and rebuilds once more then.
+fn wrap_copies(remap: bool, path_dirty: bool, last: Option<WrapKey>, key: WrapKey) -> WrapCopies {
+    let first = last.is_none();
+    let resized = last.is_some_and(|(_, size)| size != key.1);
+    let rendered = last.is_some_and(|(count, _)| count != key.0);
+    WrapCopies {
+        before: first || resized || path_dirty || (rendered && !remap),
+        after: remap && rendered,
     }
-    *last = Some(key);
+}
+
+/// `resetWavePath`'s boosts: the wrap points take the boosts of the points
+/// they repeat, around the loop or at the ends. Between rebuilds they keep
+/// what they had, decaying with the rest.
+fn copy_wrap_boosts(renderer: &mut LineRenderer, looping: bool) {
     for left in [true, false] {
         for i in 0..NUM_WRAP_POINTS {
             let (before, after) = if looping {
@@ -1059,6 +1075,7 @@ impl LineEditor {
         state: &mut LineState,
         active: bool,
         size: (i32, i32),
+        path_dirty: bool,
     ) -> Option<Frame> {
         let animation = self.target.animation()?;
         let frame_nr = panel.ui.ctx().cumulative_frame_nr();
@@ -1077,6 +1094,13 @@ impl LineEditor {
         let clear = |value: &[f32; 4]| value.contains(&CLEAR_VALUE);
         let mut renderer = LineRenderer::new(TOTAL_POINTS, false);
         renderer.set_boosts(&state.boosts);
+        let remap = matches!(animation, Animation::Remap(_));
+        let key = (line.render_count(), size);
+        let copies = wrap_copies(remap, path_dirty, state.wrap_key, key);
+        state.wrap_key = Some(key);
+        if copies.before {
+            copy_wrap_boosts(&mut renderer, self.looping());
+        }
         let frame = match animation {
             Animation::Remap(slot) => {
                 if telemetry.is_none() || !active {
@@ -1164,12 +1188,9 @@ impl LineEditor {
                 })
             }
         };
-        update_wrap_boosts(
-            &mut renderer,
-            self.looping(),
-            (line.render_count(), size),
-            &mut state.wrap_key,
-        );
+        if copies.after {
+            copy_wrap_boosts(&mut renderer, self.looping());
+        }
         state.boosts = renderer.boosts();
         let frame = frame.map(|frame| Frame {
             boosts: state.boosts.clone(),
@@ -1217,6 +1238,21 @@ impl LineEditor {
             Some(shape) => shape.clone(),
             None => state.line.take().unwrap_or_else(|| self.model_shape(panel)),
         };
+        // resetPositions: the interactions that move the hover, press, drag
+        // or paint state rebuild the wave path.
+        let interaction = |state: &LineState| {
+            (
+                state.active_point,
+                state.active_power,
+                state.active_grid_section,
+                state.dragging,
+                state.painting_down,
+                state.mouse_down,
+                state.temporary_paint,
+                state.last,
+            )
+        };
+        let interaction_before = interaction(&state);
         let mut changed = false;
         let mut edits = Vec::new();
         let mut changes = Vec::new();
@@ -1475,12 +1511,14 @@ impl LineEditor {
             self.push(panel, &mut state);
             state.line.clone().expect("set above")
         };
+        let path_dirty = changed || interaction(&state) != interaction_before;
         let frame = self.animate(
             panel,
             &line,
             &mut state,
             settings.active,
             (bounds.width, bounds.height),
+            path_dirty,
         );
         panel
             .ui
@@ -2206,29 +2244,57 @@ mod tests {
     }
 
     /// The wrap points take the edge's boosts only when the wave path is
-    /// rebuilt (`resetWavePath` under `reset_positions_`); between rebuilds
-    /// a boost at the loop's edge leaves them unboosted, and they decay.
+    /// rebuilt; between rebuilds a boost at the loop's edge leaves them
+    /// unboosted, and a curve that doesn't loop repeats its ends.
     #[test]
     fn wrap_points_take_boosts_only_when_the_path_is_rebuilt() {
         let mut renderer = LineRenderer::new(TOTAL_POINTS, false);
-        let mut last = None;
-        // The first frame rebuilds the path; nothing is boosted yet.
-        update_wrap_boosts(&mut renderer, true, (1, (100, 50)), &mut last);
-        // Boost the start of the loop, which the end's wrap points repeat.
         renderer.boost_range(true, 0.0, 0.05, NUM_WRAP_POINTS, TAIL_DECAY);
         let edge = NUM_WRAP_POINTS;
         let wrap = edge + DRAW_POINTS;
         assert!(renderer.boost_at(true, edge) > 0.0);
-        update_wrap_boosts(&mut renderer, true, (1, (100, 50)), &mut last);
         assert_eq!(renderer.boost_at(true, wrap), 0.0);
-        // The shape renders again: the path is rebuilt and the wrap copies.
-        update_wrap_boosts(&mut renderer, true, (2, (100, 50)), &mut last);
+        copy_wrap_boosts(&mut renderer, true);
         assert_eq!(renderer.boost_at(true, wrap), renderer.boost_at(true, edge));
-        // A curve that doesn't loop repeats its ends instead.
         let mut ends = LineRenderer::new(TOTAL_POINTS, false);
-        let mut last = None;
         ends.boost_range(true, 0.0, 0.05, NUM_WRAP_POINTS, TAIL_DECAY);
-        update_wrap_boosts(&mut ends, false, (1, (100, 50)), &mut last);
+        copy_wrap_boosts(&mut ends, false);
         assert_eq!(ends.boost_at(true, 0), ends.boost_at(true, NUM_WRAP_POINTS));
+    }
+
+    /// `reset_positions_`: the first frame, a resize and an interaction or
+    /// edit rebuild the path before the frame's boost; a shape that renders
+    /// again rebuilds an LFO's then too, and a remap curve's after its
+    /// boost (`LineEditor::render`'s render-count check); a still frame
+    /// rebuilds nothing.
+    #[test]
+    fn the_path_is_rebuilt_as_upstream_resets_it() {
+        let key = (5, (100, 50));
+        let none = WrapCopies::default();
+        let before = WrapCopies {
+            before: true,
+            after: false,
+        };
+        for remap in [false, true] {
+            assert_eq!(wrap_copies(remap, false, None, key), before);
+            assert_eq!(wrap_copies(remap, false, Some(key), key), none);
+            assert_eq!(wrap_copies(remap, true, Some(key), key), before);
+            assert_eq!(wrap_copies(remap, false, Some((5, (90, 50))), key), before);
+        }
+        assert_eq!(wrap_copies(false, false, Some((4, (100, 50))), key), before);
+        assert_eq!(
+            wrap_copies(true, false, Some((4, (100, 50))), key),
+            WrapCopies {
+                before: false,
+                after: true,
+            }
+        );
+        assert_eq!(
+            wrap_copies(true, true, Some((4, (100, 50))), key),
+            WrapCopies {
+                before: true,
+                after: true,
+            }
+        );
     }
 }
