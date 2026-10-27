@@ -128,6 +128,15 @@ pub struct PreparedWavetable {
     shared: Arc<Wavetable>,
 }
 
+/// Which oscillator wavetable an audition belongs to: the state's
+/// generation and the oscillator's wavetable commits and ended auditions
+/// when the drag began ([`EditHandle::audition_token`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AuditionToken {
+    generation: u64,
+    commit: u64,
+}
+
 impl PreparedWavetable {
     /// Renders `creator` into a fresh table (`WavetableCreator::render`).
     /// Expensive: call it on the editor or chat thread.
@@ -253,6 +262,10 @@ struct Mirror {
     revision: u64,
     next_seq: u64,
     wavetables: [Option<Arc<Wavetable>>; NUM_OSCILLATORS],
+    /// Each oscillator's wavetable commits ([`Batch::set_prepared_wavetable`])
+    /// and ended auditions ([`EditHandle::end_audition`]), which make older
+    /// auditions stale.
+    wavetable_commits: [u64; NUM_OSCILLATORS],
 }
 
 struct Shared {
@@ -343,6 +356,7 @@ impl EditBus {
                 revision: 0,
                 next_seq: 0,
                 wavetables: Default::default(),
+                wavetable_commits: [0; NUM_OSCILLATORS],
             }),
             generation: AtomicU64::new(0),
             revision: AtomicU64::new(0),
@@ -529,6 +543,7 @@ impl Batch<'_> {
             prepared.creator,
         );
         let shared = self.mirror.wavetables[oscillator].replace(prepared.shared);
+        self.mirror.wavetable_commits[oscillator] += 1;
         if self.replaced_wavetables[oscillator].is_none() {
             self.replaced_wavetables[oscillator] = Some((creator, shared));
         }
@@ -719,8 +734,19 @@ impl EditHandle {
     }
 
     /// Queues `staged` under the mirror lock (which every producer holds
-    /// while pushing, so the room checked under it is still there).
+    /// while pushing, so the room checked under it is still there), and
+    /// bumps the revision.
     fn push(&self, mirror: &mut Mirror, staged: Vec<Staged>) {
+        self.queue(mirror, staged);
+        mirror.revision += 1;
+        self.shared
+            .revision
+            .store(mirror.revision, Ordering::Release);
+    }
+
+    /// Queues `staged` under the mirror lock without bumping the revision,
+    /// for auditions, which leave the document alone.
+    fn queue(&self, mirror: &mut Mirror, staged: Vec<Staged>) {
         let count = staged.len();
         for (index, staged) in staged.into_iter().enumerate() {
             let command = match staged {
@@ -749,10 +775,6 @@ impl EditHandle {
                 unreachable!("room was checked under the mirror lock");
             }
         }
-        mirror.revision += 1;
-        self.shared
-            .revision
-            .store(mirror.revision, Ordering::Release);
     }
 
     /// See [`Batch::connect_modulation`].
@@ -823,39 +845,52 @@ impl EditHandle {
         self.single(|batch| batch.set_prepared_wavetable(oscillator, prepared))
     }
 
-    /// While the editor draws on oscillator `oscillator`'s wavetable:
-    /// `creator` becomes its creator, and frame `position` alone is
-    /// rendered (`WavetableCreator::render(position)`, without the full
-    /// render's normalisation) into the shared table and the engine's, as
-    /// upstream's editor renders into the playing table during a drag. The
-    /// editor commits the full render with [`Self::set_wavetable`] when the
-    /// drag ends.
+    /// While the editor draws on oscillator `oscillator`'s wavetable: frame
+    /// `position` of `creator` alone is rendered
+    /// (`WavetableCreator::render(position)`, without the full render's
+    /// normalisation) into the shared table and the engine's, as upstream's
+    /// editor renders into the playing table during a drag. An audition:
+    /// the document keeps its creator and the revision doesn't move, so the
+    /// drag reaches the document (and a host save) once, when the editor
+    /// commits the full render with [`Self::set_wavetable`] at its end.
     ///
     /// The frame is rendered here, on the calling thread, under the mirror
     /// lock, and travels as data the audio thread copies into its table; it
     /// comes back on the return queue. A newer frame for the same
     /// oscillator replaces one the audio thread has not taken yet, even at
     /// another position, and a position past the table's last frame
-    /// changes only the creator, as `loadWaveFrame` ignores it.
+    /// changes nothing, as `loadWaveFrame` ignores it.
+    ///
+    /// Returns false, changing nothing, when `token` is stale, as
+    /// [`Self::audition_wavetable`] does.
+    ///
+    /// Drop any table from [`Self::wavetable`] first: while one is held, the
+    /// shared table is copied (about 8.5 MB) to draw into.
     pub fn set_wavetable_frame(
         &self,
         oscillator: usize,
         creator: WavetableCreator,
         position: usize,
-    ) -> Result<(), EditError> {
+        token: AuditionToken,
+    ) -> Result<bool, EditError> {
         check_index(oscillator, NUM_OSCILLATORS)?;
         check_index(position, NUM_OSCILLATOR_WAVE_FRAMES as usize)?;
+        if self.is_stale(&self.lock(), oscillator, token) {
+            return Ok(false);
+        }
         // The shared table, rendered first if a restore cleared it.
         self.wavetable(oscillator)
             .ok_or_else(|| EditError::Render("the wavetable cannot render".to_string()))?;
         self.collect_retired();
         let mut mirror = self.lock();
+        if self.is_stale(&mirror, oscillator, token) {
+            return Ok(false);
+        }
         if self.capacity_remaining() < 1 {
             return Err(EditError::QueueFull);
         }
-        let mirror_ref = &mut *mirror;
         let mut creator = creator;
-        let frame = match &mut mirror_ref.wavetables[oscillator] {
+        let frame = match &mut mirror.wavetables[oscillator] {
             Some(shared) => {
                 // Copied only while the editor still holds the last one.
                 let table = Arc::make_mut(shared);
@@ -864,7 +899,6 @@ impl EditHandle {
             }
             None => None,
         };
-        mirror_ref.document.state.wavetables[oscillator] = creator;
         let staged = frame
             .map(|frame| {
                 Staged::Pending(
@@ -874,8 +908,104 @@ impl EditHandle {
             })
             .into_iter()
             .collect();
-        self.push(&mut mirror, staged);
-        Ok(())
+        self.queue(&mut mirror, staged);
+        Ok(true)
+    }
+
+    /// Whether `token` predates the state's generation or the oscillator's
+    /// last wavetable commit.
+    fn is_stale(&self, mirror: &Mirror, oscillator: usize, token: AuditionToken) -> bool {
+        mirror.generation != token.generation
+            || mirror.wavetable_commits[oscillator] != token.commit
+    }
+
+    /// The token an audition of oscillator `oscillator`'s wavetable takes
+    /// ([`Self::audition_wavetable`]): read it when the drag starts.
+    pub fn audition_token(&self, oscillator: usize) -> Result<AuditionToken, EditError> {
+        check_index(oscillator, NUM_OSCILLATORS)?;
+        let mirror = self.lock();
+        Ok(AuditionToken {
+            generation: mirror.generation,
+            commit: mirror.wavetable_commits[oscillator],
+        })
+    }
+
+    /// While the editor draws: renders all of `creator` on the calling
+    /// thread (a worker's, as it takes as long as [`Self::set_wavetable`])
+    /// and swaps the result into the shared table and the engine's, so the
+    /// frames the drawn one interpolates into are heard and drawn during
+    /// the drag, as upstream's editor re-renders the table on each change.
+    /// An audition, like [`Self::set_wavetable_frame`]: the document keeps
+    /// its creator, nothing is kept for a batch to roll back, and the
+    /// revision doesn't move.
+    ///
+    /// Returns false, changing nothing, when the audition is stale: the
+    /// oscillator's wavetable was committed, or the state restored, since
+    /// `token` was read, so a render that finishes after the drag's commit
+    /// can't replace it. A frame drawn after the audition lands on the new
+    /// table; the editor sends the current frame again after one returns,
+    /// since the creator rendered here may predate it.
+    pub fn audition_wavetable(
+        &self,
+        oscillator: usize,
+        creator: WavetableCreator,
+        token: AuditionToken,
+    ) -> Result<bool, EditError> {
+        check_index(oscillator, NUM_OSCILLATORS)?;
+        let prepared = PreparedWavetable::render(creator)?;
+        self.swap_audition(oscillator, prepared, token, false)
+    }
+
+    /// Ends a drag that won't be committed (cancelled, or the editor closed
+    /// or failed during it): renders the document's creator on the calling
+    /// thread and swaps it into the shared table and the engine's, so what
+    /// plays is again what a save stores. Like the auditions, it leaves the
+    /// document and the revision alone, and returns false, changing
+    /// nothing, when `token` is stale, since a commit or restore has
+    /// already replaced the table. It makes `token` stale, so an audition
+    /// or frame of the drag still in flight can't swap the auditioned
+    /// table back in.
+    pub fn end_audition(&self, oscillator: usize, token: AuditionToken) -> Result<bool, EditError> {
+        check_index(oscillator, NUM_OSCILLATORS)?;
+        let creator = {
+            let mirror = self.lock();
+            if self.is_stale(&mirror, oscillator, token) {
+                return Ok(false);
+            }
+            mirror.document.state.wavetables[oscillator].clone()
+        };
+        let prepared = PreparedWavetable::render(creator)?;
+        self.swap_audition(oscillator, prepared, token, true)
+    }
+
+    /// Swaps `prepared` into the shared table and the engine's, unless
+    /// `token` has gone stale while it rendered. `end` then makes `token`
+    /// stale.
+    fn swap_audition(
+        &self,
+        oscillator: usize,
+        prepared: PreparedWavetable,
+        token: AuditionToken,
+        end: bool,
+    ) -> Result<bool, EditError> {
+        self.collect_retired();
+        let mut mirror = self.lock();
+        if self.is_stale(&mirror, oscillator, token) {
+            return Ok(false);
+        }
+        if self.capacity_remaining() < 1 {
+            return Err(EditError::QueueFull);
+        }
+        if end {
+            mirror.wavetable_commits[oscillator] += 1;
+        }
+        mirror.wavetables[oscillator] = Some(prepared.shared);
+        let staged = vec![Staged::Pending(
+            Target::Wavetable(oscillator),
+            Payload::Wavetable(prepared.wavetable),
+        )];
+        self.queue(&mut mirror, staged);
+        Ok(true)
     }
 
     /// See [`Batch::set_sample`].
@@ -903,7 +1033,9 @@ impl EditHandle {
         let rendered = PreparedWavetable::render(creator).ok()?.shared;
         let mut mirror = self.lock();
         if mirror.revision == revision {
-            mirror.wavetables[oscillator] = Some(rendered.clone());
+            // An audition may have stored a table meanwhile; it stays.
+            let stored = mirror.wavetables[oscillator].get_or_insert(rendered);
+            return Some(stored.clone());
         }
         Some(rendered)
     }
