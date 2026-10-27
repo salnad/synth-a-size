@@ -10,7 +10,8 @@ use sas_common::LineGenerator;
 use sas_dsp_core::ProcessorRef;
 use sas_engine::document::PresetDocument;
 use sas_engine::edit_bus::{
-    EditBus, EditError, EditTarget, PreparedWavetable, EDIT_QUEUE_CAPACITY,
+    EditBus, EditConsumer, EditError, EditHandle, EditTarget, PreparedWavetable,
+    EDIT_QUEUE_CAPACITY,
 };
 use sas_engine::sound_engine::SoundEngine;
 use sas_engine::synth::Synth;
@@ -34,6 +35,8 @@ const DRAG: SlotValues = SlotValues {
 enum Call {
     Connect(String, String),
     Disconnect(String, String),
+    ConnectSlot(usize, String, String),
+    DisconnectSlot(usize, String, String),
     Lfo(usize, String),
     LineMapping(usize, String),
     Values(usize, SlotValues),
@@ -61,6 +64,17 @@ impl EditTarget for Recorder {
     fn disconnect_modulation(&mut self, source: &str, destination: &str) {
         self.0
             .push(Call::Disconnect(source.into(), destination.into()));
+    }
+    fn connect_slot(&mut self, slot: usize, source: &str, destination: &str) {
+        self.0
+            .push(Call::ConnectSlot(slot, source.into(), destination.into()));
+    }
+    fn disconnect_slot(&mut self, slot: usize, source: &str, destination: &str) {
+        self.0.push(Call::DisconnectSlot(
+            slot,
+            source.into(),
+            destination.into(),
+        ));
     }
     fn set_lfo_shape(&mut self, lfo: usize, line: &mut LineGenerator) {
         self.0.push(Call::Lfo(lfo, line.name().to_string()));
@@ -1110,4 +1124,155 @@ fn table_bits(table: &sas_oscillators::sas_wavetable::Wavetable) -> Vec<u32> {
     (0..table.num_frames())
         .flat_map(|i| table.frame(i).unwrap().wave.map(f32::to_bits))
         .collect()
+}
+
+/// A matrix row choosing its slot's route (`ModulationMatrixRow::
+/// sliderValueChanged`): the old route goes and the new one takes the same
+/// slot in one batch, with the slot's controls left alone. A route may repeat
+/// another slot's; one to the slot's own amount is refused.
+#[test]
+fn a_matrix_row_rewires_its_own_slot_in_one_step() {
+    let (edits, mut consumer) = EditBus::new(init_document());
+    let routes = |edits: &EditHandle| {
+        edits.with_document(|document| {
+            document
+                .state
+                .modulations()
+                .iter()
+                .enumerate()
+                .filter(|(_, slot)| !slot.is_free())
+                .map(|(index, slot)| (index, slot.source.clone(), slot.destination.clone()))
+                .collect::<Vec<_>>()
+        })
+    };
+    let amount = |edits: &EditHandle| {
+        edits.with_document(|document| document.state.value("modulation_4_amount"))
+    };
+    let before = amount(&edits);
+    let drained = |consumer: &mut EditConsumer| {
+        let mut recorder = Recorder::default();
+        consumer.drain(&mut recorder);
+        recorder.0
+    };
+
+    assert_eq!(
+        edits.set_slot_route(3, Some(("lfo_1", "osc_1_level"))),
+        Ok(true)
+    );
+    assert_eq!(
+        drained(&mut consumer),
+        [Call::ConnectSlot(3, "lfo_1".into(), "osc_1_level".into())]
+    );
+    assert_eq!(
+        edits.set_slot_route(3, Some(("lfo_2", "osc_1_level"))),
+        Ok(true)
+    );
+    assert_eq!(
+        drained(&mut consumer),
+        [
+            Call::DisconnectSlot(3, "lfo_1".into(), "osc_1_level".into()),
+            Call::ConnectSlot(3, "lfo_2".into(), "osc_1_level".into()),
+        ]
+    );
+    assert_eq!(
+        edits.set_slot_route(5, Some(("lfo_2", "osc_1_level"))),
+        Ok(true)
+    );
+    drained(&mut consumer);
+    assert_eq!(
+        routes(&edits),
+        [
+            (3, "lfo_2".into(), "osc_1_level".into()),
+            (5, "lfo_2".into(), "osc_1_level".into()),
+        ]
+    );
+    assert_eq!(amount(&edits), before);
+
+    assert_eq!(
+        edits.set_slot_route(3, Some(("lfo_1", "modulation_4_amount"))),
+        Ok(false)
+    );
+    assert_eq!(
+        drained(&mut consumer),
+        [Call::DisconnectSlot(
+            3,
+            "lfo_2".into(),
+            "osc_1_level".into()
+        )]
+    );
+    assert_eq!(edits.set_slot_route(5, None), Ok(false));
+    assert_eq!(
+        drained(&mut consumer),
+        [Call::DisconnectSlot(
+            5,
+            "lfo_2".into(),
+            "osc_1_level".into()
+        )]
+    );
+    assert!(routes(&edits).is_empty());
+    assert_eq!(edits.set_slot_route(64, None), Err(EditError::BadIndex(64)));
+    assert_eq!(
+        edits.set_slot_route(0, Some(("no_such_source", "osc_1_level"))),
+        Err(EditError::UnknownSource("no_such_source".into()))
+    );
+}
+
+/// A row's rewire plays as upstream's engine would after
+/// `disconnectModulation` and `connectModulation` of the same slot, which
+/// the port's `disconnect_modulation` and `connect_modulation` give here (the
+/// freed slot is the first free one), with the slot's amount kept.
+#[test]
+fn a_rewired_slot_plays_like_a_disconnect_and_connect() {
+    let _rng = ENGINE_RNG.lock().unwrap_or_else(|p| p.into_inner());
+    #[derive(Clone, Copy, PartialEq)]
+    enum Change {
+        None,
+        OverBus,
+        InPlace,
+    }
+    let play = |change: Change| {
+        let mut synth = fresh_synth();
+        let (edits, mut consumer) = EditBus::new(init_document());
+        edits
+            .set_slot_route(0, Some(("lfo_1", "osc_1_level")))
+            .unwrap();
+        consumer.drain(&mut synth);
+        synth.set_control("modulation_1_amount", -0.8);
+        let mut out = Vec::new();
+        let (mut left, mut right) = (vec![0.0; 64], vec![0.0; 64]);
+        let mut seconds = 0.0;
+        for block in 0..300 {
+            if block == 150 {
+                match change {
+                    Change::None => {}
+                    Change::OverBus => {
+                        edits
+                            .set_slot_route(0, Some(("env_1", "osc_1_level")))
+                            .unwrap();
+                        consumer.drain(&mut synth);
+                    }
+                    Change::InPlace => {
+                        synth.disconnect_modulation("lfo_1", "osc_1_level");
+                        synth.connect_modulation("env_1", "osc_1_level");
+                    }
+                }
+            }
+            let midi: &[(usize, [u8; 3])] = if block == 0 {
+                &[(3, [0x90, 48, 100])]
+            } else {
+                &[]
+            };
+            synth.render_block(&mut left, &mut right, midi, &mut seconds, 44100);
+            out.extend(left.iter().zip(&right).flat_map(|(l, r)| [*l, *r]));
+        }
+        out
+    };
+    let (unchanged, bus, in_place) = (
+        play(Change::None),
+        play(Change::OverBus),
+        play(Change::InPlace),
+    );
+    assert!(bus.iter().any(|sample| *sample != 0.0));
+    assert!(bus != unchanged, "the rewire is not heard");
+    assert!(bus == in_place, "the rewire plays differently");
 }

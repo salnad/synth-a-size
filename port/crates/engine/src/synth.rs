@@ -516,6 +516,37 @@ impl Synth {
         bypass.set_value(flag(values.bypass));
     }
 
+    /// `connectModulation(connection)` for bank slot `index`, named
+    /// `source` to `destination` first, as a matrix row sets its
+    /// connection's names: its controls and curve stay as they are. A route
+    /// to the slot's own amount is refused and leaves the slot unnamed
+    /// (`isInvalidConnection`). Nothing is allocated.
+    pub fn connect_bank_slot(&mut self, index: usize, source: &str, destination: &str) {
+        if index >= MAX_MODULATION_CONNECTIONS {
+            return;
+        }
+        self.set_bank_names(index, source, destination);
+        self.connect_slot(index, source, destination);
+    }
+
+    /// `disconnectModulation(connection)` for bank slot `index`, which
+    /// connects `source` to `destination`: frees it if it is connected,
+    /// leaving its controls and curve. Nothing is allocated.
+    pub fn disconnect_bank_slot(&mut self, index: usize, source: &str, destination: &str) {
+        let Some(position) = self
+            .mod_connections
+            .iter()
+            .position(|&i| i == index && self.bank_slot_connects(i, source, destination))
+        else {
+            return;
+        };
+        let mut change = self.create_modulation_change(index, source, destination);
+        self.set_bank_names(index, "", "");
+        self.mod_connections.remove(position);
+        change.disconnecting = true;
+        self.modulation_change_queue.push(change);
+    }
+
     /// `disconnectModulation(source, destination)`.
     pub fn disconnect_modulation(&mut self, source: &str, destination: &str) {
         let Some(position) = self

@@ -203,6 +203,17 @@ pub trait EditorModel: Send + Sync + 'static {
         None
     }
 
+    /// A modulation matrix row choosing slot `slot`'s route, or freeing it
+    /// with `None` (`ModulationMatrixRow::sliderValueChanged`): the old route
+    /// goes and the new one takes the same slot in one step for the engine,
+    /// with the slot's controls and curve as they are, so the host hears
+    /// nothing. Returns whether the slot is connected afterwards (a route to
+    /// its own amount is refused).
+    fn set_slot_route(&self, slot: usize, route: Option<(&str, &str)>) -> bool {
+        let _ = (slot, route);
+        false
+    }
+
     /// `LoadSave::displayHzFrequency`: cutoff sliders show hertz rather
     /// than their note value (the "hz_frequency" setting, off by default).
     fn hz_frequency_display(&self) -> bool {

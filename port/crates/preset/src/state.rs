@@ -369,6 +369,47 @@ impl PresetState {
         })
     }
 
+    /// A modulation matrix row choosing slot `slot`'s route
+    /// (`ModulationMatrixRow::sliderValueChanged`): the slot's old route, if
+    /// any, is disconnected (`disconnectModulation(connection)`), then
+    /// `route` connected in that same slot (`connectModulation(connection)`).
+    /// The slot's controls and remap curve stay as they are, and the route may
+    /// repeat another slot's. A route to the slot's own amount is refused
+    /// (`isInvalidConnection`) and leaves the slot free. Returns whether the
+    /// slot is connected afterwards.
+    pub fn set_slot_route(
+        &mut self,
+        slot: usize,
+        route: Option<(&str, &str)>,
+    ) -> Result<bool, Error> {
+        if slot >= MAX_MODULATION_CONNECTIONS {
+            return Err(Error::NoModulationSlot);
+        }
+        if let Some((source, destination)) = route {
+            if !engine::is_modulation_source(source) {
+                return Err(Error::UnknownModulationSource(source.to_string()));
+            }
+            if !engine::is_modulation_destination(destination) {
+                return Err(Error::UnknownModulationDestination(destination.to_string()));
+            }
+        }
+        let freed = &mut self.modulations[slot];
+        freed.source.clear();
+        freed.destination.clear();
+        self.connection_order.retain(|&index| index != slot);
+        let Some((source, destination)) = route else {
+            return Ok(false);
+        };
+        if destination == format!("modulation_{}_amount", slot + 1) {
+            return Ok(false);
+        }
+        let connected = &mut self.modulations[slot];
+        connected.source = source.to_string();
+        connected.destination = destination.to_string();
+        self.connection_order.push(slot);
+        Ok(true)
+    }
+
     /// `SynthBase::disconnectModulation(source, destination)`: frees the slot
     /// (its amount and line mapping are left as they are). Returns the slot
     /// index, or `None` if the two were not connected.
