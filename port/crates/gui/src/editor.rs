@@ -8,10 +8,12 @@
 //! (`vital/src/plugin/synth_editor.cpp`, `common/border_bounds_constrainer.cpp`):
 //! each window opens at 1400 × 820 scaled by the size last saved in the
 //! config (`LoadSave::loadWindowSize`), and the host may resize it down to
-//! 350 × 205, keeping the 1400:820 aspect ratio. Once a new size has held,
-//! the editor saves it (`BorderBoundsConstrainer::resizeEnd`), for the next
-//! window to open at. Upstream also keeps the first size within the screen,
-//! which baseview can't report (D30).
+//! 350 × 205, keeping the 1400:820 aspect ratio. The corner resizer at the
+//! bottom right ([`crate::resizable_corner`]) resizes it too, and saves the
+//! size when its drag ends (`BorderBoundsConstrainer::resizeEnd`), for the
+//! next window to open at; sizes the host sets aren't saved. Upstream also
+//! keeps the first size within the screen, which baseview can't report
+//! (D30).
 //!
 //! The chat's drawer (D13) widens the window beside that layout while it is
 //! open ([`crate::drawer`]): the editor asks the host for the wider window,
@@ -44,6 +46,7 @@ use crate::fonts;
 use crate::host::{Host, OpenGestures};
 use crate::interface::{EditorModel, Interface, PRODUCT_NAME};
 use crate::layout::{DEFAULT_HEIGHT, DEFAULT_WIDTH};
+use crate::resizable_corner::{CornerEvent, ResizableCorner};
 
 /// `vital::kMinWindowWidth` / `kMinWindowHeight`.
 pub const MIN_WIDTH: f32 = 350.0;
@@ -89,54 +92,6 @@ pub fn window_logical_size(window_size: f32, drawer_open: bool) -> LogicalSize<f
     LogicalSize::new((width + drawer) as f64, height as f64)
 }
 
-/// How long a new editor size must hold before it is saved: a drag's
-/// sizes in between aren't (upstream saves at `resizeEnd`).
-pub const WINDOW_SIZE_SETTLE: f64 = 0.5;
-
-/// Follows the editor's size and says when to save it: a size other than
-/// the one last seen, once it has held for [`WINDOW_SIZE_SETTLE`] seconds.
-/// The first size seen is the one the window opened at, not saved.
-#[derive(Clone, Debug, Default)]
-pub struct WindowSizeSaver {
-    last: Option<f32>,
-    changed: Option<(f32, f64)>,
-}
-
-impl WindowSizeSaver {
-    /// The editor at `window_size` (its width over 1400) at time `now`:
-    /// the size to save, if one is due.
-    pub fn observe(&mut self, window_size: f32, now: f64) -> Option<f32> {
-        let same = |a: f32, b: f32| (a - b).abs() < 1e-4;
-        let Some(last) = self.last else {
-            self.last = Some(window_size);
-            return None;
-        };
-        if same(window_size, last) {
-            self.changed = None;
-            return None;
-        }
-        match self.changed {
-            Some((size, since)) if same(size, window_size) => {
-                if now - since < WINDOW_SIZE_SETTLE {
-                    return None;
-                }
-                self.last = Some(window_size);
-                self.changed = None;
-                Some(window_size)
-            }
-            _ => {
-                self.changed = Some((window_size, now));
-                None
-            }
-        }
-    }
-
-    /// Whether a size is waiting to hold.
-    pub fn is_waiting(&self) -> bool {
-        self.changed.is_some()
-    }
-}
-
 /// The editor for one plugin instance.
 pub fn create(state: EditorState, model: Arc<dyn EditorModel>) -> Option<Editor> {
     let resize_hint = nice_plug::prelude::ResizeHint {
@@ -173,7 +128,8 @@ pub struct App {
     drawer: DrawerState,
     /// A size asked of the host for the drawer, until it answers.
     resize_pending: Option<drawer::PendingResize>,
-    window_size: WindowSizeSaver,
+    /// The corner resizer at the editor's bottom right.
+    corner: ResizableCorner,
     #[cfg(feature = "focus-spike")]
     focus_spike: crate::focus_spike::FocusSpike,
 }
@@ -191,7 +147,7 @@ impl App {
             drawer_followed: None,
             drawer,
             resize_pending: None,
-            window_size: WindowSizeSaver::default(),
+            corner: ResizableCorner::default(),
             #[cfg(feature = "focus-spike")]
             focus_spike: Default::default(),
         }
@@ -237,23 +193,28 @@ impl App {
 }
 
 impl App {
-    /// Saves the editor's share of the window, without the drawer, once a
-    /// new size has held; not while the drawer's resize awaits the host.
-    fn save_window_size(&mut self, ctx: &egui::Context, window: egui::Rect) {
-        if self.resize_pending.is_some() {
-            return;
-        }
-        let editor =
-            drawer::split(window, ctx.pixels_per_point(), self.interface.drawer_open()).editor;
-        let now = ctx.input(|input| input.time);
-        if let Some(size) = self
-            .window_size
-            .observe(editor.width() / DEFAULT_WIDTH as f32, now)
-        {
-            self.model.save_window_size(size);
-        }
-        if self.window_size.is_waiting() {
-            ctx.request_repaint_after(std::time::Duration::from_secs_f64(WINDOW_SIZE_SETTLE));
+    /// The corner resizer at the bottom right of the editor's part of the
+    /// window: a drag asks the host for the editor's new size, with the
+    /// drawer's share when it is docked, and letting go saves the editor's
+    /// width over 1400 (`resizeEnd`). Nothing else saves the size, so sizes
+    /// the host sets aren't saved, as upstream's aren't.
+    fn resizable_corner(&mut self, ui: &mut egui::Ui, window: egui::Rect) {
+        let ppp = ui.ctx().pixels_per_point();
+        let split = drawer::split(window, ppp, self.interface.drawer_open());
+        match self.corner.show(ui, split.editor) {
+            Some(CornerEvent::Resize(editor)) => {
+                let drawer = match split.drawer {
+                    Some(_) => drawer::width_pixels(editor.y * ppp, ppp) / ppp,
+                    None => 0.0,
+                };
+                let size = egui::vec2(editor.x + drawer, editor.y);
+                ui.ctx()
+                    .send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+            }
+            Some(CornerEvent::End(editor)) => {
+                self.model.save_window_size(editor.x / DEFAULT_WIDTH as f32);
+            }
+            None => {}
         }
     }
 }
@@ -426,7 +387,7 @@ impl NiceEguiApp for App {
             );
         }
         self.follow_drawer(ui.ctx(), area);
-        self.save_window_size(ui.ctx(), area);
+        self.resizable_corner(ui, area);
         #[cfg(feature = "focus-spike")]
         self.focus_spike.show(ui, frame);
     }
@@ -877,52 +838,73 @@ mod tests {
         assert_eq!(logical(&state), (1400.0, 820.0));
     }
 
-    /// A new size is saved once it has held for half a second: not the size
-    /// the window opened at, and not the sizes a drag passes through.
-    #[test]
-    fn a_size_is_saved_once_it_holds() {
-        let mut saver = WindowSizeSaver::default();
-        assert_eq!(saver.observe(1.0, 0.0), None);
-        assert_eq!(saver.observe(1.1, 1.0), None);
-        assert_eq!(saver.observe(1.2, 1.2), None);
-        assert_eq!(saver.observe(1.2, 1.6), None);
-        assert!(saver.is_waiting());
-        assert_eq!(saver.observe(1.2, 1.71), Some(1.2));
-        assert!(!saver.is_waiting());
-        assert_eq!(saver.observe(1.2, 5.0), None);
-        // Back to where it was before it settles: nothing to save.
-        assert_eq!(saver.observe(0.8, 6.0), None);
-        assert_eq!(saver.observe(1.2, 6.2), None);
-        assert!(!saver.is_waiting());
+    /// One frame of the corner in a window `size` points big, with
+    /// `events`: the window sizes asked of the host.
+    fn corner_frame(
+        ctx: &egui::Context,
+        app: &mut App,
+        time: f64,
+        size: egui::Vec2,
+        events: Vec<egui::Event>,
+    ) -> Vec<egui::ViewportCommand> {
+        let input = egui::RawInput {
+            time: Some(time),
+            events,
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| {
+            app.resizable_corner(ui, egui::Rect::from_min_size(egui::Pos2::ZERO, size));
+        });
+        output.textures_delta.clear();
+        output
+            .viewport_output
+            .remove(&egui::ViewportId::ROOT)
+            .map(|viewport| viewport.commands)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|command| matches!(command, egui::ViewportCommand::InnerSize(_)))
+            .collect()
     }
 
-    /// The editor saves its own share of the window: opening the drawer
-    /// widens the window and saves nothing; a corner drag saves the
-    /// editor's width over 1400 once it holds.
+    fn button(pos: egui::Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        }
+    }
+
+    /// `ResizableCornerComponent`: a drag of the corner asks the host for the
+    /// editor's new size in upstream's ratio, and letting go saves its width
+    /// over 1400 (`resizeEnd`). Sizes the host sets save nothing: a 1900 ×
+    /// 400 docker leaves the saved size alone.
     #[test]
-    fn the_editor_saves_its_width_without_the_drawer() {
+    fn the_corner_saves_the_size_and_the_host_doesnt() {
         let model = Arc::new(SizeRecorder::default());
         let mut app = App::new(model.clone(), DrawerState::default());
         let ctx = egui::Context::default();
-        let frame = |app: &mut App, time: f64, width: f32, height: f32| {
-            let input = egui::RawInput {
-                time: Some(time),
-                ..Default::default()
-            };
-            let mut output = ctx.run_ui(input, |ui| {
-                let window = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(width, height));
-                app.save_window_size(ui.ctx(), window);
-            });
-            output.textures_delta.clear();
-        };
-        frame(&mut app, 0.0, 1400.0, 820.0);
-        app.interface.set_drawer_open(true);
-        frame(&mut app, 0.1, 1760.0, 820.0);
-        frame(&mut app, 1.0, 1760.0, 820.0);
+        for time in 0..4 {
+            let docker = egui::vec2(1900.0, 400.0);
+            let commands = corner_frame(&ctx, &mut app, time as f64, docker, Vec::new());
+            assert!(commands.is_empty(), "{commands:?}");
+        }
+        let window = egui::vec2(1400.0, 820.0);
+        corner_frame(&ctx, &mut app, 5.0, window, Vec::new());
         assert_eq!(*model.0.lock().unwrap(), Vec::<f32>::new());
-        frame(&mut app, 2.0, 2640.0, 1230.0);
-        frame(&mut app, 2.6, 2640.0, 1230.0);
-        assert_eq!(*model.0.lock().unwrap(), [1.5]);
+
+        let at = egui::pos2(1395.0, 815.0);
+        let to = egui::pos2(1535.0, 897.0);
+        let moved = |pos| egui::Event::PointerMoved(pos);
+        corner_frame(&ctx, &mut app, 6.0, window, vec![moved(at)]);
+        corner_frame(&ctx, &mut app, 6.1, window, vec![button(at, true)]);
+        let commands = corner_frame(&ctx, &mut app, 6.2, window, vec![moved(to)]);
+        assert_eq!(
+            commands,
+            [egui::ViewportCommand::InnerSize(egui::vec2(1540.0, 902.0))]
+        );
+        corner_frame(&ctx, &mut app, 6.3, window, vec![button(to, false)]);
+        assert_eq!(*model.0.lock().unwrap(), [1.1]);
     }
 
     /// Only VST3's answer is awaited: CLAP accepts without a call, and

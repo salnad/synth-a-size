@@ -234,12 +234,16 @@ repeat the check in FL Studio where the note says so.
       plugins in its own window, and whether it honours a plugin's own
       resize on macOS is what this item settles; if it doesn't, the overlay
       fallback should take over.
-11. **The saved window size.** Resize the plugin window by its corner,
-    wait a second, close it, then insert a second instance and open it.
+11. **The saved window size.** Drag the corner resizer at the plugin
+    window's bottom right (JUCE's three diagonal lines), let go, close the
+    window, then insert a second instance and open it.
     - The new instance should open at the size the first was left at,
       with upstream's 1400:820 ratio; so should the first instance's window
       when reopened, and every instance after the project is closed and
       reopened.
+    - Resize the window by the host's own frame instead, close it and open
+      a new instance: it opens at the corner's last size, as upstream saves
+      only the corner's resizes.
     - Open the chat's drawer, then close it: the size saved is the
       editor's without the drawer, so a new instance opens no wider.
 

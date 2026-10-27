@@ -23,11 +23,21 @@ opens, and a new size is saved once it holds, as
   by the chat's drawer when the drawer is open (G7e reopens it docked). It
   runs when the host asks the size before opening a window and when the
   window opens.
-- **Saving** (`WindowSizeSaver`, `App::save_window_size`): the editor's
-  share of the window, without the drawer (`drawer::split`), over 1400,
-  once a new size has held for half a second, so a drag's passing sizes and
-  the size a window opened at aren't saved, and opening the drawer saves
-  nothing. Nothing is saved while the drawer's resize awaits the host.
+- **The corner resizer** (`resizable_corner.rs`): upstream's hosted
+  editor shows JUCE's `ResizableCornerComponent` (`SynthEditor`'s
+  `setResizable(true, true)`), 18 × 18 at its bottom right, always on top,
+  drawn by `LookAndFeel_V2::drawCornerResizer` (four light and dark grey
+  diagonals) and hit only on and below a line a quarter above its diagonal
+  (`hitTest`). The port draws it at the bottom right of the editor's part of
+  the window. A drag asks the host for the editor's original size plus the
+  drag, constrained as `ComponentBoundsConstrainer::checkBounds` constrains
+  a bottom-right stretch (the minimum size, then upstream's ratio on the
+  side the old ratio picks), with the drawer's share when it's docked.
+  Letting go saves the editor's width over 1400, as `resizeEnd` does; so
+  does a press without a drag, as upstream's `mouseUp` does.
+- **Saving** happens only there: sizes the host sets (VST3's `onSize`, a
+  docker's 1900 × 400) are never saved, as upstream's aren't (UI Reviewer,
+  #181, against an earlier save of every size that held).
 - **D30**: upstream keeps the size within the screen; baseview reports no
   screen, so the port doesn't.
 - FL checklist item for the saved size (`decisions/gui-framework.md`).
@@ -38,9 +48,11 @@ opens, and a new size is saved once it holds, as
   a smaller size reads as 0.25.
 - `editor` `each_window_opens_at_the_saved_size` (wider by the drawer when
   it's open; untouched without a config), `the_state_opens_at_the_saved_size`,
-  `a_size_is_saved_once_it_holds`, and
-  `the_editor_saves_its_width_without_the_drawer` (the drawer's widening
-  saves nothing; a resize to 2640 × 1230 with the drawer open saves 1.5).
+  and `the_corner_saves_the_size_and_the_host_doesnt` (frames in a 1900 ×
+  400 docker save nothing; a drag of the corner by 140 × 82 asks for
+  1540 × 902 and saves 1.1 on release).
+- `resizable_corner` `a_corner_drag_keeps_the_ratio_and_the_minimum` and
+  `the_corner_takes_presses_below_its_diagonal`.
 - `sas-plugin` `the_window_size_is_kept_in_the_config`.
 
 No audio change.
