@@ -183,14 +183,44 @@ struct WrapCopies {
 ///   too (its section resets the editor when it loads a shape).
 /// - A remap curve's animated `render` checks the render count again in
 ///   `LineEditor::render`, after its boosts, and rebuilds once more then.
-fn wrap_copies(remap: bool, path_dirty: bool, last: Option<WrapKey>, key: WrapKey) -> WrapCopies {
+///   Only animated frames check it, against the count the last one saw
+///   (`last_model_render_`, from -1), so an edit made while the curve is
+///   inactive, and the first animated frame, rebuild then too.
+fn wrap_copies(
+    remap: bool,
+    animating: bool,
+    path_dirty: bool,
+    last: Option<WrapKey>,
+    last_remap_render: Option<u32>,
+    key: WrapKey,
+) -> WrapCopies {
     let first = last.is_none();
     let resized = last.is_some_and(|(_, size)| size != key.1);
     let rendered = last.is_some_and(|(count, _)| count != key.0);
     WrapCopies {
         before: first || resized || path_dirty || (rendered && !remap),
-        after: remap && rendered,
+        after: remap && animating && last_remap_render != Some(key.0),
     }
+}
+
+/// The hover, press, drag and paint state [`interaction`] compares.
+type Interaction = (i32, i32, i32, bool, bool, bool, bool, Option<(f32, f32)>);
+
+/// The state whose change rebuilds the wave path (`resetPositions`): the
+/// hover, press, drag and paint state. A move with the button held counts
+/// only while it drags a point or power or paints; `drawDrag` returns early
+/// otherwise.
+fn interaction(state: &LineState) -> Interaction {
+    (
+        state.active_point,
+        state.active_power,
+        state.active_grid_section,
+        state.dragging,
+        state.painting_down,
+        state.mouse_down,
+        state.temporary_paint,
+        (state.dragging || state.painting_down).then_some(state.last),
+    )
 }
 
 /// `resetWavePath`'s boosts: the wrap points take the boosts of the points
@@ -419,6 +449,9 @@ struct LineState {
     /// The shape's render count and the editor's size when the wave path
     /// was last rebuilt (`reset_positions_`).
     wrap_key: Option<WrapKey>,
+    /// The render count a remap curve's last animated frame saw
+    /// (`last_model_render_`).
+    remap_render: Option<u32>,
     /// The egui frame the animation last stepped in, and what it drew then:
     /// upstream steps once per render, and egui may run a frame in more
     /// than one pass.
@@ -448,6 +481,7 @@ impl Default for LineState {
             last_phase: [0.0; 4],
             last_voice: [-1.0; 4],
             wrap_key: None,
+            remap_render: None,
             animated: None,
         }
     }
@@ -1095,15 +1129,26 @@ impl LineEditor {
         let mut renderer = LineRenderer::new(TOTAL_POINTS, false);
         renderer.set_boosts(&state.boosts);
         let remap = matches!(animation, Animation::Remap(_));
+        let animating = telemetry.is_some() && active;
         let key = (line.render_count(), size);
-        let copies = wrap_copies(remap, path_dirty, state.wrap_key, key);
+        let copies = wrap_copies(
+            remap,
+            animating,
+            path_dirty,
+            state.wrap_key,
+            state.remap_render,
+            key,
+        );
         state.wrap_key = Some(key);
+        if remap && animating {
+            state.remap_render = Some(key.0);
+        }
         if copies.before {
             copy_wrap_boosts(&mut renderer, self.looping());
         }
         let frame = match animation {
             Animation::Remap(slot) => {
-                if telemetry.is_none() || !active {
+                if !animating {
                     renderer.decay_boosts(0.0, 0.0);
                     None
                 } else {
@@ -1237,20 +1282,6 @@ impl LineEditor {
         let mut line = match shape.as_deref() {
             Some(shape) => shape.clone(),
             None => state.line.take().unwrap_or_else(|| self.model_shape(panel)),
-        };
-        // resetPositions: the interactions that move the hover, press, drag
-        // or paint state rebuild the wave path.
-        let interaction = |state: &LineState| {
-            (
-                state.active_point,
-                state.active_power,
-                state.active_grid_section,
-                state.dragging,
-                state.painting_down,
-                state.mouse_down,
-                state.temporary_paint,
-                state.last,
-            )
         };
         let interaction_before = interaction(&state);
         let mut changed = false;
@@ -2265,8 +2296,29 @@ mod tests {
     /// `reset_positions_`: the first frame, a resize and an interaction or
     /// edit rebuild the path before the frame's boost; a shape that renders
     /// again rebuilds an LFO's then too, and a remap curve's after its
-    /// boost (`LineEditor::render`'s render-count check); a still frame
-    /// rebuilds nothing.
+    /// boost in an animated frame (`LineEditor::render`'s render-count
+    /// check, from -1); a still frame rebuilds nothing.
+    /// A move with the button held over empty space doesn't rebuild the
+    /// path; one that drags a point or paints does.
+    #[test]
+    fn a_held_move_rebuilds_the_path_only_while_dragging_or_painting() {
+        let mut state = LineState {
+            mouse_down: true,
+            ..LineState::default()
+        };
+        let moved = |state: &LineState| {
+            let mut next = state.clone();
+            next.last = (state.last.0 + 3.0, state.last.1 + 2.0);
+            interaction(&next) != interaction(state)
+        };
+        assert!(!moved(&state));
+        state.dragging = true;
+        assert!(moved(&state));
+        state.dragging = false;
+        state.painting_down = true;
+        assert!(moved(&state));
+    }
+
     #[test]
     fn the_path_is_rebuilt_as_upstream_resets_it() {
         let key = (5, (100, 50));
@@ -2275,26 +2327,43 @@ mod tests {
             before: true,
             after: false,
         };
-        for remap in [false, true] {
-            assert_eq!(wrap_copies(remap, false, None, key), before);
-            assert_eq!(wrap_copies(remap, false, Some(key), key), none);
-            assert_eq!(wrap_copies(remap, true, Some(key), key), before);
-            assert_eq!(wrap_copies(remap, false, Some((5, (90, 50))), key), before);
+        let after = WrapCopies {
+            before: false,
+            after: true,
+        };
+        let both = WrapCopies {
+            before: true,
+            after: true,
+        };
+        let copies = |remap, animating, dirty, last, seen| {
+            wrap_copies(remap, animating, dirty, last, seen, key)
+        };
+        let rendered = Some((4, (100, 50)));
+        for animating in [false, true] {
+            assert_eq!(copies(false, animating, false, None, None), before);
+            assert_eq!(copies(false, animating, false, Some(key), None), none);
+            assert_eq!(copies(false, animating, true, Some(key), None), before);
+            assert_eq!(
+                copies(false, animating, false, Some((5, (90, 50))), None),
+                before
+            );
+            assert_eq!(copies(false, animating, false, rendered, None), before);
         }
-        assert_eq!(wrap_copies(false, false, Some((4, (100, 50))), key), before);
+        // A remap curve's first animated frame checks the render count from
+        // -1, and copies after its boost too.
+        assert_eq!(copies(true, true, false, None, None), both);
+        assert_eq!(copies(true, false, false, None, None), before);
+        assert_eq!(copies(true, true, false, Some(key), Some(5)), none);
+        assert_eq!(copies(true, true, true, Some(key), Some(5)), before);
         assert_eq!(
-            wrap_copies(true, false, Some((4, (100, 50))), key),
-            WrapCopies {
-                before: false,
-                after: true,
-            }
+            copies(true, true, false, Some((5, (90, 50))), Some(5)),
+            before
         );
-        assert_eq!(
-            wrap_copies(true, true, Some((4, (100, 50))), key),
-            WrapCopies {
-                before: true,
-                after: true,
-            }
-        );
+        assert_eq!(copies(true, true, false, rendered, Some(4)), after);
+        assert_eq!(copies(true, true, true, rendered, Some(4)), both);
+        // Edited while inactive: the inactive frames leave the count
+        // unchecked, and the next animated frame copies after its boost.
+        assert_eq!(copies(true, false, true, rendered, Some(4)), before);
+        assert_eq!(copies(true, true, false, Some(key), Some(4)), after);
     }
 }

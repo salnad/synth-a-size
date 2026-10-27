@@ -9,8 +9,10 @@ path (`setGlPositions` under `reset_positions_`, then `resetWavePath`).
   `drawDown`, `drawDrag`, `drawUp`, the double click,
   `clearActiveMouseActions` and the temporary paint toggle. Edits call it
   too. The port marks the path dirty in a frame whose hover point, power or
-  grid section, press, drag, paint stroke, temporary paint or pointer
-  position on the editor changes, or whose shape is edited.
+  grid section, press, drag, paint stroke or temporary paint changes, or
+  whose shape is edited. The pointer's position counts only while it drags
+  a point or power or paints: with the button held over empty space,
+  `drawDrag` returns early because `dragging_` is false.
 - **When the copy happens.** Both editors rebuild the path at the start of
   `render`, before the frame's decay and boost:
   - the first time;
@@ -21,15 +23,23 @@ path (`setGlPositions` under `reset_positions_`, then `resetWavePath`).
 - **The remap's second copy.** A remap curve's animated `render` also
   checks the render count in `LineEditor::render`, after its boosts, so a
   shape that renders again copies a second time, after the frame's boost.
-  An LFO's `render` has no such check.
-- **Code:** `wrap_copies` decides; `copy_wrap_boosts` copies.
+  Only animated frames check it, against the count the last animated frame
+  saw (`last_model_render_`, from -1). So the first animated frame copies
+  after its boost too, and an edit made while the curve is inactive gets
+  its after-boost copy on the next animated frame. An LFO's `render` has no
+  such check.
+- **Code:** `interaction` is the state whose change marks the path dirty;
+  `wrap_copies` decides; `copy_wrap_boosts` copies.
 
 **Verified.**
 
 - **Unit tests:**
   - `the_path_is_rebuilt_as_upstream_resets_it`: first frame, still frame,
-    interaction, resize, an LFO's re-render, a remap's re-render (after)
-    and a remap's edit (before and after).
+    interaction, resize, an LFO's re-render, a remap's re-render (after),
+    a remap's edit (before and after), a remap's first animated frame
+    (before and after) and a remap edited while inactive (after, on the
+    next animated frame).
+  - `a_held_move_rebuilds_the_path_only_while_dragging_or_painting`.
   - `wrap_points_take_boosts_only_when_the_path_is_rebuilt`: the loop's
     edge and the ends of a line that doesn't loop.
 - **Checks:** `cargo clippy --workspace --all-targets -D warnings`, the
