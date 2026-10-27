@@ -938,6 +938,16 @@ impl Interface {
                 current.as_deref(),
             );
         }
+        if let Some((slot, browser, section)) = self.matrix.take_browse_request() {
+            let current = self.matrix.current_file();
+            self.popup_browser.open(
+                host.model(),
+                BrowserOwner::Remap(slot),
+                browser,
+                section,
+                current.as_deref(),
+            );
+        }
         if !self.popup_browser.is_open() {
             return;
         }
@@ -952,6 +962,9 @@ impl Interface {
             }
             Some(BrowserEvent::Load(BrowserOwner::Lfo(index), file)) => {
                 self.modulation.load_lfo_file(host.model(), index, &file);
+            }
+            Some(BrowserEvent::Load(BrowserOwner::Remap(slot), file)) => {
+                self.matrix.load_file(host.model(), slot, &file);
             }
             Some(BrowserEvent::Load(BrowserOwner::Sample, file)) => {
                 self.synthesis.load_sample_file(host.model(), &file);

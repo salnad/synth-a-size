@@ -139,6 +139,8 @@ struct Synth {
     midi_forwarded: Mutex<Vec<(String, f32)>>,
     /// The LFO shapes the editor set.
     lfos: Mutex<HashMap<usize, LineGenerator>>,
+    /// The modulation slots' remap curves the editor set.
+    line_mappings: Mutex<HashMap<usize, LineGenerator>>,
     /// The user data folder, for the browsers and the save section.
     data_directory: Mutex<Option<std::path::PathBuf>>,
     /// Wavetable loads and resets the editor asked for.
@@ -191,6 +193,7 @@ impl Synth {
             midi_moved: Mutex::new(Vec::new()),
             midi_forwarded: Mutex::new(Vec::new()),
             lfos: Mutex::default(),
+            line_mappings: Mutex::default(),
             data_directory: Mutex::default(),
             wavetable_edits: Mutex::new(Vec::new()),
             hz: AtomicBool::new(false),
@@ -402,11 +405,16 @@ impl EditorModel for Synth {
         connected
     }
 
-    fn set_line_mapping(&self, slot: usize, _line: LineGenerator) -> bool {
+    fn line_mapping(&self, slot: usize) -> Option<LineGenerator> {
+        self.line_mappings.lock().unwrap().get(&slot).cloned()
+    }
+
+    fn set_line_mapping(&self, slot: usize, line: LineGenerator) -> bool {
         self.bus
             .lock()
             .unwrap()
             .push(format!("line_mapping {slot}"));
+        self.line_mappings.lock().unwrap().insert(slot, line);
         true
     }
 
@@ -5125,6 +5133,7 @@ fn line_editor_harness<'a>(
                 paint: paint.get(),
                 paint_pattern: 0,
                 phase: None,
+                active: true,
             };
             let editor = LineEditor { target };
             let event = match shape {
@@ -5443,4 +5452,72 @@ fn a_right_clicks_release_is_reported_except_on_an_lfo() {
         }
         assert_eq!(shape.borrow().num_points(), 3);
     }
+}
+
+fn remap_layout(fixture: &Fixture) -> sas_gui::sections::matrix::RemapLayout {
+    use sas_gui::sections::matrix::{self, MatrixLayout};
+    let interface = fixture.interface.borrow();
+    let layout = FullLayout::new(interface.skin(), 1400, 820);
+    let scope = Scope::top(interface.skin(), layout.size_ratio).within(matrix::SKIN);
+    MatrixLayout::new(&scope, layout.main).remap_layout(&scope)
+}
+
+/// The remap editor edits the selected row's curve (`map_editors_`
+/// shown for `selected_index_`): with row 2 selected, a double click in
+/// it adds a point to slot 2's curve, through the model's line mapping.
+#[test]
+fn the_remap_editor_edits_the_selected_rows_curve() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    let row = matrix_row(&fixture, 1);
+    let gap = egui::pos2(
+        (row.power.right() + row.amount.x) as f32 / 2.0,
+        centre(row.bounds).y,
+    );
+    click(&mut harness, gap);
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 1);
+    fixture.synth.bus.lock().unwrap().clear();
+
+    let editor = remap_layout(&fixture).editor;
+    let off_the_line = egui::pos2(
+        editor.x as f32 + editor.width as f32 * 0.25,
+        editor.y as f32 + editor.height as f32 * 0.2,
+    );
+    click(&mut harness, off_the_line);
+    click(&mut harness, off_the_line);
+    assert_eq!(*fixture.synth.bus.lock().unwrap(), ["line_mapping 1"]);
+    assert_eq!(fixture.synth.line_mapping(1).unwrap().num_points(), 3);
+    assert!(fixture.synth.line_mapping(0).is_none());
+}
+
+/// The remap strip loads LFO files into the selected curve: the arrows
+/// step through the user's LFOs (`nextClicked`, `getShiftedFile`) and a
+/// press on its name opens the browser for them (`textMouseDown`).
+#[test]
+fn the_remap_strip_loads_lfo_files() {
+    let fixture = Fixture::new();
+    let _data = lfo_data(&fixture, "remap");
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    let preset = remap_layout(&fixture).preset_selector;
+    click(&mut harness, centre(preset.next));
+    assert_eq!(fixture.synth.line_mapping(0).unwrap().name(), "Bank Shape");
+    click(&mut harness, centre(preset.next));
+    assert_eq!(fixture.synth.line_mapping(0).unwrap().name(), "Ramp 2");
+    click(&mut harness, centre(preset.previous));
+    assert_eq!(fixture.synth.line_mapping(0).unwrap().name(), "Bank Shape");
+    assert!(fixture.synth.lfo_shape(0).is_none());
+
+    click(&mut harness, centre(preset.text));
+    assert_eq!(popup_files(&fixture), ["Bank Shape", "Ramp 2", "Wobble"]);
 }

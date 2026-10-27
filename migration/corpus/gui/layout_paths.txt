@@ -87,6 +87,17 @@ MODULATION MATRIX/Container/MOD 0/modulation_1_bypass
 MODULATION MATRIX/Container/MOD 1
 MODULATION MATRIX/Container/MOD 63
 MODULATION MATRIX/Container/MOD 63/modulation_64_amount
+MODULATION MATRIX/remap_name
+MODULATION MATRIX/paint
+MODULATION MATRIX/paint_pattern
+MODULATION MATRIX/grid_size_x
+MODULATION MATRIX/grid_size_y
+MODULATION MATRIX/smooth
+MODULATION MATRIX/preset_selector
+MODULATION MATRIX/preset_selector/Text
+MODULATION MATRIX/preset_selector/Prev
+MODULATION MATRIX/preset_selector/Next
+MODULATION MATRIX/modulation_source_1
 effects
 modulation
 extra_mod_section
