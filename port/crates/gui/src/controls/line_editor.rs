@@ -26,6 +26,7 @@ use sas_common::line_generator::LineGenerator;
 use sas_common::scalar::power_scale;
 
 use crate::controls::clicks::Clicks;
+use crate::interface::EditorModel;
 use crate::layout::Rect;
 use crate::paint::{PixelPainter, RectF};
 use crate::popup::{Menu, MenuItem};
@@ -83,10 +84,133 @@ pub mod menu {
     pub const SET_PHASE_TO_GRID: i32 = 13;
 }
 
+/// The shape an editor edits, and what differs between targets.
+///
+/// To add a target, add a variant and its arm in each method of
+/// `impl LineTarget`; the editor matches on the target nowhere else. A
+/// target whose shape belongs to a set that must keep the same points (a
+/// wavetable Line Source's keyframes) mirrors point additions and removals
+/// into the others in [`points_edited`](Self::points_edited).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum LineTarget {
+    /// An LFO's shape (0-based), `LfoEditor`.
+    Lfo(usize),
+    /// A modulation slot's remap curve (0-based), `LineMapEditor`.
+    Remap(usize),
+}
+
+/// The editor's menu (`mouseDown` with the popup menu).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MenuKind {
+    /// `LfoEditor::mouseDown`: "Set Start Point" and the LFO's phase.
+    Lfo,
+    /// `LineEditor::mouseDown`.
+    Line,
+}
+
+/// A change to a shape's points, as `LineEditor::Listener` hears it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PointEdit {
+    /// `pointAdded`: a point inserted at the index.
+    Added(usize),
+    /// `pointRemoved`: the point at the index removed.
+    Removed(usize),
+    /// `pointsAdded`: `count` points inserted from `index` (painting).
+    ManyAdded { index: usize, count: usize },
+    /// `pointsRemoved`: `count` points removed from `index` (painting).
+    ManyRemoved { index: usize, count: usize },
+    /// `fileLoaded`: the whole shape replaced (Paste, Initialize).
+    Loaded,
+}
+
+impl LineTarget {
+    /// `loop_`: an LFO's line loops (its level ends move together and its
+    /// path wraps); a remap curve's (`LineMapEditor`) doesn't.
+    pub fn looping(self) -> bool {
+        match self {
+            LineTarget::Lfo(_) => true,
+            LineTarget::Remap(_) => false,
+        }
+    }
+
+    pub fn menu(self) -> MenuKind {
+        match self {
+            LineTarget::Lfo(_) => MenuKind::Lfo,
+            LineTarget::Remap(_) => MenuKind::Line,
+        }
+    }
+
+    /// `allow_file_loading_`: the base menu's Copy, Paste, Save to LFOs and
+    /// Initialize. The LFO menu has its own Copy, Paste and Save. A
+    /// wavetable Line Source turns it off (`setAllowFileLoading(false)`).
+    pub fn file_loading(self) -> bool {
+        match self {
+            LineTarget::Lfo(_) | LineTarget::Remap(_) => true,
+        }
+    }
+
+    /// `setLineWidth`: the skin's `kWidgetLineWidth` for both.
+    pub fn line_width(self, scope: &Scope) -> f32 {
+        match self {
+            LineTarget::Lfo(_) | LineTarget::Remap(_) => scope.value(ValueId::WidgetLineWidth),
+        }
+    }
+
+    /// `setFillCenter`: the skin's `kWidgetFillCenter` for an LFO
+    /// (`LfoEditor::render`), the bottom for a remap curve
+    /// (`LineMapEditor`'s -1).
+    pub fn fill_center(self, scope: &Scope) -> f32 {
+        match self {
+            LineTarget::Lfo(_) => scope.value(ValueId::WidgetFillCenter),
+            LineTarget::Remap(_) => -1.0,
+        }
+    }
+
+    /// The shape when the synth has none: an LFO's triangle
+    /// (`LineGenerator`'s constructor), a remap curve's line
+    /// (`ModulationConnection`'s `initLinear`).
+    pub fn init_shape(self) -> LineGenerator {
+        let mut line = LineGenerator::new(LineGenerator::DEFAULT_RESOLUTION);
+        match self {
+            LineTarget::Lfo(_) => line.init_triangle(),
+            LineTarget::Remap(_) => line.init_linear(),
+        }
+        line
+    }
+
+    /// The target's shape in the synth.
+    pub fn read(self, model: &dyn EditorModel) -> Option<LineGenerator> {
+        match self {
+            LineTarget::Lfo(lfo) => model.lfo_shape(lfo),
+            LineTarget::Remap(slot) => model.line_mapping(slot),
+        }
+    }
+
+    /// Sends `line` to the synth. False when it can't take it now; the
+    /// editor tries again next frame.
+    pub fn write(self, model: &dyn EditorModel, line: LineGenerator) -> bool {
+        match self {
+            LineTarget::Lfo(lfo) => model.set_lfo_shape(lfo, line),
+            LineTarget::Remap(slot) => model.set_line_mapping(slot, line),
+        }
+    }
+
+    /// The point changes one frame of editing made, in order, before the
+    /// shape is written. Nothing else follows an LFO's or a remap curve's
+    /// points.
+    pub fn points_edited(self, model: &dyn EditorModel, edits: &[PointEdit]) {
+        match self {
+            LineTarget::Lfo(_) | LineTarget::Remap(_) => {
+                let _ = (model, edits);
+            }
+        }
+    }
+}
+
 /// A choice from an editor's menu, for the editor to carry out next frame.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LineAction {
-    pub lfo: usize,
+    pub target: LineTarget,
     pub choice: i32,
     pub point: i32,
     pub power: i32,
@@ -101,8 +225,9 @@ pub struct LineSettings {
     /// The paint button.
     pub paint: bool,
     pub paint_pattern: usize,
-    /// The LFO's phase control, which "Set Start Point" sets.
-    pub phase: &'static str,
+    /// The LFO's phase control, which "Set Start Point" sets. None for a
+    /// remap curve, whose menu has no such item.
+    pub phase: Option<&'static str>,
 }
 
 #[derive(Clone, Debug)]
@@ -152,6 +277,8 @@ struct Geometry<'a> {
     width: f32,
     height: f32,
     size_ratio: f32,
+    /// `loop_`: an LFO's line wraps; a remap curve's doesn't.
+    looping: bool,
 }
 
 impl Geometry<'_> {
@@ -285,11 +412,18 @@ impl Geometry<'_> {
                 (self.width, self.pad_y(self.height * end_value));
             draw_index += 1;
         }
+        let first = points[NUM_WRAP_POINTS];
+        let last = points[NUM_WRAP_POINTS + DRAW_POINTS - 1];
         for i in 0..NUM_WRAP_POINTS {
-            let end = points[DRAW_POINTS + i];
-            points[i] = (end.0 - self.width, end.1);
-            let start = points[NUM_WRAP_POINTS + i];
-            points[i + DRAW_POINTS + NUM_WRAP_POINTS] = (start.0 + self.width, start.1);
+            if self.looping {
+                let end = points[DRAW_POINTS + i];
+                points[i] = (end.0 - self.width, end.1);
+                let start = points[NUM_WRAP_POINTS + i];
+                points[i + DRAW_POINTS + NUM_WRAP_POINTS] = (start.0 + self.width, start.1);
+            } else {
+                points[i] = first;
+                points[i + DRAW_POINTS + NUM_WRAP_POINTS] = last;
+            }
         }
         points
     }
@@ -322,7 +456,7 @@ fn snap(value: f32, grid: usize, radius: f32) -> f32 {
 
 /// `addPointAt`: inserts `position` (fractions) before the first point to
 /// its right.
-fn add_point_at(line: &mut LineGenerator, position: (f32, f32)) {
+fn add_point_at(line: &mut LineGenerator, position: (f32, f32), edits: &mut Vec<PointEdit>) {
     if line.num_points() >= LineGenerator::MAX_POINTS {
         return;
     }
@@ -331,9 +465,11 @@ fn add_point_at(line: &mut LineGenerator, position: (f32, f32)) {
         .unwrap_or(line.num_points());
     line.add_point(index, position);
     line.render();
+    edits.push(PointEdit::Added(index));
 }
 
-/// `movePoint`.
+/// `movePoint`. A looping line's level ends move together.
+#[allow(clippy::too_many_arguments)]
 fn move_point(
     line: &mut LineGenerator,
     index: usize,
@@ -341,6 +477,7 @@ fn move_point(
     size: (f32, f32),
     grid: (usize, usize),
     snapping: bool,
+    looping: bool,
 ) {
     let (min_x, max_x) = x_range(line, index);
     let last = line.num_points() - 1;
@@ -355,7 +492,7 @@ fn move_point(
         }
         y = snap(y, grid.1, 0.04);
     }
-    if line.point(0).1 == line.point(last).1 {
+    if looping && line.point(0).1 == line.point(last).1 {
         if index == 0 {
             line.set_point(last, (1.0, y));
         } else if index == last {
@@ -405,6 +542,7 @@ fn paint_line(
     grid: (usize, usize),
     pattern: &[(f32, f32)],
     snapping: bool,
+    edits: &mut Vec<PointEdit>,
 ) -> i32 {
     let percent_x = position.0 / size.0;
     let mut percent_y = (position.1 / size.1).clamp(0.0, 1.0);
@@ -451,7 +589,7 @@ fn paint_line(
         return section;
     }
     for point in new_points {
-        add_point_at(line, point);
+        add_point_at(line, point, edits);
     }
     line.set_num_points(num_points as usize);
     if delta_size > 0 {
@@ -462,12 +600,20 @@ fn paint_line(
             line.set_power(i as usize, line.power(source));
             i -= 1;
         }
+        edits.push(PointEdit::ManyAdded {
+            index: (from_index + 1) as usize,
+            count: delta_size as usize,
+        });
     } else if delta_size < 0 {
         for i in (from_index + 1)..num_points {
             let source = (i - delta_size) as usize;
             line.set_point(i as usize, line.point(source));
             line.set_power(i as usize, line.power(source));
         }
+        edits.push(PointEdit::ManyRemoved {
+            index: (from_index + 1) as usize,
+            count: (-delta_size) as usize,
+        });
     }
     for (i, &(t, y)) in pattern.iter().enumerate() {
         let x = from_x * (1.0 - t) + to_x * t;
@@ -489,8 +635,10 @@ fn double_click_at(
     size: (f32, f32),
     size_ratio: f32,
     shift: bool,
+    looping: bool,
+    edits: &mut Vec<PointEdit>,
 ) -> bool {
-    let g = geometry(line, size, size_ratio);
+    let g = geometry(line, size, size_ratio, looping);
     let hover_point = g.hover_point(p);
     let hover_power = g.hover_power(p);
     let num_points = line.num_points() as i32;
@@ -500,6 +648,7 @@ fn double_click_at(
         }
         line.remove_point(hover_point as usize);
         line.render();
+        edits.push(PointEdit::Removed(hover_point as usize));
         true
     } else if hover_power >= 0 {
         if shift {
@@ -512,28 +661,74 @@ fn double_click_at(
         line.render();
         true
     } else if line.num_points() < LineGenerator::MAX_POINTS {
-        add_point_at(line, (p.0 / size.0, p.1 / size.1));
+        add_point_at(line, (p.0 / size.0, p.1 / size.1), edits);
         true
     } else {
         false
     }
 }
 
-/// An LFO's editor.
+/// An LFO's or a remap curve's editor.
 #[derive(Clone, Copy, Debug)]
 pub struct LineEditor {
-    /// The LFO (0-based).
-    pub lfo: usize,
+    pub target: LineTarget,
+}
+
+/// A `LineEditor::Listener` call, as upstream makes it, for a section that
+/// commits a shape it owns (D18: audition mid-drag, commit on `mouse_up`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LineChange {
+    /// `pointChanged`: mid-drag (`movePoint`, `mouse_up` false), or a drag's
+    /// release and the flips (`drawUp`, `respondToCallback`, true).
+    PointChanged { index: usize, mouse_up: bool },
+    /// `powersChanged`: mid-drag (`movePower`) or a power drag's release
+    /// (`drawUp`).
+    PowersChanged { mouse_up: bool },
+    /// `pointAdded`, `pointRemoved`, `pointsAdded`, `pointsRemoved` and
+    /// `fileLoaded`, which have no `mouse_up` flag: complete in one go.
+    Points(PointEdit),
+}
+
+impl LineChange {
+    /// A drag's change while the mouse is down.
+    pub fn moving(self) -> bool {
+        matches!(
+            self,
+            LineChange::PointChanged {
+                mouse_up: false,
+                ..
+            } | LineChange::PowersChanged { mouse_up: false }
+        )
+    }
+
+    /// A drag's release or a flip.
+    pub fn released(self) -> bool {
+        matches!(
+            self,
+            LineChange::PointChanged { mouse_up: true, .. }
+                | LineChange::PowersChanged { mouse_up: true }
+        )
+    }
 }
 
 /// What the editor tells its section after a frame.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct LineEditorEvent {
     /// Paint mode as shown: the paint button, flipped while Command is held
     /// (`togglePaintMode`).
     pub painting: bool,
     /// The shape's `smooth` flag.
     pub smooth: bool,
+    /// The frame's point changes, in order (also given to
+    /// [`LineTarget::points_edited`]).
+    pub edits: Vec<PointEdit>,
+    /// Whether this frame changed the shape. Painting, a double click's or
+    /// the menu's power reset change it without a listener call, as
+    /// upstream's do: releasing a paint stroke calls nothing (`mouseUp`
+    /// calls `drawUp` only when not painting).
+    pub changed: bool,
+    /// The frame's listener calls, in upstream's order.
+    pub changes: Vec<LineChange>,
 }
 
 /// The shape in clipboard `text`, if it holds one
@@ -575,28 +770,26 @@ fn system_clipboard_text() -> Option<String> {
     READ_CLIPBOARD.with(|reader| reader.get())()
 }
 
-/// The init LFO shape (`LineGenerator`'s constructor).
-fn init_shape() -> LineGenerator {
-    let mut line = LineGenerator::new(LineGenerator::DEFAULT_RESOLUTION);
-    line.init_triangle();
-    line
-}
-
 impl LineEditor {
+    fn looping(&self) -> bool {
+        self.target.looping()
+    }
+
+    /// The target's shape in the synth, or its init shape.
+    fn model_shape(&self, panel: &Panel) -> LineGenerator {
+        self.target
+            .read(panel.host.model())
+            .unwrap_or_else(|| self.target.init_shape())
+    }
+
     /// The shape as the editor shows it this frame.
     pub fn shape(&self, panel: &Panel) -> LineGenerator {
         let state = self.state(panel);
-        state.line.unwrap_or_else(|| {
-            panel
-                .host
-                .model()
-                .lfo_shape(self.lfo)
-                .unwrap_or_else(init_shape)
-        })
+        state.line.unwrap_or_else(|| self.model_shape(panel))
     }
 
     fn id(&self, panel: &Panel) -> egui::Id {
-        panel.ui.scope_id().with(("line editor", self.lfo))
+        panel.ui.scope_id().with(("line editor", self.target))
     }
 
     fn state(&self, panel: &Panel) -> LineState {
@@ -624,7 +817,7 @@ impl LineEditor {
             return;
         }
         if let Some(line) = &state.line {
-            if panel.host.model().set_lfo_shape(self.lfo, line.clone()) {
+            if self.target.write(panel.host.model(), line.clone()) {
                 state.pending = false;
                 state.holding = HOLD_FRAMES;
             }
@@ -632,32 +825,56 @@ impl LineEditor {
     }
 
     /// Handles the mouse and the menu's choices, and draws the editor.
-    pub fn show(&self, panel: &mut Panel, bounds: Rect, settings: LineSettings) -> LineEditorEvent {
+    ///
+    /// With `shape`, the editor edits that caller-owned shape in place and
+    /// neither reads nor writes the target's shape in the model; the caller
+    /// commits it, using the event's [`LineChange`].
+    pub fn show(
+        &self,
+        panel: &mut Panel,
+        bounds: Rect,
+        settings: LineSettings,
+        shape: Option<&mut LineGenerator>,
+    ) -> LineEditorEvent {
         let id = self.id(panel);
         let mut state = self.state(panel);
         let busy = state.dragging || state.painting_down || state.pending || state.holding > 0;
-        if !busy {
+        if !busy || shape.is_some() {
             state.line = None;
         }
         if state.holding > 0 && !state.dragging && !state.painting_down && !state.pending {
             state.holding -= 1;
         }
-        let mut line = state.line.take().unwrap_or_else(|| {
-            panel
-                .host
-                .model()
-                .lfo_shape(self.lfo)
-                .unwrap_or_else(init_shape)
-        });
+        let mut line = match shape.as_deref() {
+            Some(shape) => shape.clone(),
+            None => state.line.take().unwrap_or_else(|| self.model_shape(panel)),
+        };
         let mut changed = false;
+        let mut edits = Vec::new();
+        let mut changes = Vec::new();
+        let points = |changes: &mut Vec<LineChange>, edits: &[PointEdit], from: usize| {
+            changes.extend(edits[from..].iter().map(|edit| LineChange::Points(*edit)));
+        };
 
         let size_ratio = panel.scope.size_ratio();
         let size = (bounds.width as f32, bounds.height as f32);
         let grid = (settings.grid_size_x, settings.grid_size_y);
 
         // A choice from last frame's menu.
-        if let Some(action) = panel.overlay.line_action.take_if(|a| a.lfo == self.lfo) {
-            changed |= self.respond(panel, &mut line, action, settings);
+        if let Some(action) = panel
+            .overlay
+            .line_action
+            .take_if(|a| a.target == self.target)
+        {
+            let from = edits.len();
+            changed |= self.respond(panel, &mut line, action, settings, &mut edits);
+            points(&mut changes, &edits, from);
+            if matches!(action.choice, menu::FLIP_HORIZONTAL | menu::FLIP_VERTICAL) {
+                changes.push(LineChange::PointChanged {
+                    index: 0,
+                    mouse_up: true,
+                });
+            }
             state.active_point = -1;
             state.active_power = -1;
             state.active_grid_section = -1;
@@ -706,7 +923,7 @@ impl LineEditor {
                     state.active_grid_section =
                         ((grid.0 as f32 * percent_x) as i32).clamp(0, grid.0 as i32 - 1);
                 } else {
-                    let g = geometry(&line, size, size_ratio);
+                    let g = geometry(&line, size, size_ratio, self.looping());
                     state.active_point = g.hover_point(p);
                     state.active_power = if state.active_point < 0 {
                         g.hover_power(p)
@@ -726,6 +943,18 @@ impl LineEditor {
         }
 
         if response.secondary_clicked() {
+            // The base mouseUp calls drawUp after a popup press too;
+            // LfoEditor::mouseUp skips popup releases.
+            if self.target.menu() != MenuKind::Lfo && !painting {
+                if state.active_point >= 0 {
+                    changes.push(LineChange::PointChanged {
+                        index: state.active_point as usize,
+                        mouse_up: true,
+                    });
+                } else if state.active_power >= 0 {
+                    changes.push(LineChange::PowersChanged { mouse_up: true });
+                }
+            }
             self.open_menu(panel, &line, &state, pointer.unwrap_or_default());
         } else if response.is_pointer_button_down_on() && primary_down {
             if let Some(pos) = pointer {
@@ -743,6 +972,7 @@ impl LineEditor {
                 }
                 if painting {
                     if starting || p != state.last {
+                        let from = edits.len();
                         state.active_grid_section = paint_line(
                             &mut line,
                             p,
@@ -750,13 +980,15 @@ impl LineEditor {
                             grid,
                             paint_pattern(settings.paint_pattern),
                             !modifiers.alt,
+                            &mut edits,
                         );
+                        points(&mut changes, &edits, from);
                         changed = true;
                     }
                     state.painting_down = true;
                 } else if starting {
                     // drawDown.
-                    let g = geometry(&line, size, size_ratio);
+                    let g = geometry(&line, size, size_ratio, self.looping());
                     let hover_point = g.hover_point(p);
                     if hover_point >= 0 {
                         state.active_point = hover_point;
@@ -780,7 +1012,12 @@ impl LineEditor {
                             size,
                             grid,
                             !modifiers.alt,
+                            self.looping(),
                         );
+                        changes.push(LineChange::PointChanged {
+                            index: state.active_point as usize,
+                            mouse_up: false,
+                        });
                         changed = true;
                     } else if state.active_power >= 0 {
                         let delta = (p.1 - state.last.1) / size.1;
@@ -791,20 +1028,43 @@ impl LineEditor {
                             modifiers.shift,
                             modifiers.alt,
                         );
+                        changes.push(LineChange::PowersChanged { mouse_up: false });
                         changed = true;
                     }
                 }
                 state.last = p;
             }
         } else {
+            // mouseUp: drawUp when not painting.
+            if state.mouse_down && !painting {
+                if state.active_point >= 0 {
+                    changes.push(LineChange::PointChanged {
+                        index: state.active_point as usize,
+                        mouse_up: true,
+                    });
+                } else if state.active_power >= 0 {
+                    changes.push(LineChange::PowersChanged { mouse_up: true });
+                }
+            }
             // mouseDoubleClick comes after the second click's mouseUp, for a
             // second press that neither dragged nor was held.
             let now = panel.ui.input(|input| input.time);
             if state.mouse_down && state.clicks.count(now) >= 2 && !painting {
                 if let Some(pos) = pointer {
                     let p = local(pos);
-                    changed |= double_click_at(&mut line, p, size, size_ratio, modifiers.shift);
-                    state.active_point = geometry(&line, size, size_ratio).hover_point(p);
+                    let from = edits.len();
+                    changed |= double_click_at(
+                        &mut line,
+                        p,
+                        size,
+                        size_ratio,
+                        modifiers.shift,
+                        self.looping(),
+                        &mut edits,
+                    );
+                    points(&mut changes, &edits, from);
+                    state.active_point =
+                        geometry(&line, size, size_ratio, self.looping()).hover_point(p);
                     state.active_power = -1;
                 }
             }
@@ -813,26 +1073,52 @@ impl LineEditor {
             state.mouse_down = false;
         }
 
-        if changed {
-            state.pending = true;
-        }
         let smooth = line.smooth();
-        state.line = Some(line);
-        self.push(panel, &mut state);
-        let line = state.line.clone().expect("set above");
+        if !edits.is_empty() {
+            self.target.points_edited(panel.host.model(), &edits);
+        }
+        let line = if let Some(shape) = shape {
+            *shape = line;
+            shape.clone()
+        } else {
+            if changed {
+                state.pending = true;
+            }
+            state.line = Some(line);
+            self.push(panel, &mut state);
+            state.line.clone().expect("set above")
+        };
         panel
             .ui
             .data_mut(|data| data.insert_temp(id, state.clone()));
 
         self.paint(panel, bounds, line, &state, settings, painting);
-        LineEditorEvent { painting, smooth }
+        LineEditorEvent {
+            painting,
+            smooth,
+            edits,
+            changed,
+            changes,
+        }
     }
 
-    /// `LfoEditor::mouseDown` with the popup menu.
+    /// `LfoEditor::mouseDown` with the popup menu, or a remap curve's
+    /// `LineEditor::mouseDown`.
     fn open_menu(&self, panel: &mut Panel, line: &LineGenerator, state: &LineState, at: Pos2) {
         let mut items = Vec::new();
         let num_points = line.num_points() as i32;
-        if state.active_point >= 0 {
+        let lfo = self.target.menu() == MenuKind::Lfo;
+        if !lfo {
+            if state.active_point >= 0 {
+                if state.active_point > 0 && state.active_point < num_points - 1 {
+                    items.push(MenuItem::new(menu::REMOVE_POINT, "Remove Point"));
+                }
+                items.push(MenuItem::new(-1, ""));
+            }
+            if state.active_power >= 0 {
+                items.push(MenuItem::new(menu::RESET_POWER, "Reset Power"));
+            }
+        } else if state.active_point >= 0 {
             items.push(MenuItem::new(menu::SET_PHASE_TO_POINT, "Set Start Point"));
             if state.active_point >= 1 && state.active_point < num_points - 1 {
                 items.push(MenuItem::new(menu::REMOVE_POINT, "Remove Point"));
@@ -845,13 +1131,18 @@ impl LineEditor {
         } else if state.active_grid_section >= 0 {
             items.push(MenuItem::new(menu::SET_PHASE_TO_GRID, "Set Start Point"));
         }
-        // allow_file_loading_: the LFO editors.
-        items.push(MenuItem::new(menu::COPY, "Copy"));
-        if pasted_shape(&system_clipboard_text().unwrap_or_default()).is_some() {
-            items.push(MenuItem::new(menu::PASTE, "Paste"));
+        // LfoEditor's menu always has Copy, Paste and Save, but no
+        // Initialize; the base menu has all four under allow_file_loading_.
+        if lfo || self.target.file_loading() {
+            items.push(MenuItem::new(menu::COPY, "Copy"));
+            if pasted_shape(&system_clipboard_text().unwrap_or_default()).is_some() {
+                items.push(MenuItem::new(menu::PASTE, "Paste"));
+            }
+            items.push(MenuItem::new(menu::SAVE, "Save to LFOs"));
+            if !lfo {
+                items.push(MenuItem::new(menu::INIT, "Initialize"));
+            }
         }
-        items.push(MenuItem::new(menu::SAVE, "Save to LFOs"));
-        items.push(MenuItem::new(menu::INIT, "Initialize"));
         items.push(MenuItem::new(menu::FLIP_HORIZONTAL, "Flip Horizontal"));
         items.push(MenuItem::new(menu::FLIP_VERTICAL, "Flip Vertical"));
         let ppp = panel.pixels.pixels_per_point();
@@ -861,7 +1152,7 @@ impl LineEditor {
             items,
             position,
             MenuOwner::Line(LineAction {
-                lfo: self.lfo,
+                target: self.target,
                 choice: 0,
                 point: state.active_point,
                 power: state.active_power,
@@ -877,28 +1168,36 @@ impl LineEditor {
         line: &mut LineGenerator,
         action: LineAction,
         settings: LineSettings,
+        edits: &mut Vec<PointEdit>,
     ) -> bool {
         let num_points = line.num_points() as i32;
         let host = panel.host;
         match action.choice {
             menu::SET_PHASE_TO_POINT => {
-                if action.point >= 0 && action.point < num_points {
-                    host.set_once(settings.phase, line.point(action.point as usize).0);
+                if let Some(phase) = settings.phase {
+                    if action.point >= 0 && action.point < num_points {
+                        host.set_once(phase, line.point(action.point as usize).0);
+                    }
                 }
                 false
             }
             menu::SET_PHASE_TO_POWER => {
-                if action.power >= 0 && action.power < num_points - 1 {
-                    let from = line.point(action.power as usize).0;
-                    let to = line.point(action.power as usize + 1).0;
-                    host.set_once(settings.phase, (from + to) / 2.0);
+                if let Some(phase) = settings.phase {
+                    if action.power >= 0 && action.power < num_points - 1 {
+                        let from = line.point(action.power as usize).0;
+                        let to = line.point(action.power as usize + 1).0;
+                        host.set_once(phase, (from + to) / 2.0);
+                    }
                 }
                 false
             }
             menu::SET_PHASE_TO_GRID => {
-                if action.grid_section >= 0 && settings.grid_size_x > 0 {
+                if let (Some(phase), true) = (
+                    settings.phase,
+                    action.grid_section >= 0 && settings.grid_size_x > 0,
+                ) {
                     host.set_once(
-                        settings.phase,
+                        phase,
                         action.grid_section as f32 / settings.grid_size_x as f32,
                     );
                 }
@@ -908,6 +1207,7 @@ impl LineEditor {
                 if action.point > 0 && action.point < num_points - 1 {
                     line.remove_point(action.point as usize);
                     line.render();
+                    edits.push(PointEdit::Removed(action.point as usize));
                     return true;
                 }
                 false
@@ -932,6 +1232,7 @@ impl LineEditor {
                 };
                 *line = pasted;
                 line.render();
+                edits.push(PointEdit::Loaded);
                 true
             }
             menu::SAVE => {
@@ -946,6 +1247,7 @@ impl LineEditor {
             menu::INIT => {
                 line.init_linear();
                 line.render();
+                edits.push(PointEdit::Loaded);
                 true
             }
             menu::FLIP_HORIZONTAL => {
@@ -974,6 +1276,7 @@ impl LineEditor {
     ) {
         let scope: Scope = panel.scope;
         let size_ratio = scope.size_ratio();
+        let looping = self.looping();
         let lighten = scope.color(ColorId::LightenScreen);
         let line_left = scope.color(ColorId::WidgetPrimary1);
         let line_right = scope.color(ColorId::WidgetPrimary2);
@@ -984,8 +1287,8 @@ impl LineEditor {
         let fill_right = scope.color(ColorId::WidgetSecondary2);
         let accent1 = scope.color(ColorId::WidgetAccent1);
         let accent2 = scope.color(ColorId::WidgetAccent2);
-        let line_width = scope.value(ValueId::WidgetLineWidth);
-        let fill_center = scope.value(ValueId::WidgetFillCenter);
+        let line_width = self.target.line_width(&scope);
+        let fill_center = self.target.fill_center(&scope);
         let rounding = scope.value(ValueId::WidgetRoundedCorner);
         let body = scope.color(ColorId::Body);
         let state = state.clone();
@@ -1003,6 +1306,7 @@ impl LineEditor {
                 width,
                 height,
                 size_ratio,
+                looping,
             };
 
             // setGridPositions.
@@ -1119,12 +1423,18 @@ impl LineEditor {
     }
 }
 
-fn geometry(line: &LineGenerator, size: (f32, f32), size_ratio: f32) -> Geometry<'_> {
+fn geometry(
+    line: &LineGenerator,
+    size: (f32, f32),
+    size_ratio: f32,
+    looping: bool,
+) -> Geometry<'_> {
     Geometry {
         line,
         width: size.0,
         height: size.1,
         size_ratio,
+        looping,
     }
 }
 
@@ -1133,7 +1443,9 @@ mod tests {
     use super::*;
 
     fn triangle() -> LineGenerator {
-        init_shape()
+        let mut line = LineGenerator::new(LineGenerator::DEFAULT_RESOLUTION);
+        line.init_triangle();
+        line
     }
 
     /// Level first and last points move together (`movePoint`).
@@ -1142,7 +1454,15 @@ mod tests {
         let mut line = triangle();
         let last = line.num_points() - 1;
         assert_eq!(line.point(0).1, line.point(last).1);
-        move_point(&mut line, 0, (10.0, 50.0), (100.0, 100.0), (8, 1), true);
+        move_point(
+            &mut line,
+            0,
+            (10.0, 50.0),
+            (100.0, 100.0),
+            (8, 1),
+            true,
+            true,
+        );
         assert_eq!(line.point(0), (0.0, 0.5));
         assert_eq!(line.point(last), (1.0, 0.5));
     }
@@ -1159,6 +1479,7 @@ mod tests {
             (4, 1),
             paint_pattern(0),
             true,
+            &mut Vec::new(),
         );
         assert_eq!(section, 1);
         let points: Vec<(f32, f32)> = (0..line.num_points()).map(|i| line.point(i)).collect();
@@ -1173,5 +1494,98 @@ mod tests {
         let mut line = triangle();
         move_power(&mut line, 0, 10.0, false, false);
         assert_eq!(line.power(0).abs(), MAX_POWER);
+    }
+
+    /// What differs by target: an LFO loops, starts as a triangle and
+    /// takes the skin's fill centre; a remap curve doesn't loop, starts as
+    /// a line and fills from the bottom (`LineMapEditor`).
+    #[test]
+    fn targets_differ_as_upstreams_editors_do() {
+        let (lfo, remap) = (LineTarget::Lfo(0), LineTarget::Remap(3));
+        assert!(lfo.looping() && !remap.looping());
+        assert_eq!(lfo.menu(), MenuKind::Lfo);
+        assert_eq!(remap.menu(), MenuKind::Line);
+        assert!(lfo.file_loading() && remap.file_loading());
+        assert_eq!(lfo.init_shape().num_points(), 3);
+        let line = remap.init_shape();
+        assert_eq!(line.num_points(), 2);
+        assert_eq!((line.point(0), line.point(1)), ((0.0, 1.0), (1.0, 0.0)));
+    }
+
+    /// A line that doesn't loop keeps its ends apart (`movePoint` with
+    /// `loop_` off) and doesn't wrap its path (`resetWavePath`).
+    #[test]
+    fn a_line_that_does_not_loop_keeps_its_ends_apart() {
+        let mut line = LineGenerator::new(LineGenerator::DEFAULT_RESOLUTION);
+        line.init_triangle();
+        move_point(
+            &mut line,
+            0,
+            (0.0, 50.0),
+            (100.0, 100.0),
+            (0, 0),
+            false,
+            false,
+        );
+        assert_eq!(line.point(0), (0.0, 0.5));
+        assert_eq!(line.point(2), (1.0, 1.0));
+
+        let g = geometry(&line, (100.0, 50.0), 1.0, false);
+        let path = g.wave_path();
+        assert_eq!(path[0], path[NUM_WRAP_POINTS]);
+        assert_eq!(
+            path[TOTAL_POINTS - 1],
+            path[NUM_WRAP_POINTS + DRAW_POINTS - 1]
+        );
+        let looped = geometry(&line, (100.0, 50.0), 1.0, true).wave_path();
+        assert!(looped[0].0 < 0.0);
+    }
+
+    /// The editor records point changes as `LineEditor::Listener` hears
+    /// them: a double click's addition and removal, and painting's
+    /// `pointsAdded`.
+    #[test]
+    fn point_changes_are_recorded() {
+        let mut line = triangle();
+        let mut edits = Vec::new();
+        let size = (100.0, 100.0);
+        assert!(double_click_at(
+            &mut line,
+            (25.0, 70.0),
+            size,
+            1.0,
+            false,
+            true,
+            &mut edits
+        ));
+        assert_eq!(edits, [PointEdit::Added(1)]);
+        edits.clear();
+        assert!(double_click_at(
+            &mut line,
+            (25.0, 70.0),
+            size,
+            1.0,
+            false,
+            true,
+            &mut edits
+        ));
+        assert_eq!(edits, [PointEdit::Removed(1)]);
+        edits.clear();
+        let pattern = paint_pattern(0);
+        paint_line(
+            &mut line,
+            (60.0, 30.0),
+            size,
+            (4, 0),
+            pattern,
+            false,
+            &mut edits,
+        );
+        assert!(
+            edits
+                .iter()
+                .any(|edit| matches!(edit, PointEdit::ManyAdded { .. })),
+            "{edits:?}"
+        );
     }
 }
