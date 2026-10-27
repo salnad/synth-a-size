@@ -1100,12 +1100,21 @@ impl ModulationManager {
             .iter()
             .find(|destination| destination.name == route.destination)?;
         let place = destination.meter?;
+        // slider->getValue(): the knob's shown amount, which for an aux knob
+        // is the end of its chain's, scaled up.
         let (amount, bipolar) = match values {
             Some(values) => (values.amount, values.bipolar),
-            None => (
-                host.value(slot_control(slot, "amount")),
-                host.value(slot_control(slot, "bipolar")) != 0.0,
-            ),
+            None => {
+                let (driven, share) = AuxLinks::new(self.routes()).driven(slot);
+                let driven = slot_control(driven, "amount");
+                let amount = self
+                    .pending_value(driven)
+                    .unwrap_or_else(|| host.value(driven));
+                (
+                    amount / share,
+                    host.value(slot_control(slot, "bipolar")) != 0.0,
+                )
+            }
         };
         let quad = amount_quad(
             place,
@@ -1708,32 +1717,34 @@ impl AuxLinks {
 
     /// The slot `slot`'s knob drives and the share of its value that slot
     /// takes: the end of its aux chain, halving at each step
-    /// (`getAuxMultiplier`, `sliderValueChanged`).
+    /// (`getAuxMultiplier`, `sliderValueChanged`). A cycle of amounts stops
+    /// before the first slot it would revisit (D27).
     pub fn driven(&self, slot: usize) -> (usize, f32) {
-        let (mut index, mut scale) = (slot, 1.0);
-        for _ in 0..MAX_MODULATION_CONNECTIONS {
-            let Some(&from) = self.to_from.get(&index) else {
-                break;
-            };
-            index = from;
-            scale *= 0.5;
-        }
-        (index, scale)
+        walk(&self.to_from, slot, 0.5)
     }
 
     /// The slot at the other end of `slot`'s chain, whose destination its
     /// knob reads in, and how many times larger (`setModulationSliderScale`).
+    /// A cycle stops as in [`driven`](Self::driven).
     pub fn display_end(&self, slot: usize) -> (usize, f32) {
-        let (mut index, mut scale) = (slot, 1.0);
-        for _ in 0..MAX_MODULATION_CONNECTIONS {
-            let Some(&to) = self.from_to.get(&index) else {
-                break;
-            };
-            index = to;
-            scale *= 2.0;
-        }
-        (index, scale)
+        walk(&self.from_to, slot, 2.0)
     }
+}
+
+/// Follows `links` from `slot`, scaling by `step` each move, until a slot
+/// has no link or the next is one already visited.
+fn walk(links: &HashMap<usize, usize>, slot: usize, step: f32) -> (usize, f32) {
+    let mut visited = vec![slot];
+    let (mut index, mut scale) = (slot, 1.0);
+    while let Some(&next) = links.get(&index) {
+        if visited.contains(&next) {
+            break;
+        }
+        visited.push(next);
+        index = next;
+        scale *= step;
+    }
+    (index, scale)
 }
 
 /// The 0-based slot of a `modulation_N_amount` control.
@@ -1769,7 +1780,16 @@ fn knob_slider(
     let aux = driven != route.slot;
     let name = slot_control(driven, "amount");
     let bypass = host.value(slot_control(route.slot, "bypass")) != 0.0;
-    let mut slider = Slider::new(name, SliderStyle::ModulationKnob { arc, bypass, aux });
+    // setAux reaches the amount and hover knobs, not the selected ones.
+    let dot = aux && kind != KnobKind::Selected;
+    let mut slider = Slider::new(
+        name,
+        SliderStyle::ModulationKnob {
+            arc,
+            bypass,
+            aux: dot,
+        },
+    );
     slider.value_scale = value_scale;
     // Tells it apart from the driven slot's own knob of the same kind.
     slider.instance = 1 + kind as u8 + if aux { 16 } else { 0 };
@@ -2013,6 +2033,17 @@ mod tests {
         assert_eq!(links.display_end(9), (0, 4.0));
         assert_eq!(links.display_end(4), (0, 2.0));
         assert_eq!(links.display_end(0), (0, 1.0));
+
+        // A cycle a preset can hold (D27): slots 2 and 3 on each other's
+        // amounts. Each walk stops before revisiting, one step in.
+        let cycle = AuxLinks::new(&[
+            route(2, "modulation_4_amount"),
+            route(3, "modulation_3_amount"),
+        ]);
+        assert_eq!(cycle.driven(3), (2, 0.5));
+        assert_eq!(cycle.driven(2), (3, 0.5));
+        assert_eq!(cycle.display_end(2), (3, 2.0));
+        assert_eq!(cycle.display_end(3), (2, 2.0));
     }
 
     /// `renderMeters`' value for each modulated control: the mono total,

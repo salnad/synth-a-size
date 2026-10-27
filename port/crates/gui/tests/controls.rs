@@ -3982,3 +3982,73 @@ fn the_amount_overlay_follows_a_knob_drag_and_hides_on_release() {
     harness.step();
     assert!(amount_overlay(&fixture).is_none());
 }
+
+/// LFO 1 on Macro 1 (slot 1), with LFO 2 on that slot's amount at 0.3
+/// (slot 2), as `modulations_aux` has it: slot 1's knobs show 0.6.
+fn lfo_1_aux_on_macro_1(fixture: &Fixture) {
+    let mut routing = fixture.synth.routing.lock().unwrap();
+    routing.add_modulation("lfo_1", "macro_control_1").unwrap();
+    routing
+        .add_modulation("lfo_2", "modulation_1_amount")
+        .unwrap();
+    drop(routing);
+    fixture.synth.set("modulation_2_amount", 0.3);
+}
+
+/// `addAuxConnection` calls `setAux` on the amount and hover knobs only: a
+/// selected knob drives the chain the same way but has no centre dot.
+#[test]
+fn a_selected_aux_knob_has_no_centre_dot() {
+    let fixture = Fixture::new();
+    lfo_1_aux_on_macro_1(&fixture);
+    let mut harness = fixture.harness();
+    harness.step();
+    let (source, _, _) = modulation_spots(&fixture);
+    click(&mut harness, source);
+    harness.step();
+    let of = |kind| {
+        knobs_of(&fixture, kind)
+            .into_iter()
+            .find(|knob| knob.route.slot == 0)
+            .unwrap()
+    };
+    let in_button = of(KnobKind::Source);
+    let selected = of(KnobKind::Selected);
+    for knob in [&in_button, &selected] {
+        assert_eq!(knob.slider.name, "modulation_2_amount");
+        assert_eq!(knob.slider.value_scale, 0.5);
+    }
+    assert!(matches!(
+        in_button.slider.style,
+        SliderStyle::ModulationKnob { aux: true, .. }
+    ));
+    assert!(matches!(
+        selected.slider.style,
+        SliderStyle::ModulationKnob { aux: false, .. }
+    ));
+}
+
+/// `showModulationAmountOverlay` draws `slider->getValue()`: an aux knob's
+/// shown amount (twice its aux slot's), not its own slot's, which is 0.
+#[test]
+fn an_aux_knobs_overlay_shows_its_shown_amount() {
+    let fixture = Fixture::new();
+    lfo_1_aux_on_macro_1(&fixture);
+    let mut harness = fixture.harness();
+    harness.step();
+    let knob = knobs_of(&fixture, KnobKind::Source)
+        .into_iter()
+        .find(|knob| knob.route.slot == 0)
+        .unwrap();
+    move_to(&mut harness, centre(knob.bounds));
+    let quad = amount_overlay(&fixture).expect("the overlay shows");
+    let info = Host::info("macro_control_1");
+    let percent = (fixture.synth.value("macro_control_1") - info.min) / (info.max - info.min);
+    let angle = 0.8 * std::f32::consts::PI;
+    let shown = 2.0 * fixture.synth.value("modulation_2_amount");
+    let (low, high) = (knob_angle(percent), knob_angle(percent + shown).min(angle));
+    assert!(high > low + 1.0, "{:?}", quad.shader_values);
+    for (value, expected) in quad.shader_values.iter().zip([low, high, low, high]) {
+        assert!((value - expected).abs() < 1e-5, "{:?}", quad.shader_values);
+    }
+}
