@@ -12,7 +12,7 @@
 //! parented to the plugin window where the platform allows it.
 
 use std::future::Future;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
@@ -199,6 +199,26 @@ pub fn take_result(ctx: &egui::Context, id: egui::Id) -> Option<Answer> {
         let position = dialogs.answered.iter().position(|(done, _)| *done == id)?;
         Some(dialogs.answered.remove(position).1)
     })
+}
+
+/// `File::revealToUser`: shows `path` in the file manager (selected, on
+/// macOS; its folder opened, elsewhere).
+pub fn reveal(path: &Path) {
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("open")
+        .arg("-R")
+        .arg(path)
+        .spawn();
+    #[cfg(not(target_os = "macos"))]
+    let result = {
+        let folder = if path.is_dir() {
+            path
+        } else {
+            path.parent().unwrap_or(path)
+        };
+        std::process::Command::new("xdg-open").arg(folder).spawn()
+    };
+    let _ = result;
 }
 
 #[cfg(test)]

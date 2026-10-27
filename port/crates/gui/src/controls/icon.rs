@@ -192,9 +192,10 @@ pub enum UpstreamIcon {
     Phaser,
     Reverb,
     DragDropArrows,
+    Folder,
 }
 
-pub(crate) const UPSTREAM_SVGS: [&str; 10] = [
+pub(crate) const UPSTREAM_SVGS: [&str; 11] = [
     include_str!("../../../../../vital/icons/chorus.svg"),
     include_str!("../../../../../vital/icons/compressor.svg"),
     include_str!("../../../../../vital/icons/delay.svg"),
@@ -205,10 +206,11 @@ pub(crate) const UPSTREAM_SVGS: [&str; 10] = [
     include_str!("../../../../../vital/icons/phaser.svg"),
     include_str!("../../../../../vital/icons/reverb.svg"),
     include_str!("../../../../../vital/icons/drag_drop_arrows.svg"),
+    include_str!("../../../../../vital/icons/folder.svg"),
 ];
 
 impl UpstreamIcon {
-    pub const ALL: [UpstreamIcon; 10] = [
+    pub const ALL: [UpstreamIcon; 11] = [
         UpstreamIcon::Chorus,
         UpstreamIcon::Compressor,
         UpstreamIcon::Delay,
@@ -219,6 +221,7 @@ impl UpstreamIcon {
         UpstreamIcon::Phaser,
         UpstreamIcon::Reverb,
         UpstreamIcon::DragDropArrows,
+        UpstreamIcon::Folder,
     ];
 
     /// The icon's outline (`Paths::chorus()` and so on).
@@ -246,6 +249,7 @@ impl UpstreamIcon {
             UpstreamIcon::Phaser => "phaser",
             UpstreamIcon::Reverb => "reverb",
             UpstreamIcon::DragDropArrows => "drag_drop_arrows",
+            UpstreamIcon::Folder => "folder",
         }
     }
 

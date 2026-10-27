@@ -14,7 +14,7 @@ use egui::Key;
 use sas_preset::preset_files;
 use sas_preset::user_folders::{self, compare_natural, Kind, PRESET_EXTENSION};
 
-use super::Panel;
+use super::{MenuOwner, Panel};
 use crate::controls::button::SynthButton;
 use crate::controls::icon;
 use crate::controls::path::{EndCapStyle, JointStyle, Transform};
@@ -26,9 +26,11 @@ use crate::interface::EditorModel;
 use crate::layout::Rect;
 use crate::local::{PRESET_STYLE_FILTERS, PRESET_STYLE_NAMES};
 use crate::paint::{PixelPainter, RectF};
+use crate::popup::{Menu, MenuItem};
 use crate::primitives::{Quad, QuadBatch, QuadKind};
 use crate::scope::Scope;
 use crate::section::{paint_body, paint_border, paint_tab_shadow};
+use crate::sections::selection_list::{Selection, SelectionEvent, SelectionList};
 use crate::skin::{ColorId, Section, ValueId};
 use crate::text::{Justify, Overflow};
 
@@ -374,6 +376,47 @@ pub struct PresetBrowser {
     /// External, Export, the arrows stepping through its folder), or none
     /// after a pick from the list or Initialize Preset.
     external: Option<PathBuf>,
+    /// `folder_list_`.
+    folders: SelectionList,
+    /// `PresetList::current_folder_`: the folder last chosen in the folder
+    /// list, whose presets a reload reads.
+    current_folder: Option<PathBuf>,
+    /// `click_preset_`: the row the menu was opened on.
+    click_preset: Option<PathBuf>,
+    /// `renaming_preset_` and the rename editor's bounds and text.
+    rename: Option<Rename>,
+    /// A preset the menu asked to delete, for the interface's
+    /// `DeleteSection`.
+    delete_request: Option<PathBuf>,
+}
+
+/// The rename editor over a row's name.
+#[derive(Clone, Debug)]
+struct Rename {
+    file: PathBuf,
+    bounds: Rect,
+    text: String,
+    /// Whether it has been given the keyboard yet.
+    focused: bool,
+}
+
+/// The row menu's choices (`PresetList::MenuOptions`).
+const OPEN_FILE_LOCATION: i32 = 1;
+const RENAME: i32 = 2;
+const DELETE: i32 = 3;
+
+/// The row menu's choice, for the list to answer.
+fn row_menu_choice() -> egui::Id {
+    egui::Id::unique("preset row menu")
+}
+
+fn row_menu_chosen(_: &crate::host::Host, ctx: &egui::Context, id: i32) {
+    ctx.data_mut(|data| data.insert_temp(row_menu_choice(), id));
+}
+
+/// `FileNameFilter`: characters a file name can't have.
+fn file_name_filter(text: &mut String) {
+    text.retain(|c| !"<>?*/|\\[]\":".contains(c));
 }
 
 impl Default for PresetBrowser {
@@ -391,6 +434,15 @@ impl Default for PresetBrowser {
             hover: None,
             selected: None,
             external: None,
+            folders: {
+                let mut folders = SelectionList::with_favourites_option();
+                folders.set_passthrough_folder_name(Kind::Presets.folder_name());
+                folders
+            },
+            current_folder: None,
+            click_preset: None,
+            rename: None,
+            delete_request: None,
         }
     }
 }
@@ -416,14 +468,136 @@ impl PresetBrowser {
         self.loaded = true;
         self.search.clear();
         self.favourites = model.favourites().into_iter().collect();
-        self.presets = user_folders::root(model.data_directory().as_deref())
+        self.reload_presets(model);
+        self.filter(&BTreeSet::new());
+        let root = user_folders::root(model.data_directory().as_deref());
+        self.folders.set_favourites(self.favourites.clone());
+        self.folders.set_selections(
+            root.map(|root| user_folders::directories(&root, Kind::Presets))
+                .unwrap_or_default(),
+        );
+    }
+
+    /// `LoadSave::getAllPresets`.
+    fn all_presets(model: &dyn EditorModel) -> Vec<PathBuf> {
+        user_folders::root(model.data_directory().as_deref())
             .map(|root| preset_files::all_files(&root, Kind::Presets, PRESET_EXTENSION))
             .unwrap_or_default()
-            .into_iter()
-            .map(Entry::read)
-            .collect();
+    }
+
+    /// `PresetList::setPresets`.
+    fn set_presets(&mut self, presets: Vec<PathBuf>) {
+        self.presets = presets.into_iter().map(Entry::read).collect();
         self.sort();
-        self.filter(&BTreeSet::new());
+    }
+
+    /// `PresetList::reloadPresets`: the current folder's presets, or every
+    /// preset without one.
+    fn reload_presets(&mut self, model: &dyn EditorModel) {
+        let presets = match &self.current_folder {
+            Some(folder) if folder.is_dir() => preset_files::files_under(folder, PRESET_EXTENSION),
+            _ => PresetBrowser::all_presets(model),
+        };
+        self.set_presets(presets);
+    }
+
+    /// The folder list's choice (`newSelection`, `allSelected`,
+    /// `favoritesSelected`).
+    fn folder_chosen(&mut self, model: &dyn EditorModel, event: SelectionEvent) {
+        match event {
+            SelectionEvent::Path(folder) => {
+                if folder.is_dir() {
+                    self.current_folder = Some(folder);
+                    self.reload_presets(model);
+                }
+            }
+            SelectionEvent::All => self.set_presets(PresetBrowser::all_presets(model)),
+            SelectionEvent::Favourites => {
+                let favourites = model.favourites().into_iter().collect::<BTreeSet<_>>();
+                let presets = PresetBrowser::all_presets(model)
+                    .into_iter()
+                    .filter(|path| favourites.contains(path))
+                    .collect();
+                self.set_presets(presets);
+            }
+        }
+    }
+
+    /// A preset the row menu asked to delete, once.
+    pub fn take_delete_request(&mut self) -> Option<PathBuf> {
+        self.delete_request.take()
+    }
+
+    /// `PresetBrowser::fileDeleted`.
+    pub fn file_deleted(&mut self, model: &dyn EditorModel) {
+        self.load_presets(model);
+    }
+
+    /// `respondToMenuCallback`.
+    fn respond_to_menu(&mut self, layout: &PresetBrowserLayout, choice: i32) {
+        let Some(file) = self.click_preset.clone() else {
+            return;
+        };
+        match choice {
+            OPEN_FILE_LOCATION => crate::controls::file_dialog::reveal(&file),
+            RENAME => {
+                let Some(row) = self
+                    .filtered
+                    .iter()
+                    .position(|&i| self.presets[i].path == file)
+                else {
+                    return;
+                };
+                let list = layout.list;
+                let width = list.width as f32;
+                let y = list.y + layout.title_width + row as i32 * layout.row_height
+                    - self.scroll.position.round() as i32;
+                let bounds = Rect::new(
+                    list.x + (STAR_WIDTH_PERCENT * width) as i32,
+                    y,
+                    (NAME_WIDTH_PERCENT * width) as i32,
+                    layout.row_height,
+                );
+                let text = file
+                    .file_stem()
+                    .map(|stem| stem.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                self.rename = Some(Rename {
+                    file,
+                    bounds,
+                    text,
+                    focused: false,
+                });
+            }
+            DELETE => self.delete_request = Some(file),
+            _ => {}
+        }
+    }
+
+    /// `finishRename`: a name that isn't blank renames the file to it as
+    /// typed (blank only is checked trimmed), keeping its extension, and the
+    /// list reads its presets again.
+    fn finish_rename(&mut self, model: &dyn EditorModel) {
+        let Some(rename) = self.rename.take() else {
+            return;
+        };
+        if rename.text.trim().is_empty() || !rename.file.exists() {
+            return;
+        }
+        let mut name = rename.text.clone();
+        if let Some(extension) = rename.file.extension() {
+            name.push('.');
+            name.push_str(&extension.to_string_lossy());
+        }
+        if let Some(parent) = rename.file.parent() {
+            let _ = std::fs::rename(&rename.file, parent.join(name));
+        }
+        self.reload_presets(model);
+    }
+
+    /// The folder list's rows, as it shows them.
+    pub fn folder_rows(&self) -> &[Selection] {
+        self.folders.rows()
     }
 
     /// The preset paths in the order the list shows them.
@@ -537,6 +711,13 @@ impl PresetBrowser {
         let scope = panel.scope;
         let model = panel.host.model();
         self.ensure_loaded(model);
+        if let Some(choice) = panel
+            .ui
+            .ctx()
+            .data_mut(|data| data.remove_temp::<i32>(row_menu_choice()))
+        {
+            self.respond_to_menu(layout, choice);
+        }
         self.show_info(panel, layout);
 
         let search = text_editor::single_line(
@@ -567,6 +748,14 @@ impl PresetBrowser {
         // textEditorTextChanged and buttonClicked: filterPresets.
         if search.changed || search.escape || styles != self.filter_styles {
             self.filter_presets(styles);
+        }
+
+        let mut set_favourite = |path: &Path, favourite: bool| model.set_favourite(path, favourite);
+        if let Some(event) =
+            self.folders
+                .show(panel, layout.folders, "preset folders", &mut set_favourite)
+        {
+            self.folder_chosen(model, event);
         }
 
         self.show_list(panel, layout);
@@ -712,8 +901,34 @@ impl PresetBrowser {
                 self.left_click(model, list, title_width, x - list.x as f32, y, row_at(y));
             }
         }
+        // menuClick: Open File Location, and Rename and Delete for a file
+        // that can be written.
+        if response.secondary_clicked() {
+            if let Some(hover) = self.hover {
+                let file = self.presets[self.filtered[hover]].path.clone();
+                let mut items = vec![MenuItem::new(OPEN_FILE_LOCATION, "Open File Location")];
+                let writable =
+                    std::fs::metadata(&file).is_ok_and(|meta| !meta.permissions().readonly());
+                if writable {
+                    items.push(MenuItem::new(RENAME, "Rename"));
+                    items.push(MenuItem::new(DELETE, "Delete"));
+                }
+                self.click_preset = Some(file);
+                let pos = response.interact_pointer_pos().unwrap_or_default();
+                panel.overlay.menu =
+                    Some(Menu::new(items, pos, MenuOwner::Setting(row_menu_chosen)));
+            }
+        }
+        // The wheel finishes a rename (mouseWheelMove).
+        if self.rename.is_some()
+            && panel.ui.rect_contains_pointer(list_rect)
+            && panel.ui.input(|input| input.smooth_scroll_delta.y != 0.0)
+        {
+            self.finish_rename(model);
+        }
 
         self.paint_rows(panel, layout, view, position);
+        self.show_rename(panel, model);
     }
 
     /// `PresetList::leftClick`, at `x` from the list's left and `y` in
@@ -763,6 +978,37 @@ impl PresetBrowser {
             }
         } else {
             self.new_preset_selected(model, path);
+        }
+    }
+
+    /// The rename editor: Return or losing the keyboard renames
+    /// (`textEditorReturnKeyPressed`, `textEditorFocusLost`). Escape hides it,
+    /// which takes its keyboard, so it renames too.
+    fn show_rename(&mut self, panel: &mut Panel, model: &dyn EditorModel) {
+        let Some(rename) = &mut self.rename else {
+            return;
+        };
+        let scope = panel.scope;
+        if !rename.focused {
+            text_editor::focus_select_all(panel.ui, "preset rename", &rename.text);
+            rename.focused = true;
+        }
+        text_editor::paint_background(panel.pixels, &scope, rename.bounds);
+        let events = text_editor::single_line(
+            panel.ui,
+            panel.pixels,
+            &scope,
+            "preset rename",
+            rename.bounds,
+            &mut rename.text,
+            "",
+        );
+        file_name_filter(&mut rename.text);
+        if events.return_pressed || events.escape || events.lost_focus {
+            if events.escape {
+                panel.ui.memory_mut(|memory| memory.stop_text_input());
+            }
+            self.finish_rename(model);
         }
     }
 

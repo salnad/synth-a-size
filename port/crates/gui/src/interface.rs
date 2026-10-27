@@ -40,6 +40,7 @@ use crate::paint::{PixelPainter, RectF};
 use crate::scope::Scope;
 use crate::sections::advanced::{self, AdvancedLayout, AdvancedTab};
 use crate::sections::bend::{self, BendLayout, BendSection};
+use crate::sections::delete_section::{DeleteOutcome, DeleteSection};
 use crate::sections::effects::EffectsTab;
 use crate::sections::extra_mod::{self, ExtraModLayout, ExtraModSection};
 use crate::sections::keyboard::{self, KeyboardLayout, PlayingNote};
@@ -456,6 +457,8 @@ pub struct Interface {
     preset_browser_visible: bool,
     /// The visibility the browser last saw (`visibilityChanged`).
     preset_browser_was_visible: bool,
+    /// `delete_section_`, while it asks before deleting a preset.
+    delete_section: Option<DeleteSection>,
     preset_modified: preset_selector::Modified,
 }
 
@@ -485,6 +488,7 @@ impl Interface {
             preset_browser: PresetBrowser::default(),
             preset_browser_visible: false,
             preset_browser_was_visible: false,
+            delete_section: None,
             preset_modified: preset_selector::Modified::default(),
         }
     }
@@ -505,6 +509,18 @@ impl Interface {
     /// editor window does.
     pub fn reload_presets(&mut self) {
         self.preset_browser.reload();
+    }
+
+    /// The preset the delete overlay asks about, while it shows.
+    pub fn deleting(&self) -> Option<&Path> {
+        self.delete_section
+            .as_ref()
+            .map(|section| section.file.as_path())
+    }
+
+    /// The preset browser's folder list as it shows it.
+    pub fn browser_folders(&self) -> Vec<crate::sections::selection_list::Selection> {
+        self.preset_browser.folder_rows().to_vec()
     }
 
     /// The preset browser's list as it shows it.
@@ -609,6 +625,21 @@ impl Interface {
         let top = Scope::top(&self.skin, layout.size_ratio);
         self.overlay.modulation.paint_drag(host, &pixels, &top);
         self.show_overlay(ui, host, &pixels, &layout, Rect::new(0, 0, width, height));
+        // The delete overlay, over everything (deleteRequested, fileDeleted).
+        if let Some(file) = self.preset_browser.take_delete_request() {
+            self.delete_section = Some(DeleteSection { file });
+        }
+        if let Some(section) = self.delete_section.clone() {
+            let top = Scope::top(&self.skin, layout.size_ratio);
+            match section.show(ui, &pixels, &top, Rect::new(0, 0, width, height)) {
+                DeleteOutcome::Open => {}
+                DeleteOutcome::Cancelled => self.delete_section = None,
+                DeleteOutcome::Deleted => {
+                    self.delete_section = None;
+                    self.preset_browser.file_deleted(host.model());
+                }
+            }
+        }
     }
 
     /// The header's live parts: the volume section and the oscilloscope.

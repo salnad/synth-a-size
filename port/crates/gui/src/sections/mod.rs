@@ -12,6 +12,7 @@
 
 pub mod advanced;
 pub mod bend;
+pub mod delete_section;
 pub mod effects;
 pub mod envelope;
 pub mod extra_mod;
@@ -26,6 +27,7 @@ pub mod preset_browser;
 pub mod preset_selector;
 pub mod random;
 pub mod sample;
+pub mod selection_list;
 pub mod synthesis;
 pub mod voice;
 pub mod volume;

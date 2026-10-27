@@ -1,5 +1,5 @@
 // Copyright 2013-2019 Matt Tytel (upstream); synth-a-size contributors (port).
-// Portions Copyright (c) 2020 Raw Material Software Limited (JUCE 6: juce_graphics, GPL-3.0-only).
+// Portions Copyright (c) 2020 Raw Material Software Limited (JUCE 6: juce_graphics, GPL-3.0-only; juce_gui_basics, GPL-3.0-only).
 // SPDX-License-Identifier: GPL-3.0-or-later AND GPL-3.0-only
 
 //! Filled shapes: the parts of JUCE's `Path` and `PathStrokeType` the
@@ -646,62 +646,190 @@ fn attribute<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
     None
 }
 
-/// SVG path data with M, L, C and Z (absolute), as upstream's icons use.
-fn parse_path_data(data: &str) -> Result<Path, String> {
-    let mut path = Path::new();
-    let mut numbers = Vec::new();
-    let mut command = None;
-    let flush = |path: &mut Path, command: Option<char>, numbers: &mut Vec<f32>| {
-        let Some(command) = command else {
-            return Ok(());
-        };
-        let arity = match command {
-            'M' | 'L' => 2,
-            'C' => 6,
-            'Z' | 'z' => 0,
-            other => return Err(format!("unsupported path command {other}")),
-        };
-        if arity == 0 {
-            path.close();
-        } else {
-            if numbers.is_empty() || !numbers.len().is_multiple_of(arity) {
-                return Err(format!("{command} takes {arity} numbers"));
-            }
-            for (i, chunk) in numbers.chunks(arity).enumerate() {
-                match (command, i) {
-                    ('M', 0) => path.move_to(chunk[0], chunk[1]),
-                    ('M' | 'L', _) => path.line_to(chunk[0], chunk[1]),
-                    _ => path.cubic_to(
-                        (chunk[0], chunk[1]),
-                        (chunk[2], chunk[3]),
-                        (chunk[4], chunk[5]),
-                    ),
+/// SVG path data's numbers and commands. A number ends where another sign,
+/// a second decimal point or a letter starts (`-1.1.9` is -1.1 and 0.9).
+fn path_tokens(data: &str) -> Result<Vec<PathToken>, String> {
+    let mut tokens = Vec::new();
+    let mut chars = data.chars().peekable();
+    while let Some(&c) = chars.peek() {
+        if c.is_ascii_alphabetic() && c != 'e' && c != 'E' {
+            tokens.push(PathToken::Command(c));
+            chars.next();
+        } else if c.is_ascii_digit() || c == '.' || c == '-' || c == '+' {
+            let mut number = String::new();
+            let (mut dot, mut exponent) = (false, false);
+            while let Some(&c) = chars.peek() {
+                let sign_ok = number.is_empty() || number.ends_with(['e', 'E']);
+                if c.is_ascii_digit()
+                    || ((c == '-' || c == '+') && sign_ok)
+                    || (c == '.' && !dot && !exponent)
+                    || ((c == 'e' || c == 'E') && !exponent && !number.is_empty())
+                {
+                    dot |= c == '.';
+                    exponent |= c == 'e' || c == 'E';
+                    number.push(c);
+                    chars.next();
+                } else {
+                    break;
                 }
             }
-        }
-        numbers.clear();
-        Ok(())
-    };
-    let mut token = String::new();
-    for c in data.chars().chain(std::iter::once(' ')) {
-        let starts_number = c == '-' && !token.is_empty() && !token.ends_with(['e', 'E']);
-        if c.is_ascii_digit() || c == '.' || (c == '-' && !starts_number) || c == 'e' {
-            token.push(c);
-            continue;
-        }
-        if !token.is_empty() {
-            numbers.push(token.parse().map_err(|_| format!("bad number {token}"))?);
-            token.clear();
-        }
-        if starts_number {
-            token.push(c);
-        } else if c.is_ascii_alphabetic() {
-            flush(&mut path, command, &mut numbers)?;
-            command = Some(c);
+            let value = number.parse().map_err(|_| format!("bad number {number}"))?;
+            tokens.push(PathToken::Number(value));
+        } else {
+            chars.next();
         }
     }
-    flush(&mut path, command, &mut numbers)?;
+    Ok(tokens)
+}
+
+enum PathToken {
+    Command(char),
+    Number(f32),
+}
+
+/// SVG path data (`Drawable::parseSVGPath`): absolute and relative M, L,
+/// H, V, C, S, A and Z. Arcs are drawn as `Path::addCentredArc` draws them,
+/// from their endpoint form (the SVG spec's F.6.5); upstream's icons don't
+/// rotate their ellipses.
+fn parse_path_data(data: &str) -> Result<Path, String> {
+    let tokens = path_tokens(data)?;
+    let mut path = Path::new();
+    let (mut x, mut y) = (0.0f32, 0.0f32);
+    let (mut start_x, mut start_y) = (0.0f32, 0.0f32);
+    // The last cubic's second control point, for S.
+    let mut last_control: Option<(f32, f32)> = None;
+    let mut index = 0;
+    let mut command = None;
+    while index < tokens.len() {
+        if let PathToken::Command(c) = tokens[index] {
+            command = Some(c);
+            index += 1;
+            if c == 'Z' || c == 'z' {
+                path.close();
+                (x, y) = (start_x, start_y);
+                last_control = None;
+                continue;
+            }
+        }
+        let Some(c) = command else {
+            return Err("path data starts with a number".to_string());
+        };
+        let arity = match c.to_ascii_uppercase() {
+            'M' | 'L' => 2,
+            'H' | 'V' => 1,
+            'C' => 6,
+            'S' => 4,
+            'A' => 7,
+            _ => return Err(format!("unsupported path command {c}")),
+        };
+        let mut n = [0.0f32; 7];
+        for value in n.iter_mut().take(arity) {
+            match tokens.get(index) {
+                Some(PathToken::Number(number)) => *value = *number,
+                _ => return Err(format!("{c} takes {arity} numbers")),
+            }
+            index += 1;
+        }
+        let relative = c.is_ascii_lowercase();
+        let (ox, oy) = if relative { (x, y) } else { (0.0, 0.0) };
+        let mut control = None;
+        match c.to_ascii_uppercase() {
+            'M' => {
+                (x, y) = (ox + n[0], oy + n[1]);
+                path.move_to(x, y);
+                (start_x, start_y) = (x, y);
+                // Further pairs are lines.
+                command = Some(if relative { 'l' } else { 'L' });
+            }
+            'L' => {
+                (x, y) = (ox + n[0], oy + n[1]);
+                path.line_to(x, y);
+            }
+            'H' => {
+                x = ox + n[0];
+                path.line_to(x, y);
+            }
+            'V' => {
+                y = oy + n[0];
+                path.line_to(x, y);
+            }
+            'C' => {
+                let c1 = (ox + n[0], oy + n[1]);
+                let c2 = (ox + n[2], oy + n[3]);
+                (x, y) = (ox + n[4], oy + n[5]);
+                path.cubic_to(c1, c2, (x, y));
+                control = Some(c2);
+            }
+            'S' => {
+                let c1 = last_control.map_or((x, y), |(cx, cy)| (2.0 * x - cx, 2.0 * y - cy));
+                let c2 = (ox + n[0], oy + n[1]);
+                (x, y) = (ox + n[2], oy + n[3]);
+                path.cubic_to(c1, c2, (x, y));
+                control = Some(c2);
+            }
+            _ => {
+                if n[2] != 0.0 {
+                    return Err("rotated arcs are not supported".to_string());
+                }
+                let end = (ox + n[5], oy + n[6]);
+                arc_to(
+                    &mut path,
+                    (x, y),
+                    (n[0], n[1]),
+                    n[3] != 0.0,
+                    n[4] != 0.0,
+                    end,
+                );
+                (x, y) = end;
+            }
+        }
+        last_control = control;
+    }
     Ok(path)
+}
+
+/// An SVG arc from `from` to `to` with radii `radii`, as its centre form
+/// (SVG F.6.5 and F.6.6), continuing the current subpath.
+fn arc_to(
+    path: &mut Path,
+    from: (f32, f32),
+    radii: (f32, f32),
+    large: bool,
+    sweep: bool,
+    to: (f32, f32),
+) {
+    let (mut rx, mut ry) = (radii.0.abs(), radii.1.abs());
+    if rx == 0.0 || ry == 0.0 || from == to {
+        path.line_to(to.0, to.1);
+        return;
+    }
+    let (x1, y1) = ((from.0 - to.0) / 2.0, (from.1 - to.1) / 2.0);
+    let scale = (x1 * x1) / (rx * rx) + (y1 * y1) / (ry * ry);
+    if scale > 1.0 {
+        rx *= scale.sqrt();
+        ry *= scale.sqrt();
+    }
+    let numerator = (rx * rx * ry * ry - rx * rx * y1 * y1 - ry * ry * x1 * x1).max(0.0);
+    let denominator = rx * rx * y1 * y1 + ry * ry * x1 * x1;
+    let mut factor = (numerator / denominator).sqrt();
+    if large == sweep {
+        factor = -factor;
+    }
+    let (cx1, cy1) = (factor * rx * y1 / ry, -factor * ry * x1 / rx);
+    let centre = (cx1 + (from.0 + to.0) / 2.0, cy1 + (from.1 + to.1) / 2.0);
+    let angle = |ux: f32, uy: f32| uy.atan2(ux);
+    let start = angle((x1 - cx1) / rx, (y1 - cy1) / ry);
+    let end = angle((-x1 - cx1) / rx, (-y1 - cy1) / ry);
+    let mut delta = end - start;
+    if sweep && delta < 0.0 {
+        delta += 2.0 * PI;
+    } else if !sweep && delta > 0.0 {
+        delta -= 2.0 * PI;
+    }
+    // addCentredArc measures clockwise from twelve o'clock.
+    let from_angle = start + PI / 2.0;
+    path.add_centred_arc(centre, (rx, ry), from_angle, from_angle + delta);
+    path.line_to(to.0, to.1);
 }
 
 #[cfg(test)]

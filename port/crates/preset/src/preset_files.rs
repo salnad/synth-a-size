@@ -14,10 +14,10 @@ use sas_common::json;
 
 use crate::user_folders::{self, compare_paths, Kind};
 
-/// `LoadSave::getAllFilesOfTypeInDirectories`: every file with `extension`
-/// in the kind's folders (`user_folders::directories`) and the folders
-/// inside them, in natural path order (upstream takes the file system's).
-pub fn all_files(root: &Path, kind: Kind, extension: &str) -> Vec<PathBuf> {
+/// `File::findChildFiles(.., findFiles, true, "*.<extension>")`: every file
+/// with `extension` in `folder` and the folders inside it, in natural path
+/// order (upstream takes the file system's).
+pub fn files_under(folder: &Path, extension: &str) -> Vec<PathBuf> {
     fn walk(folder: &Path, extension: &str, files: &mut Vec<PathBuf>) {
         let Ok(entries) = std::fs::read_dir(folder) else {
             return;
@@ -31,9 +31,19 @@ pub fn all_files(root: &Path, kind: Kind, extension: &str) -> Vec<PathBuf> {
         }
     }
     let mut files = Vec::new();
-    for folder in user_folders::directories(root, kind) {
-        walk(&folder, extension, &mut files);
-    }
+    walk(folder, extension, &mut files);
+    files.sort_by(|a, b| compare_paths(a, b));
+    files
+}
+
+/// `LoadSave::getAllFilesOfTypeInDirectories`: every file with `extension`
+/// in the kind's folders (`user_folders::directories`) and the folders
+/// inside them.
+pub fn all_files(root: &Path, kind: Kind, extension: &str) -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = user_folders::directories(root, kind)
+        .iter()
+        .flat_map(|folder| files_under(folder, extension))
+        .collect();
     files.sort_by(|a, b| compare_paths(a, b));
     files
 }
