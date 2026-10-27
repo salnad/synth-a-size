@@ -58,15 +58,24 @@ controls in G4c-3.
     without clearing row 6.
   - That ordering belongs to the harness's load-before-attach. G4c-2 takes
     the selection rules.
-- The source and destination menus, sorting by heading, and the remap
-  section's controls and readouts (G4c-2, G4c-3).
+- The source and destination menus, and sorting by heading (G4c-2).
+- The list's live readouts (`ModulationMatrix::readouts_`, a
+  `ModulationMeterReadouts` `BarRenderer` of 64 bars, G4c-3).
+  - Each connected row's `modulation_amount_N` status is a 2 px bar along
+    the top of its destination box (`getMeterBounds`, `setMeterActive`).
+  - It is drawn left then right, in `kModulationMeterLeft` and
+    `kModulationMeterRight`, offset by the scroll.
+  - Neither committed view runs the engine, so neither frame shows them: a
+    clear value gives a zero-length bar.
+- The remap section's controls (G4c-3).
 
 **Verified.**
 
 - **Gallery against ref-gui:**
   - `init_matrix`: pixels more than 24 off in the list area go from 22,696
-    (nothing drawn) to 1,313. They are the "-" glyphs one pixel low, the
-    port's usual text difference.
+    (nothing drawn) to 1,313. 1,303 of them are the heading labels (SOURCE
+    to DESTINATION, y 59 to 69), about a pixel off in the usual text
+    rasterisation. Only 10 are row 0's "-" glyphs, one pixel low.
   - New view `modulations_matrix` (the `modulations` preset on the Matrix
     tab): all seven rows and the empty eighth match upstream in place,
     text, toggles, curves and bars, except row 6's highlight above.
