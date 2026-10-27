@@ -306,6 +306,29 @@ pub fn loop_arrow() -> &'static Path {
     })
 }
 
+/// `Paths::bipolar`: a dot with arrows out to either side. (Upstream strokes
+/// both arrows from its first outline; the second is empty.)
+pub fn bipolar() -> &'static Path {
+    static PATH: OnceLock<Path> = OnceLock::new();
+    PATH.get_or_init(|| {
+        let mut outline = outline(&[(0.3, 0.5), (0.0, 0.5)]);
+        outline.move_to(0.7, 0.5);
+        outline.line_to(1.0, 0.5);
+        let arrows = outline.stroked_with_arrowheads(
+            0.12,
+            JointStyle::Curved,
+            EndCapStyle::Rounded,
+            (0.0, 0.0),
+            (0.4, 0.26),
+        );
+        let mut path = Path::new();
+        path.add_ellipse(0.4, 0.4, 0.2, 0.2);
+        path.add_path(&arrows);
+        pad(&mut path, 0.0, 1.0, 0.2);
+        path
+    })
+}
+
 /// `Paths::bounce`: two arrows out from the middle.
 pub fn bounce() -> &'static Path {
     static PATH: OnceLock<Path> = OnceLock::new();
@@ -607,6 +630,7 @@ pub enum Icon {
     PaintBrush,
     HalfSinCurve,
     MagnifyingGlass,
+    Bipolar,
 }
 
 impl Icon {
@@ -621,6 +645,7 @@ impl Icon {
             Icon::PaintBrush => "icon paint brush",
             Icon::HalfSinCurve => "icon half sin curve",
             Icon::MagnifyingGlass => "icon magnifying glass",
+            Icon::Bipolar => "icon bipolar",
         }
     }
 
@@ -634,6 +659,7 @@ impl Icon {
             Icon::PaintBrush => paint_brush(),
             Icon::HalfSinCurve => half_sin_curve(),
             Icon::MagnifyingGlass => magnifying_glass(),
+            Icon::Bipolar => bipolar(),
         }
     }
 }

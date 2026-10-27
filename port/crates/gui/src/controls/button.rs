@@ -34,6 +34,9 @@ const HOVER_INC: f32 = 0.2;
 pub enum ButtonStyle {
     /// `kTextButton`: the label on a text-component background.
     Text(&'static str),
+    /// `kJustText` (`setNoBackground`): the label alone, `on` while toggled
+    /// and `off` otherwise (`BypassButton` swaps them).
+    JustText { off: &'static str, on: &'static str },
     /// `kPowerButton`: a dot, with a halo while hovered or pressed
     /// (`SynthSection::setActivator`).
     Power,
@@ -61,6 +64,15 @@ impl SynthButton {
         SynthButton {
             name,
             style: ButtonStyle::Text(text),
+        }
+    }
+
+    /// A text button without a background (`setNoBackground`), reading
+    /// `on` while toggled and `off` otherwise.
+    pub fn just_text(name: &'static str, off: &'static str, on: &'static str) -> SynthButton {
+        SynthButton {
+            name,
+            style: ButtonStyle::JustText { off, on },
         }
     }
 
@@ -139,6 +151,17 @@ impl SynthButton {
                 scope,
                 bounds,
                 text,
+                true,
+                toggled,
+                down,
+                state.hover_amount,
+            ),
+            ButtonStyle::JustText { off, on } => paint_text_button(
+                layer,
+                scope,
+                bounds,
+                if toggled { on } else { off },
+                false,
                 toggled,
                 down,
                 state.hover_amount,
@@ -194,16 +217,27 @@ pub fn text_toggle(
         ui.ctx().request_repaint();
     }
     ui.data_mut(|data| data.insert_temp(id, state));
-    paint_text_button(layer, scope, bounds, text, on, down, state.hover_amount);
+    paint_text_button(
+        layer,
+        scope,
+        bounds,
+        text,
+        true,
+        on,
+        down,
+        state.hover_amount,
+    );
     clicked
 }
 
 /// `OpenGlButtonComponent::renderTextButton` with the text style's colours.
+#[allow(clippy::too_many_arguments)]
 fn paint_text_button(
     layer: &mut Layer,
     scope: &Scope,
     bounds: Rect,
     text: &str,
+    background: bool,
     toggled: bool,
     down: bool,
     hover_amount: f32,
@@ -232,13 +266,15 @@ fn paint_text_button(
         active.interpolated_with(hover_colour, hover_amount)
     };
 
-    let mut background = Quad::new(
-        QuadKind::RoundedRectangle,
-        bounds.into(),
-        scope.color(ColorId::TextComponentBackground),
-    );
-    background.rounding = scope.value(ValueId::LabelBackgroundRounding);
-    layer.quad(background);
+    if background {
+        let mut background = Quad::new(
+            QuadKind::RoundedRectangle,
+            bounds.into(),
+            scope.color(ColorId::TextComponentBackground),
+        );
+        background.rounding = scope.value(ValueId::LabelBackgroundRounding);
+        layer.quad(background);
+    }
     let font_size = scope.value(ValueId::ButtonFontSize);
     layer.fitted_text(text, bounds, Face::Mono, font_size, colour);
 }

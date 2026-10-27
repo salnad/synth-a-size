@@ -46,6 +46,7 @@ use crate::sections::delete_section::{DeleteOutcome, DeleteSection};
 use crate::sections::effects::EffectsTab;
 use crate::sections::extra_mod::{self, ExtraModLayout, ExtraModSection};
 use crate::sections::keyboard::{self, KeyboardLayout, PlayingNote};
+use crate::sections::matrix::MatrixTab;
 use crate::sections::modulation::ModulationInterface;
 use crate::sections::oscillator::NUM_OSCILLATORS;
 use crate::sections::portamento::{self, PortamentoLayout, PortamentoSection};
@@ -506,6 +507,7 @@ pub struct Interface {
     locals: Arc<LocalValues>,
     effects: EffectsTab,
     advanced: AdvancedTab,
+    matrix: MatrixTab,
     preset_browser: PresetBrowser,
     /// `preset_browser_->isVisible()`.
     preset_browser_visible: bool,
@@ -551,6 +553,7 @@ impl Interface {
             locals: Arc::default(),
             effects: EffectsTab::default(),
             advanced: AdvancedTab::default(),
+            matrix: MatrixTab::default(),
             preset_browser: PresetBrowser::default(),
             preset_browser_visible: false,
             preset_browser_was_visible: false,
@@ -967,8 +970,9 @@ impl Interface {
             Tab::Effects => self
                 .effects
                 .show(ui, host, pixels, layout, &top, &mut self.overlay),
-            // G4: the modulation matrix.
-            Tab::Matrix => {}
+            Tab::Matrix => self
+                .matrix
+                .show(ui, host, pixels, &top, &mut self.overlay, layout.main),
             Tab::Advanced => {
                 let advanced_layout = AdvancedLayout::new(&top, layout.main);
                 let scope = top.within(advanced::SKIN);

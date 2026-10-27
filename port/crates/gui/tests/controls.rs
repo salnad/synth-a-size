@@ -4152,3 +4152,56 @@ fn without_a_wider_window_the_open_drawer_overlays_the_editor() {
     assert!(panel.min.y >= placement.header_bottom);
     assert!((panel.width() - sas_gui::chat::PANEL_WIDTH).abs() < 1.0);
 }
+
+/// The Matrix tab's row for list position `position`.
+fn matrix_row(fixture: &Fixture, position: usize) -> sas_gui::sections::matrix::RowLayout {
+    use sas_gui::sections::matrix::{self, MatrixLayout, RowLayout};
+    let interface = fixture.interface.borrow();
+    let layout = FullLayout::new(interface.skin(), 1400, 820);
+    let scope = Scope::top(interface.skin(), layout.size_ratio).within(matrix::SKIN);
+    let tab = MatrixLayout::new(&scope, layout.main);
+    RowLayout::new(&scope, tab.row(position, 0))
+}
+
+/// A row's toggles and sliders are its slot's host controls
+/// (`ModulationMatrixRow`'s `SynthButton`s and `SynthSlider`s): one gesture
+/// each.
+#[test]
+fn a_matrix_rows_controls_are_its_slots() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    fixture.take_log();
+    let row = matrix_row(&fixture, 0);
+    click(&mut harness, centre(row.bypass));
+    assert_eq!(
+        fixture.take_log(),
+        [
+            "begin modulation_1_bypass",
+            "set modulation_1_bypass",
+            "end modulation_1_bypass"
+        ]
+    );
+    harness.step();
+    assert_eq!(fixture.synth.value("modulation_1_bypass"), 1.0);
+    let start = centre(row.amount);
+    drag(
+        &mut harness,
+        start,
+        start + egui::vec2(40.0, 0.0),
+        Modifiers::NONE,
+    );
+    assert_eq!(
+        fixture.take_log(),
+        [
+            "begin modulation_1_amount",
+            "set modulation_1_amount",
+            "end modulation_1_amount"
+        ]
+    );
+}
