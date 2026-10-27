@@ -177,6 +177,7 @@ impl LineSourceOverlay {
             paint: false,
             paint_pattern: PAINT_PATTERN,
             phase: None,
+            active: true,
         }
     }
 
