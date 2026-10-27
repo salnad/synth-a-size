@@ -214,6 +214,11 @@ repeat the check in FL Studio where the note says so.
     - A host that refuses the wider window should leave the window as it
       was, with the chat over the editor's right side (the overlay), within
       about a second and without a stuck, half-drawn strip.
+    - After opening the drawer, wait a few seconds: the window should stay
+      wide. The editor takes no answer from the host within a second
+      (`HOST_ANSWER_TIMEOUT`) as a refusal and asks for the old size back,
+      so a host that accepts slowly would show as the window shrinking
+      back. If it does, the timeout needs raising for that host.
     - *REAPER:* honours VST3's `resizeView` on its floating FX windows and
       answers with `onSize`, so the drawer should dock there. Check a docked
       FX window too, where REAPER may not grow the dock. FL Studio wraps
