@@ -48,7 +48,8 @@ a0143c9 until #195 lands on main).
     listener call. Upstream commits the double click's release just before
     the reset, so its table plays the old power until the next commit. The
     port sees both in one frame and commits the shape with the reset, so
-    the saved shape and the table agree.
+    the saved shape and the table agree (D35; the menu's Reset Power, which
+    upstream also leaves uncommitted, commits the same way).
 - The grid sizes set the editor's grid. Upstream also re-renders the
   playhead's frame for them (`notifyChanged(false)`), which changes
   nothing, so the port doesn't. Each wheel event over the editor steps the

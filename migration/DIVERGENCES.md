@@ -910,6 +910,27 @@ MCP server) extends this entry when it lands.*
   that was loaded into another row.
 - **Approved:** coordinator, 2026-10-27.
 
+### D35. A Line Source's power reset commits with the double click
+
+- **Differs:** a double click on a Line Source keyframe's power (with
+  Shift, every power) in the wavetable editor's Line Source overlay.
+- **Upstream:** the second click's `mouseUp` calls `drawUp`, whose
+  `powersChanged(true)` commits the keyframe as it is
+  (`WaveLineSourceOverlay::notifyChanged(true)`). JUCE then calls
+  `LineEditor::mouseDoubleClick`, which resets the power in the keyframe's
+  shape with no listener call, so the table keeps playing the old power
+  until the next commit while the keyframe, and a saved preset, already
+  hold the reset one.
+- **Port:** the editor reports the release and the reset in one frame, and
+  the overlay commits the shape with the reset in it
+  (`sections/line_source_overlay.rs`), so the table plays the reset power
+  at once. The menu's Reset Power, which upstream also leaves for the next
+  commit, commits the same way.
+- **Why:** the port commits a shape the section owns rather than editing
+  the document in place, so a change left uncommitted wouldn't be saved
+  either. Committing it keeps the saved shape and the sound in agreement.
+- **Approved:** coordinator, 2026-10-27.
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change
