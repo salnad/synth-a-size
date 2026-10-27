@@ -88,8 +88,9 @@ pub struct SynthPlugin<E: Engine> {
     processor: BlockProcessor<E>,
     telemetry: Telemetry,
     keyboard: KeyboardHandle,
-    /// The editor window's size, kept while the window is closed.
-    editor_state: Arc<sas_gui::nice_plug_egui::EguiEditorState>,
+    /// The editor window's size and whether the chat's drawer is open, kept
+    /// while the window is closed.
+    editor_state: sas_gui::EditorState,
     /// The LLM chat (off until the user turns it on), kept while the window
     /// is closed.
     chat: Arc<chat::PluginChat>,

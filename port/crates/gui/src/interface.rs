@@ -26,13 +26,14 @@ use sas_engine::Tuning;
 use sas_preset::user_folders::{self, Kind};
 use sas_preset::{GuiConnection, SampleState, SlotValues};
 
-use crate::chat::{ChatPlacement, ChatStyle};
+use crate::chat::{ChatMode, ChatPlacement, ChatStyle};
 use crate::colour::Colour;
 use crate::controls::format;
 use crate::controls::oscilloscope;
 use crate::controls::paths;
 use crate::controls::shape_button::{Shape, ShapeButton, ShapeColours};
 use crate::controls::tab_selector::{self, TabSelector};
+use crate::drawer::{self, DrawerState};
 use crate::fonts::Face;
 use crate::host::{Host, HostParam};
 use crate::layout::{FullLayout, Rect};
@@ -507,6 +508,9 @@ pub struct Interface {
     /// The save section opens for the preset next frame.
     save_requested: bool,
     preset_modified: preset_selector::Modified,
+    /// Whether the chat's drawer is open, shared with the editor so it is
+    /// kept while the window is closed.
+    drawer: DrawerState,
 }
 
 impl Default for Interface {
@@ -539,7 +543,29 @@ impl Interface {
             save_section: SaveSection::default(),
             save_requested: false,
             preset_modified: preset_selector::Modified::default(),
+            drawer: DrawerState::default(),
         }
+    }
+
+    /// Keeps the drawer's open state in `drawer`, the plugin instance's.
+    pub fn set_drawer_state(&mut self, drawer: DrawerState) {
+        self.drawer = drawer;
+    }
+
+    /// Whether the chat's drawer is open: the window is widened for it when
+    /// the host allows, and the chat shows in it.
+    pub fn drawer_open(&self) -> bool {
+        self.drawer.is_open()
+    }
+
+    pub fn set_drawer_open(&mut self, open: bool) {
+        self.drawer.set_open(open);
+    }
+
+    /// A window `area` (points) split between upstream's layout and the
+    /// drawer, if it's open and docked.
+    pub fn drawer_split(&self, area: egui::Rect, pixels_per_point: f32) -> drawer::Split {
+        drawer::split(area, pixels_per_point, self.drawer_open())
     }
 
     pub fn skin(&self) -> &Skin {
@@ -637,12 +663,21 @@ impl Interface {
         self.show_in(ui, area, host);
     }
 
-    /// Draws the editor into `area` (points) and handles its input.
+    /// Draws the editor into a window at `area` (points) and handles its
+    /// input. A docked drawer keeps its strip of the window; nothing is
+    /// drawn there.
     pub fn show_in(&mut self, ui: &mut Ui, area: egui::Rect, host: &Host) {
         let locals = self.locals.clone();
         let host = &host.with_locals(&locals);
         self.preset_modified.update(host);
         let pixels_per_point = ui.ctx().pixels_per_point();
+        let split = self.drawer_split(area, pixels_per_point);
+        if let Some(drawer) = split.drawer {
+            // A plain background until the chat draws over it.
+            let background = Scope::top(&self.skin, 1.0).color(ColorId::Background);
+            ui.painter().rect_filled(drawer, 0.0, background.to_egui());
+        }
+        let area = split.editor;
         let width = (area.width() * pixels_per_point).round() as i32;
         let height = (area.height() * pixels_per_point).round() as i32;
         let layout = FullLayout::new(&self.skin, width, height);
@@ -1003,6 +1038,8 @@ impl Interface {
     /// toggle in the logo section (D13, D14), the panel inside the editor
     /// below the header, coloured from the Overlay skin section.
     pub fn chat_placement(&self, area: egui::Rect, pixels_per_point: f32) -> ChatPlacement {
+        let split = self.drawer_split(area, pixels_per_point);
+        let area = split.editor;
         let width = (area.width() * pixels_per_point).round() as i32;
         let height = (area.height() * pixels_per_point).round() as i32;
         let layout = FullLayout::new(&self.skin, width, height);
@@ -1019,6 +1056,10 @@ impl Interface {
             header_bottom: points(layout.header.bounds).max.y,
             scale: layout.size_ratio / pixels_per_point,
             style: ChatStyle::from_scope(&overlay, pixels_per_point),
+            mode: match split.drawer {
+                Some(drawer) => ChatMode::Docked(drawer),
+                None => ChatMode::Overlay,
+            },
         }
     }
 

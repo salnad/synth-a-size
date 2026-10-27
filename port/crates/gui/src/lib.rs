@@ -13,6 +13,7 @@
 pub mod chat;
 pub mod colour;
 pub mod controls;
+pub mod drawer;
 pub mod editor;
 #[cfg(feature = "focus-spike")]
 mod focus_spike;
@@ -34,10 +35,11 @@ pub mod skin;
 pub mod text;
 
 pub use chat::{
-    ChatHost, ChatPanel, ChatPlacement, ChatSettingsView, ChatStyle, ChatView, FocusMode,
+    ChatHost, ChatMode, ChatPanel, ChatPlacement, ChatSettingsView, ChatStyle, ChatView, FocusMode,
 };
 pub use editor::{
-    create as create_editor, default_state, Editor, EditorError, EditorHandle, EditorWindow,
+    create as create_editor, default_state, drawer_resize, show_chat, Editor, EditorError,
+    EditorHandle, EditorState, EditorWindow,
 };
 pub use host::{Host, HostParam, OpenGestures};
 pub use interface::{EditorModel, Interface, Route, Tab, PRODUCT_NAME};
