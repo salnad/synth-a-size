@@ -199,6 +199,27 @@ repeat the check in FL Studio where the note says so.
    - *REAPER:* settles the sheet and closing behaviour, which come from
      AppKit and the plugin window. Repeat the parenting and closing checks
      in FL Studio, which wraps plugins in its own windows.
+10. **The chat drawer (G7e).** Turn the chat on, then click the logo to
+    open it, and click it again to close it.
+    - Opening should widen the plugin's window by the drawer (about 360
+      points at the default size), with upstream's editor keeping its size
+      and position at the left. Closing should give the width back exactly,
+      leaving the window as it was.
+    - Resize the window by its corner while the drawer is open: the editor
+      should keep its aspect ratio and the drawer its share.
+    - Close the plugin window with the drawer open and reopen it: it should
+      come back open, at the wider size.
+    - Type in the chat's message field, then open and close the drawer: the
+      field should keep the keyboard.
+    - A host that refuses the wider window should leave the window as it
+      was, with the chat over the editor's right side (the overlay), within
+      about a second and without a stuck, half-drawn strip.
+    - *REAPER:* honours VST3's `resizeView` on its floating FX windows and
+      answers with `onSize`, so the drawer should dock there. Check a docked
+      FX window too, where REAPER may not grow the dock. FL Studio wraps
+      plugins in its own window, and whether it honours a plugin's own
+      resize on macOS is what this item settles; if it doesn't, the overlay
+      fallback should take over.
 
 ## Vendored egui-baseview
 
