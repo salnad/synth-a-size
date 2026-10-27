@@ -736,6 +736,16 @@ impl Interface {
         &self.overlay
     }
 
+    /// The interface-wide popups and menus, to change.
+    pub fn overlay_mut(&mut self) -> &mut Overlay {
+        &mut self.overlay
+    }
+
+    /// The Matrix tab's state.
+    pub fn matrix(&self) -> &MatrixTab {
+        &self.matrix
+    }
+
     /// The connection a drag to modulate has made, for writing to the host
     /// if the window closes mid-drag.
     pub fn pending_connection(&self) -> crate::modulation::PendingConnection {

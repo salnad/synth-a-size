@@ -385,6 +385,20 @@ impl EditorModel for Synth {
         true
     }
 
+    fn set_slot_route(&self, slot: usize, route: Option<(&str, &str)>) -> bool {
+        let connected = self
+            .routing
+            .lock()
+            .unwrap()
+            .set_slot_route(slot, route)
+            .unwrap_or(false);
+        self.bus.lock().unwrap().push(match route {
+            Some((source, destination)) => format!("route {slot} {source} {destination}"),
+            None => format!("unroute {slot}"),
+        });
+        connected
+    }
+
     fn disconnect_modulation(&self, source: &str, destination: &str) -> Option<usize> {
         let slot = self
             .routing
@@ -4574,4 +4588,193 @@ fn the_lfo_menu_pastes_a_shape() {
     let mut harness = fixture.harness();
     choose_lfo_menu_row(&mut harness, &fixture, 1);
     assert_eq!(lfo_1_shape(&fixture).name(), "Pasted");
+}
+
+/// A Matrix row's selector choice, as its list's selection gives it.
+fn choose_in_matrix(
+    harness: &mut Harness,
+    fixture: &Fixture,
+    slot: usize,
+    destination: bool,
+    name: &str,
+) {
+    use sas_gui::sections::matrix::{destination_names, source_names};
+    let names = if destination {
+        destination_names()
+    } else {
+        source_names()
+    };
+    let id = names
+        .iter()
+        .position(|candidate| *candidate == name)
+        .unwrap() as i32;
+    fixture.interface.borrow_mut().overlay_mut().matrix_choice = Some((slot, destination, id));
+    harness.step();
+}
+
+/// `ModulationSelector`: a press opens its list (the destination's in the
+/// two-column selector). Choosing a source alone connects nothing; choosing
+/// the destination connects the row's own slot, and changing either rewires
+/// that slot, each one engine change and nothing for the host (D18: no
+/// gestures, so nothing in the host's undo history). "-" frees the slot.
+#[test]
+fn a_rows_selectors_rewire_its_own_slot_without_the_host() {
+    use sas_gui::sections::MenuOwner;
+    let fixture = Fixture::new();
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    fixture.take_log();
+    let row = matrix_row(&fixture, 0);
+
+    press(
+        &mut harness,
+        centre(row.source),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    release(
+        &mut harness,
+        centre(row.source),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    {
+        let interface = fixture.interface.borrow();
+        let menu = interface
+            .overlay()
+            .menu
+            .as_ref()
+            .expect("the source list opens");
+        assert!(matches!(
+            menu.owner,
+            MenuOwner::MatrixSelector {
+                slot: 0,
+                destination: false
+            }
+        ));
+        assert_eq!(menu.items[0].name, "-");
+        assert!(menu.items.iter().any(|item| item.name == "Lfo 1"));
+    }
+    fixture.interface.borrow_mut().overlay_mut().menu = None;
+    choose_in_matrix(&mut harness, &fixture, 0, false, "lfo_1");
+    assert!(fixture.synth.bus.lock().unwrap().is_empty());
+
+    press(
+        &mut harness,
+        centre(row.destination),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    release(
+        &mut harness,
+        centre(row.destination),
+        PointerButton::Primary,
+        Modifiers::NONE,
+    );
+    assert!(fixture.interface.borrow().overlay().dual_menu.is_some());
+    fixture.interface.borrow_mut().overlay_mut().dual_menu = None;
+    choose_in_matrix(&mut harness, &fixture, 0, true, "macro_control_1");
+    choose_in_matrix(&mut harness, &fixture, 0, false, "env_1");
+    choose_in_matrix(&mut harness, &fixture, 0, false, "-");
+    assert_eq!(
+        *fixture.synth.bus.lock().unwrap(),
+        [
+            "route 0 lfo_1 macro_control_1",
+            "route 0 env_1 macro_control_1",
+            "unroute 0",
+        ]
+    );
+    assert_eq!(fixture.take_log(), Vec::<String>::new());
+    assert!(fixture.synth.modulations().is_empty());
+}
+
+/// A route to the row's own amount is refused (`isInvalidConnection`): the
+/// row's selectors show "-" again, as `updateDisplay` gives.
+#[test]
+fn a_row_cannot_modulate_its_own_amount() {
+    let fixture = Fixture::new();
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    choose_in_matrix(&mut harness, &fixture, 0, false, "lfo_1");
+    choose_in_matrix(&mut harness, &fixture, 0, true, "modulation_1_amount");
+    assert!(fixture.synth.modulations().is_empty());
+    choose_in_matrix(&mut harness, &fixture, 0, true, "macro_control_1");
+    // The source was cleared with the refused route.
+    assert!(fixture.synth.modulations().is_empty());
+}
+
+/// A press on a row selects it (`mouseDown` → `rowSelected`), and so does a
+/// state load that changes a row's toggle (`setAllValues` sends
+/// `buttonClicked`); the last such row wins.
+#[test]
+fn rows_are_selected_by_a_press_and_by_a_load_changing_their_toggles() {
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 0);
+    let row = matrix_row(&fixture, 1);
+    // Between the morph curve and the amount bar.
+    let gap = egui::pos2(
+        (row.power.right() + row.amount.x) as f32 / 2.0,
+        centre(row.bounds).y,
+    );
+    press(&mut harness, gap, PointerButton::Primary, Modifiers::NONE);
+    release(&mut harness, gap, PointerButton::Primary, Modifiers::NONE);
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 1);
+
+    fixture.synth.set("modulation_1_stereo", 1.0);
+    fixture.synth.generation.fetch_add(1, Ordering::Relaxed);
+    harness.step();
+    assert_eq!(fixture.interface.borrow().matrix().selected(), 0);
+}
+
+/// `ModulationMatrix::mouseDown` on the headings: a column sorts ascending,
+/// pressing it again descending; connected rows stay first.
+#[test]
+fn pressing_a_heading_sorts_the_rows() {
+    use sas_gui::sections::matrix::SortColumn;
+    let fixture = Fixture::new();
+    two_sources_on_macro_1(&fixture);
+    fixture
+        .interface
+        .borrow_mut()
+        .set_tab(sas_gui::interface::Tab::Matrix);
+    let mut harness = fixture.harness();
+    harness.step();
+    assert_eq!(&fixture.interface.borrow().matrix().order()[..3], [0, 1, 2]);
+    let heading = |x_offset: i32| {
+        let row = matrix_row(&fixture, 0);
+        egui::pos2((row.bounds.x + x_offset) as f32, (row.bounds.y - 10) as f32)
+    };
+    click(&mut harness, heading(5));
+    assert_eq!(
+        fixture.interface.borrow().matrix().sort_column(),
+        (SortColumn::Number, false)
+    );
+    assert_eq!(
+        &fixture.interface.borrow().matrix().order()[..3],
+        [1, 0, 63]
+    );
+    click(&mut harness, heading(5));
+    assert_eq!(&fixture.interface.borrow().matrix().order()[..3], [0, 1, 2]);
+    // SOURCE: env_1 before lfo_1.
+    click(&mut harness, heading(100));
+    assert_eq!(
+        fixture.interface.borrow().matrix().sort_column(),
+        (SortColumn::Source, true)
+    );
+    assert_eq!(&fixture.interface.borrow().matrix().order()[..2], [1, 0]);
 }
