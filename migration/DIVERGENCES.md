@@ -844,6 +844,22 @@ MCP server) extends this entry when it lands.*
 - **Why:** a menu item that does nothing is left out rather than copied.
 - **Approved:** coordinator, 2026-10-26.
 
+### D31. The wavetable editor's overlay hides when its keyframe is deleted
+
+- **Differs:** a double-click on the selected keyframe in the wavetable
+  editor's organizer, while the overlay for its component shows.
+- **Upstream:** `WavetableOrganizer::deleteKeyframe` removes the keyframe
+  without deselecting it or telling the overlays (`frameSelected` isn't
+  called), so the overlay stays up with `current_frame_` still pointing at
+  the deleted keyframe's wave frame. Drawing on it writes to freed memory.
+- **Port:** the deleted keyframe leaves the selection, and the overlay
+  hides (`wavetable_edit.rs`, `organizer_double_click`), as for any other
+  deselection.
+- **Why:** the port can't keep a reference to a deleted keyframe, and an
+  overlay editing nothing is upstream's undefined behaviour rather than a
+  feature.
+- **Approved:** coordinator, 2026-10-26.
+
 ## Verification exceptions
 
 These are policies of the parity harness, not port behaviour. They change

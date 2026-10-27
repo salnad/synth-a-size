@@ -1047,7 +1047,7 @@ impl WavetableEditSection {
         }
         if let Some((keyframe, _)) = self.frame_at(layout, offset, at) {
             // Upstream keeps the selection and the overlay's frame pointing
-            // at the deleted keyframe; the port lets both go.
+            // at the deleted keyframe; the port lets both go (D31).
             self.deselect();
             if let Some((_, creator)) = &mut self.creator {
                 edits::delete_keyframe(creator, keyframe);

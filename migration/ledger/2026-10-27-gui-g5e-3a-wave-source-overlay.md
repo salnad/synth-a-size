@@ -53,7 +53,7 @@ the bars, their menus and the audible drag come in G5e-3b.
   (`selectFrames` deselects first), removing a component or keyframes and a
   preset load hide it; group and modifier moves and keyframe drags carry it.
   Upstream's double-click delete leaves its overlay pointing at the deleted
-  keyframe's frame; the port hides it.
+  keyframe's frame; the port hides it (D31).
 - `Format::string_lookup` (`setStringLookup`), so a slider can show and take
   names from a list of the editor's own; `BarRenderer::y_at` and
   `scaled_y_at`; `Interface::local_value` for tests.
