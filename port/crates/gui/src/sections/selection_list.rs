@@ -12,6 +12,7 @@ use egui::{PointerButton, Sense};
 use sas_preset::user_folders::compare_paths;
 
 use super::{MenuOwner, Panel};
+use crate::controls::clicks::DoubleClicks;
 use crate::controls::icon::{self, UpstreamIcon};
 use crate::controls::path::{EndCapStyle, JointStyle, Transform};
 use crate::controls::paths;
@@ -87,6 +88,8 @@ pub struct SelectionList {
     /// and ends with the Add Folder row.
     takes_added_folders: bool,
     scroll: ScrollBar,
+    /// The presses, for `mouseDoubleClick` (JUCE's rules).
+    clicks: DoubleClicks,
 }
 
 impl Default for SelectionList {
@@ -106,6 +109,7 @@ impl Default for SelectionList {
             additional_roots: Vec::new(),
             takes_added_folders: false,
             scroll: ScrollBar::default(),
+            clicks: DoubleClicks::default(),
         }
     }
 }
@@ -410,9 +414,10 @@ impl SelectionList {
                 .map(to_pixels)
         };
         // mouseDoubleClick: the selected file, clicked again off its star.
-        let double_clicked = response
-            .double_clicked()
-            .then(|| response.interact_pointer_pos())
+        let double_clicked = self
+            .clicks
+            .update(panel.ui, &response)
+            .then(|| panel.ui.input(|input| input.pointer.interact_pos()))
             .flatten()
             .map(to_pixels);
         if let Some((x, y)) = double_clicked {

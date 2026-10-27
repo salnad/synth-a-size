@@ -100,6 +100,59 @@ impl Clicks {
     }
 }
 
+/// A control's presses, for a control that only needs to know when it is
+/// double-clicked (`mouseDoubleClick`): every press on it, with any button,
+/// and its moves are counted with JUCE's rules.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct DoubleClicks {
+    clicks: Clicks,
+    down: bool,
+}
+
+impl DoubleClicks {
+    /// Follows the pointer over the control `response` belongs to, once a
+    /// frame. True at the release of a double click's second press, as
+    /// `Component::internalMouseUp` sends `mouseDoubleClick` after
+    /// `mouseUp`.
+    pub fn update(&mut self, ui: &egui::Ui, response: &egui::Response) -> bool {
+        let (now, modifiers, pointer, primary, secondary, middle) = ui.input(|input| {
+            (
+                input.time,
+                input.modifiers,
+                input.pointer.interact_pos(),
+                input.pointer.button_down(PointerButton::Primary),
+                input.pointer.button_down(PointerButton::Secondary),
+                input.pointer.button_down(PointerButton::Middle),
+            )
+        });
+        let any_down = primary || secondary || middle;
+        if !self.down {
+            if let (true, true, Some(pos)) =
+                (response.is_pointer_button_down_on(), any_down, pointer)
+            {
+                let button = if secondary {
+                    PointerButton::Secondary
+                } else if middle && !primary {
+                    PointerButton::Middle
+                } else {
+                    PointerButton::Primary
+                };
+                self.clicks.press(now, pos, button, modifiers);
+                self.down = true;
+            }
+            return false;
+        }
+        if any_down {
+            if let Some(pos) = pointer {
+                self.clicks.drag(pos);
+            }
+            return false;
+        }
+        self.down = false;
+        self.clicks.count(now) >= 2
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
