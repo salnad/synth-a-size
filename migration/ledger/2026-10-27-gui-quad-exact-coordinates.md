@@ -66,6 +66,13 @@ interpolated from the vertices.
   (`tests/gpu.rs`, `gpu-tests`) draws thirty 41 px modulation knobs across
   a 1400 px viewport and checks that each one's centre column takes the
   right-hand colour. It fails on `main` and passes here.
+- **Review follow-ups (UI Reviewer).**
+  - `QuadBatch::paint` documents, and debug-asserts, that a painter's area
+    starts on a whole physical pixel, so a future painter for part of the
+    window can't bring the drift back. The debug test suites, with and
+    without `gpu-tests`, and a debug gallery at 1.5x don't trip it.
+  - The macOS job runs `--test gpu` beside `--test editor_gpu`, so the
+    pixel tests also run on Metal.
 - **Checks.** `cargo clippy --workspace --all-targets -D warnings`, and with
   `--features gpu-tests`, pass, as do `cargo test --release -p sas-gui
   --features gpu-tests`, the `sas-plugin` tests and `gui_reference.py

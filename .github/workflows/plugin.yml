@@ -60,9 +60,10 @@ jobs:
       - name: Chat transport stops a pending HTTPS request
         run: cargo test --locked --manifest-path port/Cargo.toml -p sas-llm-agent --features http --test stop
       # The editor's render state and every tab drawn on the runner's Metal
-      # device, as the plugin window creates them (default GraphicsConfig).
-      - name: Editor draws on Metal without wgpu errors (sas-gui editor_gpu)
-        run: cargo test --locked --manifest-path port/Cargo.toml -p sas-gui --features gpu-tests --test editor_gpu -- --nocapture
+      # device, as the plugin window creates them (default GraphicsConfig),
+      # and the quad shaders' pixel tests on Metal.
+      - name: Editor draws on Metal without wgpu errors (sas-gui editor_gpu, gpu)
+        run: cargo test --locked --manifest-path port/Cargo.toml -p sas-gui --features gpu-tests --test editor_gpu --test gpu -- --nocapture
       - name: Cache the VST3 tools
         id: vst3-tools-cache
         uses: actions/cache@v4

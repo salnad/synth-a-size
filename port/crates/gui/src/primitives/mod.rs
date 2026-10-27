@@ -298,11 +298,23 @@ impl QuadBatch {
 
     /// Adds the batch to `pixels`' painter. Quads are clipped to `clip`
     /// (pixels), as upstream scissors each component.
+    ///
+    /// `pixels`' area must start on a whole physical pixel. egui rounds a
+    /// callback's viewport to whole pixels, and the quad shader rebuilds
+    /// coordinates from pixel centres measured from that viewport; an area
+    /// off the grid would move every quad by the rounding.
     pub fn paint(self, pixels: &PixelPainter, clip: RectF) {
         if self.quads.is_empty() {
             return;
         }
         let area = pixels.area();
+        debug_assert!(
+            [area.min.x, area.min.y].iter().all(|&point| {
+                let pixel = point * pixels.pixels_per_point();
+                (pixel - pixel.round()).abs() < 1e-3
+            }),
+            "quads painted in an area off the pixel grid: {area:?}"
+        );
         let viewport = [
             (area.width() * pixels.pixels_per_point()).round(),
             (area.height() * pixels.pixels_per_point()).round(),
