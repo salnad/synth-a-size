@@ -10,8 +10,8 @@
 //! upstream's `Paths::prev` / `Paths::next` chevrons; icon paths come with
 //! `controls::icon`.
 
+use super::clicks::Clicks;
 use super::paths::Icon;
-use super::slider::{DOUBLE_CLICK_TIMEOUT, MULTIPLE_CLICK_DISTANCE};
 use egui::{Id, PointerButton, Sense, Ui};
 
 use crate::colour::Colour;
@@ -95,10 +95,8 @@ impl ShapeColours {
 struct ShapeState {
     down: bool,
     hover_amount: f32,
-    /// The last press's time and place, and whether this press followed
-    /// it closely enough to make a double click (JUCE's rules).
-    last_press: Option<(f64, egui::Pos2)>,
-    second_press: bool,
+    /// The recent presses, for double clicks (JUCE's rules).
+    clicks: Clicks,
 }
 
 /// What a shape button did this frame.
@@ -142,23 +140,23 @@ pub fn show(
     let down = (state.down || response.is_pointer_button_down_on()) && primary_down;
     let mut event = ShapeEvent::default();
     let pointer = ui.input(|input| input.pointer.interact_pos());
+    let (now, modifiers) = ui.input(|input| (input.time, input.modifiers));
     if down && !state.down {
         event.pressed = true;
-        let now = ui.input(|input| input.time);
         let pos = pointer.unwrap_or_default();
-        state.second_press = state.last_press.is_some_and(|(time, at)| {
-            now - time < DOUBLE_CLICK_TIMEOUT
-                && (pos.x - at.x).abs() < MULTIPLE_CLICK_DISTANCE
-                && (pos.y - at.y).abs() < MULTIPLE_CLICK_DISTANCE
-        });
-        state.last_press = Some((now, pos));
+        state
+            .clicks
+            .press(now, pos, PointerButton::Primary, modifiers);
     } else if down {
         event.drag = ui.input(|input| input.pointer.delta());
+        if let Some(pos) = pointer {
+            state.clicks.drag(pos);
+        }
     }
     if state.down && !down {
         event.clicked = pointer.is_some_and(|pos| response.rect.contains(pos));
-        event.double_clicked = state.second_press;
-        state.second_press = false;
+        // Component::internalMouseUp's click count.
+        event.double_clicked = state.clicks.count(now) >= 2;
     }
     state.down = down;
 
