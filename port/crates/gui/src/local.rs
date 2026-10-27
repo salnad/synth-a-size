@@ -135,6 +135,46 @@ pub const MODIFIER_CONTROLS: [ModifierControls; 3] = [
     modifier_controls!("osc_3_"),
 ];
 
+/// The Frequency Filter overlay's styles (`filter_style_lookup`).
+pub const FILTER_STYLES: [&str; 4] = ["Low Pass", "Band Pass", "High Pass", "Comb"];
+
+/// One oscillator's Frequency Filter, Slew Limiter, Wave Folder and Wave
+/// Warp overlay sliders.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SliderModifierControls {
+    pub filter_style: &'static str,
+    pub filter_cutoff: &'static str,
+    pub filter_shape: &'static str,
+    pub slew_up: &'static str,
+    pub slew_down: &'static str,
+    pub fold_amount: &'static str,
+    pub warp_horizontal: &'static str,
+    pub warp_vertical: &'static str,
+}
+
+macro_rules! slider_modifier_controls {
+    ($prefix:literal) => {
+        SliderModifierControls {
+            filter_style: concat!($prefix, "frequency_filter_style"),
+            filter_cutoff: concat!($prefix, "frequency_filter_cutoff"),
+            filter_shape: concat!($prefix, "frequency_filter_shape"),
+            slew_up: concat!($prefix, "up_slew_limit"),
+            slew_down: concat!($prefix, "down_slew_limit"),
+            fold_amount: concat!($prefix, "wave_fold_amount"),
+            warp_horizontal: concat!($prefix, "wave_warp_horizontal"),
+            warp_vertical: concat!($prefix, "wave_warp_vertical"),
+        }
+    };
+}
+
+/// Each oscillator's Frequency Filter, Slew Limiter, Wave Folder and Wave
+/// Warp overlay sliders.
+pub const SLIDER_MODIFIER_CONTROLS: [SliderModifierControls; 3] = [
+    slider_modifier_controls!("osc_1_"),
+    slider_modifier_controls!("osc_2_"),
+    slider_modifier_controls!("osc_3_"),
+];
+
 /// Each oscillator's Wave Source overlay controls: `[oscillator][0]` for
 /// Wave Sources, `[oscillator][1]` for Shepard Tone sources.
 pub const WAVE_SOURCE_CONTROLS: [[WaveSourceControls; 2]; 3] = [
@@ -396,6 +436,36 @@ fn infos() -> &'static HashMap<String, ParamInfo> {
                     0.0,
                     "Phase Style",
                 ),
+            ] {
+                infos.insert(info.name.clone(), info);
+            }
+        }
+        for controls in SLIDER_MODIFIER_CONTROLS {
+            // The sliders' ranges (`setRange`), without an interval.
+            let slider = |name: &str, min: f32, max: f32, display_name: &str| ParamInfo {
+                value_scale: ValueScale::Linear,
+                ..local_info(name, min, max, min, display_name)
+            };
+            for info in [
+                local_info(
+                    controls.filter_style,
+                    0.0,
+                    FILTER_STYLES.len() as f32 - 1.0,
+                    0.0,
+                    "Filter Style",
+                ),
+                slider(controls.filter_cutoff, 0.0, 10.0, "Frequency Filter Cutoff"),
+                slider(controls.filter_shape, 0.0, 1.0, "Frequency Filter Shape"),
+                slider(controls.slew_up, 0.0, 1.0, "up_slew_limit"),
+                slider(controls.slew_down, 0.0, 1.0, "down_slew_limit"),
+                slider(controls.fold_amount, 1.0, 32.0, "wave_fold_amount"),
+                slider(
+                    controls.warp_horizontal,
+                    -20.0,
+                    20.0,
+                    "wave_warp_horizontal",
+                ),
+                slider(controls.warp_vertical, -20.0, 20.0, "wave_warp_vertical"),
             ] {
                 infos.insert(info.name.clone(), info);
             }

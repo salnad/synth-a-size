@@ -46,6 +46,13 @@ script, it gets `--data-dir migration/corpus/gui/data`: authored presets
 (`migration/corpus/generate.py`) that the browser lists and the port's
 gallery reads too.
 
+Text in these frames is larger than in the port's gallery: 7.7% for the
+monospace face (button and toggle labels), 3.3% for Montserrat and 1.3% for
+Lato. JUCE's FreeType fonts on Linux make the em size
+`points * unitsPerEm / ascender`, where its CoreText fonts on macOS, the
+port's target, make it the point height. The port follows macOS; see
+`port/crates/gui/src/fonts.rs`. Compare text positions, not sizes.
+
 `--overlay preset_browser` opens the preset browser over the tab, as the
 header's preset selector does; in `views.json`, `"overlay":
 "preset_browser"`. `--overlay wavetable_editor` opens oscillator 1's

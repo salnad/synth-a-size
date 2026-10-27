@@ -892,6 +892,7 @@ MCP server) extends this entry when it lands.*
   audio, spliced, as the oscillator does
   (`popup_browser::editor_load_wavetable_file`).
 - **Why:** a file the browser offers should load, as in D1 and D19.
+- **Approved:** coordinator, 2026-10-27.
 
 ### D33. Audio dropped on the Audio File Source that can't be read, or is too short, loads nothing
 
@@ -911,6 +912,22 @@ MCP server) extends this entry when it lands.*
 - **Why:** reloading audio the user didn't drop, or reading outside the
   buffer, isn't behaviour to copy; leaving the source as it was matches
   D4 and D21.
+- **Approved:** coordinator, 2026-10-27.
+
+### D34. The Frequency Filter overlay's style selector shows the style when a keyframe is selected
+
+- **Differs:** the text in the wavetable editor's Frequency Filter overlay
+  style selector right after one of its keyframes is selected.
+- **Upstream:** `FrequencyFilterOverlay::frameSelected` sets the style
+  selector with `dontSendNotification` and redraws only the cutoff and
+  shape images (`cutoff_->redoImage(); shape_->redoImage();`), after the
+  section's `setOverlayPosition` has already drawn them all. The selector
+  keeps the text it was last drawn with (Low Pass the first time) until
+  something redraws it, so a Band Pass filter reads "Low Pass".
+- **Port:** the selector draws the modifier's style each frame
+  (`port/crates/gui/src/sections/filter_slew_fold_warp_overlays.rs`).
+- **Why:** stale text naming the wrong style isn't behaviour to copy; this
+  follows D1's and D19's precedent of not replicating upstream bugs.
 - **Approved:** coordinator, 2026-10-27.
 
 ### D35. A Line Source's power reset commits with the double click

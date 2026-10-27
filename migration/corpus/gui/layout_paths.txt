@@ -661,5 +661,41 @@ oscillator 1/WAVE WINDOW/background/text#3
 oscillator 1/WAVE WINDOW/Window Shape
 oscillator 1/WAVE WINDOW/Left Position
 oscillator 1/WAVE WINDOW/Right Position
+# G5e-5: the Frequency Filter, Slew Limiter, Wave Folder and Wave Warp
+# overlays, each with its modifier's keyframe selected: the overlay, its
+# controls background with its title texts, and its sliders and toggles.
+@wavetable-select 0:3
+oscillator 1/FREQUENCY FILTER
+oscillator 1/FREQUENCY FILTER/background
+oscillator 1/FREQUENCY FILTER/background/text
+oscillator 1/FREQUENCY FILTER/background/text#2
+oscillator 1/FREQUENCY FILTER/background/text#3
+oscillator 1/FREQUENCY FILTER/Filter Style
+oscillator 1/FREQUENCY FILTER/Frequency Filter Cutoff
+oscillator 1/FREQUENCY FILTER/Frequency Filter Shape
+oscillator 1/FREQUENCY FILTER/NORMALIZE
+@wavetable-select 0:4
+oscillator 1/SLEW LIMITER
+oscillator 1/SLEW LIMITER/background
+oscillator 1/SLEW LIMITER/background/text
+oscillator 1/SLEW LIMITER/background/text#2
+oscillator 1/SLEW LIMITER/up_slew_limit
+oscillator 1/SLEW LIMITER/down_slew_limit
+@wavetable-select 0:5
+oscillator 1/WAVE FOLDER
+oscillator 1/WAVE FOLDER/background
+oscillator 1/WAVE FOLDER/background/text
+oscillator 1/WAVE FOLDER/wave_fold_amount
+@wavetable-select 0:6
+oscillator 1/WAVE WARPER
+oscillator 1/WAVE WARPER/background
+oscillator 1/WAVE WARPER/background/text
+oscillator 1/WAVE WARPER/background/text#2
+oscillator 1/WAVE WARPER/background/text#3
+oscillator 1/WAVE WARPER/background/text#4
+oscillator 1/WAVE WARPER/X Asymmetric
+oscillator 1/WAVE WARPER/wave_warp_horizontal
+oscillator 1/WAVE WARPER/Y Asymmetric
+oscillator 1/WAVE WARPER/wave_warp_vertical
 @wavetable-select none
 @overlay none
